@@ -20,10 +20,6 @@ var (
 	validTriggerSignal = []string{"mark", "index", "last"}
 
 	validReduceOnly = []string{"true", "false"}
-
-	validBatchOrderType = []string{
-		"edit", "cancel", "send",
-	}
 )
 
 // WSFuturesTickerData stores ws ticker data for futures websocket
@@ -406,8 +402,8 @@ type FuturesNotificationData struct {
 
 // FuturesAccountsData stores account data
 type FuturesAccountsData struct {
-	ServerTime string                  `json:"serverTime"`
-	Accounts   map[string]AccountsData `json:"accounts"`
+	ServerTime string                   `json:"serverTime"`
+	Accounts   map[string]*AccountsData `json:"accounts"`
 }
 
 // AccountsData stores data of an account

@@ -794,6 +794,12 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -836,6 +842,12 @@
           },
           {
             "name": "asset_type",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "account",
             "in": "query",
             "required": false,
             "type": "string"
@@ -2270,6 +2282,12 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "account",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -3180,10 +3198,7 @@
           "type": "string"
         },
         "accounts": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/gctrpcAccount"
-          }
+          "$ref": "#/definitions/gctrpcAccount"
         }
       }
     },
@@ -4011,6 +4026,9 @@
         "exchange": {
           "type": "string"
         },
+        "Account": {
+          "type": "string"
+        },
         "pair": {
           "$ref": "#/definitions/gctrpcCurrencyPair"
         },
@@ -4033,6 +4051,9 @@
         },
         "asset_type": {
           "type": "string"
+        },
+        "full_amount_required": {
+          "type": "boolean"
         }
       }
     },

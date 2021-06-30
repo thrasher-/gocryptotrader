@@ -254,36 +254,32 @@ func (l *LocalBitcoins) UpdateOrderbook(p currency.Pair, assetType asset.Item) (
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // LocalBitcoins exchange
-func (l *LocalBitcoins) UpdateAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	var response account.Holdings
-	response.Exchange = l.Name
+func (l *LocalBitcoins) UpdateAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
 	accountBalance, err := l.GetWalletBalance()
 	if err != nil {
-		return response, err
+		return nil, err
 	}
-	var exchangeCurrency account.Balance
-	exchangeCurrency.CurrencyName = currency.BTC
-	exchangeCurrency.TotalValue = accountBalance.Total.Balance
 
-	response.Accounts = append(response.Accounts, account.SubAccount{
-		Currencies: []account.Balance{exchangeCurrency},
-	})
+	m := account.HoldingsSnapshot{
+		currency.BTC: {
+			Total:  accountBalance.Total.Balance,
+			Locked: accountBalance.Total.Balance - accountBalance.Total.Sendable,
+		},
+	}
 
-	err = account.Process(&response)
+	err = l.LoadHoldings(accountName, true, assetType, m)
 	if err != nil {
-		return account.Holdings{}, err
+		return nil, err
 	}
-
-	return response, nil
+	return l.GetHoldingsSnapshot(accountName, assetType)
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (l *LocalBitcoins) FetchAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	acc, err := account.GetHoldings(l.Name, assetType)
+func (l *LocalBitcoins) FetchAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
+	acc, err := l.GetHoldingsSnapshot(accountName, assetType)
 	if err != nil {
-		return l.UpdateAccountInfo(assetType)
+		return l.UpdateAccountInfo(accountName, assetType)
 	}
-
 	return acc, nil
 }
 
@@ -643,13 +639,6 @@ func (l *LocalBitcoins) GetOrderHistory(getOrdersRequest *order.GetOrdersRequest
 	order.FilterOrdersBySide(&orders, getOrdersRequest.Side)
 
 	return orders, nil
-}
-
-// ValidateCredentials validates current credentials used for wrapper
-// functionality
-func (l *LocalBitcoins) ValidateCredentials(assetType asset.Item) error {
-	_, err := l.UpdateAccountInfo(assetType)
-	return l.CheckTransientError(err)
 }
 
 // GetHistoricCandles returns candles between a time period for a set time interval

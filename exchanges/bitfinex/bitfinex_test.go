@@ -12,6 +12,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -297,18 +298,6 @@ func TestGetLeaderboard(t *testing.T) {
 	}
 }
 
-func TestGetAccountFees(t *testing.T) {
-	if !areTestAPIKeysSet() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	_, err := b.UpdateAccountInfo(asset.Spot)
-	if err != nil {
-		t.Error("GetAccountInfo error", err)
-	}
-}
-
 func TestGetWithdrawalFee(t *testing.T) {
 	if !areTestAPIKeysSet() {
 		t.SkipNow()
@@ -395,9 +384,20 @@ func TestGetAccountInfo(t *testing.T) {
 	}
 	t.Parallel()
 
-	_, err := b.FetchAccountInfo(asset.Spot)
+	_, err := b.FetchAccountInfo(account.Main, asset.Spot)
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+func TestUpdateAccountInfo(t *testing.T) {
+	if !areTestAPIKeysSet() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	_, err := b.UpdateAccountInfo(account.Main, asset.Spot)
+	if err != nil {
+		t.Error("GetAccountInfo error", err)
 	}
 }
 

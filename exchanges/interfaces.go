@@ -26,7 +26,7 @@ type IBotExchange interface {
 	GetName() string
 	IsEnabled() bool
 	SetEnabled(bool)
-	ValidateCredentials(a asset.Item) error
+
 	FetchTicker(p currency.Pair, a asset.Item) (*ticker.Price, error)
 	UpdateTicker(p currency.Pair, a asset.Item) (*ticker.Price, error)
 	FetchOrderbook(p currency.Pair, a asset.Item) (*orderbook.Base, error)
@@ -35,11 +35,30 @@ type IBotExchange interface {
 	UpdateTradablePairs(forceUpdate bool) error
 	GetEnabledPairs(a asset.Item) (currency.Pairs, error)
 	GetAvailablePairs(a asset.Item) (currency.Pairs, error)
-	FetchAccountInfo(a asset.Item) (account.Holdings, error)
-	UpdateAccountInfo(a asset.Item) (account.Holdings, error)
+
+	// GetAccounts returns the different account names associated with the
+	// supplied credentials
+	GetAccounts() ([]account.Designation, error)
+	// FetchAccountInfo initially fetches account info, if not found will
+	// execute UpdateAccountInfo
+	FetchAccountInfo(a account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error)
+	// UpdateAccountInfo specifically fetches and updates account holdings from
+	// the exchange
+	UpdateAccountInfo(a account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error)
+	// GetFullAccountSnapshot returns a full snapshot of all accounts associated
+	// with supplied credentials
+	GetFullAccountSnapshot() (account.FullSnapshot, error)
+	// AccountValid verifies if the account supplied is valid
+	AccountValid(a account.Designation) error
+	// ClaimAccountFunds allows for a strategy or sub-system to claim on a specific account
+	// holding associated with the supplied credentials. If totalRequired param
+	// is false will allow the claim of less than or equal to the request amount
+	// in the event multiple strategies are working on the same holdings.
+	ClaimAccountFunds(a account.Designation, assetType asset.Item, c currency.Code, amount float64, totalRequired bool) (*account.Claim, error)
+
 	GetAuthenticatedAPISupport(endpoint uint8) bool
 	SetPairs(pairs currency.Pairs, a asset.Item, enabled bool) error
-	GetAssetTypes() asset.Items
+	GetAssetTypes(enabled bool) asset.Items
 	GetRecentTrades(p currency.Pair, a asset.Item) ([]trade.Data, error)
 	GetHistoricTrades(p currency.Pair, a asset.Item, startTime, endTime time.Time) ([]trade.Data, error)
 	SupportsAutoPairUpdates() bool

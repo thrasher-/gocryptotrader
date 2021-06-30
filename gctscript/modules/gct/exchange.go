@@ -213,7 +213,7 @@ func ExchangePairs(args ...objects.Object) (objects.Object, error) {
 
 // ExchangeAccountInfo returns account information for requested exchange
 func ExchangeAccountInfo(args ...objects.Object) (objects.Object, error) {
-	if len(args) != 2 {
+	if len(args) != 3 {
 		return nil, objects.ErrWrongNumArguments
 	}
 
@@ -221,37 +221,37 @@ func ExchangeAccountInfo(args ...objects.Object) (objects.Object, error) {
 	if !ok {
 		return nil, fmt.Errorf(ErrParameterConvertFailed, exchangeName)
 	}
-	assetString, ok := objects.ToString(args[1])
+
+	accountName, ok := objects.ToString(args[1])
 	if !ok {
-		return nil, fmt.Errorf(ErrParameterConvertFailed, assetString)
+		return nil, fmt.Errorf(ErrParameterConvertFailed, accountName)
 	}
-	assetType, err := asset.New(assetString)
-	if err != nil {
-		return nil, err
+
+	assetName, ok := objects.ToString(args[2])
+	if !ok {
+		return nil, fmt.Errorf(ErrParameterConvertFailed, assetName)
 	}
-	rtnValue, err := wrappers.GetWrapper().AccountInformation(exchangeName, assetType)
+
+	an, err := asset.New(assetName)
 	if err != nil {
 		return nil, err
 	}
 
-	var funds objects.Array
-	for x := range rtnValue.Accounts {
-		for y := range rtnValue.Accounts[x].Currencies {
-			temp := make(map[string]objects.Object, 3)
-			temp["name"] = &objects.String{Value: rtnValue.Accounts[x].Currencies[y].CurrencyName.String()}
-			temp["total"] = &objects.Float{Value: rtnValue.Accounts[x].Currencies[y].TotalValue}
-			temp["hold"] = &objects.Float{Value: rtnValue.Accounts[x].Currencies[y].Hold}
-			funds.Value = append(funds.Value, &objects.Map{Value: temp})
+	sh, err := wrappers.GetWrapper().AccountInformation(exchangeName, accountName, an)
+	if err != nil {
+		return nil, err
+	}
+
+	holdingsSnapshot := &objects.Map{Value: make(map[string]objects.Object)}
+	for code, balance := range sh {
+		holdingsSnapshot.Value[code.String()] = &objects.Map{
+			Value: map[string]objects.Object{
+				"Total":  &objects.Float{Value: balance.Total},
+				"Locked": &objects.Float{Value: balance.Locked},
+			},
 		}
 	}
-
-	data := make(map[string]objects.Object, 2)
-	data["exchange"] = &objects.String{Value: rtnValue.Exchange}
-	data["currencies"] = &funds
-
-	return &objects.Map{
-		Value: data,
-	}, nil
+	return holdingsSnapshot, nil
 }
 
 // ExchangeOrderQuery query order on exchange

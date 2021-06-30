@@ -248,61 +248,40 @@ func (i *ItBit) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderbo
 }
 
 // UpdateAccountInfo retrieves balances for all enabled currencies
-func (i *ItBit) UpdateAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	var info account.Holdings
-	info.Exchange = i.Name
-
+func (i *ItBit) UpdateAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
 	wallets, err := i.GetWallets(url.Values{})
 	if err != nil {
-		return info, err
+		return nil, err
 	}
-
-	type balance struct {
-		TotalValue float64
-		Hold       float64
-	}
-
-	var amounts = make(map[string]*balance)
 
 	for x := range wallets {
-		for _, cb := range wallets[x].Balances {
-			if _, ok := amounts[cb.Currency]; !ok {
-				amounts[cb.Currency] = &balance{}
+		m := make(account.HoldingsSnapshot)
+		for y := range wallets[x].Balances {
+			m[currency.NewCode(wallets[x].Balances[y].Currency)] = account.Balance{
+				Total:  wallets[x].Balances[y].TotalBalance,
+				Locked: wallets[x].Balances[y].TotalBalance - wallets[x].Balances[y].AvailableBalance,
 			}
+		}
+		var acc account.Designation
+		acc, err = account.NewDesignation(wallets[x].Name)
+		if err != nil {
+			return nil, err
+		}
 
-			amounts[cb.Currency].TotalValue += cb.TotalBalance
-			amounts[cb.Currency].Hold += cb.TotalBalance - cb.AvailableBalance
+		err = i.LoadHoldings(acc, x == 0, assetType, m)
+		if err != nil {
+			return nil, err
 		}
 	}
-
-	var fullBalance []account.Balance
-	for key := range amounts {
-		fullBalance = append(fullBalance, account.Balance{
-			CurrencyName: currency.NewCode(key),
-			TotalValue:   amounts[key].TotalValue,
-			Hold:         amounts[key].Hold,
-		})
-	}
-
-	info.Accounts = append(info.Accounts, account.SubAccount{
-		Currencies: fullBalance,
-	})
-
-	err = account.Process(&info)
-	if err != nil {
-		return account.Holdings{}, err
-	}
-
-	return info, nil
+	return i.GetHoldingsSnapshot(accountName, assetType)
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (i *ItBit) FetchAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	acc, err := account.GetHoldings(i.Name, assetType)
+func (i *ItBit) FetchAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
+	acc, err := i.GetHoldingsSnapshot(accountName, assetType)
 	if err != nil {
-		return i.UpdateAccountInfo(assetType)
+		return i.UpdateAccountInfo(accountName, assetType)
 	}
-
 	return acc, nil
 }
 
@@ -625,13 +604,6 @@ func (i *ItBit) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, er
 	order.FilterOrdersBySide(&orders, req.Side)
 	order.FilterOrdersByCurrencies(&orders, req.Pairs)
 	return orders, nil
-}
-
-// ValidateCredentials validates current credentials used for wrapper
-// functionality
-func (i *ItBit) ValidateCredentials(assetType asset.Item) error {
-	_, err := i.UpdateAccountInfo(assetType)
-	return i.CheckTransientError(err)
 }
 
 // GetHistoricCandles returns candles between a time period for a set time interval

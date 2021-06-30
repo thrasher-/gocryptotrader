@@ -13,6 +13,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -733,17 +734,6 @@ func TestUpdateOrderbook(t *testing.T) {
 		t.Error(err)
 	}
 	_, err = h.UpdateOrderbook(cp2, asset.Futures)
-	if err != nil {
-		t.Error(err)
-	}
-}
-
-func TestUpdateAccountInfo(t *testing.T) {
-	if !areTestAPIKeysSet() {
-		t.Skip("skipping test: api keys not set")
-	}
-	t.Parallel()
-	_, err := h.UpdateAccountInfo(asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1697,7 +1687,7 @@ func TestGetAccountBalance(t *testing.T) {
 	if !h.ValidateAPICredentials() {
 		t.Skip()
 	}
-	result, err := h.GetAccounts()
+	result, err := h.GetAPIAccounts()
 	if err != nil {
 		t.Errorf("Huobi GetAccounts: %s", err)
 	}
@@ -1934,7 +1924,7 @@ func TestSubmitOrder(t *testing.T) {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
 
-	accounts, err := h.GetAccounts()
+	accounts, err := h.GetAPIAccounts()
 	if err != nil {
 		t.Fatalf("Failed to get accounts. Err: %s", err)
 	}
@@ -2003,21 +1993,21 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 func TestGetAccountInfo(t *testing.T) {
 	t.Parallel()
 	if !areTestAPIKeysSet() {
-		_, err := h.UpdateAccountInfo(asset.CoinMarginedFutures)
+		_, err := h.UpdateAccountInfo(account.Main, asset.CoinMarginedFutures)
 		if err == nil {
 			t.Error("GetAccountInfo() Expected error")
 		}
-		_, err = h.UpdateAccountInfo(asset.Futures)
+		_, err = h.UpdateAccountInfo(account.Main, asset.Futures)
 		if err == nil {
 			t.Error("GetAccountInfo() Expected error")
 		}
 	} else {
-		_, err := h.UpdateAccountInfo(asset.CoinMarginedFutures)
+		_, err := h.UpdateAccountInfo(account.Main, asset.CoinMarginedFutures)
 		if err != nil {
 			// Spot and Futures have separate api keys. Please ensure that the correct keys are provided
 			t.Error(err)
 		}
-		_, err = h.UpdateAccountInfo(asset.Futures)
+		_, err = h.UpdateAccountInfo(account.Main, asset.Futures)
 		if err != nil {
 			// Spot and Futures have separate api keys. Please ensure that the correct keys are provided
 			t.Error(err)
@@ -2027,10 +2017,11 @@ func TestGetAccountInfo(t *testing.T) {
 
 func TestGetSpotAccountInfo(t *testing.T) {
 	t.Parallel()
+	h.Verbose = true
 	if !areTestAPIKeysSet() {
 		t.Skip("skipping test: api keys not set")
 	}
-	_, err := h.UpdateAccountInfo(asset.Spot)
+	_, err := h.UpdateAccountInfo(account.Main, asset.Spot)
 	if err != nil {
 		// Spot and Futures have separate api keys. Please ensure that the correct keys are provided
 		t.Error(err)

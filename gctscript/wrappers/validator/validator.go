@@ -184,34 +184,17 @@ func (w Wrapper) CancelOrder(exch, orderid string, cp currency.Pair, a asset.Ite
 }
 
 // AccountInformation validator for test execution/scripts
-func (w Wrapper) AccountInformation(exch string, assetType asset.Item) (account.Holdings, error) {
+func (w Wrapper) AccountInformation(exch, accountName string, item asset.Item) (account.HoldingsSnapshot, error) {
 	if exch == exchError.String() {
-		return account.Holdings{}, errTestFailed
+		return nil, errTestFailed
 	}
 
-	return account.Holdings{
-		Exchange: exch,
-		Accounts: []account.SubAccount{
-			{
-				ID: exch,
-				Currencies: []account.Balance{
-					{
-						CurrencyName: currency.Code{
-							Item: &currency.Item{
-								ID:         0,
-								FullName:   "Bitcoin",
-								Symbol:     "BTC",
-								Role:       1,
-								AssocChain: "",
-							},
-						},
-						TotalValue: 100,
-						Hold:       0,
-					},
-				},
-			},
-		},
-	}, nil
+	sh := make(account.HoldingsSnapshot)
+	sh[currency.BTC] = account.Balance{
+		Total:  1337,
+		Locked: 1000,
+	}
+	return sh, nil
 }
 
 // DepositAddress validator for test execution/scripts

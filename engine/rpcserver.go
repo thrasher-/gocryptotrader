@@ -315,7 +315,7 @@ func (s *RPCServer) GetExchangeInfo(_ context.Context, r *gctrpc.GenericExchange
 	}
 
 	resp.SupportedAssets = make(map[string]*gctrpc.PairsSupported)
-	assets := exchCfg.CurrencyPairs.GetAssetTypes()
+	assets := exchCfg.CurrencyPairs.GetAssetTypes(true)
 	for i := range assets {
 		ps, err := exchCfg.CurrencyPairs.Get(assets[i])
 		if err != nil {
@@ -472,7 +472,7 @@ func (s *RPCServer) GetOrderbooks(_ context.Context, _ *gctrpc.GetOrderbooksRequ
 		if !exchanges[x].IsEnabled() {
 			continue
 		}
-		assets := exchanges[x].GetAssetTypes()
+		assets := exchanges[x].GetAssetTypes(true)
 		exchName := exchanges[x].GetName()
 		for y := range assets {
 			currencies, err := exchanges[x].GetEnabledPairs(assets[y])
@@ -534,18 +534,23 @@ func (s *RPCServer) GetAccountInfo(_ context.Context, r *gctrpc.GetAccountInfoRe
 	}
 
 	exch := s.GetExchangeByName(r.Exchange)
-
 	err = checkParams(r.Exchange, exch, assetType, currency.Pair{})
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := exch.FetchAccountInfo(assetType)
+	acc, err := account.NewDesignation(r.Account)
 	if err != nil {
 		return nil, err
 	}
-
-	return createAccountInfoRequest(resp)
+	err = exch.AccountValid(acc)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := exch.FetchAccountInfo(acc, assetType)
+	if err != nil {
+		return nil, err
+	}
+	return createAccountInfoRequest(resp, r.Exchange, r.Account)
 }
 
 // UpdateAccountInfo forces an update of the account info
@@ -560,31 +565,37 @@ func (s *RPCServer) UpdateAccountInfo(_ context.Context, r *gctrpc.GetAccountInf
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := exch.UpdateAccountInfo(assetType)
+	acc, err := account.NewDesignation(r.Account)
+	if err != nil {
+		return nil, err
+	}
+	err = exch.AccountValid(acc)
 	if err != nil {
 		return nil, err
 	}
 
-	return createAccountInfoRequest(resp)
+	resp, err := exch.UpdateAccountInfo(acc, assetType)
+	if err != nil {
+		return nil, err
+	}
+	return createAccountInfoRequest(resp, r.Exchange, r.Account)
 }
 
-func createAccountInfoRequest(h account.Holdings) (*gctrpc.GetAccountInfoResponse, error) {
-	var accounts []*gctrpc.Account
-	for x := range h.Accounts {
-		var a gctrpc.Account
-		a.Id = h.Accounts[x].ID
-		for _, y := range h.Accounts[x].Currencies {
-			a.Currencies = append(a.Currencies, &gctrpc.AccountCurrencyInfo{
-				Currency:   y.CurrencyName.String(),
-				Hold:       y.Hold,
-				TotalValue: y.TotalValue,
-			})
-		}
-		accounts = append(accounts, &a)
+func createAccountInfoRequest(sh account.HoldingsSnapshot, exch, acc string) (*gctrpc.GetAccountInfoResponse, error) {
+	var a gctrpc.Account
+	for code, balance := range sh {
+		a.Currencies = append(a.Currencies, &gctrpc.AccountCurrencyInfo{
+			Currency:   code.String(),
+			TotalValue: balance.Total,
+			Hold:       balance.Locked,
+		})
 	}
+	a.Id = acc
 
-	return &gctrpc.GetAccountInfoResponse{Exchange: h.Exchange, Accounts: accounts}, nil
+	return &gctrpc.GetAccountInfoResponse{
+		Exchange: exch,
+		Accounts: &a,
+	}, nil
 }
 
 // GetAccountInfoStream streams an account balance for a specific exchange
@@ -599,32 +610,26 @@ func (s *RPCServer) GetAccountInfoStream(r *gctrpc.GetAccountInfoRequest, stream
 	if err != nil {
 		return err
 	}
-
-	initAcc, err := exch.FetchAccountInfo(assetType)
+	acc, err := account.NewDesignation(r.Account)
+	if err != nil {
+		return err
+	}
+	err = exch.AccountValid(acc)
 	if err != nil {
 		return err
 	}
 
-	var accounts []*gctrpc.Account
-	for x := range initAcc.Accounts {
-		var subAccounts []*gctrpc.AccountCurrencyInfo
-		for y := range initAcc.Accounts[x].Currencies {
-			subAccounts = append(subAccounts, &gctrpc.AccountCurrencyInfo{
-				Currency:   initAcc.Accounts[x].Currencies[y].CurrencyName.String(),
-				TotalValue: initAcc.Accounts[x].Currencies[y].TotalValue,
-				Hold:       initAcc.Accounts[x].Currencies[y].Hold,
-			})
-		}
-		accounts = append(accounts, &gctrpc.Account{
-			Id:         initAcc.Accounts[x].ID,
-			Currencies: subAccounts,
-		})
+	initAcc, err := exch.FetchAccountInfo(acc, assetType)
+	if err != nil {
+		return err
 	}
 
-	err = stream.Send(&gctrpc.GetAccountInfoResponse{
-		Exchange: initAcc.Exchange,
-		Accounts: accounts,
-	})
+	resp, err := createAccountInfoRequest(initAcc, r.Exchange, r.Account)
+	if err != nil {
+		return err
+	}
+
+	err = stream.Send(resp)
 	if err != nil {
 		return err
 	}
@@ -647,28 +652,22 @@ func (s *RPCServer) GetAccountInfoStream(r *gctrpc.GetAccountInfoRequest, stream
 			return errDispatchSystem
 		}
 
-		acc := (*data.(*interface{})).(account.Holdings)
-
-		var accounts []*gctrpc.Account
-		for x := range acc.Accounts {
-			var subAccounts []*gctrpc.AccountCurrencyInfo
-			for y := range acc.Accounts[x].Currencies {
-				subAccounts = append(subAccounts, &gctrpc.AccountCurrencyInfo{
-					Currency:   acc.Accounts[x].Currencies[y].CurrencyName.String(),
-					TotalValue: acc.Accounts[x].Currencies[y].TotalValue,
-					Hold:       acc.Accounts[x].Currencies[y].Hold,
-				})
-			}
-			accounts = append(accounts, &gctrpc.Account{
-				Id:         acc.Accounts[x].ID,
-				Currencies: subAccounts,
-			})
+		memAddr, ok := data.(*interface{})
+		if !ok {
+			return errors.New("type assertion failure, type not pointer interface{}")
 		}
 
-		err := stream.Send(&gctrpc.GetAccountInfoResponse{
-			Exchange: acc.Exchange,
-			Accounts: accounts,
-		})
+		acc, ok := (*memAddr).(account.HoldingsSnapshot)
+		if !ok {
+			return errors.New("type assertion failure, type not account.HoldingsSnapshot")
+		}
+
+		resp, err = createAccountInfoRequest(acc, r.Exchange, r.Account)
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(resp)
 		if err != nil {
 			return err
 		}
@@ -1041,14 +1040,16 @@ func (s *RPCServer) SubmitOrder(_ context.Context, r *gctrpc.SubmitOrderRequest)
 	}
 
 	submission := &order.Submit{
-		Pair:      p,
-		Side:      order.Side(r.Side),
-		Type:      order.Type(r.OrderType),
-		Amount:    r.Amount,
-		Price:     r.Price,
-		ClientID:  r.ClientId,
-		Exchange:  r.Exchange,
-		AssetType: a,
+		Account:            r.Account,
+		Pair:               p,
+		Side:               order.Side(r.Side),
+		Type:               order.Type(r.OrderType),
+		Amount:             r.Amount,
+		Price:              r.Price,
+		ClientID:           r.ClientId,
+		Exchange:           r.Exchange,
+		AssetType:          a,
+		FullAmountRequired: r.FullAmountRequired,
 	}
 
 	resp, err := s.OrderManager.Submit(submission)
@@ -1566,8 +1567,8 @@ func (s *RPCServer) GetExchangePairs(_ context.Context, r *gctrpc.GetExchangePai
 	if err != nil {
 		return nil, err
 	}
-	assetTypes := exchCfg.CurrencyPairs.GetAssetTypes()
 
+	assetTypes := exchCfg.CurrencyPairs.GetAssetTypes(false)
 	var a asset.Item
 	if r.Asset != "" {
 		a, err = asset.New(r.Asset)
@@ -2434,7 +2435,7 @@ func (s *RPCServer) SetExchangeAsset(_ context.Context, r *gctrpc.SetExchangeAss
 	return &gctrpc.GenericResponse{Status: MsgStatusSuccess}, nil
 }
 
-// SetAllExchangePairs enables or disables an exchanges pairs
+// SetAllExchangePairs enables or disables exchanges pairs
 func (s *RPCServer) SetAllExchangePairs(_ context.Context, r *gctrpc.SetExchangeAllPairsRequest) (*gctrpc.GenericResponse, error) {
 	exch := s.GetExchangeByName(r.Exchange)
 	if exch == nil {
@@ -2451,8 +2452,7 @@ func (s *RPCServer) SetAllExchangePairs(_ context.Context, r *gctrpc.SetExchange
 		return nil, errExchangeBaseNotFound
 	}
 
-	assets := base.CurrencyPairs.GetAssetTypes()
-
+	assets := base.CurrencyPairs.GetAssetTypes(false)
 	if r.Enable {
 		for i := range assets {
 			var pairs currency.Pairs
@@ -2521,7 +2521,7 @@ func (s *RPCServer) GetExchangeAssets(_ context.Context, r *gctrpc.GetExchangeAs
 	}
 
 	return &gctrpc.GetExchangeAssetsResponse{
-		Assets: exch.GetAssetTypes().JoinToString(","),
+		Assets: exch.GetAssetTypes(false).JoinToString(","),
 	}, nil
 }
 

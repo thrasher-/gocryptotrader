@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/validate"
@@ -1098,5 +1099,155 @@ func TestValidationOnOrderTypes(t *testing.T) {
 		return nil
 	})) != nil {
 		t.Fatal("unexpected error")
+	}
+}
+
+func TestGetProvision(t *testing.T) {
+	s := Submit{
+		Pair:      currency.NewPair(currency.BTC, currency.USD),
+		Amount:    .5,
+		Price:     50000,
+		Side:      Buy,
+		AssetType: "silly asset :(",
+	}
+
+	_, _, err := s.GetProvision()
+	if !errors.Is(err, common.ErrNotYetImplemented) {
+		t.Fatalf("expected: %v but received: %v", common.ErrNotYetImplemented, err)
+	}
+
+	s.AssetType = asset.Spot
+	c, a, err := s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+
+	if c != currency.USD {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.BTC, c)
+	}
+	if a != 25000 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", 25000, a)
+	}
+
+	s.Side = Sell
+	c, a, err = s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+	if c != currency.BTC {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.BTC, c)
+	}
+	if a != .5 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", .5, a)
+	}
+
+	s.AssetType = asset.USDTMarginedFutures
+	s.Pair, err = currency.NewPairFromString("LTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s.Price = 70
+	c, a, err = s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+	if c != currency.LTC {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.LTC, c)
+	}
+	if a != .5 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", .5, a)
+	}
+
+	s.Side = Buy
+	c, a, err = s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+	if c != currency.USDT {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.USDT, c)
+	}
+	if a != 35 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", 35, a)
+	}
+
+	s.AssetType = asset.Futures
+	c, a, err = s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+	if c != currency.USD {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.USD, c)
+	}
+	if a != 35 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", 35, a)
+	}
+
+	s.Side = Sell
+	c, a, err = s.GetProvision()
+	if !errors.Is(err, nil) {
+		t.Fatalf("expected: %v but received: %v", nil, err)
+	}
+	if c != currency.LTC {
+		t.Fatalf("unexpected provision currency expected: %s but received: %s", currency.LTC, c)
+	}
+	if a != .5 {
+		t.Fatalf("unexpected provision amount expected: %v but received: %v", .5, a)
+	}
+
+	s.AssetType = asset.Margin
+	_, _, err = s.GetProvision()
+	if !errors.Is(err, common.ErrFunctionNotSupported) {
+		t.Fatalf("expected: %v but received: %v", common.ErrFunctionNotSupported, err)
+	}
+
+	s.AssetType = asset.CoinMarginedFutures
+	_, _, err = s.GetProvision()
+	if !errors.Is(err, common.ErrNotYetImplemented) {
+		t.Fatalf("expected: %v but received: %v", common.ErrNotYetImplemented, err)
+	}
+}
+
+func TestAdjustAmount(t *testing.T) {
+	s := Submit{Side: Buy}
+	_, err := s.AdjustAmount(1337)
+	if !errors.Is(err, errOrderPriceIsZero) {
+		t.Fatalf("received: %v expected: %v", err, errOrderPriceIsZero)
+	}
+
+	s = Submit{
+		Pair:      currency.NewPair(currency.BTC, currency.USD),
+		Amount:    .5,
+		Price:     50000,
+		Side:      Buy,
+		AssetType: "silly asset :(",
+	}
+
+	if b, err := s.AdjustAmount(25000); err != nil || b {
+		t.Fatal("price should not have been adjusted")
+	}
+
+	// Reduced due to amount claimed is less than max requested
+	if b, err := s.AdjustAmount(24000); err != nil || !b {
+		t.Fatal("price should have been adjusted")
+	}
+
+	if s.Amount != .48 {
+		t.Fatal("adjustment did not apply correctly")
+	}
+
+	s.Amount = .5
+
+	s.Side = Sell
+	if b, err := s.AdjustAmount(.5); err != nil || b {
+		t.Fatal("price should not have been adjusted")
+	}
+
+	if b, err := s.AdjustAmount(.48); err != nil || !b {
+		t.Fatal("price should have been adjusted")
+	}
+
+	if s.Amount != .48 {
+		t.Fatal("adjustment did not apply correctly")
 	}
 }

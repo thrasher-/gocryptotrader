@@ -45,7 +45,6 @@ func CreateTestBot(t *testing.T) *Engine {
 			t.Fatalf("SetupTest: Failed to load exchange: %s", err)
 		}
 	}
-
 	return bot
 }
 
@@ -633,60 +632,68 @@ func TestGetSpecificTicker(t *testing.T) {
 func TestGetCollatedExchangeAccountInfoByCoin(t *testing.T) {
 	CreateTestBot(t)
 
-	var exchangeInfo []account.Holdings
-
-	var bitfinexHoldings account.Holdings
-	bitfinexHoldings.Exchange = "Bitfinex"
-	bitfinexHoldings.Accounts = append(bitfinexHoldings.Accounts,
-		account.SubAccount{
-			Currencies: []account.Balance{
-				{
-					CurrencyName: currency.BTC,
-					TotalValue:   100,
-					Hold:         0,
+	var exchangeInfo []account.FullSnapshot
+	exchangeInfo = append(exchangeInfo, account.FullSnapshot{
+		account.Main: account.AssetSnapshot{ // Exchange 1
+			asset.Spot: account.HoldingsSnapshot{
+				currency.BTC: account.Balance{
+					Total:  99,
+					Locked: 1,
+				},
+				currency.LTC: account.Balance{
+					Total:  24,
+					Locked: 1,
 				},
 			},
-		})
-
-	exchangeInfo = append(exchangeInfo, bitfinexHoldings)
-
-	var bitstampHoldings account.Holdings
-	bitstampHoldings.Exchange = testExchange
-	bitstampHoldings.Accounts = append(bitstampHoldings.Accounts,
-		account.SubAccount{
-			Currencies: []account.Balance{
-				{
-					CurrencyName: currency.LTC,
-					TotalValue:   100,
-					Hold:         0,
+		},
+		"RandomAccount": account.AssetSnapshot{ // Exchange 2
+			asset.Spot: account.HoldingsSnapshot{
+				currency.BTC: account.Balance{
+					Total:  2,
+					Locked: 1.5,
 				},
-				{
-					CurrencyName: currency.BTC,
-					TotalValue:   100,
-					Hold:         0,
+				currency.LTC: account.Balance{
+					Total:  111,
+					Locked: 2,
 				},
 			},
-		})
-
-	exchangeInfo = append(exchangeInfo, bitstampHoldings)
+		},
+	})
 
 	result := GetCollatedExchangeAccountInfoByCoin(exchangeInfo)
 	if len(result) == 0 {
 		t.Fatal("Unexpected result")
 	}
 
-	amount, ok := result[currency.BTC]
+	assetHoldings, ok := result[asset.Spot]
 	if !ok {
 		t.Fatal("Expected currency was not found in result map")
 	}
 
-	if amount.TotalValue != 200 {
-		t.Fatal("Unexpected result")
+	bal, ok := assetHoldings[currency.BTC]
+	if !ok {
+		t.Fatal("Expected currency was not found in result map")
 	}
 
-	_, ok = result[currency.ETH]
-	if ok {
-		t.Fatal("Unexpected result")
+	if bal.Total != 101 {
+		t.Fatalf("btc total amount should aggregate to 101 but receieved: %f", bal.Total)
+	}
+
+	if bal.Locked != 2.5 {
+		t.Fatalf("btc locked amount should aggregate to 2.5 but receieved: %f", bal.Locked)
+	}
+
+	bal, ok = assetHoldings[currency.LTC]
+	if !ok {
+		t.Fatal("Expected currency was not found in result map")
+	}
+
+	if bal.Total != 135 {
+		t.Fatalf("ltc total amount should aggregate to 135 but receieved: %f", bal.Total)
+	}
+
+	if bal.Locked != 3 {
+		t.Fatalf("ltc locked amount should aggregate to 3 but receieved: %f", bal.Locked)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/communications/base"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/log"
@@ -186,7 +187,7 @@ func (m *OrderManager) Cancel(cancel *order.Cancel) error {
 		return err
 	}
 
-	if cancel.AssetType.String() != "" && !exch.GetAssetTypes().Contains(cancel.AssetType) {
+	if cancel.AssetType.String() != "" && !exch.GetAssetTypes(false).Contains(cancel.AssetType) {
 		err = errors.New("order asset type not supported by exchange")
 		return err
 	}
@@ -316,17 +317,68 @@ func (m *OrderManager) Submit(newOrder *order.Submit) (*OrderSubmitResponse, err
 			err)
 	}
 
-	result, err := exch.SubmitOrder(newOrder)
+	claim, err := deriveClaim(newOrder, exch)
 	if err != nil {
 		return nil, err
 	}
 
+	result, err := exch.SubmitOrder(newOrder)
+	checkClaim(claim, newOrder, err)
+	if err != nil {
+		return nil, err
+	}
 	return m.processSubmittedOrder(newOrder, result)
+}
+
+// derive claim checks if account is valid, gets provisions and executes claim
+// on the exchange account and adjusts any order amounts if needed.
+func deriveClaim(o *order.Submit, exch exchange.IBotExchange) (*account.Claim, error) {
+	acc, err := account.NewDesignation(o.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	err = exch.AccountValid(acc)
+	if err != nil {
+		return nil, err
+	}
+
+	code, amount, err := o.GetProvision()
+	if err != nil {
+		return nil, err
+	}
+
+	// Claims amount balance on exchange account to lock out further usage
+	// by other strategies
+	claim, err := exch.ClaimAccountFunds(acc,
+		o.AssetType,
+		code,
+		amount,
+		o.FullAmountRequired)
+	if err != nil {
+		return nil,
+			fmt.Errorf("order manager: exchange %s unable to place order: %w",
+				o.Exchange,
+				err)
+	}
+
+	pAmount := o.Amount
+	// Re-adjust order to new claim amount
+	if o.AdjustAmount(claim.GetAmount()) {
+		log.Warnf(log.OrderMgr,
+			"order %s %s %s amount has been adjusted from: %f to: %f",
+			o.Exchange,
+			o.AssetType,
+			o.Pair,
+			pAmount,
+			o.Amount)
+	}
+	return claim, nil
 }
 
 // SubmitFakeOrder runs through the same process as order submission
 // but does not touch live endpoints
-func (m *OrderManager) SubmitFakeOrder(newOrder *order.Submit, resultingOrder order.SubmitResponse, checkExchangeLimits bool) (*OrderSubmitResponse, error) {
+func (m *OrderManager) SubmitFakeOrder(newOrder *order.Submit, resultingOrder order.SubmitResponse, checkExchangeLimits, claimAccountBalance bool) (*OrderSubmitResponse, error) {
 	if m == nil {
 		return nil, fmt.Errorf("order manager %w", ErrNilSubsystem)
 	}
@@ -357,12 +409,48 @@ func (m *OrderManager) SubmitFakeOrder(newOrder *order.Submit, resultingOrder or
 				err)
 		}
 	}
-	return m.processSubmittedOrder(newOrder, resultingOrder)
+
+	var claim *account.Claim
+	if claimAccountBalance {
+		claim, err = deriveClaim(newOrder, exch)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	resp, err := m.processSubmittedOrder(newOrder, resultingOrder)
+	checkClaim(claim, newOrder, err)
+	return resp, err
 }
 
-// GetOrdersSnapshot returns a snapshot of all orders in the orderstore. It optionally filters any orders that do not match the status
-// but a status of "" or ANY will include all
-// the time adds contexts for the when the snapshot is relevant for
+// checkClaim releases claim dependant on if a returned error is reported
+func checkClaim(c *account.Claim, o *order.Submit, err error) {
+	if c == nil {
+		return
+	}
+
+	var rErr error
+	if err != nil {
+		// On failed submission we want to immediately release claimed balance
+		rErr = c.Release()
+	} else {
+		// On accepted submission we want to preserve claim and wait for a
+		// rebalance
+		rErr = c.ReleaseToPending()
+	}
+	if rErr != nil {
+		log.Errorf(log.OrderMgr, "%s %s %s cannot release funds from claim %v",
+			o.Exchange,
+			o.AssetType,
+			o.Pair,
+			rErr)
+	}
+}
+
+// GetOrdersSnapshot returns a snapshot of all orders in the orderstore. It
+// optionally filters any orders that do not match the status but a status of
+// "" or ANY will include all the time adds contexts for the when the snapshot
+// is relevant for
 func (m *OrderManager) GetOrdersSnapshot(s order.Status) ([]order.Detail, time.Time) {
 	if m == nil || atomic.LoadInt32(&m.started) == 0 {
 		return nil, time.Time{}
@@ -400,10 +488,11 @@ func (m *OrderManager) processSubmittedOrder(newOrder *order.Submit, result orde
 			"Order manager: Unable to generate UUID. Err: %s",
 			err)
 	}
-	msg := fmt.Sprintf("Order manager: Exchange %s submitted order ID=%v [Ours: %v] pair=%v price=%v amount=%v side=%v type=%v for time %v.",
+	msg := fmt.Sprintf("Order manager: Exchange %s submitted order ID=%v [Ours: %v] account=%v pair=%v price=%v amount=%v side=%v type=%v for time %v.",
 		newOrder.Exchange,
 		result.OrderID,
 		id.String(),
+		newOrder.Account,
 		newOrder.Pair,
 		newOrder.Price,
 		newOrder.Amount,
@@ -474,7 +563,7 @@ func (m *OrderManager) processOrders() {
 			"Order manager: Processing orders for exchange %v.",
 			exchanges[i].GetName())
 
-		supportedAssets := exchanges[i].GetAssetTypes()
+		supportedAssets := exchanges[i].GetAssetTypes(true)
 		for y := range supportedAssets {
 			pairs, err := exchanges[i].GetEnabledPairs(supportedAssets[y])
 			if err != nil {

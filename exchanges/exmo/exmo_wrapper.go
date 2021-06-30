@@ -324,48 +324,48 @@ func (e *EXMO) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderboo
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Exmo exchange
-func (e *EXMO) UpdateAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	var response account.Holdings
-	response.Exchange = e.Name
+func (e *EXMO) UpdateAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
 	result, err := e.GetUserInfo()
 	if err != nil {
-		return response, err
+		return nil, err
 	}
 
-	var currencies []account.Balance
-	for x, y := range result.Balances {
-		var exchangeCurrency account.Balance
-		exchangeCurrency.CurrencyName = currency.NewCode(x)
-		for z, w := range result.Reserved {
-			if z == x {
-				avail, _ := strconv.ParseFloat(y, 64)
-				reserved, _ := strconv.ParseFloat(w, 64)
-				exchangeCurrency.TotalValue = avail + reserved
-				exchangeCurrency.Hold = reserved
-			}
+	m := make(account.HoldingsSnapshot)
+	for key, available := range result.Balances {
+		reserved, ok := result.Reserved[key]
+		if !ok {
+			return nil, errors.New("could not match with key")
 		}
-		currencies = append(currencies, exchangeCurrency)
+		var a float64
+		a, err = strconv.ParseFloat(available, 64)
+		if err != nil {
+			return nil, err
+		}
+		var r float64
+		r, err = strconv.ParseFloat(reserved, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		m[currency.NewCode(key)] = account.Balance{
+			Total:  a + r,
+			Locked: r,
+		}
 	}
 
-	response.Accounts = append(response.Accounts, account.SubAccount{
-		Currencies: currencies,
-	})
-
-	err = account.Process(&response)
+	err = e.LoadHoldings(accountName, true, assetType, m)
 	if err != nil {
-		return account.Holdings{}, err
+		return nil, err
 	}
-
-	return response, nil
+	return e.GetHoldingsSnapshot(accountName, assetType)
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (e *EXMO) FetchAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	acc, err := account.GetHoldings(e.Name, assetType)
+func (e *EXMO) FetchAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
+	acc, err := e.GetHoldingsSnapshot(accountName, assetType)
 	if err != nil {
-		return e.UpdateAccountInfo(assetType)
+		return e.UpdateAccountInfo(accountName, assetType)
 	}
-
 	return acc, nil
 }
 
@@ -654,13 +654,6 @@ func (e *EXMO) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, err
 	order.FilterOrdersByTimeRange(&orders, req.StartTime, req.EndTime)
 	order.FilterOrdersBySide(&orders, req.Side)
 	return orders, nil
-}
-
-// ValidateCredentials validates current credentials used for wrapper
-// functionality
-func (e *EXMO) ValidateCredentials(assetType asset.Item) error {
-	_, err := e.UpdateAccountInfo(assetType)
-	return e.CheckTransientError(err)
 }
 
 // GetHistoricCandles returns candles between a time period for a set time interval

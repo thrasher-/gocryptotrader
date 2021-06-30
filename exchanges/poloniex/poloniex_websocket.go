@@ -718,12 +718,12 @@ func (p *Poloniex) processAccountPendingOrder(notification []interface{}) error 
 	if err != nil {
 		return err
 	}
-	side, ok := notification[5].(string)
+	side, ok := notification[5].(float64)
 	if !ok {
-		return fmt.Errorf("%w order type not string", errTypeAssertionFailure)
+		return fmt.Errorf("%w order side not float64", errTypeAssertionFailure)
 	}
 	orderSide := order.Buy
-	if side == "0" {
+	if side == 0 {
 		orderSide = order.Sell
 	}
 
@@ -840,12 +840,12 @@ func (p *Poloniex) processAccountOrderLimit(notification []interface{}) error {
 		return fmt.Errorf("%w order ID not float64", errTypeAssertionFailure)
 	}
 
-	side, ok := notification[3].(string)
+	side, ok := notification[3].(float64)
 	if !ok {
-		return fmt.Errorf("%w order type not string", errTypeAssertionFailure)
+		return fmt.Errorf("%w order side not float64", errTypeAssertionFailure)
 	}
 	orderSide := order.Buy
-	if side == "0" {
+	if side == 0 {
 		orderSide = order.Sell
 	}
 
@@ -922,7 +922,7 @@ func (p *Poloniex) processAccountBalanceUpdate(notification []interface{}) error
 
 	walletType, ok := notification[2].(string)
 	if !ok {
-		return fmt.Errorf("%w wallet addr not string", errTypeAssertionFailure)
+		return fmt.Errorf("%w wallet type not string", errTypeAssertionFailure)
 	}
 
 	a, ok := notification[3].(string)
@@ -934,17 +934,16 @@ func (p *Poloniex) processAccountBalanceUpdate(notification []interface{}) error
 		return err
 	}
 
-	// TODO: Integrate with exchange account system
-	// NOTES: This will affect free amount, a rest call might be needed to get
-	// locked and total amounts periodically.
-	p.Websocket.DataHandler <- account.Change{
-		Exchange: p.Name,
-		Currency: code,
-		Asset:    asset.Spot,
-		Account:  deriveWalletType(walletType),
-		Amount:   amount,
+	var acc account.Designation
+	acc, err = account.NewDesignation(deriveWalletType(walletType))
+	if err != nil {
+		return err
 	}
-	return nil
+
+	return p.Holdings.AdjustByBalance(acc,
+		asset.Spot,
+		code,
+		amount)
 }
 
 func deriveWalletType(s string) string {

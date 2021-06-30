@@ -49,33 +49,25 @@ type fExchange struct {
 
 // FetchAccountInfo overrides testExchange's fetch account info function
 // to do the bare minimum required with no API calls or credentials required
-func (f fExchange) FetchAccountInfo(a asset.Item) (account.Holdings, error) {
-	return account.Holdings{
-		Exchange: f.GetName(),
-		Accounts: []account.SubAccount{
-			{
-				ID:         "1337",
-				AssetType:  a,
-				Currencies: nil,
-			},
+func (f fExchange) FetchAccountInfo(accountName account.Designation, a asset.Item) (account.HoldingsSnapshot, error) {
+	return account.HoldingsSnapshot{
+		currency.BTC: account.Balance{
+			Total:  1337,
+			Locked: 1,
 		},
 	}, nil
 }
 
 // UpdateAccountInfo overrides testExchange's update account info function
 // to do the bare minimum required with no API calls or credentials required
-func (f fExchange) UpdateAccountInfo(a asset.Item) (account.Holdings, error) {
+func (f fExchange) UpdateAccountInfo(accountName account.Designation, a asset.Item) (account.HoldingsSnapshot, error) {
 	if a == asset.Futures {
-		return account.Holdings{}, errAssetTypeDisabled
+		return nil, errAssetTypeDisabled
 	}
-	return account.Holdings{
-		Exchange: f.GetName(),
-		Accounts: []account.SubAccount{
-			{
-				ID:         "1337",
-				AssetType:  a,
-				Currencies: nil,
-			},
+	return account.HoldingsSnapshot{
+		currency.BTC: account.Balance{
+			Total:  1337,
+			Locked: 1,
 		},
 	}, nil
 }
@@ -814,9 +806,22 @@ func TestGetAccountInfo(t *testing.T) {
 	bot.ExchangeManager.Add(fakeExchange)
 	s := RPCServer{Engine: bot}
 
-	_, err := s.GetAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: "fake", AssetType: asset.Spot.String()})
+	_, err := s.GetAccountInfo(context.Background(),
+		&gctrpc.GetAccountInfoRequest{Exchange: "fake",
+			AssetType: asset.Futures.String(),
+		})
+	if !errors.Is(err, errAssetTypeDisabled) {
+		t.Errorf("expected %v, received %v", errAssetTypeDisabled, err)
+	}
+
+	_, err = s.GetAccountInfo(context.Background(),
+		&gctrpc.GetAccountInfoRequest{
+			Account:   string(account.Main),
+			Exchange:  "fake",
+			AssetType: asset.Spot.String(),
+		})
 	if !errors.Is(err, nil) {
-		t.Errorf("expected %v, received %v", errAssetTypeDisabled, nil)
+		t.Errorf("expected %v, received %v", nil, err)
 	}
 }
 
@@ -831,17 +836,28 @@ func TestUpdateAccountInfo(t *testing.T) {
 	bot.ExchangeManager.Add(fakeExchange)
 	s := RPCServer{Engine: bot}
 
-	_, err := s.GetAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: "fake", AssetType: asset.Spot.String()})
+	_, err := s.GetAccountInfo(context.Background(),
+		&gctrpc.GetAccountInfoRequest{
+			Account:   string(account.Main),
+			Exchange:  "fake",
+			AssetType: asset.Spot.String(),
+		})
 	if !errors.Is(err, nil) {
 		t.Errorf("expected %v, received %v", nil, err)
 	}
 
-	_, err = s.UpdateAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{Exchange: "fake", AssetType: asset.Futures.String()})
+	_, err = s.UpdateAccountInfo(context.Background(),
+		&gctrpc.GetAccountInfoRequest{
+			Account:   string(account.Main),
+			Exchange:  "fake",
+			AssetType: asset.Futures.String(),
+		})
 	if !errors.Is(err, errAssetTypeDisabled) {
 		t.Errorf("expected %v, received %v", errAssetTypeDisabled, err)
 	}
 
 	_, err = s.UpdateAccountInfo(context.Background(), &gctrpc.GetAccountInfoRequest{
+		Account:   string(account.Main),
 		Exchange:  "fake",
 		AssetType: asset.Spot.String(),
 	})

@@ -12,6 +12,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -968,7 +969,7 @@ func TestUpdateAccountHoldings(t *testing.T) {
 	if !areTestAPIKeysSet() {
 		t.Skip("API keys required but not set, skipping test")
 	}
-	_, err := f.UpdateAccountInfo(asset.Spot)
+	_, err := f.UpdateAccountInfo(account.Main, asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
@@ -979,7 +980,7 @@ func TestFetchAccountInfo(t *testing.T) {
 	if !areTestAPIKeysSet() {
 		t.Skip("API keys required but not set, skipping test")
 	}
-	_, err := f.FetchAccountInfo(asset.Spot)
+	_, err := f.FetchAccountInfo(account.Main, asset.Spot)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1358,7 +1359,7 @@ func TestAcceptOTCQuote(t *testing.T) {
 
 func TestGetHistoricTrades(t *testing.T) {
 	t.Parallel()
-	assets := f.GetAssetTypes()
+	assets := f.GetAssetTypes(false)
 	for i := range assets {
 		enabledPairs, err := f.GetEnabledPairs(assets[i])
 		if err != nil {
@@ -1378,7 +1379,7 @@ func TestGetHistoricTrades(t *testing.T) {
 
 func TestGetRecentTrades(t *testing.T) {
 	t.Parallel()
-	assets := f.GetAssetTypes()
+	assets := f.GetAssetTypes(false)
 	for i := range assets {
 		enabledPairs, err := f.GetEnabledPairs(assets[i])
 		if err != nil {

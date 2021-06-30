@@ -388,7 +388,7 @@ func (k *Kraken) FetchTradablePairs(assetType asset.Item) ([]string, error) {
 // UpdateTradablePairs updates the exchanges available pairs and stores
 // them in the exchanges config
 func (k *Kraken) UpdateTradablePairs(forceUpdate bool) error {
-	assets := k.GetAssetTypes()
+	assets := k.GetAssetTypes(false)
 	for x := range assets {
 		pairs, err := k.FetchTradablePairs(assets[x])
 		if err != nil {
@@ -560,17 +560,16 @@ func (k *Kraken) UpdateOrderbook(p currency.Pair, assetType asset.Item) (*orderb
 
 // UpdateAccountInfo retrieves balances for all enabled currencies for the
 // Kraken exchange - to-do
-func (k *Kraken) UpdateAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	var info account.Holdings
-	var balances []account.Balance
-	info.Exchange = k.Name
+func (k *Kraken) UpdateAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
 	switch assetType {
 	case asset.Spot:
-		bal, err := k.GetBalance()
+		balanceSpot, err := k.GetBalance()
 		if err != nil {
-			return info, err
+			return nil, err
 		}
-		for key := range bal {
+
+		spotm := make(account.HoldingsSnapshot)
+		for key, val := range balanceSpot {
 			translatedCurrency := assetTranslator.LookupAltname(key)
 			if translatedCurrency == "" {
 				log.Warnf(log.ExchangeSys, "%s unable to translate currency: %s\n",
@@ -578,45 +577,50 @@ func (k *Kraken) UpdateAccountInfo(assetType asset.Item) (account.Holdings, erro
 					key)
 				continue
 			}
-			balances = append(balances, account.Balance{
-				CurrencyName: currency.NewCode(translatedCurrency),
-				TotalValue:   bal[key],
-			})
-		}
-		info.Accounts = append(info.Accounts, account.SubAccount{
-			Currencies: balances,
-		})
-	case asset.Futures:
-		bal, err := k.GetFuturesAccountData()
-		if err != nil {
-			return info, err
-		}
-		for name := range bal.Accounts {
-			for code := range bal.Accounts[name].Balances {
-				balances = append(balances, account.Balance{
-					CurrencyName: currency.NewCode(name),
-					TotalValue:   bal.Accounts[name].Balances[code],
-				})
+			spotm[currency.NewCode(translatedCurrency)] = account.Balance{
+				Total: val,
 			}
-			info.Accounts = append(info.Accounts, account.SubAccount{
-				ID:         name,
-				AssetType:  asset.Futures,
-				Currencies: balances,
-			})
+		}
+
+		err = k.LoadHoldings(accountName, true, assetType, spotm)
+		if err != nil {
+			return nil, err
+		}
+	case asset.Futures:
+		balanceFutures, err := k.GetFuturesAccountData()
+		if err != nil {
+			return nil, err
+		}
+
+		futuresM := make(account.HoldingsSnapshot)
+		for acc, val := range balanceFutures.Accounts {
+			for code, balance := range val.Balances {
+				futuresM[currency.NewCode(code)] = account.Balance{
+					Total: balance,
+				}
+			}
+
+			var accName account.Designation
+			accName, err = account.NewDesignation(acc)
+			if err != nil {
+				return nil, err
+			}
+
+			// Full account details come back, so load individual
+			err = k.LoadHoldings(accName, false, asset.Futures, futuresM)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
-	err := account.Process(&info)
-	if err != nil {
-		return account.Holdings{}, err
-	}
-	return info, nil
+	return k.GetHoldingsSnapshot(accountName, assetType)
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (k *Kraken) FetchAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	acc, err := account.GetHoldings(k.Name, assetType)
+func (k *Kraken) FetchAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
+	acc, err := k.GetHoldingsSnapshot(accountName, assetType)
 	if err != nil {
-		return k.UpdateAccountInfo(assetType)
+		return k.UpdateAccountInfo(accountName, assetType)
 	}
 	return acc, nil
 }
@@ -1358,13 +1362,6 @@ func (k *Kraken) AuthenticateWebsocket() error {
 		authToken = resp
 	}
 	return err
-}
-
-// ValidateCredentials validates current credentials used for wrapper
-// functionality
-func (k *Kraken) ValidateCredentials(assetType asset.Item) error {
-	_, err := k.UpdateAccountInfo(assetType)
-	return k.CheckTransientError(err)
 }
 
 // FormatExchangeKlineInterval returns Interval to exchange formatted string

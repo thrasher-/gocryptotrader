@@ -304,42 +304,33 @@ func (g *Gemini) UpdateTradablePairs(forceUpdate bool) error {
 
 // UpdateAccountInfo Retrieves balances for all enabled currencies for the
 // Gemini exchange
-func (g *Gemini) UpdateAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	var response account.Holdings
-	response.Exchange = g.Name
+func (g *Gemini) UpdateAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
 	accountBalance, err := g.GetBalances()
 	if err != nil {
-		return response, err
+		return nil, err
 	}
 
-	var currencies []account.Balance
+	m := make(account.HoldingsSnapshot)
 	for i := range accountBalance {
-		var exchangeCurrency account.Balance
-		exchangeCurrency.CurrencyName = currency.NewCode(accountBalance[i].Currency)
-		exchangeCurrency.TotalValue = accountBalance[i].Amount
-		exchangeCurrency.Hold = accountBalance[i].Available
-		currencies = append(currencies, exchangeCurrency)
+		m[currency.NewCode(accountBalance[i].Currency)] = account.Balance{
+			Total:  accountBalance[i].Amount,
+			Locked: accountBalance[i].Amount - accountBalance[i].Available,
+		}
 	}
 
-	response.Accounts = append(response.Accounts, account.SubAccount{
-		Currencies: currencies,
-	})
-
-	err = account.Process(&response)
+	err = g.LoadHoldings(accountName, true, assetType, m)
 	if err != nil {
-		return account.Holdings{}, err
+		return nil, err
 	}
-
-	return response, nil
+	return g.GetHoldingsSnapshot(accountName, assetType)
 }
 
 // FetchAccountInfo retrieves balances for all enabled currencies
-func (g *Gemini) FetchAccountInfo(assetType asset.Item) (account.Holdings, error) {
-	acc, err := account.GetHoldings(g.Name, assetType)
+func (g *Gemini) FetchAccountInfo(accountName account.Designation, assetType asset.Item) (account.HoldingsSnapshot, error) {
+	acc, err := g.GetHoldingsSnapshot(accountName, assetType)
 	if err != nil {
-		return g.UpdateAccountInfo(assetType)
+		return g.UpdateAccountInfo(accountName, assetType)
 	}
-
 	return acc, nil
 }
 
@@ -763,13 +754,6 @@ func (g *Gemini) GetOrderHistory(req *order.GetOrdersRequest) ([]order.Detail, e
 	order.FilterOrdersByTimeRange(&orders, req.StartTime, req.EndTime)
 	order.FilterOrdersBySide(&orders, req.Side)
 	return orders, nil
-}
-
-// ValidateCredentials validates current credentials used for wrapper
-// functionality
-func (g *Gemini) ValidateCredentials(assetType asset.Item) error {
-	_, err := g.UpdateAccountInfo(assetType)
-	return g.CheckTransientError(err)
 }
 
 // GetHistoricCandles returns candles between a time period for a set time interval

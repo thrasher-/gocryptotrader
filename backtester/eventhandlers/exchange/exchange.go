@@ -12,6 +12,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/backtester/eventtypes/order"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/engine"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/account"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	gctorder "github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
@@ -122,7 +123,13 @@ func (e *Exchange) ExecuteOrder(o order.Event, data data.Handler, bot *engine.En
 		}
 	}
 
-	orderID, err := e.placeOrder(adjustedPrice, limitReducedAmount, cs.UseRealOrders, cs.CanUseExchangeLimits, f, bot)
+	orderID, err := e.placeOrder(adjustedPrice,
+		limitReducedAmount,
+		cs.UseRealOrders,
+		cs.CanUseExchangeLimits,
+		cs.CanUseClaimSystem,
+		f,
+		bot)
 	if err != nil {
 		if f.GetDirection() == gctorder.Buy {
 			f.SetDirection(common.CouldNotBuy)
@@ -161,7 +168,7 @@ func reduceAmountToFitPortfolioLimit(adjustedPrice, amount, sizedPortfolioTotal 
 	return amount
 }
 
-func (e *Exchange) placeOrder(price, amount float64, useRealOrders, useExchangeLimits bool, f *fill.Fill, bot *engine.Engine) (string, error) {
+func (e *Exchange) placeOrder(price, amount float64, useRealOrders, useExchangeLimits, useClaimSystem bool, f *fill.Fill, bot *engine.Engine) (string, error) {
 	if f == nil {
 		return "", common.ErrNilEvent
 	}
@@ -169,8 +176,11 @@ func (e *Exchange) placeOrder(price, amount float64, useRealOrders, useExchangeL
 	if err != nil {
 		return "", err
 	}
+
 	var orderID string
 	o := &gctorder.Submit{
+		// For ease of use we can default to the main account.
+		Account:     string(account.Main),
 		Price:       price,
 		Amount:      amount,
 		Fee:         f.ExchangeFee,
@@ -182,6 +192,10 @@ func (e *Exchange) placeOrder(price, amount float64, useRealOrders, useExchangeL
 		LastUpdated: f.GetTime(),
 		Pair:        f.Pair(),
 		Type:        gctorder.Market,
+		// FullAmountRequired is true because strategies should be mutually
+		// exclusive in a backtester context. This may need to be reassessed
+		// later.
+		FullAmountRequired: true,
 	}
 
 	if useRealOrders {
@@ -201,7 +215,7 @@ func (e *Exchange) placeOrder(price, amount float64, useRealOrders, useExchangeL
 			Cost:          price,
 			FullyMatched:  true,
 		}
-		resp, err := bot.OrderManager.SubmitFakeOrder(o, submitResponse, useExchangeLimits)
+		resp, err := bot.OrderManager.SubmitFakeOrder(o, submitResponse, useExchangeLimits, useClaimSystem)
 		if resp != nil {
 			orderID = resp.OrderID
 		}
