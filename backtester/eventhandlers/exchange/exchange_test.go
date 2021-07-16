@@ -149,7 +149,6 @@ func TestPlaceOrder(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	e := Exchange{}
 	_, err = e.placeOrder(1, 1, false, true, nil, nil)
 	if !errors.Is(err, common.ErrNilEvent) {
