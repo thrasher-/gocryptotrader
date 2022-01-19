@@ -33,7 +33,7 @@ const (
 	htmlScrape           = "HTML String Check"
 	pathBinance          = "https://binance-docs.github.io/apidocs/spot/en/#change-log"
 	pathOkCoin           = "https://www.okcoin.com/docs/en/#change-change"
-	pathOkex             = "https://www.okex.com/docs/en/#change-change"
+	pathOkex             = "https://www.okx.com/docs-v5/log_en/"
 	pathFTX              = "https://github.com/ftexchange/ftx"
 	pathBTSE             = "https://www.btse.com/apiexplorer/spot/#btse-spot-api"
 	pathBitfinex         = "https://docs.bitfinex.com/docs/changelog"
@@ -490,8 +490,10 @@ func checkChangeLog(htmlData *HTMLScrapingData) (string, error) {
 		dataStrings, err = htmlScrapeYobit(htmlData)
 	case pathLocalBitcoins:
 		dataStrings, err = htmlScrapeLocalBitcoins(htmlData)
-	case pathOkCoin, pathOkex:
+	case pathOkCoin:
 		dataStrings, err = htmlScrapeOk(htmlData)
+	case pathOkex:
+		dataStrings, err = htmlScrapeOKX(htmlData)
 	default:
 		dataStrings, err = htmlScrapeDefault(htmlData)
 	}
@@ -794,6 +796,41 @@ func htmlScrapeBTCMarkets(htmlData *HTMLScrapingData) ([]string, error) {
 	}
 	result := r.FindString(string(tempData))
 	resp = append(resp, result)
+	return resp, nil
+}
+
+func htmlScrapeOKX(htmlData *HTMLScrapingData) ([]string, error) {
+	temp, err := sendHTTPGetRequest(htmlData.Path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer temp.Body.Close()
+	var resp []string
+	tokenizer := html.NewTokenizer(temp.Body)
+loop:
+	for {
+		next := tokenizer.Next()
+		switch next {
+		case html.ErrorToken:
+			break loop
+		case html.StartTagToken:
+			token := tokenizer.Token()
+			if token.Data == htmlData.TokenData {
+				for _, x := range token.Attr {
+					if x.Key != htmlData.Key {
+						continue
+					}
+					r, err := regexp.Compile(htmlData.RegExp)
+					if err != nil {
+						return resp, err
+					}
+					if result := r.MatchString(x.Val); result {
+						resp = append(resp, r.FindString(x.Val))
+					}
+				}
+			}
+		}
+	}
 	return resp, nil
 }
 
