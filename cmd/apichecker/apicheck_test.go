@@ -401,14 +401,17 @@ func TestHTMLScrapeLocalBitcoins(t *testing.T) {
 
 func TestHTMLScrapeOk(t *testing.T) {
 	t.Parallel()
-	data := HTMLScrapingData{TokenData: "a",
-		Key:          "href",
-		Val:          "./#change-change",
-		TokenDataEnd: "./#change-",
-		RegExp:       `./#change-\d{8}`,
-		Path:         "https://www.okex.com/docs/en/"}
-	if _, err := htmlScrapeOk(&data); err != nil {
+	data := HTMLScrapingData{TokenData: "h1",
+		Key:        "id",
+		DateFormat: "2006-01-02",
+		RegExp:     `(2\d{3}-\d{1,2}-\d{1,2})`,
+		Path:       "https://www.okx.com/docs-v5/log_en/"}
+	r, err := htmlScrapeOKX(&data)
+	if err != nil {
 		t.Error(err)
+	}
+	if len(r) == 0 {
+		t.Error("expected more than 0 results")
 	}
 }
 
