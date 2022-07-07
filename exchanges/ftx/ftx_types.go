@@ -38,6 +38,7 @@ type MarginTransactionHistoryData struct {
 	Size     float64       `json:"size"`
 	Proceeds float64       `json:"proceeds"`
 	Time     time.Time     `json:"time"`
+	FeeUSD   float64       `json:"feeUsd"`
 }
 
 // LendingOffersData stores data for lending offers
@@ -633,6 +634,8 @@ type WsResponseData struct {
 }
 
 // WsTickerData stores ws ticker data
+//
+//easyjson:json
 type WsTickerData struct {
 	Bid     float64 `json:"bid"`
 	Ask     float64 `json:"ask"`
@@ -709,6 +712,8 @@ type WsSub struct {
 }
 
 // WsTickerDataStore stores ws ticker data
+//
+//easyjson:json
 type WsTickerDataStore struct {
 	Channel     string       `json:"channel"`
 	Market      string       `json:"market"`
@@ -717,6 +722,8 @@ type WsTickerDataStore struct {
 }
 
 // WsOrderbookDataStore stores ws orderbook data
+//
+//easyjson:json
 type WsOrderbookDataStore struct {
 	Channel     string          `json:"channel"`
 	Market      string          `json:"market"`
@@ -725,6 +732,8 @@ type WsOrderbookDataStore struct {
 }
 
 // WsTradeDataStore stores ws trades' data
+//
+//easyjson:json
 type WsTradeDataStore struct {
 	Channel     string        `json:"channel"`
 	Market      string        `json:"market"`
@@ -733,6 +742,8 @@ type WsTradeDataStore struct {
 }
 
 // WsOrderDataStore stores ws orders' data
+//
+//easyjson:json
 type WsOrderDataStore struct {
 	Channel     string   `json:"channel"`
 	MessageType string   `json:"type"`
@@ -740,6 +751,8 @@ type WsOrderDataStore struct {
 }
 
 // WsFillsDataStore stores ws fills' data
+//
+//easyjson:json
 type WsFillsDataStore struct {
 	Channel     string  `json:"channel"`
 	MessageType string  `json:"type"`
@@ -758,6 +771,8 @@ type OrderVars struct {
 }
 
 // WsMarketsData stores websocket markets data
+//
+//easyjson:json
 type WsMarketsData struct {
 	Data map[string]WsMarketsDataStorage `json:"data"`
 }
@@ -796,6 +811,8 @@ type WsMarketsFutureData struct {
 }
 
 // WSMarkets stores websocket markets data
+//
+//easyjson:json
 type WSMarkets struct {
 	Channel     string        `json:"channel"`
 	MessageType string        `json:"type"`

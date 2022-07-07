@@ -1434,7 +1434,9 @@ func (f *FTX) GetOTCQuoteStatus(ctx context.Context, marketName, quoteID string)
 		Data QuoteStatusData `json:"result"`
 	}{}
 	params := url.Values{}
-	params.Set("market", marketName)
+	if marketName != "" {
+		params.Set("market", marketName)
+	}
 	return &resp.Data, f.SendAuthHTTPRequest(ctx, exchange.RestSpot, http.MethodGet, getOTCQuoteStatus+quoteID, params, &resp)
 }
 

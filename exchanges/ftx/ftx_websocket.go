@@ -2,7 +2,6 @@ package ftx
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -11,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/gorilla/websocket"
+	easyjson "github.com/mailru/easyjson"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -245,18 +246,18 @@ func timestampFromFloat64(ts float64) time.Time {
 }
 
 func (f *FTX) wsHandleData(respRaw []byte) error {
-	var result map[string]interface{}
-	err := json.Unmarshal(respRaw, &result)
+	typeMsg, err := jsonparser.GetString(respRaw, "type")
 	if err != nil {
 		return err
 	}
-	switch result["type"] {
+
+	switch typeMsg {
 	case wsUpdate:
 		var p currency.Pair
 		var a asset.Item
-		market, ok := result["market"]
-		if ok {
-			p, err = currency.NewPairFromString(market.(string))
+		market, err := jsonparser.GetString(respRaw, "market")
+		if err == nil {
+			p, err = currency.NewPairFromString(market)
 			if err != nil {
 				return err
 			}
@@ -265,10 +266,14 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 				return err
 			}
 		}
-		switch result["channel"] {
+		channel, err := jsonparser.GetString(respRaw, "channel")
+		if err != nil {
+			return err
+		}
+		switch channel {
 		case wsTicker:
 			var resultData WsTickerDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -285,7 +290,7 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 			}
 		case wsOrderbook:
 			var resultData WsOrderbookDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -308,7 +313,7 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 				return nil
 			}
 			var resultData WsTradeDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -336,7 +341,7 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 			return f.Websocket.Trade.Update(saveTradeData, trades...)
 		case wsOrders:
 			var resultData WsOrderDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -388,7 +393,7 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 			}
 
 			var resultData WsFillsDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -427,23 +432,32 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 			f.Websocket.DataHandler <- stream.UnhandledMessageWarning{Message: f.Name + stream.UnhandledMessage + string(respRaw)}
 		}
 	case wsPartial:
-		switch result["channel"] {
+		channel, err := jsonparser.GetString(respRaw, "channel")
+		if err != nil {
+			return err
+		}
+
+		switch channel {
 		case "orderbook":
 			var p currency.Pair
 			var a asset.Item
-			market, ok := result["market"]
-			if ok {
-				p, err = currency.NewPairFromString(market.(string))
-				if err != nil {
-					return err
-				}
-				a, err = f.GetPairAssetType(p)
-				if err != nil {
-					return err
-				}
+
+			market, err := jsonparser.GetString(respRaw, "market")
+			if err != nil {
+				return err
 			}
+
+			p, err = currency.NewPairFromString(market)
+			if err != nil {
+				return err
+			}
+			a, err = f.GetPairAssetType(p)
+			if err != nil {
+				return err
+			}
+
 			var resultData WsOrderbookDataStore
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
@@ -459,7 +473,7 @@ func (f *FTX) wsHandleData(respRaw []byte) error {
 			delete(obSuccess, p)
 		case wsMarkets:
 			var resultData WSMarkets
-			err = json.Unmarshal(respRaw, &resultData)
+			err = easyjson.Unmarshal(respRaw, &resultData)
 			if err != nil {
 				return err
 			}
