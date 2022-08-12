@@ -64,6 +64,7 @@ func TestSimulateOrder(t *testing.T) {
 }
 
 func TestOrderSummary(t *testing.T) {
+	t.Parallel()
 	var o orderSummary
 	if p := o.MaximumPrice(false); p != 0 {
 		t.Error("unexpected result")
@@ -93,6 +94,7 @@ func TestOrderSummary(t *testing.T) {
 }
 
 func TestGetAveragePrice(t *testing.T) {
+	t.Parallel()
 	var b Base
 	b.Exchange = "Binance"
 	cp, err := currency.NewPairFromString("ETH-USDT")
@@ -138,6 +140,7 @@ func TestGetAveragePrice(t *testing.T) {
 }
 
 func TestFindNominalAmount(t *testing.T) {
+	t.Parallel()
 	b := Items{
 		{Amount: 5, Price: 1},
 		{Amount: 5, Price: 2},

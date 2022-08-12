@@ -3,6 +3,7 @@ package exchange
 import "testing"
 
 func TestIsSupported(t *testing.T) {
+	t.Parallel()
 	if ok := IsSupported("BiTStaMp"); !ok {
 		t.Error("supported exchange should be valid")
 	}

@@ -72,6 +72,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestGetOrderbook(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetOrderbook(context.Background(), "BTCUSD", 50)
 	if err != nil {
 		t.Error("Test faild - HitBTC GetOrderbook() error", err)
@@ -79,6 +80,7 @@ func TestGetOrderbook(t *testing.T) {
 }
 
 func TestGetTrades(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetTrades(context.Background(), "BTCUSD", "", "", 0, 0, 0, 0)
 	if err != nil {
 		t.Error("Test faild - HitBTC GetTradeHistory() error", err)
@@ -86,6 +88,7 @@ func TestGetTrades(t *testing.T) {
 }
 
 func TestGetChartCandles(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetCandles(context.Background(),
 		"BTCUSD", "", "D1", time.Now().Add(-24*time.Hour), time.Now())
 	if err != nil {
@@ -94,6 +97,7 @@ func TestGetChartCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC-USD")
 	if err != nil {
 		t.Fatal(err)
@@ -114,6 +118,7 @@ func TestGetHistoricCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC-USD")
 	if err != nil {
 		t.Fatal(err)
@@ -134,6 +139,7 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 }
 
 func TestGetCurrencies(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetCurrencies(context.Background())
 	if err != nil {
 		t.Error("Test faild - HitBTC GetCurrencies() error", err)
@@ -153,6 +159,7 @@ func setFeeBuilder() *exchange.FeeBuilder {
 
 // TestGetFeeByTypeOfflineTradeFee logic test
 func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
+	t.Parallel()
 	var feeBuilder = setFeeBuilder()
 	_, err := h.GetFeeByType(context.Background(), feeBuilder)
 	if err != nil {
@@ -170,6 +177,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 }
 
 func TestUpdateTicker(t *testing.T) {
+	t.Parallel()
 	pairs, err := currency.NewPairsFromStrings([]string{"BTC-USD", "XRP-USD"})
 	if err != nil {
 		t.Fatal(err)
@@ -190,6 +198,7 @@ func TestUpdateTicker(t *testing.T) {
 }
 
 func TestUpdateTickers(t *testing.T) {
+	t.Parallel()
 	err := h.UpdateTickers(context.Background(), asset.Spot)
 	if err != nil {
 		t.Error(err)
@@ -197,6 +206,7 @@ func TestUpdateTickers(t *testing.T) {
 }
 
 func TestGetAllTickers(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetTickers(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -204,6 +214,7 @@ func TestGetAllTickers(t *testing.T) {
 }
 
 func TestGetSingularTicker(t *testing.T) {
+	t.Parallel()
 	_, err := h.GetTicker(context.Background(), "BTCUSD")
 	if err != nil {
 		t.Error(err)
@@ -211,6 +222,7 @@ func TestGetSingularTicker(t *testing.T) {
 }
 
 func TestGetFee(t *testing.T) {
+	t.Parallel()
 	var feeBuilder = setFeeBuilder()
 	if areTestAPIKeysSet() {
 		// CryptocurrencyTradeFee Basic
@@ -278,6 +290,7 @@ func TestGetFee(t *testing.T) {
 }
 
 func TestFormatWithdrawPermissions(t *testing.T) {
+	t.Parallel()
 	expectedResult := exchange.AutoWithdrawCryptoText + " & " + exchange.NoFiatWithdrawalsText
 	withdrawPermissions := h.FormatWithdrawPermissions()
 	if withdrawPermissions != expectedResult {
@@ -286,6 +299,7 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 }
 
 func TestGetActiveOrders(t *testing.T) {
+	t.Parallel()
 	var getOrdersRequest = order.GetOrdersRequest{
 		Type:      order.AnyType,
 		Pairs:     []currency.Pair{currency.NewPair(currency.ETH, currency.BTC)},
@@ -301,6 +315,7 @@ func TestGetActiveOrders(t *testing.T) {
 }
 
 func TestGetOrderHistory(t *testing.T) {
+	t.Parallel()
 	var getOrdersRequest = order.GetOrdersRequest{
 		Type:      order.AnyType,
 		AssetType: asset.Spot,
@@ -322,6 +337,7 @@ func areTestAPIKeysSet() bool {
 }
 
 func TestSubmitOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -348,6 +364,7 @@ func TestSubmitOrder(t *testing.T) {
 }
 
 func TestCancelExchangeOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -371,6 +388,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 }
 
 func TestCancelAllExchangeOrders(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -399,6 +417,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 }
 
 func TestModifyOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -410,6 +429,7 @@ func TestModifyOrder(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
+	t.Parallel()
 	withdrawCryptoRequest := withdraw.Request{
 		Exchange:    h.Name,
 		Amount:      -1,
@@ -435,6 +455,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestWithdrawFiat(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -447,6 +468,7 @@ func TestWithdrawFiat(t *testing.T) {
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -460,6 +482,7 @@ func TestWithdrawInternationalBank(t *testing.T) {
 }
 
 func TestGetDepositAddress(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() {
 		_, err := h.GetDepositAddress(context.Background(), currency.XRP, "", "")
 		if err != nil {
@@ -503,6 +526,7 @@ func setupWsAuth(t *testing.T) {
 
 // TestWsCancelOrder dials websocket, sends cancel request.
 func TestWsCancelOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders false, skipping test")
@@ -515,6 +539,7 @@ func TestWsCancelOrder(t *testing.T) {
 
 // TestWsPlaceOrder dials websocket, sends order submission.
 func TestWsPlaceOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders false, skipping test")
@@ -530,6 +555,7 @@ func TestWsPlaceOrder(t *testing.T) {
 
 // TestWsReplaceOrder dials websocket, sends replace order request.
 func TestWsReplaceOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders false, skipping test")
@@ -542,6 +568,7 @@ func TestWsReplaceOrder(t *testing.T) {
 
 // TestWsGetActiveOrders dials websocket, sends get active orders request.
 func TestWsGetActiveOrders(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if _, err := h.wsGetActiveOrders(); err != nil {
 		t.Fatal(err)
@@ -550,6 +577,7 @@ func TestWsGetActiveOrders(t *testing.T) {
 
 // TestWsGetTradingBalance dials websocket, sends get trading balance request.
 func TestWsGetTradingBalance(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if _, err := h.wsGetTradingBalance(); err != nil {
 		t.Fatal(err)
@@ -558,6 +586,7 @@ func TestWsGetTradingBalance(t *testing.T) {
 
 // TestWsGetTradingBalance dials websocket, sends get trading balance request.
 func TestWsGetTrades(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := h.wsGetTrades(currency.NewPair(currency.ETH, currency.BTC), 1000, "ASC", "id")
 	if err != nil {
@@ -567,6 +596,7 @@ func TestWsGetTrades(t *testing.T) {
 
 // TestWsGetTradingBalance dials websocket, sends get trading balance request.
 func TestWsGetSymbols(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := h.wsGetSymbols(currency.NewPair(currency.ETH, currency.BTC))
 	if err != nil {
@@ -576,6 +606,7 @@ func TestWsGetSymbols(t *testing.T) {
 
 // TestWsGetCurrencies dials websocket, sends get trading balance request.
 func TestWsGetCurrencies(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := h.wsGetCurrencies(currency.BTC)
 	if err != nil {
@@ -584,6 +615,7 @@ func TestWsGetCurrencies(t *testing.T) {
 }
 
 func TestWsGetActiveOrdersJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "method": "activeOrders",
@@ -613,6 +645,7 @@ func TestWsGetActiveOrdersJSON(t *testing.T) {
 }
 
 func TestWsGetCurrenciesJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": {
@@ -637,6 +670,7 @@ func TestWsGetCurrenciesJSON(t *testing.T) {
 }
 
 func TestWsGetSymbolsJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": {
@@ -658,6 +692,7 @@ func TestWsGetSymbolsJSON(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "method": "ticker",
@@ -681,6 +716,7 @@ func TestWsTicker(t *testing.T) {
 }
 
 func TestWsOrderbook(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "method": "snapshotOrderbook",
@@ -755,6 +791,7 @@ func TestWsOrderbook(t *testing.T) {
 }
 
 func TestWsOrderNotification(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "method": "report",
@@ -786,6 +823,7 @@ func TestWsOrderNotification(t *testing.T) {
 }
 
 func TestWsSubmitOrderJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": {
@@ -813,6 +851,7 @@ func TestWsSubmitOrderJSON(t *testing.T) {
 }
 
 func TestWsCancelOrderJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": {
@@ -840,6 +879,7 @@ func TestWsCancelOrderJSON(t *testing.T) {
 }
 
 func TestWsCancelReplaceJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": {
@@ -868,6 +908,7 @@ func TestWsCancelReplaceJSON(t *testing.T) {
 }
 
 func TestWsGetTradesRequestResponse(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": [
@@ -896,6 +937,8 @@ func TestWsGetTradesRequestResponse(t *testing.T) {
 }
 
 func TestWsGetActiveOrdersRequestJSON(t *testing.T) {
+	t.Parallel()
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "result": [
@@ -926,6 +969,7 @@ func TestWsGetActiveOrdersRequestJSON(t *testing.T) {
 }
 
 func TestWsTrades(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "jsonrpc": "2.0",
   "method": "snapshotTrades",
@@ -984,6 +1028,7 @@ func TestWsTrades(t *testing.T) {
 }
 
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -1015,6 +1060,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := h.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {

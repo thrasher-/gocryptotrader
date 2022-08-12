@@ -14,6 +14,7 @@ import (
 )
 
 func TestWebsocketRoutineManagerSetup(t *testing.T) {
+	t.Parallel()
 	_, err := setupWebsocketRoutineManager(nil, nil, nil, nil, false)
 	if !errors.Is(err, errNilExchangeManager) {
 		t.Errorf("error '%v', expected '%v'", err, errNilExchangeManager)
@@ -48,6 +49,7 @@ func TestWebsocketRoutineManagerSetup(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerStart(t *testing.T) {
+	t.Parallel()
 	var m *websocketRoutineManager
 	err := m.Start()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -72,6 +74,7 @@ func TestWebsocketRoutineManagerStart(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
+	t.Parallel()
 	var m *websocketRoutineManager
 	if m.IsRunning() {
 		t.Error("expected false")
@@ -95,6 +98,7 @@ func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerStop(t *testing.T) {
+	t.Parallel()
 	var m *websocketRoutineManager
 	err := m.Stop()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -121,6 +125,7 @@ func TestWebsocketRoutineManagerStop(t *testing.T) {
 }
 
 func TestWebsocketRoutineManagerHandleData(t *testing.T) {
+	t.Parallel()
 	var exchName = "Bitstamp"
 	var wg sync.WaitGroup
 	em := SetupExchangeManager()

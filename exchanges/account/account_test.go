@@ -61,6 +61,7 @@ func TestCollectBalances(t *testing.T) {
 }
 
 func TestGetHoldings(t *testing.T) {
+	t.Parallel()
 	err := dispatch.Start(dispatch.DefaultMaxWorkers, dispatch.DefaultJobsLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -243,6 +244,7 @@ func TestGetHoldings(t *testing.T) {
 }
 
 func TestGetBalance(t *testing.T) {
+	t.Parallel()
 	_, err := GetBalance("", "", nil, asset.Empty, currency.Code{})
 	if !errors.Is(err, errExchangeNameUnset) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, errExchangeNameUnset)

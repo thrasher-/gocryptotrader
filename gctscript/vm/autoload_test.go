@@ -3,6 +3,7 @@ package vm
 import "testing"
 
 func TestGctScriptManagerAutoLoadNonExisting(t *testing.T) {
+	t.Parallel()
 	var vms uint8 = 1
 	g := &GctScriptManager{
 		config: &Config{

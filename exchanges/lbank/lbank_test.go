@@ -475,6 +475,7 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 }
 
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -509,9 +510,8 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 
 	for x := range testCases {
 		test := testCases[x]
-
-		t.Parallel()
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := l.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {

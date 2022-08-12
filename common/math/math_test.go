@@ -444,6 +444,7 @@ func TestFinancialGeometricAverage(t *testing.T) {
 }
 
 func TestArithmeticAverage(t *testing.T) {
+	t.Parallel()
 	values := []float64{1, 2, 3, 4, 5, 6, 7, 8}
 	_, err := ArithmeticMean(nil)
 	if !errors.Is(err, errZeroValue) {
@@ -846,6 +847,7 @@ func TestDecimalFinancialGeometricAverage(t *testing.T) {
 }
 
 func TestDecimalArithmeticAverage(t *testing.T) {
+	t.Parallel()
 	values := []decimal.Decimal{
 		decimal.NewFromInt(1),
 		decimal.NewFromInt(2),

@@ -697,6 +697,7 @@ func TestGetLatestSnapshot(t *testing.T) {
 }
 
 func TestCalculatePNL(t *testing.T) {
+	t.Parallel()
 	p := &Portfolio{}
 	ev := &kline.Kline{
 		Base: &event.Base{},

@@ -157,6 +157,7 @@ func TestCalculateResults(t *testing.T) {
 }
 
 func TestPrintResults(t *testing.T) {
+	t.Parallel()
 	cs := CurrencyPairStatistic{}
 	tt1 := time.Now()
 	tt2 := time.Now().Add(gctkline.OneDay.Duration())

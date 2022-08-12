@@ -12,6 +12,7 @@ const (
 )
 
 func TestLenByPrice(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +33,7 @@ func TestLenByPrice(t *testing.T) {
 }
 
 func TestLessByPrice(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +64,7 @@ func TestLessByPrice(t *testing.T) {
 }
 
 func TestSwapByPrice(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -90,12 +93,14 @@ func TestSwapByPrice(t *testing.T) {
 }
 
 func TestLenByVolume(t *testing.T) {
+	t.Parallel()
 	if ByVolume.Len(Items) != 2 {
 		t.Error("stats lenByVolume did not swap values.")
 	}
 }
 
 func TestLessByVolume(t *testing.T) {
+	t.Parallel()
 	if !ByVolume.Less(Items, 1, 0) {
 		t.Error("stats LessByVolume() incorrect return.")
 	}
@@ -105,6 +110,7 @@ func TestLessByVolume(t *testing.T) {
 }
 
 func TestSwapByVolume(t *testing.T) {
+	t.Parallel()
 	ByPrice.Swap(Items, 0, 1)
 
 	if Items[1].Exchange != "bitfinex" || Items[0].Exchange != "bitstamp" {
@@ -113,6 +119,7 @@ func TestSwapByVolume(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	Items = Items[:0]
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
@@ -162,6 +169,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +186,7 @@ func TestAppend(t *testing.T) {
 }
 
 func TestAlreadyExists(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -192,6 +201,7 @@ func TestAlreadyExists(t *testing.T) {
 }
 
 func TestSortExchangesByVolume(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +218,7 @@ func TestSortExchangesByVolume(t *testing.T) {
 }
 
 func TestSortExchangesByPrice(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)

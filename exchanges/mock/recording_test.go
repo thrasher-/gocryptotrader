@@ -9,6 +9,7 @@ import (
 )
 
 func TestGetFilteredHeader(t *testing.T) {
+	t.Parallel()
 	resp := http.Response{}
 	resp.Request = &http.Request{}
 	resp.Request.Header = http.Header{}
@@ -24,6 +25,7 @@ func TestGetFilteredHeader(t *testing.T) {
 }
 
 func TestGetFilteredURLVals(t *testing.T) {
+	t.Parallel()
 	superSecretData := "Dr Seuss"
 	shadyVals := url.Values{}
 	shadyVals.Set("real_name", superSecretData)
@@ -38,6 +40,7 @@ func TestGetFilteredURLVals(t *testing.T) {
 }
 
 func TestCheckResponsePayload(t *testing.T) {
+	t.Parallel()
 	testbody := struct {
 		SomeJSON string `json:"stuff"`
 	}{
@@ -95,6 +98,7 @@ type TestStructLevel3 struct {
 }
 
 func TestCheckJSON(t *testing.T) {
+	t.Parallel()
 	level3 := TestStructLevel3{
 		OkayVal:  "stuff",
 		OkayVal2: 129219,
@@ -194,6 +198,7 @@ func TestCheckJSON(t *testing.T) {
 }
 
 func TestGetExcludedItems(t *testing.T) {
+	t.Parallel()
 	exclusionList, err := GetExcludedItems()
 	if err != nil {
 		t.Error("GetExcludedItems error", err)

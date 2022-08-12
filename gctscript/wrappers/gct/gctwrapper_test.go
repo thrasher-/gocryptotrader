@@ -75,6 +75,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSetup(t *testing.T) {
+	t.Parallel()
 	x := Setup()
 	xType := reflect.TypeOf(x).String()
 	if xType != "*gct.Wrapper" {

@@ -44,6 +44,7 @@ func initTest(t *testing.T) {
 }
 
 func TestGetAssetTypes(t *testing.T) {
+	t.Parallel()
 	initTest(t)
 
 	a := p.GetAssetTypes(false)
@@ -62,6 +63,7 @@ func TestGetAssetTypes(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
+	t.Parallel()
 	initTest(t)
 
 	_, err := p.Get(asset.Spot)
@@ -76,6 +78,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestStore(t *testing.T) {
+	t.Parallel()
 	availPairs, err := NewPairsFromStrings([]string{"BTC-USD", "LTC-USD"})
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +114,7 @@ func TestStore(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 	p.Delete(asset.Spot)
 
@@ -141,6 +145,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestGetPairs(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 	pairs, err := p.GetPairs(asset.Spot, true)
 	if err != nil {
@@ -180,6 +185,7 @@ func TestGetPairs(t *testing.T) {
 }
 
 func TestStorePairs(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 
 	ethusdPairs, err := NewPairsFromStrings([]string{"ETH-USD"})
@@ -244,6 +250,7 @@ func TestStorePairs(t *testing.T) {
 }
 
 func TestDisablePair(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 	// Test disabling a pair when the pair manager is not initialised
 	if err := p.DisablePair(asset.Spot, NewPair(BTC, USD)); err == nil {
@@ -275,6 +282,7 @@ func TestDisablePair(t *testing.T) {
 }
 
 func TestEnablePair(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 	// Test enabling a pair when the pair manager is not initialised
 	if err := p.EnablePair(asset.Spot, NewPair(BTC, USD)); err == nil {
@@ -311,6 +319,7 @@ func TestEnablePair(t *testing.T) {
 }
 
 func TestIsAssetEnabled_SetAssetEnabled(t *testing.T) {
+	t.Parallel()
 	p.Pairs = nil
 	// Test enabling a pair when the pair manager is not initialised
 	err := p.IsAssetEnabled(asset.Spot)

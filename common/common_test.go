@@ -18,7 +18,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common/file"
 )
 
-func TestSendHTTPRequest(t *testing.T) {
+func TestSendHTTPRequest(t *testing.T) { //nolint:paralleltest // see below
 	// t.Parallel() not used to maintain code coverage for assigning the default
 	// HTTPClient.
 	methodPost := "pOst"
@@ -410,6 +410,7 @@ func TestGetExecutablePath(t *testing.T) {
 }
 
 func TestGetDefaultDataDir(t *testing.T) {
+	t.Parallel()
 	switch runtime.GOOS {
 	case "windows":
 		dir, ok := os.LookupEnv("APPDATA")
@@ -442,6 +443,7 @@ func TestGetDefaultDataDir(t *testing.T) {
 }
 
 func TestCreateDir(t *testing.T) {
+	t.Parallel()
 	switch runtime.GOOS {
 	case "windows":
 		// test for looking up an invalid directory
@@ -687,6 +689,7 @@ func TestParseStartEndDate(t *testing.T) {
 }
 
 func TestGetAssertError(t *testing.T) {
+	t.Parallel()
 	err := GetAssertError("*[]string", float64(0))
 	if err.Error() != "type assert failure from float64 to *[]string" {
 		t.Fatal(err)

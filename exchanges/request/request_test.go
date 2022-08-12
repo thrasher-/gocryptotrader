@@ -573,6 +573,7 @@ func TestSetProxy(t *testing.T) {
 }
 
 func TestBasicLimiter(t *testing.T) {
+	t.Parallel()
 	r, err := New("test",
 		new(http.Client),
 		WithLimiter(NewBasicRateLimit(time.Second, 1)))
@@ -607,6 +608,7 @@ func TestBasicLimiter(t *testing.T) {
 }
 
 func TestEnableDisableRateLimit(t *testing.T) {
+	t.Parallel()
 	r, err := New("TestRequest",
 		new(http.Client),
 		WithLimiter(NewBasicRateLimit(time.Minute, 1)))
@@ -686,6 +688,7 @@ func TestEnableDisableRateLimit(t *testing.T) {
 }
 
 func TestSetHTTPClient(t *testing.T) {
+	t.Parallel()
 	var r *Requester
 	err := r.SetHTTPClient(nil)
 	if !errors.Is(err, ErrRequestSystemIsNil) {
@@ -704,6 +707,7 @@ func TestSetHTTPClient(t *testing.T) {
 }
 
 func TestSetHTTPClientTimeout(t *testing.T) {
+	t.Parallel()
 	var r *Requester
 	err := r.SetHTTPClientTimeout(0)
 	if !errors.Is(err, ErrRequestSystemIsNil) {
@@ -721,6 +725,7 @@ func TestSetHTTPClientTimeout(t *testing.T) {
 }
 
 func TestSetHTTPClientUserAgent(t *testing.T) {
+	t.Parallel()
 	var r *Requester
 	err := r.SetHTTPClientUserAgent("")
 	if !errors.Is(err, ErrRequestSystemIsNil) {
@@ -734,6 +739,7 @@ func TestSetHTTPClientUserAgent(t *testing.T) {
 }
 
 func TestGetHTTPClientUserAgent(t *testing.T) {
+	t.Parallel()
 	var r *Requester
 	_, err := r.GetHTTPClientUserAgent()
 	if !errors.Is(err, ErrRequestSystemIsNil) {

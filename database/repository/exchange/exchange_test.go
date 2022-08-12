@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestInsertMany(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -81,6 +82,7 @@ func TestInsertMany(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -111,6 +113,7 @@ func TestInsertMany(t *testing.T) {
 }
 
 func TestOneAndOneByUUID(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -137,6 +140,7 @@ func TestOneAndOneByUUID(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -179,6 +183,7 @@ func seed() error {
 }
 
 func TestLoadCSV(t *testing.T) {
+	t.Parallel()
 	testData := filepath.Join("..", "..", "..", "testdata", "exchangelist.csv")
 	if _, err := LoadCSV(testData); err != nil {
 		t.Fatal(err)

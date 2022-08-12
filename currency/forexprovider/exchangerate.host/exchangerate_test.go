@@ -25,6 +25,7 @@ func TestMain(t *testing.M) {
 }
 
 func TestGetLatestRates(t *testing.T) {
+	t.Parallel()
 	_, err := e.GetLatestRates("USD", testCurrencies, 1200, 2, "")
 	if err != nil {
 		t.Error(err)
@@ -32,6 +33,7 @@ func TestGetLatestRates(t *testing.T) {
 }
 
 func TestConvertCurrency(t *testing.T) {
+	t.Parallel()
 	_, err := e.ConvertCurrency("USD", "EUR", "", testCurrencies, "", time.Now(), 1200, 2)
 	if err != nil {
 		t.Error(err)
@@ -39,6 +41,7 @@ func TestConvertCurrency(t *testing.T) {
 }
 
 func TestGetHistoricRates(t *testing.T) {
+	t.Parallel()
 	_, err := e.GetHistoricalRates(time.Time{}, "AUD", testCurrencies, 1200, 2, "")
 	if err != nil {
 		t.Error(err)
@@ -46,6 +49,7 @@ func TestGetHistoricRates(t *testing.T) {
 }
 
 func TestGetTimeSeriesRates(t *testing.T) {
+	t.Parallel()
 	_, err := e.GetTimeSeries(time.Time{}, time.Now(), "USD", testCurrencies, 1200, 2, "")
 	if err == nil {
 		t.Error("empty start time show throw an error")
@@ -63,6 +67,7 @@ func TestGetTimeSeriesRates(t *testing.T) {
 }
 
 func TestGetFluctuationData(t *testing.T) {
+	t.Parallel()
 	_, err := e.GetFluctuations(time.Time{}, time.Now(), "USD", testCurrencies, 1200, 2, "")
 	if err == nil {
 		t.Error("empty start time show throw an error")
@@ -80,6 +85,7 @@ func TestGetFluctuationData(t *testing.T) {
 }
 
 func TestGetSupportedSymbols(t *testing.T) {
+	t.Parallel()
 	r, err := e.GetSupportedSymbols()
 	if err != nil {
 		t.Fatal(err)
@@ -90,6 +96,7 @@ func TestGetSupportedSymbols(t *testing.T) {
 }
 
 func TestGetGetSupportedCurrencies(t *testing.T) {
+	t.Parallel()
 	s, err := e.GetSupportedCurrencies()
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +107,7 @@ func TestGetGetSupportedCurrencies(t *testing.T) {
 }
 
 func TestGetRates(t *testing.T) {
+	t.Parallel()
 	r, err := e.GetRates("USD", "")
 	if err != nil {
 		t.Fatal(err)

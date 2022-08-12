@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestRunUpdater(t *testing.T) {
+	t.Parallel()
 	var newStorage Storage
 
 	emptyMainConfig := Config{}

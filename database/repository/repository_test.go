@@ -7,6 +7,7 @@ import (
 )
 
 func TestGetSQLDialect(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		driver         string
 		expectedReturn string
@@ -32,6 +33,7 @@ func TestGetSQLDialect(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.driver, func(t *testing.T) {
+			t.Parallel()
 			cfg := &database.Config{
 				Driver: test.driver,
 			}

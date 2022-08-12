@@ -27,6 +27,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestSubscribeToExchangeOrderbooks(t *testing.T) {
+	t.Parallel()
 	_, err := SubscribeToExchangeOrderbooks("")
 	if !errors.Is(err, errCannotFindOrderbook) {
 		t.Fatalf("expected: %v but received: %v", errCannotFindOrderbook, err)
@@ -177,6 +178,7 @@ func TestCalculateTotalAsks(t *testing.T) {
 }
 
 func TestGetOrderbook(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -236,6 +238,7 @@ func TestGetOrderbook(t *testing.T) {
 }
 
 func TestGetDepth(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -295,6 +298,7 @@ func TestGetDepth(t *testing.T) {
 }
 
 func TestDeployDepth(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -321,6 +325,7 @@ func TestDeployDepth(t *testing.T) {
 }
 
 func TestCreateNewOrderbook(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -359,6 +364,7 @@ func TestCreateNewOrderbook(t *testing.T) {
 }
 
 func TestProcessOrderbook(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -564,6 +570,7 @@ func deployUnorderedSlice() Items {
 }
 
 func TestSorting(t *testing.T) {
+	t.Parallel()
 	var b Base
 	b.VerifyOrderbook = true
 
@@ -602,6 +609,7 @@ func deploySliceOrdered() Items {
 }
 
 func TestReverse(t *testing.T) {
+	t.Parallel()
 	var b Base
 	b.VerifyOrderbook = true
 

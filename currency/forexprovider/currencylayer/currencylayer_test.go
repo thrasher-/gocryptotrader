@@ -46,6 +46,7 @@ func areAPIKeysSet() bool {
 }
 
 func TestGetRates(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Skip("CurrencyLayer GetRates error", err)
@@ -59,6 +60,7 @@ func TestGetRates(t *testing.T) {
 }
 
 func TestGetSupportedCurrencies(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer GetSupportedCurrencies error", err)
@@ -72,6 +74,7 @@ func TestGetSupportedCurrencies(t *testing.T) {
 }
 
 func TestGetliveData(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer GetliveData error", err)
@@ -85,6 +88,7 @@ func TestGetliveData(t *testing.T) {
 }
 
 func TestGetHistoricalData(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer GetHistoricalData error", err)
@@ -98,6 +102,7 @@ func TestGetHistoricalData(t *testing.T) {
 }
 
 func TestConvert(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer Convert error", err)
@@ -111,6 +116,7 @@ func TestConvert(t *testing.T) {
 }
 
 func TestQueryTimeFrame(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer QueryTimeFrame error", err)
@@ -124,6 +130,7 @@ func TestQueryTimeFrame(t *testing.T) {
 }
 
 func TestQueryCurrencyChange(t *testing.T) {
+	t.Parallel()
 	err := setup()
 	if err != nil {
 		t.Fatal("CurrencyLayer QueryCurrencyChange() error", err)

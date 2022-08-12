@@ -6,6 +6,7 @@ import (
 )
 
 func TestGetModuleMap(t *testing.T) {
+	t.Parallel()
 	x := GetModuleMap()
 	xType := reflect.TypeOf(x).String()
 	if xType != "*tengo.ModuleMap" {

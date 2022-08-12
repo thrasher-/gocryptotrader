@@ -30,6 +30,7 @@ const (
 )
 
 func TestGetNonExistentDefaultFilePathDoesNotCreateDefaultDir(t *testing.T) {
+	t.Parallel()
 	dir := common.GetDefaultDataDir(runtime.GOOS)
 	if file.Exists(dir) {
 		t.Skip("The default directory already exists before running the test")
@@ -647,6 +648,7 @@ func TestGetCurrencyPairConfig(t *testing.T) {
 }
 
 func TestCheckPairConfigFormats(t *testing.T) {
+	t.Parallel()
 	var c Config
 	if err := c.CheckPairConfigFormats("non-existent"); err == nil {
 		t.Error("non-existent exchange should throw an error")
@@ -1315,6 +1317,7 @@ func TestUpdateExchangeConfig(t *testing.T) {
 
 // TestCheckExchangeConfigValues logic test
 func TestCheckExchangeConfigValues(t *testing.T) {
+	t.Parallel()
 	var cfg Config
 	if err := cfg.CheckExchangeConfigValues(); err == nil {
 		t.Error("nil exchanges should throw an err")
@@ -1677,6 +1680,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 }
 
 func TestReadConfigFromFile(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{}
 	err := cfg.ReadConfigFromFile(TestFile, true)
 	if err != nil {
@@ -1710,6 +1714,7 @@ func TestReadConfigFromReader(t *testing.T) {
 }
 
 func TestLoadConfig(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{}
 	err := cfg.LoadConfig(TestFile, true)
 	if err != nil {
@@ -1723,6 +1728,7 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestSaveConfigToFile(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{}
 	err := cfg.LoadConfig(TestFile, true)
 	if err != nil {
@@ -1872,6 +1878,7 @@ func TestCheckConfig(t *testing.T) {
 }
 
 func TestUpdateConfig(t *testing.T) {
+	t.Parallel()
 	var c Config
 	err := c.LoadConfig(TestFile, true)
 	if err != nil {
@@ -2170,6 +2177,7 @@ func TestGetDataPath(t *testing.T) {
 }
 
 func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		configFile string
 		targetDir  string
@@ -2255,6 +2263,7 @@ func TestMigrateConfig(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if tt.setup != nil {
 				tt.setup(t)
 			}
@@ -2277,6 +2286,7 @@ func TestMigrateConfig(t *testing.T) {
 }
 
 func TestExchangeConfigValidate(t *testing.T) {
+	t.Parallel()
 	err := (*Exchange)(nil).Validate()
 	if !errors.Is(err, errExchangeConfigIsNil) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, errExchangeConfigIsNil)

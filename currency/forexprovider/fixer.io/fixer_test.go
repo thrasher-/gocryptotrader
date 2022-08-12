@@ -25,6 +25,7 @@ func setup(t *testing.T) {
 }
 
 func TestGetRates(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.GetRates("EUR", "AUD")
 	if err == nil {
@@ -33,6 +34,7 @@ func TestGetRates(t *testing.T) {
 }
 
 func TestGetLatestRates(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.GetLatestRates("EUR", "AUD")
 	if err == nil {
@@ -41,6 +43,7 @@ func TestGetLatestRates(t *testing.T) {
 }
 
 func TestGetHistoricalRates(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.GetHistoricalRates("2013-12-24", "EUR", []string{"AUD,KRW"})
 	if err == nil {
@@ -49,6 +52,7 @@ func TestGetHistoricalRates(t *testing.T) {
 }
 
 func TestConvertCurrency(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.ConvertCurrency("AUD", "EUR", "", 1337)
 	if err == nil {
@@ -57,6 +61,7 @@ func TestConvertCurrency(t *testing.T) {
 }
 
 func TestGetTimeSeriesData(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.GetTimeSeriesData("2013-12-24", "2013-12-25", "EUR", []string{"AUD,KRW"})
 	if err == nil {
@@ -65,6 +70,7 @@ func TestGetTimeSeriesData(t *testing.T) {
 }
 
 func TestGetFluctuationData(t *testing.T) {
+	t.Parallel()
 	setup(t)
 	_, err := f.GetFluctuationData("2013-12-24", "2013-12-25", "EUR", []string{"AUD,KRW"})
 	if err == nil {

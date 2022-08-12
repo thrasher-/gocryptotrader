@@ -9,6 +9,7 @@ import (
 )
 
 func TestWsCurrencyMap(t *testing.T) {
+	t.Parallel()
 	var m CurrencyDetails
 
 	if !m.isInitial() {

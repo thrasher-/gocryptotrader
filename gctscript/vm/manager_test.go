@@ -75,6 +75,7 @@ func TestGctScriptManagerStartStopNominal(t *testing.T) {
 }
 
 func TestGctScriptManagerGetMaxVirtualMachines(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		config             *Config
 		started            int32
@@ -110,6 +111,7 @@ func TestGctScriptManagerGetMaxVirtualMachines(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			g := &GctScriptManager{
 				config:             tt.fields.config,
 				started:            tt.fields.started,

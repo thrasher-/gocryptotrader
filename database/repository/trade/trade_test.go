@@ -54,6 +54,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestTrades(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -80,6 +81,7 @@ func TestTrades(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}

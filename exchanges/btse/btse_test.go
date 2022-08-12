@@ -74,6 +74,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestFetchFundingHistory(t *testing.T) {
+	t.Parallel()
 	_, err := b.FetchFundingHistory(context.Background(), "")
 	if err != nil {
 		t.Error(err)
@@ -172,6 +173,7 @@ func TestGetPrice(t *testing.T) {
 }
 
 func TestFormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	ret := b.FormatExchangeKlineInterval(kline.OneDay)
 	if ret != "1440" {
 		t.Fatalf("unexpected result received: %v", ret)
@@ -495,6 +497,7 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 
 // TestGetFeeByTypeOfflineTradeFee logic test
 func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
+	t.Parallel()
 	feeBuilder := &exchange.FeeBuilder{
 		FeeType:       exchange.CryptocurrencyTradeFee,
 		Pair:          currency.NewPair(currency.BTC, currency.USD),
@@ -570,6 +573,7 @@ func TestGetFee(t *testing.T) {
 }
 
 func TestParseOrderTime(t *testing.T) {
+	t.Parallel()
 	actual, err := parseOrderTime("2018-08-20 19:20:46")
 	if err != nil {
 		t.Fatal(err)
@@ -707,6 +711,7 @@ func TestWsOrderNotification(t *testing.T) {
 }
 
 func TestStatusToStandardStatus(t *testing.T) {
+	t.Parallel()
 	type TestCases struct {
 		Case   string
 		Result order.Status

@@ -493,16 +493,13 @@ func setupTest(t *testing.T) {
 		}
 	}
 
-	var err error
 	testhelpers.MigrationDir = filepath.Join("..", "..", "database", "migrations")
 	testhelpers.PostgresTestDatabase = testhelpers.GetConnectionDetails()
-	testhelpers.TempDir, err = os.MkdirTemp("", "gct-temp")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
+	testhelpers.TempDir = t.TempDir()
 }
 
 func TestStoreInDatabase(t *testing.T) {
+	t.Parallel()
 	setupTest(t)
 
 	testCases := []struct {
@@ -531,6 +528,7 @@ func TestStoreInDatabase(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -583,6 +581,7 @@ func TestStoreInDatabase(t *testing.T) {
 }
 
 func TestLoadFromDatabase(t *testing.T) {
+	t.Parallel()
 	setupTest(t)
 
 	testCases := []struct {
@@ -611,6 +610,7 @@ func TestLoadFromDatabase(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -716,6 +716,7 @@ func genOHCLVData() (out candle.Item, outItem Item, err error) {
 }
 
 func TestLoadCSV(t *testing.T) {
+	t.Parallel()
 	v, err := LoadFromGCTScriptCSV(filepath.Join("..", "..", "testdata", "binance_BTCUSDT_24h_2019_01_01_2020_01_01.csv"))
 	if err != nil {
 		t.Fatal(err)
@@ -879,6 +880,7 @@ func BenchmarkJustifyIntervalTimeStoringUnixValues2(b *testing.B) {
 }
 
 func TestConvertToNewInterval(t *testing.T) {
+	t.Parallel()
 	_, err := ConvertToNewInterval(nil, OneMin)
 	if !errors.Is(err, errNilKline) {
 		t.Errorf("received '%v' expected '%v'", err, errNilKline)
@@ -966,6 +968,7 @@ func TestConvertToNewInterval(t *testing.T) {
 }
 
 func TestGetClosePriceAtTime(t *testing.T) {
+	t.Parallel()
 	tt := time.Now()
 	k := Item{
 		Candles: []Candle{

@@ -93,6 +93,7 @@ func (f omfExchange) ModifyOrder(ctx context.Context, action *order.Modify) (*or
 }
 
 func TestSetupOrderManager(t *testing.T) {
+	t.Parallel()
 	_, err := SetupOrderManager(nil, nil, nil, false, false)
 	if !errors.Is(err, errNilExchangeManager) {
 		t.Errorf("error '%v', expected '%v'", err, errNilExchangeManager)
@@ -114,6 +115,7 @@ func TestSetupOrderManager(t *testing.T) {
 }
 
 func TestOrderManagerStart(t *testing.T) {
+	t.Parallel()
 	var m *OrderManager
 	err := m.Start()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -135,6 +137,7 @@ func TestOrderManagerStart(t *testing.T) {
 }
 
 func TestOrderManagerIsRunning(t *testing.T) {
+	t.Parallel()
 	var m *OrderManager
 	if m.IsRunning() {
 		t.Error("expected false")
@@ -159,6 +162,7 @@ func TestOrderManagerIsRunning(t *testing.T) {
 }
 
 func TestOrderManagerStop(t *testing.T) {
+	t.Parallel()
 	var m *OrderManager
 	err := m.Stop()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -218,6 +222,7 @@ func OrdersSetup(t *testing.T) *OrderManager {
 }
 
 func TestOrdersGet(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	if m.orderStore.get() == nil {
 		t.Error("orderStore not established")
@@ -225,6 +230,7 @@ func TestOrdersGet(t *testing.T) {
 }
 
 func TestOrdersAdd(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	err := m.orderStore.add(&order.Detail{
 		Exchange: testExchange,
@@ -256,6 +262,7 @@ func TestOrdersAdd(t *testing.T) {
 }
 
 func TestGetByExchangeAndID(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	err := m.orderStore.add(&order.Detail{
 		Exchange: testExchange,
@@ -285,6 +292,7 @@ func TestGetByExchangeAndID(t *testing.T) {
 }
 
 func TestExists(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	if m.orderStore.exists(nil) {
 		t.Error("Expected false")
@@ -302,6 +310,7 @@ func TestExists(t *testing.T) {
 }
 
 func TestStore_modifyOrder(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	pair := currency.Pair{
 		Base:  currency.NewCode("XXXXX"),
@@ -350,6 +359,7 @@ func TestStore_modifyOrder(t *testing.T) {
 }
 
 func TestCancelOrder(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 
 	err := m.Cancel(context.Background(), nil)
@@ -427,6 +437,7 @@ func TestCancelOrder(t *testing.T) {
 }
 
 func TestGetOrderInfo(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	_, err := m.GetOrderInfo(context.Background(), "", "", currency.EMPTYPAIR, asset.Empty)
 	if err == nil {
@@ -454,6 +465,7 @@ func TestGetOrderInfo(t *testing.T) {
 }
 
 func TestCancelAllOrders(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	o := &order.Detail{
 		Exchange: testExchange,
@@ -490,6 +502,7 @@ func TestCancelAllOrders(t *testing.T) {
 }
 
 func TestSubmit(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	_, err := m.Submit(context.Background(), nil)
 	if err == nil {
@@ -574,6 +587,7 @@ func TestSubmit(t *testing.T) {
 }
 
 func TestOrderManager_Modify(t *testing.T) {
+	t.Parallel()
 	pair := currency.Pair{
 		Base:  currency.NewCode("XXXXX"),
 		Quote: currency.NewCode("YYYYY"),
@@ -663,6 +677,7 @@ func TestOrderManager_Modify(t *testing.T) {
 }
 
 func TestProcessOrders(t *testing.T) {
+	t.Parallel()
 	var wg sync.WaitGroup
 	em := SetupExchangeManager()
 	exch, err := em.NewExchangeByName(testExchange)
@@ -815,6 +830,7 @@ func TestProcessOrders(t *testing.T) {
 }
 
 func TestGetOrdersFiltered(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	_, err := m.GetOrdersFiltered(nil)
 	if err == nil {
@@ -845,6 +861,7 @@ func TestGetOrdersFiltered(t *testing.T) {
 }
 
 func Test_getFilteredOrders(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 
 	_, err := m.orderStore.getFilteredOrders(nil)
@@ -877,6 +894,7 @@ func Test_getFilteredOrders(t *testing.T) {
 }
 
 func TestGetOrdersActive(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	var err error
 	orders := []order.Detail{
@@ -924,6 +942,7 @@ func TestGetOrdersActive(t *testing.T) {
 }
 
 func Test_processMatchingOrders(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	exch, err := m.orderStore.exchangeManager.GetExchangeByName(testExchange)
 	if err != nil {
@@ -958,6 +977,7 @@ func Test_processMatchingOrders(t *testing.T) {
 }
 
 func TestFetchAndUpdateExchangeOrder(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	exch, err := m.orderStore.exchangeManager.GetExchangeByName(testExchange)
 	if err != nil {
@@ -1004,6 +1024,7 @@ func TestFetchAndUpdateExchangeOrder(t *testing.T) {
 }
 
 func Test_getActiveOrders(t *testing.T) {
+	t.Parallel()
 	m := OrdersSetup(t)
 	var err error
 	orders := []order.Detail{

@@ -176,6 +176,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 }
 
 func TestGetFee(t *testing.T) {
+	t.Parallel()
 	var feeBuilder = setFeeBuilder()
 
 	// CryptocurrencyTradeFee Basic
@@ -236,6 +237,7 @@ func TestGetFee(t *testing.T) {
 }
 
 func TestFormatWithdrawPermissions(t *testing.T) {
+	t.Parallel()
 	expectedResult := exchange.AutoWithdrawCryptoText + " & " + exchange.NoFiatWithdrawalsText
 	withdrawPermissions := z.FormatWithdrawPermissions()
 	if withdrawPermissions != expectedResult {
@@ -244,6 +246,7 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 }
 
 func TestGetActiveOrders(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -263,6 +266,7 @@ func TestGetActiveOrders(t *testing.T) {
 }
 
 func TestGetOrderHistory(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -286,6 +290,7 @@ func TestGetOrderHistory(t *testing.T) {
 // ----------------------------------------------------------------------------------------------------------------------------
 
 func TestSubmitOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skipf("Can place orders: %v", canManipulateRealOrders)
 	}
@@ -319,6 +324,7 @@ func TestSubmitOrder(t *testing.T) {
 }
 
 func TestCancelExchangeOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -344,6 +350,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 }
 
 func TestCancelAllExchangeOrders(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -373,6 +380,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 }
 
 func TestGetAccountInfo(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -390,6 +398,7 @@ func TestGetAccountInfo(t *testing.T) {
 }
 
 func TestModifyOrder(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -404,6 +413,7 @@ func TestModifyOrder(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -432,6 +442,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestWithdrawFiat(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -447,6 +458,7 @@ func TestWithdrawFiat(t *testing.T) {
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -463,6 +475,7 @@ func TestWithdrawInternationalBank(t *testing.T) {
 }
 
 func TestGetDepositAddress(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -481,6 +494,7 @@ func TestGetDepositAddress(t *testing.T) {
 }
 
 func TestGetMultiChainDepositAddress(t *testing.T) {
+	t.Parallel()
 	if mockTests {
 		t.Skip("skipping authenticated function for mock testing")
 	}
@@ -501,6 +515,7 @@ func TestGetMultiChainDepositAddress(t *testing.T) {
 // TestZBInvalidJSON ZB sends poorly formed JSON. this tests the JSON fixer
 // Then JSON decode it to test if successful
 func TestZBInvalidJSON(t *testing.T) {
+	t.Parallel()
 	data := `{"success":true,"code":1000,"channel":"getSubUserList","message":"[{"isOpenApi":false,"memo":"Memo","userName":"hello@imgoodthanksandyou.com@good","userId":1337,"isFreez":false}]","no":"0"}`
 	fixedJSON := z.wsFixInvalidJSON([]byte(data))
 	var response WsGetSubUserListResponse
@@ -523,6 +538,7 @@ func TestZBInvalidJSON(t *testing.T) {
 
 // TestWsTransferFunds ws test
 func TestWsTransferFunds(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsDoTransferFunds(context.Background(), currency.BTC,
 		0.0001,
@@ -536,6 +552,7 @@ func TestWsTransferFunds(t *testing.T) {
 
 // TestGetSubUserList ws test
 func TestGetSubUserList(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	if _, err := z.wsGetSubUserList(context.Background()); err != nil {
 		t.Fatal(err)
@@ -544,6 +561,7 @@ func TestGetSubUserList(t *testing.T) {
 
 // TestAddSubUser ws test
 func TestAddSubUser(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsAddSubUser(context.Background(), "1", "123456789101112aA!")
 	if err != nil {
@@ -553,6 +571,7 @@ func TestAddSubUser(t *testing.T) {
 
 // TestWsCreateSuUserKey ws test
 func TestWsCreateSuUserKey(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	subUsers, err := z.wsGetSubUserList(context.Background())
 	if err != nil {
@@ -571,6 +590,7 @@ func TestWsCreateSuUserKey(t *testing.T) {
 
 // TestWsSubmitOrder ws test
 func TestWsSubmitOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsSubmitOrder(context.Background(),
 		currency.NewPairWithDelimiter(currency.LTC.String(), currency.BTC.String(), "").Lower(), 1, 1, 1)
@@ -581,6 +601,7 @@ func TestWsSubmitOrder(t *testing.T) {
 
 // TestWsCancelOrder ws test
 func TestWsCancelOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsCancelOrder(context.Background(),
 		currency.NewPairWithDelimiter(currency.LTC.String(), currency.BTC.String(), "").Lower(), 1234)
@@ -591,6 +612,7 @@ func TestWsCancelOrder(t *testing.T) {
 
 // TestWsGetAccountInfo ws test
 func TestWsGetAccountInfo(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsGetAccountInfoRequest(context.Background())
 	if err != nil {
@@ -600,6 +622,7 @@ func TestWsGetAccountInfo(t *testing.T) {
 
 // TestWsGetOrder ws test
 func TestWsGetOrder(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsGetOrder(context.Background(),
 		currency.NewPairWithDelimiter(currency.LTC.String(), currency.BTC.String(), "").Lower(), 1234)
@@ -610,6 +633,7 @@ func TestWsGetOrder(t *testing.T) {
 
 // TestWsGetOrders ws test
 func TestWsGetOrders(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsGetOrders(context.Background(),
 		currency.NewPairWithDelimiter(currency.LTC.String(), currency.BTC.String(), "").Lower(), 1, 1)
@@ -620,6 +644,7 @@ func TestWsGetOrders(t *testing.T) {
 
 // TestWsGetOrdersIgnoreTradeType ws test
 func TestWsGetOrdersIgnoreTradeType(t *testing.T) {
+	t.Parallel()
 	setupWsAuth(t)
 	_, err := z.wsGetOrdersIgnoreTradeType(context.Background(),
 		currency.NewPairWithDelimiter(currency.LTC.String(), currency.BTC.String(), "").Lower(), 1, 1)
@@ -629,6 +654,7 @@ func TestWsGetOrdersIgnoreTradeType(t *testing.T) {
 }
 
 func TestWsMarketConfig(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "code":1000,
     "data":{
@@ -652,6 +678,7 @@ func TestWsMarketConfig(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "channel": "ltcbtc_ticker",
     "date": "1472800466093",
@@ -672,6 +699,7 @@ func TestWsTicker(t *testing.T) {
 }
 
 func TestWsOrderbook(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "asks": [
         [
@@ -695,6 +723,7 @@ func TestWsOrderbook(t *testing.T) {
 }
 
 func TestWsTrades(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{"data":[{"date":1581473835,"amount":"13.620","price":"242.89","trade_type":"bid","type":"buy","tid":703896035},{"date":1581473835,"amount":"0.156","price":"242.89","trade_type":"bid","type":"buy","tid":703896036}],"dataType":"trades","channel":"ethusdt_trades"}`)
 	err := z.wsHandleData(pressXToJSON)
 	if err != nil {
@@ -703,6 +732,7 @@ func TestWsTrades(t *testing.T) {
 }
 
 func TestWsPlaceOrderJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{"message":"操作成功。","no":"1337","data":"{"entrustId":201711133673}","code":1000,"channel":"btcusdt_order","success":true}`)
 	err := z.wsHandleData(pressXToJSON)
 	if err != nil {
@@ -711,6 +741,7 @@ func TestWsPlaceOrderJSON(t *testing.T) {
 }
 
 func TestWsCancelOrderJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "success": true,
     "code": 1000,
@@ -725,6 +756,7 @@ func TestWsCancelOrderJSON(t *testing.T) {
 }
 
 func TestWsGetOrderJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "success": true,
     "code": 1000,
@@ -750,6 +782,7 @@ func TestWsGetOrderJSON(t *testing.T) {
 }
 
 func TestWsGetOrdersJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "success": true,
     "code": 1000,
@@ -777,6 +810,7 @@ func TestWsGetOrdersJSON(t *testing.T) {
 }
 
 func TestWsGetOrderIgnoreTypeJSON(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "success": true,
     "code": 1000,
@@ -804,6 +838,7 @@ func TestWsGetOrderIgnoreTypeJSON(t *testing.T) {
 }
 
 func TestWsGetUserInfo(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "message": "操作成功",
     "no": "15207605119",
@@ -846,6 +881,7 @@ func TestWsGetUserInfo(t *testing.T) {
 }
 
 func TestWsGetSubUsersResponse(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{"success": true,"code": 1000,"channel": "getSubUserList","message": "[{"isOpenApi": false,"memo": "1","userName": "15914665280@1","userId": 110980,"isFreez": false}, {"isOpenApi": false,"memo": "2","userName": "15914665280@2","userId": 110984,"isFreez": false}, {"isOpenApi": false,"memo": "test3","userName": "15914665280@3","userId": 111014,"isFreez": false}]","no": "0"}`)
 	err := z.wsHandleData(pressXToJSON)
 	if err != nil {
@@ -854,6 +890,7 @@ func TestWsGetSubUsersResponse(t *testing.T) {
 }
 
 func TestWsCreateSubUserResponse(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 	"success": true,
 	"code": 1000,
@@ -868,6 +905,7 @@ func TestWsCreateSubUserResponse(t *testing.T) {
 }
 
 func TestGetSpotKline(t *testing.T) {
+	t.Parallel()
 	arg := KlinesRequestParams{
 		Symbol: testCurrency,
 		Type:   kline.OneMin.Short() + "in",
@@ -886,6 +924,7 @@ func TestGetSpotKline(t *testing.T) {
 }
 
 func TestGetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString(testCurrency)
 	if err != nil {
 		t.Fatal(err)
@@ -911,6 +950,7 @@ func TestGetHistoricCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString(testCurrency)
 	if err != nil {
 		t.Fatal(err)
@@ -929,6 +969,7 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 }
 
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -970,6 +1011,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := z.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {
@@ -980,6 +1022,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 }
 
 func TestValidateCandlesRequest(t *testing.T) {
+	t.Parallel()
 	_, err := z.validateCandlesRequest(currency.EMPTYPAIR, asset.Empty, time.Time{}, time.Time{}, kline.Interval(-1))
 	if !errors.Is(err, common.ErrDateUnset) {
 		t.Error(err)

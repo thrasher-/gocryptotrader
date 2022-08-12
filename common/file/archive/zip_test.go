@@ -8,7 +8,9 @@ import (
 )
 
 func TestUnZip(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
+	t.Log(tempDir)
 	zipFile := filepath.Join("..", "..", "..", "testdata", "testdata.zip")
 	files, err := UnZip(zipFile, tempDir)
 	if err != nil {
@@ -32,6 +34,7 @@ func TestUnZip(t *testing.T) {
 }
 
 func TestZip(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	singleFile := filepath.Join("..", "..", "..", "testdata", "configtest.json")
 	outFile := filepath.Join(tempDir, "out.zip")

@@ -190,6 +190,7 @@ func TestIsWebsocketServerRunning(t *testing.T) {
 }
 
 func TestGetAllActiveOrderbooks(t *testing.T) {
+	t.Parallel()
 	man := SetupExchangeManager()
 	bs, err := man.NewExchangeByName("Bitstamp")
 	if err != nil {

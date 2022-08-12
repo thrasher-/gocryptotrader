@@ -165,6 +165,7 @@ func TestUpdateTicker(t *testing.T) {
 }
 
 func TestUpdateTickers(t *testing.T) {
+	t.Parallel()
 	err := b.UpdateTickers(context.Background(), asset.Spot)
 	if err != nil {
 		t.Error(err)
@@ -1846,10 +1847,10 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 }
 
 func TestGetAccountInfo(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip("skipping test: api keys not set")
 	}
-	t.Parallel()
 	items := asset.Items{
 		asset.CoinMarginedFutures,
 		asset.USDTMarginedFutures,
@@ -1859,6 +1860,7 @@ func TestGetAccountInfo(t *testing.T) {
 	for i := range items {
 		assetType := items[i]
 		t.Run(fmt.Sprintf("Update info of account [%s]", assetType.String()), func(t *testing.T) {
+			t.Parallel()
 			_, err := b.UpdateAccountInfo(context.Background(), assetType)
 			if err != nil {
 				t.Error(err)
@@ -2130,6 +2132,7 @@ func TestWSSubscriptionHandling(t *testing.T) {
 }
 
 func TestWSUnsubscriptionHandling(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "method": "UNSUBSCRIBE",
   "params": [
@@ -2206,6 +2209,7 @@ func TestWsTradeUpdate(t *testing.T) {
 }
 
 func TestWsDepthUpdate(t *testing.T) {
+	t.Parallel()
 	binanceOrderBookLock.Lock()
 	defer binanceOrderBookLock.Unlock()
 	b.setupOrderbookManager()
@@ -2366,6 +2370,7 @@ func TestWsOCO(t *testing.T) {
 }
 
 func TestGetWsAuthStreamKey(t *testing.T) {
+	t.Parallel()
 	key, err := b.GetWsAuthStreamKey(context.Background())
 	switch {
 	case mockTests && err != nil,
@@ -2381,6 +2386,7 @@ func TestGetWsAuthStreamKey(t *testing.T) {
 }
 
 func TestMaintainWsAuthStreamKey(t *testing.T) {
+	t.Parallel()
 	err := b.MaintainWsAuthStreamKey(context.Background())
 	switch {
 	case mockTests && err != nil,
@@ -2392,6 +2398,7 @@ func TestMaintainWsAuthStreamKey(t *testing.T) {
 }
 
 func TestExecutionTypeToOrderStatus(t *testing.T) {
+	t.Parallel()
 	type TestCases struct {
 		Case   string
 		Result order.Status
@@ -2415,6 +2422,7 @@ func TestExecutionTypeToOrderStatus(t *testing.T) {
 }
 
 func TestGetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC-USDT")
 	if err != nil {
 		t.Fatal(err)
@@ -2435,6 +2443,7 @@ func TestGetHistoricCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC-USDT")
 	if err != nil {
 		t.Fatal(err)
@@ -2456,6 +2465,7 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 }
 
 func TestBinance_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -2487,6 +2497,7 @@ func TestBinance_FormatExchangeKlineInterval(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := b.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {
@@ -2638,8 +2649,8 @@ func TestSetExchangeOrderExecutionLimits(t *testing.T) {
 	}
 }
 
-func TestWsOrderExecutionReport(t *testing.T) {
-	// cannot run in parallel due to inspecting the DataHandler result
+func TestWsOrderExecutionReport(t *testing.T) { //nolint:paralleltest // cannot run in parallel due to inspecting the DataHandler result
+	// t.Parallel()
 	payload := []byte(`{"stream":"jTfvpakT2yT0hVIo5gYWVihZhdM2PrBgJUZ5PyfZ4EVpCkx4Uoxk5timcrQc","data":{"e":"executionReport","E":1616627567900,"s":"BTCUSDT","c":"c4wyKsIhoAaittTYlIVLqk","S":"BUY","o":"LIMIT","f":"GTC","q":"0.00028400","p":"52789.10000000","P":"0.00000000","F":"0.00000000","g":-1,"C":"","x":"NEW","X":"NEW","r":"NONE","i":5340845958,"l":"0.00000000","z":"0.00000000","L":"0.00000000","n":"0","N":"BTC","T":1616627567900,"t":-1,"I":11388173160,"w":true,"m":false,"M":false,"O":1616627567900,"Z":"0.00000000","Y":"0.00000000","Q":"0.00000000"}}`)
 	// this is a buy BTC order, normally commission is charged in BTC, vice versa.
 	expRes := order.Detail{

@@ -6,6 +6,7 @@ import (
 )
 
 func TestFuturesNewOrderRequest_Unmarshal(t *testing.T) {
+	t.Parallel()
 	const inp = `
 {
   "orderId": 18662274680,

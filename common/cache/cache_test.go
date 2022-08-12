@@ -7,6 +7,7 @@ import (
 )
 
 func TestCache(t *testing.T) {
+	t.Parallel()
 	lruCache := New(5)
 	lruCache.Add("hello", "world")
 	c := lruCache.Contains("hello")
@@ -33,6 +34,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestContainsOrAdd(t *testing.T) {
+	t.Parallel()
 	lruCache := New(5)
 
 	if lruCache.ContainsOrAdd("hello", "world") {
@@ -45,6 +47,7 @@ func TestContainsOrAdd(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
+	t.Parallel()
 	lruCache := New(5)
 	for x := 0; x < 5; x++ {
 		lruCache.Add(x, x)
@@ -59,6 +62,7 @@ func TestClear(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	lruCache := New(2)
 	lruCache.Add(1, 1)
 	lruCache.Add(2, 2)
@@ -116,6 +120,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
+	t.Parallel()
 	lruCache := New(2)
 	lruCache.Add(1, 1)
 
@@ -130,6 +135,7 @@ func TestRemove(t *testing.T) {
 }
 
 func TestGetNewest(t *testing.T) {
+	t.Parallel()
 	lruCache := New(2)
 	if k, _ := lruCache.getNewest(); k != nil {
 		t.Fatal("expected GetNewest() on empty cache to return nil")
@@ -137,6 +143,7 @@ func TestGetNewest(t *testing.T) {
 }
 
 func TestGetOldest(t *testing.T) {
+	t.Parallel()
 	lruCache := New(2)
 	if k, _ := lruCache.getOldest(); k != nil {
 		t.Fatal("expected GetOldest() on empty cache to return nil")

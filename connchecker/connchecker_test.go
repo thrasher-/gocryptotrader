@@ -6,6 +6,7 @@ import (
 )
 
 func TestConnection(t *testing.T) {
+	t.Parallel()
 	faultyDomain := []string{"faultyIP"}
 	faultyHost := []string{"faultyHost"}
 	_, err := New(faultyDomain, nil, 1*time.Second)

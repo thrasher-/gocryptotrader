@@ -114,6 +114,7 @@ func TestCalculateFundingStatistics(t *testing.T) {
 }
 
 func TestCalculateIndividualFundingStatistics(t *testing.T) {
+	t.Parallel()
 	_, err := CalculateIndividualFundingStatistics(true, nil, nil)
 	if !errors.Is(err, common.ErrNilArguments) {
 		t.Errorf("received %v expected %v", err, common.ErrNilArguments)
@@ -196,6 +197,7 @@ func TestCalculateIndividualFundingStatistics(t *testing.T) {
 }
 
 func TestFundingStatisticsPrintResults(t *testing.T) {
+	t.Parallel()
 	f := FundingStatistics{}
 	err := f.PrintResults(false)
 	if !errors.Is(err, common.ErrNilArguments) {

@@ -783,6 +783,7 @@ func TestSortOrdersByOrderType(t *testing.T) {
 }
 
 func TestStringToOrderSide(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		in  string
 		out Side
@@ -808,8 +809,9 @@ func TestStringToOrderSide(t *testing.T) {
 		{"woahMan", UnknownSide, errUnrecognisedOrderSide},
 	}
 	for i := range cases {
-		testData := &cases[i]
+		testData := cases[i]
 		t.Run(testData.in, func(t *testing.T) {
+			t.Parallel()
 			out, err := StringToOrderSide(testData.in)
 			if !errors.Is(err, testData.err) {
 				t.Fatalf("received: '%v' but expected: '%v'", err, testData.err)
@@ -832,6 +834,7 @@ func BenchmarkStringToOrderSide(b *testing.B) {
 }
 
 func TestStringToOrderType(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		in  string
 		out Type
@@ -869,8 +872,9 @@ func TestStringToOrderType(t *testing.T) {
 		{"woahMan", UnknownType, errUnrecognisedOrderType},
 	}
 	for i := range cases {
-		testData := &cases[i]
+		testData := cases[i]
 		t.Run(testData.in, func(t *testing.T) {
+			t.Parallel()
 			out, err := StringToOrderType(testData.in)
 			if !errors.Is(err, testData.err) {
 				t.Fatalf("received: '%v' but expected: '%v'", err, testData.err)
@@ -945,9 +949,11 @@ var stringsToOrderStatus = []struct {
 }
 
 func TestStringToOrderStatus(t *testing.T) {
+	t.Parallel()
 	for i := range stringsToOrderStatus {
-		testData := &stringsToOrderStatus[i]
+		testData := stringsToOrderStatus[i]
 		t.Run(testData.in, func(t *testing.T) {
+			t.Parallel()
 			out, err := StringToOrderStatus(testData.in)
 			if !errors.Is(err, testData.err) {
 				t.Fatalf("received: '%v' but expected: '%v'", err, testData.err)
@@ -970,6 +976,7 @@ func BenchmarkStringToOrderStatus(b *testing.B) {
 }
 
 func TestUpdateOrderFromModifyResponse(t *testing.T) {
+	t.Parallel()
 	od := Detail{OrderID: "1"}
 	updated := time.Now()
 
@@ -1044,6 +1051,7 @@ func TestUpdateOrderFromModifyResponse(t *testing.T) {
 }
 
 func TestUpdateOrderFromDetail(t *testing.T) {
+	t.Parallel()
 	var leet = "1337"
 
 	updated := time.Now()
@@ -1252,6 +1260,7 @@ func TestUpdateOrderFromDetail(t *testing.T) {
 }
 
 func TestClassificationError_Error(t *testing.T) {
+	t.Parallel()
 	class := ClassificationError{OrderID: "1337", Exchange: "test", Err: errors.New("test error")}
 	if class.Error() != "test - OrderID: 1337 classification error: test error" {
 		t.Fatal("unexpected output")
@@ -1263,6 +1272,7 @@ func TestClassificationError_Error(t *testing.T) {
 }
 
 func TestValidationOnOrderTypes(t *testing.T) {
+	t.Parallel()
 	var cancelMe *Cancel
 	if cancelMe.Validate() != ErrCancelOrderIsNil {
 		t.Fatal("unexpected error")
@@ -1477,6 +1487,7 @@ func TestMatchFilter(t *testing.T) {
 }
 
 func TestIsActive(t *testing.T) {
+	t.Parallel()
 	orders := map[int]Detail{
 		0: {Amount: 0.0, Status: Active},
 		1: {Amount: 1.0, ExecutedAmount: 0.9, Status: Active},
@@ -1546,6 +1557,7 @@ func BenchmarkIsActive(b *testing.B) {
 }
 
 func TestIsInactive(t *testing.T) {
+	t.Parallel()
 	orders := map[int]Detail{
 		0: {Amount: 0.0, Status: Active},
 		1: {Amount: 1.0, ExecutedAmount: 0.9, Status: Active},
@@ -1640,7 +1652,7 @@ func TestIsOrderPlaced(t *testing.T) {
 	}
 	// specific tests
 	for num, tt := range statusTests {
-		tt := tt
+		num, tt := num, tt
 		t.Run(fmt.Sprintf("TEST CASE: %d", num), func(t *testing.T) {
 			t.Parallel()
 			if tt.o.WasOrderPlaced() != tt.expRes {
@@ -1651,6 +1663,7 @@ func TestIsOrderPlaced(t *testing.T) {
 }
 
 func TestGenerateInternalOrderID(t *testing.T) {
+	t.Parallel()
 	id, err := uuid.NewV4()
 	if err != nil {
 		t.Errorf("unable to create uuid: %s", err)

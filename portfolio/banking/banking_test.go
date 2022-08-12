@@ -139,6 +139,7 @@ func TestAccount_ValidateForWithdrawal(t *testing.T) {
 }
 
 func TestSetAccounts(t *testing.T) {
+	t.Parallel()
 	SetAccounts()
 	if len(accounts) != 0 {
 		t.Error("expected 0")
@@ -150,6 +151,7 @@ func TestSetAccounts(t *testing.T) {
 }
 
 func TestAppendAccounts(t *testing.T) {
+	t.Parallel()
 	SetAccounts()
 	if len(accounts) != 0 {
 		t.Error("expected 0")

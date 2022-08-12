@@ -97,6 +97,7 @@ func CreateTestBot(t *testing.T) *Engine {
 }
 
 func TestGetSubsystemsStatus(t *testing.T) {
+	t.Parallel()
 	m := (&Engine{}).GetSubsystemsStatus()
 	if len(m) != 15 {
 		t.Fatalf("subsystem count is wrong expecting: %d but received: %d", 15, len(m))
@@ -104,6 +105,7 @@ func TestGetSubsystemsStatus(t *testing.T) {
 }
 
 func TestGetRPCEndpoints(t *testing.T) {
+	t.Parallel()
 	_, err := (&Engine{}).GetRPCEndpoints()
 	if !errors.Is(err, errNilConfig) {
 		t.Fatalf("received: %v, but expected: %v", err, errNilConfig)

@@ -78,6 +78,7 @@ func TestStart(t *testing.T) {
 }
 
 func TestGetProducts(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetProducts(context.Background())
 	if err != nil {
 		t.Errorf("Coinbase, GetProducts() Error: %s", err)
@@ -85,6 +86,7 @@ func TestGetProducts(t *testing.T) {
 }
 
 func TestGetOrderbook(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetOrderbook(context.Background(), testPair.String(), 2)
 	if err != nil {
 		t.Error(err)
@@ -96,6 +98,7 @@ func TestGetOrderbook(t *testing.T) {
 }
 
 func TestGetTicker(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetTicker(context.Background(), testPair.String())
 	if err != nil {
 		t.Error("GetTicker() error", err)
@@ -103,6 +106,7 @@ func TestGetTicker(t *testing.T) {
 }
 
 func TestGetTrades(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetTrades(context.Background(), testPair.String())
 	if err != nil {
 		t.Error("GetTrades() error", err)
@@ -110,6 +114,7 @@ func TestGetTrades(t *testing.T) {
 }
 
 func TestGetHistoricRatesGranularityCheck(t *testing.T) {
+	t.Parallel()
 	end := time.Now()
 	start := end.Add(-time.Hour * 2)
 	_, err := c.GetHistoricCandles(context.Background(),
@@ -120,6 +125,7 @@ func TestGetHistoricRatesGranularityCheck(t *testing.T) {
 }
 
 func TestCoinbasePro_GetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	start := time.Unix(1546300800, 0)
 	end := time.Unix(1577836799, 0)
 
@@ -131,6 +137,7 @@ func TestCoinbasePro_GetHistoricCandlesExtended(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetStats(context.Background(), testPair.String())
 	if err != nil {
 		t.Error("GetStats() error", err)
@@ -138,6 +145,7 @@ func TestGetStats(t *testing.T) {
 }
 
 func TestGetCurrencies(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetCurrencies(context.Background())
 	if err != nil {
 		t.Error("GetCurrencies() error", err)
@@ -145,6 +153,7 @@ func TestGetCurrencies(t *testing.T) {
 }
 
 func TestGetCurrentServerTime(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetCurrentServerTime(context.Background())
 	if err != nil {
 		t.Error("GetServerTime() error", err)
@@ -164,6 +173,7 @@ func TestWrapperGetServerTime(t *testing.T) {
 }
 
 func TestAuthRequests(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip("API keys not set, skipping test")
 	}
@@ -262,6 +272,7 @@ func setFeeBuilder() *exchange.FeeBuilder {
 
 // TestGetFeeByTypeOfflineTradeFee logic test
 func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
+	t.Parallel()
 	var feeBuilder = setFeeBuilder()
 	_, err := c.GetFeeByType(context.Background(), feeBuilder)
 	if err != nil {
@@ -279,6 +290,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 }
 
 func TestGetFee(t *testing.T) {
+	t.Parallel()
 	var feeBuilder = setFeeBuilder()
 
 	if areTestAPIKeysSet() {
@@ -429,6 +441,7 @@ func TestCalculateTradingFee(t *testing.T) {
 }
 
 func TestFormatWithdrawPermissions(t *testing.T) {
+	t.Parallel()
 	expectedResult := exchange.AutoWithdrawCryptoWithAPIPermissionText + " & " + exchange.AutoWithdrawFiatWithAPIPermissionText
 	withdrawPermissions := c.FormatWithdrawPermissions()
 	if withdrawPermissions != expectedResult {
@@ -437,6 +450,7 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 }
 
 func TestGetActiveOrders(t *testing.T) {
+	t.Parallel()
 	var getOrdersRequest = order.GetOrdersRequest{
 		Type:      order.AnyType,
 		AssetType: asset.Spot,
@@ -452,6 +466,7 @@ func TestGetActiveOrders(t *testing.T) {
 }
 
 func TestGetOrderHistory(t *testing.T) {
+	t.Parallel()
 	var getOrdersRequest = order.GetOrdersRequest{
 		Type:      order.AnyType,
 		AssetType: asset.Spot,
@@ -489,6 +504,7 @@ func areTestAPIKeysSet() bool {
 }
 
 func TestSubmitOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -516,6 +532,7 @@ func TestSubmitOrder(t *testing.T) {
 }
 
 func TestCancelExchangeOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -538,6 +555,7 @@ func TestCancelExchangeOrder(t *testing.T) {
 }
 
 func TestCancelAllExchangeOrders(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -565,6 +583,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 }
 
 func TestModifyOrder(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -576,6 +595,7 @@ func TestModifyOrder(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
+	t.Parallel()
 	withdrawCryptoRequest := withdraw.Request{
 		Exchange:    c.Name,
 		Amount:      -1,
@@ -601,6 +621,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestWithdrawFiat(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -625,6 +646,7 @@ func TestWithdrawFiat(t *testing.T) {
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
+	t.Parallel()
 	if areTestAPIKeysSet() && !canManipulateRealOrders {
 		t.Skip("API keys set, canManipulateRealOrders false, skipping test")
 	}
@@ -650,6 +672,7 @@ func TestWithdrawInternationalBank(t *testing.T) {
 }
 
 func TestGetDepositAddress(t *testing.T) {
+	t.Parallel()
 	_, err := c.GetDepositAddress(context.Background(), currency.BTC, "", "")
 	if err == nil {
 		t.Error("GetDepositAddress() error", err)
@@ -658,6 +681,7 @@ func TestGetDepositAddress(t *testing.T) {
 
 // TestWsAuth dials websocket, sends login request.
 func TestWsAuth(t *testing.T) {
+	t.Parallel()
 	if !c.Websocket.IsEnabled() && !c.API.AuthenticatedWebsocketSupport || !areTestAPIKeysSet() {
 		t.Skip(stream.WebsocketNotEnabled)
 	}
@@ -687,6 +711,7 @@ func TestWsAuth(t *testing.T) {
 }
 
 func TestWsSubscribe(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 		"type": "subscriptions",
 		"channels": [
@@ -721,6 +746,7 @@ func TestWsSubscribe(t *testing.T) {
 }
 
 func TestWsHeartbeat(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 		"type": "heartbeat",
 		"sequence": 90,
@@ -735,6 +761,7 @@ func TestWsHeartbeat(t *testing.T) {
 }
 
 func TestWsStatus(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "type": "status",
     "products": [
@@ -793,6 +820,7 @@ func TestWsStatus(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "type": "ticker",
     "trade_id": 20153558,
@@ -812,6 +840,7 @@ func TestWsTicker(t *testing.T) {
 }
 
 func TestWsOrderbook(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "type": "snapshot",
     "product_id": "BTC-USD",
@@ -842,6 +871,7 @@ func TestWsOrderbook(t *testing.T) {
 }
 
 func TestWsOrders(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "type": "received",
     "time": "2014-11-07T08:19:27.028459Z",
@@ -973,6 +1003,7 @@ func TestWsOrders(t *testing.T) {
 }
 
 func TestStatusToStandardStatus(t *testing.T) {
+	t.Parallel()
 	type TestCases struct {
 		Case   string
 		Result order.Status
@@ -995,6 +1026,7 @@ func TestStatusToStandardStatus(t *testing.T) {
 }
 
 func TestParseTime(t *testing.T) {
+	t.Parallel()
 	// Rest examples use 2014-11-07T22:19:28.578544Z" and can be safely
 	// unmarhsalled into time.Time
 
@@ -1009,6 +1041,7 @@ func TestParseTime(t *testing.T) {
 }
 
 func TestCheckInterval(t *testing.T) {
+	t.Parallel()
 	interval := time.Minute
 	i, err := checkInterval(interval)
 	if err != nil {

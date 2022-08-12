@@ -20,6 +20,7 @@ import (
 )
 
 func TestName(t *testing.T) {
+	t.Parallel()
 	d := Strategy{}
 	if n := d.Name(); n != Name {
 		t.Errorf("expected %v", Name)
@@ -27,6 +28,7 @@ func TestName(t *testing.T) {
 }
 
 func TestSupportsSimultaneousProcessing(t *testing.T) {
+	t.Parallel()
 	s := Strategy{}
 	if !s.SupportsSimultaneousProcessing() {
 		t.Error("expected true")
@@ -34,6 +36,7 @@ func TestSupportsSimultaneousProcessing(t *testing.T) {
 }
 
 func TestSetCustomSettings(t *testing.T) {
+	t.Parallel()
 	s := Strategy{}
 	err := s.SetCustomSettings(nil)
 	if !errors.Is(err, base.ErrCustomSettingsUnsupported) {
@@ -42,6 +45,7 @@ func TestSetCustomSettings(t *testing.T) {
 }
 
 func TestOnSignal(t *testing.T) {
+	t.Parallel()
 	s := Strategy{}
 	_, err := s.OnSignal(nil, nil, nil)
 	if !errors.Is(err, common.ErrNilEvent) {
@@ -121,6 +125,7 @@ func TestOnSignal(t *testing.T) {
 }
 
 func TestOnSignals(t *testing.T) {
+	t.Parallel()
 	s := Strategy{}
 	_, err := s.OnSignal(nil, nil, nil)
 	if !errors.Is(err, common.ErrNilEvent) {
@@ -206,6 +211,7 @@ func TestOnSignals(t *testing.T) {
 }
 
 func TestSetDefaults(t *testing.T) {
+	t.Parallel()
 	s := Strategy{}
 	s.SetDefaults()
 	if s != (Strategy{}) {

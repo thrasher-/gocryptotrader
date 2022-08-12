@@ -11,6 +11,7 @@ func IsAPIKeysSet() bool {
 }
 
 func TestGetRates(t *testing.T) {
+	t.Parallel()
 	if !IsAPIKeysSet() {
 		t.Skip()
 	}
@@ -52,6 +53,7 @@ func TestGetRates(t *testing.T) {
 	}
 }
 func TestConvertMany(t *testing.T) {
+	t.Parallel()
 	if !IsAPIKeysSet() {
 		t.Skip()
 	}
@@ -70,6 +72,7 @@ func TestConvertMany(t *testing.T) {
 }
 
 func TestConvert(t *testing.T) {
+	t.Parallel()
 	if !IsAPIKeysSet() {
 		t.Skip()
 	}
@@ -80,6 +83,7 @@ func TestConvert(t *testing.T) {
 }
 
 func TestGetSupportedCurrencies(t *testing.T) {
+	t.Parallel()
 	if !IsAPIKeysSet() {
 		t.Skip()
 	}
@@ -91,6 +95,7 @@ func TestGetSupportedCurrencies(t *testing.T) {
 }
 
 func TestGetCountries(t *testing.T) {
+	t.Parallel()
 	if !IsAPIKeysSet() {
 		t.Skip()
 	}

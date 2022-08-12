@@ -15,6 +15,7 @@ var (
 )
 
 func TestGlobalDispatcher(t *testing.T) {
+	t.Parallel()
 	err := Start(0, 0)
 	if err != nil {
 		t.Fatalf("received: '%v' but expected: '%v'", err, nil)

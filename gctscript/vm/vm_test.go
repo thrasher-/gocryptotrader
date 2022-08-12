@@ -39,6 +39,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestNewVM(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config: configHelper(true, true, maxTestVirtualMachines),
 	}
@@ -55,6 +56,7 @@ func TestNewVM(t *testing.T) {
 }
 
 func TestVMLoad(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -82,6 +84,7 @@ func TestVMLoad(t *testing.T) {
 }
 
 func TestVMLoad1s(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -102,6 +105,7 @@ func TestVMLoad1s(t *testing.T) {
 }
 
 func TestVMLoadNegativeTimer(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -121,6 +125,7 @@ func TestVMLoadNegativeTimer(t *testing.T) {
 }
 
 func TestVMLoadNilVM(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -142,6 +147,7 @@ func TestVMLoadNilVM(t *testing.T) {
 }
 
 func TestCompileAndRunNilVM(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -173,6 +179,7 @@ func TestCompileAndRunNilVM(t *testing.T) {
 }
 
 func TestVMLoadNoFile(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -187,6 +194,7 @@ func TestVMLoadNoFile(t *testing.T) {
 }
 
 func TestVMCompile(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -204,6 +212,7 @@ func TestVMCompile(t *testing.T) {
 }
 
 func TestVMRun(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -226,6 +235,7 @@ func TestVMRun(t *testing.T) {
 }
 
 func TestVMRunTX(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -248,6 +258,7 @@ func TestVMRunTX(t *testing.T) {
 }
 
 func TestVMWithRunner(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -275,6 +286,7 @@ func TestVMWithRunner(t *testing.T) {
 }
 
 func TestVMWithRunnerOnce(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -299,6 +311,7 @@ func TestVMWithRunnerOnce(t *testing.T) {
 }
 
 func TestVMWithRunnerNegativeTimer(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -326,6 +339,7 @@ func TestVMWithRunnerNegativeTimer(t *testing.T) {
 }
 
 func TestVMWithRunnerInvalidTimer(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -354,6 +368,7 @@ func TestVMWithRunnerInvalidTimer(t *testing.T) {
 }
 
 func TestShutdownAll(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -381,6 +396,7 @@ func TestShutdownAll(t *testing.T) {
 }
 
 func TestRead(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -403,6 +419,7 @@ func TestRead(t *testing.T) {
 }
 
 func TestRemoveVM(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -418,6 +435,7 @@ func TestRemoveVM(t *testing.T) {
 }
 
 func TestError_Error(t *testing.T) {
+	t.Parallel()
 	x := Error{
 		Script: "noscript.gct",
 		Action: "test",
@@ -430,6 +448,7 @@ func TestError_Error(t *testing.T) {
 }
 
 func TestVM_CompileInvalid(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -479,6 +498,7 @@ func TestVM_CompileInvalid(t *testing.T) {
 }
 
 func TestVM_CompileBroken(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -496,6 +516,7 @@ func TestVM_CompileBroken(t *testing.T) {
 }
 
 func TestVM_CompileAndRunBroken(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -514,6 +535,7 @@ func TestVM_CompileAndRunBroken(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, true, maxTestVirtualMachines),
 		started: 1,
@@ -529,6 +551,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestVMLimit(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config:  configHelper(true, false, 0),
 		started: 1,
@@ -539,6 +562,7 @@ func TestVMLimit(t *testing.T) {
 }
 
 func TestAutoload(t *testing.T) {
+	t.Parallel()
 	manager := GctScriptManager{
 		config: &Config{
 			Enabled: true,
@@ -569,6 +593,7 @@ func TestAutoload(t *testing.T) {
 }
 
 func TestVMCount(t *testing.T) {
+	t.Parallel()
 	var c vmscount
 	c.add()
 	if c.Len() != 1 {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestWait(t *testing.T) {
+	t.Parallel()
 	wait := Notice{}
 	var wg sync.WaitGroup
 

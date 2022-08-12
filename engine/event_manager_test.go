@@ -36,6 +36,7 @@ func TestSetupEventManager(t *testing.T) {
 }
 
 func TestEventManagerStart(t *testing.T) {
+	t.Parallel()
 	m, err := setupEventManager(&CommunicationManager{}, &ExchangeManager{}, 0, false)
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
@@ -239,6 +240,7 @@ func TestGetEventCounter(t *testing.T) {
 }
 
 func TestCheckEventCondition(t *testing.T) {
+	t.Parallel()
 	em := SetupExchangeManager()
 	m, err := setupEventManager(&CommunicationManager{}, em, 0, false)
 	if !errors.Is(err, nil) {

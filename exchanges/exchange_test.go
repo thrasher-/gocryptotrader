@@ -371,6 +371,7 @@ func TestGetAssetTypes(t *testing.T) {
 }
 
 func TestGetClientBankAccounts(t *testing.T) {
+	t.Parallel()
 	cfg := config.GetConfig()
 	err := cfg.LoadConfig(config.TestFile, true)
 	if err != nil {
@@ -395,6 +396,7 @@ func TestGetClientBankAccounts(t *testing.T) {
 }
 
 func TestGetExchangeBankAccounts(t *testing.T) {
+	t.Parallel()
 	cfg := config.GetConfig()
 	err := cfg.LoadConfig(config.TestFile, true)
 	if err != nil {
@@ -1572,6 +1574,7 @@ func TestGetBase(t *testing.T) {
 }
 
 func TestGetAssetType(t *testing.T) {
+	t.Parallel()
 	var b Base
 	p := currency.NewPair(currency.BTC, currency.USD)
 	if _, err := b.GetPairAssetType(p); err == nil {
@@ -1639,6 +1642,7 @@ func TestGetFormattedPairAndAssetType(t *testing.T) {
 }
 
 func TestStoreAssetPairFormat(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Config: &config.Exchange{Name: "kitties"},
 	}
@@ -1675,6 +1679,7 @@ func TestStoreAssetPairFormat(t *testing.T) {
 }
 
 func TestSetGlobalPairsManager(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Config: &config.Exchange{Name: "kitties"},
 	}
@@ -1718,6 +1723,7 @@ func TestSetGlobalPairsManager(t *testing.T) {
 	}
 }
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -1740,6 +1746,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := b.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {
@@ -1750,6 +1757,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 }
 
 func TestBase_ValidateKline(t *testing.T) {
+	t.Parallel()
 	pairs := currency.Pairs{
 		currency.Pair{Base: currency.BTC, Quote: currency.USDT},
 	}
@@ -1798,6 +1806,7 @@ func TestBase_ValidateKline(t *testing.T) {
 }
 
 func TestCheckTransientError(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	err := b.CheckTransientError(nil)
 	if err != nil {
@@ -1817,6 +1826,7 @@ func TestCheckTransientError(t *testing.T) {
 }
 
 func TestDisableEnableRateLimiter(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	err := b.EnableRateLimiter()
 	if !errors.Is(err, request.ErrRequestSystemIsNil) {
@@ -1850,6 +1860,7 @@ func TestDisableEnableRateLimiter(t *testing.T) {
 }
 
 func TestGetWebsocket(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	_, err := b.GetWebsocket()
 	if err == nil {
@@ -1863,6 +1874,7 @@ func TestGetWebsocket(t *testing.T) {
 }
 
 func TestFlushWebsocketChannels(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	err := b.FlushWebsocketChannels()
 	if err != nil {
@@ -1877,6 +1889,7 @@ func TestFlushWebsocketChannels(t *testing.T) {
 }
 
 func TestSubscribeToWebsocketChannels(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	err := b.SubscribeToWebsocketChannels(nil)
 	if err == nil {
@@ -1891,6 +1904,7 @@ func TestSubscribeToWebsocketChannels(t *testing.T) {
 }
 
 func TestUnsubscribeToWebsocketChannels(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	err := b.UnsubscribeToWebsocketChannels(nil)
 	if err == nil {
@@ -1905,6 +1919,7 @@ func TestUnsubscribeToWebsocketChannels(t *testing.T) {
 }
 
 func TestGetSubscriptions(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	_, err := b.GetSubscriptions()
 	if err == nil {
@@ -1919,6 +1934,7 @@ func TestGetSubscriptions(t *testing.T) {
 }
 
 func TestAuthenticateWebsocket(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	if err := b.AuthenticateWebsocket(context.Background()); err == nil {
 		t.Fatal("error cannot be nil")
@@ -1926,6 +1942,7 @@ func TestAuthenticateWebsocket(t *testing.T) {
 }
 
 func TestKlineIntervalEnabled(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	if b.klineIntervalEnabled(kline.EightHour) {
 		t.Fatal("unexpected value")
@@ -1933,6 +1950,7 @@ func TestKlineIntervalEnabled(t *testing.T) {
 }
 
 func TestFormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	if b.FormatExchangeKlineInterval(kline.EightHour) != "28800" {
 		t.Fatal("unexpected value")
@@ -1940,6 +1958,7 @@ func TestFormatExchangeKlineInterval(t *testing.T) {
 }
 
 func TestSetSaveTradeDataStatus(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Features: Features{
 			Enabled: FeaturesEnabled{
@@ -1970,6 +1989,7 @@ func TestSetSaveTradeDataStatus(t *testing.T) {
 }
 
 func TestAddTradesToBuffer(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Features: Features{
 			Enabled: FeaturesEnabled{},
@@ -1993,6 +2013,7 @@ func TestAddTradesToBuffer(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
+	t.Parallel()
 	if RestSpot.String() != "RestSpotURL" {
 		t.Errorf("invalid string conversion")
 	}
@@ -2038,6 +2059,7 @@ func TestString(t *testing.T) {
 }
 
 func TestFormatSymbol(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	spotStore := currency.PairStore{
 		RequestFormat: &currency.PairFormat{Uppercase: true},
@@ -2068,6 +2090,7 @@ func TestFormatSymbol(t *testing.T) {
 }
 
 func TestSetAPIURL(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Name: "SomeExchange",
 	}
@@ -2137,6 +2160,7 @@ func TestSetAPIURL(t *testing.T) {
 }
 
 func TestSetRunning(t *testing.T) {
+	t.Parallel()
 	b := Base{
 		Name: "HELOOOOOOOO",
 	}
@@ -2148,6 +2172,7 @@ func TestSetRunning(t *testing.T) {
 }
 
 func TestAssetWebsocketFunctionality(t *testing.T) {
+	t.Parallel()
 	b := Base{}
 	if !b.IsAssetWebsocketSupported(asset.Spot) {
 		t.Fatal("error asset is not turned off, unexpected response")

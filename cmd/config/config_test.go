@@ -3,6 +3,7 @@ package main
 import "testing"
 
 func TestEncryptOrDecrypt(t *testing.T) {
+	t.Parallel()
 	reValue := EncryptOrDecrypt(true)
 	if reValue != "encrypted" {
 		t.Error(

@@ -29,10 +29,12 @@ func areAPICredtionalsSet(minAllowable uint8) bool {
 }
 
 func TestSetDefaults(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 }
 
 func TestSetup(t *testing.T) {
+	t.Helper()
 	c.SetDefaults()
 
 	cfg := Settings{}
@@ -47,6 +49,7 @@ func TestSetup(t *testing.T) {
 }
 
 func TestCheckAccountPlan(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 
@@ -84,6 +87,7 @@ func TestCheckAccountPlan(t *testing.T) {
 }
 
 func TestGetCryptocurrencyInfo(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyInfo(1)
@@ -99,6 +103,7 @@ func TestGetCryptocurrencyInfo(t *testing.T) {
 }
 
 func TestGetCryptocurrencyIDMap(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyIDMap()
@@ -114,6 +119,7 @@ func TestGetCryptocurrencyIDMap(t *testing.T) {
 }
 
 func TestGetCryptocurrencyHistoricalListings(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyHistoricalListings()
@@ -123,6 +129,7 @@ func TestGetCryptocurrencyHistoricalListings(t *testing.T) {
 }
 
 func TestGetCryptocurrencyLatestListing(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyLatestListing(0, 0)
@@ -138,6 +145,7 @@ func TestGetCryptocurrencyLatestListing(t *testing.T) {
 }
 
 func TestGetCryptocurrencyLatestMarketPairs(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyLatestMarketPairs(1, 0, 0)
@@ -154,6 +162,7 @@ func TestGetCryptocurrencyLatestMarketPairs(t *testing.T) {
 }
 
 func TestGetCryptocurrencyOHLCHistorical(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyOHLCHistorical(1, time.Now(), time.Now())
@@ -170,6 +179,7 @@ func TestGetCryptocurrencyOHLCHistorical(t *testing.T) {
 }
 
 func TestGetCryptocurrencyOHLCLatest(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyOHLCLatest(1)
@@ -186,6 +196,7 @@ func TestGetCryptocurrencyOHLCLatest(t *testing.T) {
 }
 
 func TestGetCryptocurrencyLatestQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyLatestQuotes(1)
@@ -202,6 +213,7 @@ func TestGetCryptocurrencyLatestQuotes(t *testing.T) {
 }
 
 func TestGetCryptocurrencyHistoricalQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Now(), time.Now())
@@ -218,6 +230,7 @@ func TestGetCryptocurrencyHistoricalQuotes(t *testing.T) {
 }
 
 func TestGetExchangeInfo(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeInfo(1)
@@ -234,6 +247,7 @@ func TestGetExchangeInfo(t *testing.T) {
 }
 
 func TestGetExchangeMap(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeMap(0, 0)
@@ -250,6 +264,7 @@ func TestGetExchangeMap(t *testing.T) {
 }
 
 func TestGetExchangeHistoricalListings(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeHistoricalListings()
@@ -260,6 +275,7 @@ func TestGetExchangeHistoricalListings(t *testing.T) {
 }
 
 func TestGetExchangeLatestListings(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeLatestListings()
@@ -270,6 +286,7 @@ func TestGetExchangeLatestListings(t *testing.T) {
 }
 
 func TestGetExchangeLatestMarketPairs(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeLatestMarketPairs(1, 0, 0)
@@ -286,6 +303,7 @@ func TestGetExchangeLatestMarketPairs(t *testing.T) {
 }
 
 func TestGetExchangeLatestQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeLatestQuotes(1)
@@ -302,6 +320,7 @@ func TestGetExchangeLatestQuotes(t *testing.T) {
 }
 
 func TestGetExchangeHistoricalQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetExchangeHistoricalQuotes(1, time.Now(), time.Now())
@@ -318,6 +337,7 @@ func TestGetExchangeHistoricalQuotes(t *testing.T) {
 }
 
 func TestGetGlobalMeticLatestQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetGlobalMeticLatestQuotes()
@@ -334,6 +354,7 @@ func TestGetGlobalMeticLatestQuotes(t *testing.T) {
 }
 
 func TestGetGlobalMeticHistoricalQuotes(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetGlobalMeticHistoricalQuotes(time.Now(), time.Now())
@@ -350,6 +371,7 @@ func TestGetGlobalMeticHistoricalQuotes(t *testing.T) {
 }
 
 func TestGetPriceConversion(t *testing.T) {
+	t.Parallel()
 	c.SetDefaults()
 	TestSetup(t)
 	_, err := c.GetPriceConversion(0, 1, time.Now())
@@ -366,6 +388,7 @@ func TestGetPriceConversion(t *testing.T) {
 }
 
 func TestSetAccountPlan(t *testing.T) {
+	t.Parallel()
 	accPlans := []string{"basic", "startup", "hobbyist", "standard", "professional", "enterprise"}
 	for _, plan := range accPlans {
 		err := c.SetAccountPlan(plan)

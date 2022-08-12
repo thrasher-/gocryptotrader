@@ -456,6 +456,7 @@ func TestValidate(t *testing.T) {
 }
 
 func TestReadConfigFromFile(t *testing.T) {
+	t.Parallel()
 	tempDir := t.TempDir()
 	passFile, err := os.CreateTemp(tempDir, "*.start")
 	if err != nil {
@@ -476,6 +477,7 @@ func TestReadConfigFromFile(t *testing.T) {
 }
 
 func TestGenerateConfigForDCAAPICandles(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -537,6 +539,7 @@ func TestGenerateConfigForDCAAPICandles(t *testing.T) {
 }
 
 func TestGenerateConfigForDCAAPICandlesExchangeLevelFunding(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -618,6 +621,7 @@ func TestGenerateConfigForDCAAPICandlesExchangeLevelFunding(t *testing.T) {
 }
 
 func TestGenerateConfigForDCAAPITrades(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -688,6 +692,7 @@ func TestGenerateConfigForDCAAPITrades(t *testing.T) {
 }
 
 func TestGenerateConfigForDCAAPICandlesMultipleCurrencies(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -762,6 +767,7 @@ func TestGenerateConfigForDCAAPICandlesMultipleCurrencies(t *testing.T) {
 }
 
 func TestGenerateConfigForDCAAPICandlesSimultaneousProcessing(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -837,6 +843,7 @@ func TestGenerateConfigForDCAAPICandlesSimultaneousProcessing(t *testing.T) {
 }
 
 func TestGenerateConfigForDCALiveCandles(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -902,6 +909,7 @@ func TestGenerateConfigForDCALiveCandles(t *testing.T) {
 }
 
 func TestGenerateConfigForRSIAPICustomSettings(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -982,6 +990,7 @@ func TestGenerateConfigForRSIAPICustomSettings(t *testing.T) {
 }
 
 func TestGenerateConfigForDCACSVCandles(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -1043,6 +1052,7 @@ func TestGenerateConfigForDCACSVCandles(t *testing.T) {
 }
 
 func TestGenerateConfigForDCACSVTrades(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -1100,6 +1110,7 @@ func TestGenerateConfigForDCACSVTrades(t *testing.T) {
 }
 
 func TestGenerateConfigForDCADatabaseCandles(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -1170,6 +1181,7 @@ func TestGenerateConfigForDCADatabaseCandles(t *testing.T) {
 }
 
 func TestGenerateConfigForTop2Bottom2(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}
@@ -1299,6 +1311,7 @@ func TestGenerateConfigForTop2Bottom2(t *testing.T) {
 }
 
 func TestGenerateFTXCashAndCarryStrategy(t *testing.T) {
+	t.Parallel()
 	if !saveConfig {
 		t.Skip()
 	}

@@ -6,6 +6,7 @@ import (
 )
 
 func TestGet(t *testing.T) {
+	t.Parallel()
 	var nonce Nonce
 	nonce.Set(112321313)
 	if expected, result := Value(112321313), nonce.Get(); expected != result {
@@ -14,6 +15,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetInc(t *testing.T) {
+	t.Parallel()
 	var nonce Nonce
 	nonce.Set(1)
 	if expected, result := Value(2), nonce.GetInc(); expected != result {
@@ -22,6 +24,7 @@ func TestGetInc(t *testing.T) {
 }
 
 func TestSet(t *testing.T) {
+	t.Parallel()
 	var nonce Nonce
 	nonce.Set(1)
 	if result, expected := nonce.Get(), Value(1); expected != result {
@@ -30,6 +33,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
+	t.Parallel()
 	var nonce Nonce
 	nonce.Set(12312313131)
 	expected := "12312313131"
@@ -45,6 +49,7 @@ func TestString(t *testing.T) {
 }
 
 func TestNonceConcurrency(t *testing.T) {
+	t.Parallel()
 	var nonce Nonce
 	nonce.Set(12312)
 

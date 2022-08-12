@@ -219,6 +219,7 @@ func TestGetImbalance(t *testing.T) {
 }
 
 func TestIsStreaming(t *testing.T) {
+	t.Parallel()
 	d := NewDepth(unsafeID)
 	unsafe := d.GetUnsafe()
 	if !unsafe.IsStreaming() {

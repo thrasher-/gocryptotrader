@@ -7,6 +7,7 @@ import (
 )
 
 func TestSetupPortfolioManager(t *testing.T) {
+	t.Parallel()
 	_, err := setupPortfolioManager(nil, 0, nil)
 	if !errors.Is(err, errNilExchangeManager) {
 		t.Errorf("error '%v', expected '%v'", err, errNilExchangeManager)
@@ -22,6 +23,7 @@ func TestSetupPortfolioManager(t *testing.T) {
 }
 
 func TestIsPortfolioManagerRunning(t *testing.T) {
+	t.Parallel()
 	var m *portfolioManager
 	if m.IsRunning() {
 		t.Error("expected false")
@@ -45,6 +47,7 @@ func TestIsPortfolioManagerRunning(t *testing.T) {
 }
 
 func TestPortfolioManagerStart(t *testing.T) {
+	t.Parallel()
 	var m *portfolioManager
 	var wg sync.WaitGroup
 	err := m.Start(nil)
@@ -74,6 +77,7 @@ func TestPortfolioManagerStart(t *testing.T) {
 }
 
 func TestPortfolioManagerStop(t *testing.T) {
+	t.Parallel()
 	var m *portfolioManager
 	var wg sync.WaitGroup
 	err := m.Stop()
@@ -101,6 +105,7 @@ func TestPortfolioManagerStop(t *testing.T) {
 }
 
 func TestProcessPortfolio(t *testing.T) {
+	t.Parallel()
 	em := SetupExchangeManager()
 	exch, err := em.NewExchangeByName("Bitstamp")
 	if !errors.Is(err, nil) {

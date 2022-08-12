@@ -9,6 +9,7 @@ import (
 )
 
 func TestSetupNTPManager(t *testing.T) {
+	t.Parallel()
 	_, err := setupNTPManager(nil, false)
 	if !errors.Is(err, errNilConfig) {
 		t.Errorf("error '%v', expected '%v'", err, errNilConfig)
@@ -32,6 +33,7 @@ func TestSetupNTPManager(t *testing.T) {
 }
 
 func TestNTPManagerIsRunning(t *testing.T) {
+	t.Parallel()
 	var m *ntpManager
 	if m.IsRunning() {
 		t.Error("expected false")
@@ -61,6 +63,7 @@ func TestNTPManagerIsRunning(t *testing.T) {
 }
 
 func TestNTPManagerStart(t *testing.T) {
+	t.Parallel()
 	var m *ntpManager
 	err := m.Start()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -95,6 +98,7 @@ func TestNTPManagerStart(t *testing.T) {
 }
 
 func TestNTPManagerStop(t *testing.T) {
+	t.Parallel()
 	var m *ntpManager
 	err := m.Stop()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -127,6 +131,7 @@ func TestNTPManagerStop(t *testing.T) {
 }
 
 func TestFetchNTPTime(t *testing.T) {
+	t.Parallel()
 	var m *ntpManager
 	_, err := m.FetchNTPTime()
 	if !errors.Is(err, ErrNilSubsystem) {
@@ -171,6 +176,7 @@ func TestFetchNTPTime(t *testing.T) {
 }
 
 func TestProcessTime(t *testing.T) {
+	t.Parallel()
 	sec := time.Second
 	cfg := &config.NTPClientConfig{
 		AllowedDifference:         &sec,

@@ -7,6 +7,7 @@ import (
 )
 
 func TestMatchURLVals(t *testing.T) {
+	t.Parallel()
 	testVal, testVal2, testVal3, emptyVal := url.Values{}, url.Values{}, url.Values{}, url.Values{}
 	testVal.Add("test", "test")
 	testVal2.Add("test2", "test2")
@@ -83,6 +84,7 @@ func TestMatchURLVals(t *testing.T) {
 }
 
 func TestDeriveURLValsFromJSON(t *testing.T) {
+	t.Parallel()
 	test1 := struct {
 		Things []string `json:"things"`
 		Data   struct {

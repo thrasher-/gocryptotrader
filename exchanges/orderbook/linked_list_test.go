@@ -39,6 +39,7 @@ func (ll *linkedList) display() {
 }
 
 func TestLoad(t *testing.T) {
+	t.Parallel()
 	list := asks{}
 	Check(t, list, 0, 0, 0)
 
@@ -104,6 +105,7 @@ func BenchmarkLoad(b *testing.B) {
 }
 
 func TestUpdateInsertByPrice(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	stack := newStack()
 	asksSnapshot := Items{
@@ -325,6 +327,7 @@ func TestUpdateInsertByPrice(t *testing.T) {
 }
 
 func TestCleanup(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	stack := newStack()
 	asksSnapshot := Items{
@@ -397,6 +400,7 @@ func BenchmarkUpdateInsertByPrice_Insert_Delete(b *testing.B) {
 }
 
 func TestUpdateByID(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	s := newStack()
 	asksSnapshot := Items{
@@ -476,6 +480,7 @@ func BenchmarkUpdateByID(b *testing.B) {
 }
 
 func TestDeleteByID(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	s := newStack()
 	asksSnapshot := Items{
@@ -536,6 +541,7 @@ func TestDeleteByID(t *testing.T) {
 }
 
 func TestUpdateInsertByIDAsk(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	s := newStack()
 	asksSnapshot := Items{
@@ -808,6 +814,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 }
 
 func TestUpdateInsertByIDBids(t *testing.T) {
+	t.Parallel()
 	b := bids{}
 	s := newStack()
 	bidsSnapshot := Items{
@@ -1077,6 +1084,7 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 }
 
 func TestInsertUpdatesBid(t *testing.T) {
+	t.Parallel()
 	b := bids{}
 	s := newStack()
 	bidsSnapshot := Items{
@@ -1148,6 +1156,7 @@ func TestInsertUpdatesBid(t *testing.T) {
 }
 
 func TestInsertUpdatesAsk(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	s := newStack()
 	askSnapshot := Items{
@@ -1316,6 +1325,7 @@ func Check(t *testing.T, depth interface{}, liquidity, value float64, nodeCount 
 }
 
 func TestAmount(t *testing.T) {
+	t.Parallel()
 	a := asks{}
 	s := newStack()
 	askSnapshot := Items{
@@ -1339,6 +1349,7 @@ func TestAmount(t *testing.T) {
 }
 
 func TestShiftBookmark(t *testing.T) {
+	t.Parallel()
 	bookmarkedNode := &Node{
 		Value: Item{
 			ID:     1337,

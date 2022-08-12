@@ -3,6 +3,7 @@ package currency
 import "testing"
 
 func TestGetSymbolByCurrencyName(t *testing.T) {
+	t.Parallel()
 	actual, err := GetSymbolByCurrencyName(KPW)
 	if err != nil {
 		t.Errorf("TestGetSymbolByCurrencyName error: %s", err)

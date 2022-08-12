@@ -6,6 +6,7 @@ import (
 )
 
 func TestGetModuleMap(t *testing.T) {
+	t.Parallel()
 	x := AllModuleNames()
 	xType := reflect.TypeOf(x).Kind()
 	if xType != reflect.Slice {

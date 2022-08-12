@@ -262,6 +262,7 @@ func TestSubmitOrder(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() || !canManipulateRealOrders {
 		t.Skip("skipping test, either api keys or manipulaterealorders isnt set correctly")
 	}
@@ -586,6 +587,7 @@ func TestGetActiveOrders(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{ "marketId": "BTC-AUD",
     "timestamp": "2019-04-08T18:56:17.405Z",
     "bestBid": "7309.12",
@@ -601,6 +603,7 @@ func TestWsTicker(t *testing.T) {
 }
 
 func TestWsTrade(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(` { "marketId": "BTC-AUD",
     "timestamp": "2019-04-08T20:54:27.632Z",
     "tradeId": 3153171493,
@@ -616,6 +619,7 @@ func TestWsTrade(t *testing.T) {
 }
 
 func TestWsFundChange(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "fundtransferId": 276811,
   "type": "Deposit",
@@ -633,6 +637,7 @@ func TestWsFundChange(t *testing.T) {
 }
 
 func TestWsOrderbookUpdate(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{ "marketId": "LTC-AUD",
     "snapshot": true,
     "timestamp": "2020-01-08T19:47:13.986Z",
@@ -668,6 +673,7 @@ func TestWsOrderbookUpdate(t *testing.T) {
 }
 
 func TestWsHeartbeats(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "messageType": "error",
   "code": 3,
@@ -700,6 +706,7 @@ func TestWsHeartbeats(t *testing.T) {
 }
 
 func TestWsOrders(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{ 
 	"orderId": 79003,
     "marketId": "BTC-AUD",
@@ -799,6 +806,7 @@ func TestWsOrders(t *testing.T) {
 }
 
 func TestBTCMarkets_GetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	p, err := currency.NewPairFromString(BTCAUD)
 	if err != nil {
 		t.Fatal(err)
@@ -826,6 +834,7 @@ func TestBTCMarkets_GetHistoricCandles(t *testing.T) {
 }
 
 func TestBTCMarkets_GetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	start := time.Now().AddDate(0, 0, -2)
 	end := time.Now()
 	p, err := currency.NewPairFromString(BTCAUD)
@@ -840,6 +849,7 @@ func TestBTCMarkets_GetHistoricCandlesExtended(t *testing.T) {
 }
 
 func Test_FormatExchangeKlineInterval(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name     string
 		interval kline.Interval
@@ -861,6 +871,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			ret := b.FormatExchangeKlineInterval(test.interval)
 
 			if ret != test.output {
@@ -896,6 +907,7 @@ func TestGetHistoricTrades(t *testing.T) {
 }
 
 func TestChecksum(t *testing.T) {
+	t.Parallel()
 	b := &orderbook.Base{
 		Asks: []orderbook.Item{
 			{Price: 0.3965, Amount: 44149.815},
@@ -920,6 +932,7 @@ func TestChecksum(t *testing.T) {
 }
 
 func TestTrim(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		Value    float64
 		Expected string
@@ -939,6 +952,7 @@ func TestTrim(t *testing.T) {
 	for x := range testCases {
 		tt := testCases[x]
 		t.Run("", func(t *testing.T) {
+			t.Parallel()
 			received := trim(tt.Value)
 			if received != tt.Expected {
 				t.Fatalf("received: %v but expected: %v", received, tt.Expected)

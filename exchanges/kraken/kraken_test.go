@@ -1230,6 +1230,7 @@ func setupWsTests(t *testing.T) {
 
 // TestWebsocketSubscribe tests returning a message with an id
 func TestWebsocketSubscribe(t *testing.T) {
+	t.Parallel()
 	setupWsTests(t)
 	err := k.Subscribe([]stream.ChannelSubscription{
 		{
@@ -1257,6 +1258,7 @@ func TestGetWSToken(t *testing.T) {
 }
 
 func TestWsAddOrder(t *testing.T) {
+	t.Parallel()
 	setupWsTests(t)
 	_, err := k.wsAddOrder(&WsAddOrderRequest{
 		OrderType: order.Limit.Lower(),
@@ -1270,6 +1272,7 @@ func TestWsAddOrder(t *testing.T) {
 }
 
 func TestWsCancelOrder(t *testing.T) {
+	t.Parallel()
 	setupWsTests(t)
 	if err := k.wsCancelOrders([]string{"1337"}); err != nil {
 		t.Error(err)
@@ -1277,6 +1280,7 @@ func TestWsCancelOrder(t *testing.T) {
 }
 
 func TestWsCancelAllOrders(t *testing.T) {
+	t.Parallel()
 	setupWsTests(t)
 	if _, err := k.wsCancelAllOrders(); err != nil {
 		t.Error(err)

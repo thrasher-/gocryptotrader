@@ -88,6 +88,7 @@ func TestCanTransact(t *testing.T) {
 			expected: false,
 		},
 	} {
+		ti := ti
 		t.Run(ti.side.String(), func(t *testing.T) {
 			t.Parallel()
 			if CanTransact(ti.side) != ti.expected {
@@ -122,6 +123,7 @@ func TestDataTypeConversion(t *testing.T) {
 			expectErr: true,
 		},
 	} {
+		ti := ti
 		t.Run(ti.title, func(t *testing.T) {
 			t.Parallel()
 			got, err := DataTypeToInt(ti.dataType)
@@ -197,6 +199,7 @@ func TestFitStringToLimit(t *testing.T) {
 }
 
 func TestLogo(t *testing.T) {
+	t.Parallel()
 	colourLogo := Logo()
 	if colourLogo == "" {
 		t.Error("expected a logo")
@@ -208,6 +211,7 @@ func TestLogo(t *testing.T) {
 }
 
 func TestPurgeColours(t *testing.T) {
+	t.Parallel()
 	PurgeColours()
 	if ColourSuccess != "" {
 		t.Error("expected purged colour")

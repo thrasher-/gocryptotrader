@@ -35,6 +35,7 @@ var (
 )
 
 func TestLoad(t *testing.T) {
+	t.Parallel()
 	fs := &flag.FlagSet{}
 	fs.String("config", testConfig, "")
 	newCtx := cli.NewContext(testApp, fs, &cli.Context{})

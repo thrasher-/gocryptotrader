@@ -229,6 +229,7 @@ func TestRelayWebsocketEvent(t *testing.T) {
 }
 
 func TestWaitForInitialSync(t *testing.T) {
+	t.Parallel()
 	var m *syncManager
 	err := m.WaitForInitialSync()
 	if !errors.Is(err, ErrNilSubsystem) {

@@ -10,6 +10,7 @@ var (
 )
 
 func TestStart(t *testing.T) {
+	t.Parallel()
 	b = Base{
 		Name:      "test",
 		Enabled:   true,
@@ -19,24 +20,28 @@ func TestStart(t *testing.T) {
 }
 
 func TestIsEnabled(t *testing.T) {
+	t.Parallel()
 	if !b.IsEnabled() {
 		t.Error("base IsEnabled() error")
 	}
 }
 
 func TestIsConnected(t *testing.T) {
+	t.Parallel()
 	if !b.IsConnected() {
 		t.Error("base IsConnected() error")
 	}
 }
 
 func TestGetName(t *testing.T) {
+	t.Parallel()
 	if b.GetName() != "test" {
 		t.Error("base GetName() error")
 	}
 }
 
 func TestSetServiceStarted(t *testing.T) {
+	t.Parallel()
 	b = Base{}
 	tt := time.Now()
 	if b.ServiceStarted.Equal(tt) {
@@ -85,6 +90,7 @@ func (p *CommunicationProvider) SetServiceStarted(t time.Time) {
 }
 
 func TestSetup(t *testing.T) {
+	t.Parallel()
 	var ic IComm
 	testConfigs := []struct {
 		isEnabled           bool
@@ -119,6 +125,7 @@ func TestSetup(t *testing.T) {
 }
 
 func TestPushEvent(t *testing.T) {
+	t.Parallel()
 	var ic IComm
 	testConfigs := []struct {
 		Enabled         bool

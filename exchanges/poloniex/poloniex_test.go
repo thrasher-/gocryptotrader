@@ -584,6 +584,7 @@ func TestWsAuth(t *testing.T) {
 }
 
 func TestWsSubAck(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`[1002, 1]`)
 	err := p.wsHandleData(pressXToJSON)
 	if err != nil {
@@ -592,6 +593,7 @@ func TestWsSubAck(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -604,6 +606,7 @@ func TestWsTicker(t *testing.T) {
 }
 
 func TestWsExchangeVolume(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -616,6 +619,7 @@ func TestWsExchangeVolume(t *testing.T) {
 }
 
 func TestWsTrades(t *testing.T) {
+	t.Parallel()
 	p.SetSaveTradeDataStatus(true)
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
@@ -629,6 +633,7 @@ func TestWsTrades(t *testing.T) {
 }
 
 func TestWsPriceAggregateOrderbook(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -647,6 +652,7 @@ func TestWsPriceAggregateOrderbook(t *testing.T) {
 }
 
 func TestGetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC_LTC")
 	if err != nil {
 		t.Fatal(err)
@@ -680,6 +686,7 @@ func TestGetHistoricCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandlesExtended(t *testing.T) {
+	t.Parallel()
 	currencyPair, err := currency.NewPairFromString("BTC_LTC")
 	if err != nil {
 		t.Fatal(err)
@@ -748,6 +755,7 @@ func TestGetHistoricTrades(t *testing.T) {
 }
 
 func TestProcessAccountMarginPosition(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -785,6 +793,7 @@ func TestProcessAccountMarginPosition(t *testing.T) {
 }
 
 func TestProcessAccountPendingOrder(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -841,6 +850,7 @@ func TestProcessAccountPendingOrder(t *testing.T) {
 }
 
 func TestProcessAccountOrderUpdate(t *testing.T) {
+	t.Parallel()
 	orderUpdate := []byte(`[1000,"",[["o",431682155857,"0.00000000","f"]]]`)
 	err := p.wsHandleData(orderUpdate)
 	if !errors.Is(err, errNotEnoughData) {
@@ -897,6 +907,7 @@ func TestProcessAccountOrderUpdate(t *testing.T) {
 }
 
 func TestProcessAccountOrderLimit(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -958,6 +969,7 @@ func TestProcessAccountOrderLimit(t *testing.T) {
 }
 
 func TestProcessAccountBalanceUpdate(t *testing.T) {
+	t.Parallel()
 	err := p.loadCurrencyDetails(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -995,6 +1007,7 @@ func TestProcessAccountBalanceUpdate(t *testing.T) {
 }
 
 func TestProcessAccountTrades(t *testing.T) {
+	t.Parallel()
 	accountTrades := []byte(`[1000,"",[["t", 12345, "0.03000000", "0.50000000", "0.00250000", 0, 6083059, "0.00000375", "2018-09-08 05:54:09", "12345"]]]`)
 	err := p.wsHandleData(accountTrades)
 	if !errors.Is(err, errNotEnoughData) {
@@ -1045,6 +1058,7 @@ func TestProcessAccountTrades(t *testing.T) {
 }
 
 func TestProcessAccountKilledOrder(t *testing.T) {
+	t.Parallel()
 	kill := []byte(`[1000,"",[["k", 1337]]]`)
 	err := p.wsHandleData(kill)
 	if !errors.Is(err, errNotEnoughData) {
@@ -1065,6 +1079,7 @@ func TestProcessAccountKilledOrder(t *testing.T) {
 }
 
 func TestGetCompleteBalances(t *testing.T) {
+	t.Parallel()
 	if !mockTests && !areTestAPIKeysSet() {
 		t.Skip("API keys not set, mockTests false, skipping test")
 	}

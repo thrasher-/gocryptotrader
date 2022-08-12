@@ -8,6 +8,7 @@ import (
 )
 
 func TestPushPop(t *testing.T) {
+	t.Parallel()
 	s := newStack()
 	var nSlice [100]*Node
 	for i := 0; i < 100; i++ {
@@ -28,6 +29,7 @@ func TestPushPop(t *testing.T) {
 }
 
 func TestCleaner(t *testing.T) {
+	t.Parallel()
 	s := newStack()
 	var nSlice [100]*Node
 	for i := 0; i < 100; i++ {

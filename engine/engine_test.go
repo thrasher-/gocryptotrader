@@ -10,10 +10,10 @@ import (
 )
 
 func TestLoadConfigWithSettings(t *testing.T) {
+	t.Parallel()
 	empty := ""
 	somePath := "somePath"
-	// Clean up after the tests
-	defer os.RemoveAll(somePath)
+
 	tests := []struct {
 		name     string
 		flags    []string
@@ -52,6 +52,7 @@ func TestLoadConfigWithSettings(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// prepare the 'flags'
 			flagSet := make(map[string]bool)
 			for _, v := range tt.flags {
@@ -71,6 +72,9 @@ func TestLoadConfigWithSettings(t *testing.T) {
 				}
 			}
 		})
+	}
+	if err := os.RemoveAll(somePath); err != nil {
+		t.Fatalf("Unable to remove test path: %s", err)
 	}
 }
 
@@ -257,6 +261,7 @@ func TestDryRunParamInteraction(t *testing.T) {
 }
 
 func TestFlagSetWith(t *testing.T) {
+	t.Parallel()
 	var isRunning bool
 	flags := make(FlagSet)
 	// Flag not set default to config

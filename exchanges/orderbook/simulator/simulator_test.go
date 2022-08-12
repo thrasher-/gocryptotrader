@@ -10,6 +10,7 @@ import (
 )
 
 func TestSimulate(t *testing.T) {
+	t.Parallel()
 	b := bitstamp.Bitstamp{}
 	b.SetDefaults()
 	o, err := b.FetchOrderbook(context.Background(),

@@ -26,6 +26,7 @@ func CreateDatabase(t *testing.T) {
 }
 
 func TestSetupDatabaseConnectionManager(t *testing.T) {
+	t.Parallel()
 	_, err := SetupDatabaseConnectionManager(nil)
 	if !errors.Is(err, errNilConfig) {
 		t.Errorf("error '%v', expected '%v'", err, errNilConfig)
@@ -41,6 +42,7 @@ func TestSetupDatabaseConnectionManager(t *testing.T) {
 }
 
 func TestStartSQLite(t *testing.T) {
+	t.Parallel()
 	CreateDatabase(t)
 	m, err := SetupDatabaseConnectionManager(&database.Config{})
 	if !errors.Is(err, nil) {
@@ -79,6 +81,7 @@ func TestStartSQLite(t *testing.T) {
 
 // This test does not care for a successful connection
 func TestStartPostgres(t *testing.T) {
+	t.Parallel()
 	m, err := SetupDatabaseConnectionManager(&database.Config{})
 	if !errors.Is(err, nil) {
 		t.Errorf("error '%v', expected '%v'", err, nil)
@@ -101,6 +104,7 @@ func TestStartPostgres(t *testing.T) {
 }
 
 func TestDatabaseConnectionManagerIsRunning(t *testing.T) {
+	t.Parallel()
 	CreateDatabase(t)
 	m, err := SetupDatabaseConnectionManager(&database.Config{
 		Enabled: true,
@@ -131,6 +135,7 @@ func TestDatabaseConnectionManagerIsRunning(t *testing.T) {
 }
 
 func TestDatabaseConnectionManagerStop(t *testing.T) {
+	t.Parallel()
 	CreateDatabase(t)
 	m, err := SetupDatabaseConnectionManager(&database.Config{
 		Enabled: true,
@@ -167,6 +172,7 @@ func TestDatabaseConnectionManagerStop(t *testing.T) {
 }
 
 func TestCheckConnection(t *testing.T) {
+	t.Parallel()
 	CreateDatabase(t)
 	var m *DatabaseConnectionManager
 	err := m.checkConnection()
@@ -229,6 +235,7 @@ func TestCheckConnection(t *testing.T) {
 }
 
 func TestGetInstance(t *testing.T) {
+	t.Parallel()
 	CreateDatabase(t)
 	m, err := SetupDatabaseConnectionManager(&database.Config{
 		Enabled: true,

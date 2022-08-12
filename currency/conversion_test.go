@@ -7,6 +7,7 @@ import (
 )
 
 func TestNewConversionFromString(t *testing.T) {
+	t.Parallel()
 	expected := "AUDUSD"
 	conv, err := NewConversionFromString(expected)
 	if err != nil {
@@ -31,6 +32,7 @@ func TestNewConversionFromString(t *testing.T) {
 }
 
 func TestNewConversionFromStrings(t *testing.T) {
+	t.Parallel()
 	from := "AUD"
 	to := "USD"
 
@@ -47,6 +49,7 @@ func TestNewConversionFromStrings(t *testing.T) {
 }
 
 func TestNewConversion(t *testing.T) {
+	t.Parallel()
 	from := NewCode("AUD")
 	to := NewCode("USD")
 
@@ -63,6 +66,7 @@ func TestNewConversion(t *testing.T) {
 }
 
 func TestConversionIsInvalid(t *testing.T) {
+	t.Parallel()
 	from := AUD
 	to := USD
 
@@ -83,6 +87,7 @@ func TestConversionIsInvalid(t *testing.T) {
 }
 
 func TestConversionIsFiatPair(t *testing.T) {
+	t.Parallel()
 	from := AUD
 	to := USD
 
@@ -103,6 +108,7 @@ func TestConversionIsFiatPair(t *testing.T) {
 }
 
 func TestConversionsRatesSystem(t *testing.T) {
+	t.Parallel()
 	var SuperDuperConversionSystem ConversionRates
 
 	if SuperDuperConversionSystem.HasData() {
@@ -172,6 +178,7 @@ func TestConversionsRatesSystem(t *testing.T) {
 }
 
 func TestGetRate(t *testing.T) {
+	t.Parallel()
 	from := NewCode("AUD")
 	to := NewCode("USD")
 

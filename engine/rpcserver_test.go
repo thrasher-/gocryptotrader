@@ -396,6 +396,7 @@ func CleanRPCTest(t *testing.T, engerino *Engine) {
 }
 
 func TestGetSavedTrades(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -466,6 +467,7 @@ func TestGetSavedTrades(t *testing.T) {
 }
 
 func TestConvertTradesToCandles(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -606,6 +608,7 @@ func TestConvertTradesToCandles(t *testing.T) {
 }
 
 func TestGetHistoricCandles(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -760,6 +763,7 @@ func TestGetHistoricCandles(t *testing.T) {
 }
 
 func TestFindMissingSavedTradeIntervals(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -862,6 +866,7 @@ func TestFindMissingSavedTradeIntervals(t *testing.T) {
 }
 
 func TestFindMissingSavedCandleIntervals(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -1007,6 +1012,7 @@ func TestSetExchangeTradeProcessing(t *testing.T) {
 }
 
 func TestGetRecentTrades(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -1055,6 +1061,7 @@ func (d *dummyServer) SendMsg(m interface{}) error            { return nil }
 func (d *dummyServer) RecvMsg(m interface{}) error            { return nil }
 
 func TestGetHistoricTrades(t *testing.T) {
+	t.Parallel()
 	engerino := RPCTestSetup(t)
 	defer CleanRPCTest(t, engerino)
 	s := RPCServer{Engine: engerino}
@@ -1794,6 +1801,7 @@ func TestGetDataHistoryJobSummary(t *testing.T) {
 }
 
 func TestGetManagedOrders(t *testing.T) {
+	t.Parallel()
 	exchName := "Binance"
 	engerino := &Engine{}
 	em := SetupExchangeManager()
@@ -1922,6 +1930,7 @@ func TestRPCServer_unixTimestamp(t *testing.T) {
 }
 
 func TestRPCServer_GetTicker_LastUpdatedNanos(t *testing.T) {
+	t.Parallel()
 	// Make a dummy pair we'll be using for this test.
 	pair := currency.NewPairWithDelimiter("XXXXX", "YYYYY", "")
 

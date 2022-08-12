@@ -18,10 +18,9 @@ type responsePayload struct {
 	Currency string  `json:"currency"`
 }
 
-const queryString = "currency=btc&command=getprice"
-const testFile = "test.json"
-
 func TestNewVCRServer(t *testing.T) {
+	t.Parallel()
+
 	_, _, err := NewVCRServer("")
 	if err == nil {
 		t.Error("NewVCRServer error cannot be nil")
@@ -39,6 +38,7 @@ func TestNewVCRServer(t *testing.T) {
 		t.Fatal("marshal error", err)
 	}
 
+	const queryString = "currency=btc&command=getprice"
 	testValue := HTTPResponse{Data: rp, QueryString: queryString, BodyParams: queryString}
 	test1.Routes["/test"][http.MethodGet] = []HTTPResponse{testValue}
 
@@ -47,6 +47,7 @@ func TestNewVCRServer(t *testing.T) {
 		t.Fatal("marshal error", err)
 	}
 
+	const testFile = "test.json"
 	err = os.WriteFile(testFile, payload, os.ModePerm)
 	if err != nil {
 		t.Fatal("marshal error", err)

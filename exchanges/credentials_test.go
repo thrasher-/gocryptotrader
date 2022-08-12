@@ -170,10 +170,10 @@ func TestValidateAPICredentials(t *testing.T) {
 	}
 
 	for x := range testCases {
-		testData := &testCases[x]
+		testData := testCases[x]
 		t.Run("", func(t *testing.T) {
 			t.Parallel()
-			b := setupBase(testData)
+			b := setupBase(&testData)
 			if err := b.ValidateAPICredentials(b.API.credentials); !errors.Is(err, testData.Expected) {
 				t.Errorf("Test %d: expected: %v: got %v", x+1, testData.Expected, err)
 			}
@@ -301,6 +301,7 @@ func TestSetCredentials(t *testing.T) {
 }
 
 func TestGetDefaultCredentials(t *testing.T) {
+	t.Parallel()
 	var b Base
 	if b.GetDefaultCredentials() != nil {
 		t.Fatal("unexpected return")

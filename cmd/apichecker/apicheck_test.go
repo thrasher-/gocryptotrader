@@ -97,6 +97,7 @@ func canTestTrello() bool {
 }
 
 func TestCheckUpdates(t *testing.T) {
+	t.Parallel()
 	if !canUpdateTrello() || !canTestTrello() {
 		t.Skip()
 	}
@@ -107,6 +108,7 @@ func TestCheckUpdates(t *testing.T) {
 }
 
 func TestUpdateFile(t *testing.T) {
+	t.Parallel()
 	realConf, err := readFileData(jsonFile)
 	if err != nil {
 		t.Fatal(err)
@@ -514,6 +516,7 @@ func TestGetSha(t *testing.T) {
 }
 
 func TestCheckBoardID(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -527,6 +530,7 @@ func TestCheckBoardID(t *testing.T) {
 }
 
 func TestTrelloGetLists(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -536,6 +540,7 @@ func TestTrelloGetLists(t *testing.T) {
 }
 
 func TestGetAllCards(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -545,6 +550,7 @@ func TestGetAllCards(t *testing.T) {
 }
 
 func TestGetAllChecklists(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -554,6 +560,7 @@ func TestGetAllChecklists(t *testing.T) {
 }
 
 func TestTrelloGetAllBoards(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -566,6 +573,7 @@ func TestTrelloGetAllBoards(t *testing.T) {
 }
 
 func TestCreateNewList(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -575,6 +583,7 @@ func TestCreateNewList(t *testing.T) {
 }
 
 func TestTrelloCreateNewCard(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -584,6 +593,7 @@ func TestTrelloCreateNewCard(t *testing.T) {
 }
 
 func TestCreateNewChecklist(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -593,6 +603,7 @@ func TestCreateNewChecklist(t *testing.T) {
 }
 
 func TestWriteAuthVars(t *testing.T) {
+	t.Parallel()
 	if canTestMainFile {
 		trelloCardID = "jdsfl"
 		if err := writeAuthVars(testMode); err != nil {
@@ -602,6 +613,7 @@ func TestWriteAuthVars(t *testing.T) {
 }
 
 func TestCreateNewCheck(t *testing.T) {
+	t.Parallel()
 	if !canTestTrello() {
 		t.Skip()
 	}
@@ -612,6 +624,7 @@ func TestCreateNewCheck(t *testing.T) {
 }
 
 func TestUpdateCheckItem(t *testing.T) {
+	t.Parallel()
 	if !canTestTrello() {
 		t.Skip()
 	}
@@ -632,6 +645,7 @@ func TestUpdateCheckItem(t *testing.T) {
 }
 
 func TestGetChecklistItems(t *testing.T) {
+	t.Parallel()
 	if !canTestTrello() {
 		t.Skip()
 	}
@@ -654,6 +668,7 @@ func TestSetAuthVars(t *testing.T) {
 }
 
 func TestTrelloDeleteCheckItems(t *testing.T) {
+	t.Parallel()
 	if !areTestAPIKeysSet() {
 		t.Skip()
 	}
@@ -664,6 +679,7 @@ func TestTrelloDeleteCheckItems(t *testing.T) {
 }
 
 func TestHTMLScrapeFTX(t *testing.T) {
+	t.Parallel()
 	data := HTMLScrapingData{
 		TokenData:    "span",
 		Key:          "class",
@@ -677,6 +693,7 @@ func TestHTMLScrapeFTX(t *testing.T) {
 }
 
 func TestHTMLScrapeBinance(t *testing.T) {
+	t.Parallel()
 	data := HTMLScrapingData{
 		TokenData:     "h1",
 		Key:           "id",

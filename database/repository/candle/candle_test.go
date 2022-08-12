@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestInsert(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -81,6 +82,7 @@ func TestInsert(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -128,6 +130,7 @@ func TestInsert(t *testing.T) {
 }
 
 func TestInsertFromCSV(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -154,6 +157,7 @@ func TestInsertFromCSV(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}
@@ -189,6 +193,7 @@ func TestInsertFromCSV(t *testing.T) {
 }
 
 func TestSeries(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -215,6 +220,7 @@ func TestSeries(t *testing.T) {
 		test := testCases[x]
 
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}

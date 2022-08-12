@@ -10,6 +10,7 @@ import (
 )
 
 func TestWrite(t *testing.T) {
+	t.Parallel()
 	tester := func(in string) error {
 		err := Write(in, []byte("GoCryptoTrader"))
 		if err != nil {
@@ -53,6 +54,7 @@ func TestWrite(t *testing.T) {
 }
 
 func TestMove(t *testing.T) {
+	t.Parallel()
 	tester := func(in, out string, write bool) error {
 		if write {
 			if err := os.WriteFile(in, []byte("GoCryptoTrader"), DefaultPermissionOctal); err != nil {
@@ -119,6 +121,7 @@ func TestMove(t *testing.T) {
 }
 
 func TestExists(t *testing.T) {
+	t.Parallel()
 	if e := Exists("non-existent"); e {
 		t.Error("non-existent file should not exist")
 	}
@@ -135,6 +138,7 @@ func TestExists(t *testing.T) {
 }
 
 func TestWriteAsCSV(t *testing.T) {
+	t.Parallel()
 	tester := func(in string, data [][]string) error {
 		err := WriteAsCSV(in, data)
 		if err != nil {
@@ -195,6 +199,7 @@ func TestWriteAsCSV(t *testing.T) {
 }
 
 func TestWriter(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		file string
 	}
@@ -230,6 +235,7 @@ func TestWriter(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got, err := Writer(tt.args.file)
 			if err != nil {
 				if (err != nil) != tt.wantErr {
@@ -261,6 +267,7 @@ func TestWriter(t *testing.T) {
 }
 
 func TestWriterNoPermissionFails(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("Skip file permissions")
 	}

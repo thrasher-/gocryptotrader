@@ -14,6 +14,7 @@ import (
 const testExchange = "binance"
 
 func TestLoadDataCandles(t *testing.T) {
+	t.Parallel()
 	exch := testExchange
 	a := asset.Spot
 	p := currency.NewPair(currency.BTC, currency.USDT)
@@ -31,6 +32,7 @@ func TestLoadDataCandles(t *testing.T) {
 }
 
 func TestLoadDataTrades(t *testing.T) {
+	t.Parallel()
 	exch := testExchange
 	a := asset.Spot
 	p := currency.NewPair(currency.BTC, currency.USDT)
@@ -48,6 +50,7 @@ func TestLoadDataTrades(t *testing.T) {
 }
 
 func TestLoadDataInvalid(t *testing.T) {
+	t.Parallel()
 	exch := testExchange
 	a := asset.Spot
 	p := currency.NewPair(currency.BTC, currency.USDT)

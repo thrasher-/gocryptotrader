@@ -81,6 +81,7 @@ func TestExchangeManagerRemoveExchange(t *testing.T) {
 }
 
 func TestNewExchangeByName(t *testing.T) {
+	t.Parallel()
 	m := SetupExchangeManager()
 	exchanges := []string{"binance", "bitfinex", "bitflyer", "bithumb", "bitmex", "bitstamp", "bittrex", "btc markets", "btse", "bybit", "coinut", "exmo", "coinbasepro", "ftx", "gateio", "gemini", "hitbtc", "huobi", "itbit", "kraken", "lbank", "localbitcoins", "okcoin international", "okex", "poloniex", "yobit", "zb", "fake"}
 	for i := range exchanges {
@@ -113,6 +114,7 @@ func (n ExchangeBuilder) NewExchangeByName(name string) (exchange.IBotExchange, 
 }
 
 func TestNewCustomExchangeByName(t *testing.T) {
+	t.Parallel()
 	m := SetupExchangeManager()
 	m.Builder = ExchangeBuilder{}
 	name := "customex"

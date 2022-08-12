@@ -11,6 +11,7 @@ import (
 )
 
 func TestNewCurrencyStates(t *testing.T) {
+	t.Parallel()
 	if NewCurrencyStates() == nil {
 		t.Fatal("unexpected value")
 	}
@@ -295,6 +296,7 @@ func TestStatesGet(t *testing.T) {
 }
 
 func TestCurrencyGetState(t *testing.T) {
+	t.Parallel()
 	o := (&Currency{}).GetState()
 	if *o.Deposit || *o.Trade || *o.Withdraw {
 		t.Fatal("unexpected values")
@@ -302,6 +304,7 @@ func TestCurrencyGetState(t *testing.T) {
 }
 
 func TestAlerting(t *testing.T) {
+	t.Parallel()
 	c := Currency{}
 	var start, finish sync.WaitGroup
 	start.Add(3)

@@ -367,6 +367,7 @@ func TestCanTradePairRPC(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
+	t.Parallel()
 	man := &CurrencyStateManager{}
 	var wg sync.WaitGroup
 	wg.Add(3)

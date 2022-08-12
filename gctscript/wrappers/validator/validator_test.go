@@ -112,6 +112,7 @@ func TestWrapper_CancelOrder(t *testing.T) {
 }
 
 func TestWrapper_DepositAddress(t *testing.T) {
+	t.Parallel()
 	_, err := testWrapper.DepositAddress(exchError.String(), "", currency.NewCode("BTC"))
 	if err == nil {
 		t.Fatal("expected DepositAddress to return error on invalid name")
@@ -220,6 +221,7 @@ func TestWrapper_Ticker(t *testing.T) {
 }
 
 func TestWrapper_WithdrawalCryptoFunds(t *testing.T) {
+	t.Parallel()
 	_, err := testWrapper.WithdrawalCryptoFunds(context.Background(),
 		&withdraw.Request{Exchange: exchError.String()})
 	if err == nil {
@@ -234,6 +236,7 @@ func TestWrapper_WithdrawalCryptoFunds(t *testing.T) {
 }
 
 func TestWrapper_WithdrawalFiatFunds(t *testing.T) {
+	t.Parallel()
 	_, err := testWrapper.WithdrawalFiatFunds(context.Background(),
 		"", &withdraw.Request{Exchange: exchError.String()})
 	if err == nil {
@@ -248,6 +251,7 @@ func TestWrapper_WithdrawalFiatFunds(t *testing.T) {
 }
 
 func TestWrapper_OHLCV(t *testing.T) {
+	t.Parallel()
 	c, err := currency.NewPairDelimiter(pairs, delimiter)
 	if err != nil {
 		t.Fatal(err)

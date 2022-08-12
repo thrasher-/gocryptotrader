@@ -6,6 +6,7 @@ import (
 )
 
 func TestCurrenciesUnmarshalJSON(t *testing.T) {
+	t.Parallel()
 	var unmarshalHere Currencies
 	expected := "btc,usd,ltc,bro,things"
 	encoded, err := json.Marshal(expected)
@@ -30,6 +31,7 @@ func TestCurrenciesUnmarshalJSON(t *testing.T) {
 }
 
 func TestCurrenciesMarshalJSON(t *testing.T) {
+	t.Parallel()
 	quickStruct := struct {
 		C Currencies `json:"amazingCurrencies"`
 	}{
@@ -49,6 +51,7 @@ func TestCurrenciesMarshalJSON(t *testing.T) {
 }
 
 func TestMatch(t *testing.T) {
+	t.Parallel()
 	matchString := []string{"btc", "usd", "ltc", "bro", "things"}
 	c := NewCurrenciesFromStringArray(matchString)
 

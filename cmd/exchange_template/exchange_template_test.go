@@ -9,6 +9,7 @@ import (
 )
 
 func TestCheckExchangeName(t *testing.T) {
+	t.Parallel()
 	tester := []struct {
 		Name        string
 		ErrExpected error
@@ -45,6 +46,7 @@ func TestCheckExchangeName(t *testing.T) {
 }
 
 func TestNewExchange(t *testing.T) {
+	t.Parallel()
 	testExchangeName := "testexch"
 	testExchangeDir := filepath.Join(targetPath, testExchangeName)
 

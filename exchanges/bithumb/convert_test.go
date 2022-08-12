@@ -6,6 +6,7 @@ import (
 )
 
 func TestBithumbTime(t *testing.T) {
+	t.Parallel()
 	var newTime bithumbTime
 	err := json.Unmarshal([]byte("bad news"), &newTime)
 	if err == nil {

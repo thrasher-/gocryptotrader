@@ -29,6 +29,7 @@ func TestMain(m *testing.M) {
 var cpyMux *dispatch.Mux
 
 func TestSubscribeTicker(t *testing.T) {
+	t.Parallel()
 	_, err := SubscribeTicker("", currency.EMPTYPAIR, asset.Empty)
 	if err == nil {
 		t.Error("error cannot be nil")
@@ -91,6 +92,7 @@ func TestSubscribeTicker(t *testing.T) {
 }
 
 func TestSubscribeToExchangeTickers(t *testing.T) {
+	t.Parallel()
 	_, err := SubscribeToExchangeTickers("")
 	if err == nil {
 		t.Error("error cannot be nil")
@@ -113,6 +115,7 @@ func TestSubscribeToExchangeTickers(t *testing.T) {
 }
 
 func TestGetTicker(t *testing.T) {
+	t.Parallel()
 	newPair, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -200,6 +203,7 @@ func TestGetTicker(t *testing.T) {
 }
 
 func TestFindLast(t *testing.T) {
+	t.Parallel()
 	cp := currency.NewPair(currency.BTC, currency.XRP)
 	_, err := FindLast(cp, asset.Spot)
 	if !errors.Is(err, errTickerNotFound) {
@@ -232,6 +236,7 @@ func TestFindLast(t *testing.T) {
 }
 
 func TestProcessTicker(t *testing.T) { // non-appending function to tickers
+	t.Parallel()
 	exchName := "bitstamp"
 	newPair, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
@@ -402,6 +407,7 @@ func TestProcessTicker(t *testing.T) { // non-appending function to tickers
 }
 
 func TestGetAssociation(t *testing.T) {
+	t.Parallel()
 	_, err := service.getAssociations("")
 	if !errors.Is(err, errExchangeNameIsEmpty) {
 		t.Errorf("received: %v but expected: %v", err, errExchangeNameIsEmpty)

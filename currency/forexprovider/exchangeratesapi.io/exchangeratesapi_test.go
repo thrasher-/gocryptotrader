@@ -34,6 +34,7 @@ func isAPIKeySet() bool {
 }
 
 func TestGetSymbols(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -48,6 +49,7 @@ func TestGetSymbols(t *testing.T) {
 }
 
 func TestGetLatestRates(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -91,6 +93,7 @@ func TestGetLatestRates(t *testing.T) {
 }
 
 func TestGetHistoricalRates(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -114,6 +117,7 @@ func TestGetHistoricalRates(t *testing.T) {
 }
 
 func TestConvertCurrency(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -138,6 +142,7 @@ func TestConvertCurrency(t *testing.T) {
 }
 
 func TestGetTimeSeriesRates(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -168,6 +173,7 @@ func TestGetTimeSeriesRates(t *testing.T) {
 }
 
 func TestGetFluctuation(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -188,6 +194,7 @@ func TestGetFluctuation(t *testing.T) {
 }
 
 func TestCleanCurrencies(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -207,6 +214,7 @@ func TestCleanCurrencies(t *testing.T) {
 }
 
 func TestGetRates(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}
@@ -217,6 +225,7 @@ func TestGetRates(t *testing.T) {
 }
 
 func TestGetSupportedCurrencies(t *testing.T) {
+	t.Parallel()
 	if !isAPIKeySet() {
 		t.Skip("API key not set, skipping test")
 	}

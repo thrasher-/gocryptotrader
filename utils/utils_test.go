@@ -7,6 +7,7 @@ import (
 )
 
 func TestAdjustGoMaxProcs(t *testing.T) {
+	t.Parallel()
 	// Test default settings
 	curr := runtime.GOMAXPROCS(-1)
 	numCPUs := runtime.NumCPU()

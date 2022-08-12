@@ -602,6 +602,7 @@ func TestWsAuth(t *testing.T) {
 }
 
 func TestWsMissingRole(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 		"result":"error",
 		"reason":"MissingRole",
@@ -613,6 +614,7 @@ func TestWsMissingRole(t *testing.T) {
 }
 
 func TestWsOrderEventSubscriptionResponse(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`[ {
   "type" : "accepted",
   "order_id" : "372456298",
@@ -724,6 +726,7 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
 }
 
 func TestWsSubAck(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "type": "subscription_ack",
   "accountId": 5365,
@@ -745,6 +748,7 @@ func TestWsSubAck(t *testing.T) {
 }
 
 func TestWsHeartbeat(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "type": "heartbeat",
   "timestampms": 1547742998508,
@@ -758,6 +762,7 @@ func TestWsHeartbeat(t *testing.T) {
 }
 
 func TestWsUnsubscribe(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "type": "unsubscribe",
     "subscriptions": [{
@@ -780,6 +785,7 @@ func TestWsUnsubscribe(t *testing.T) {
 }
 
 func TestWsTradeData(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "type": "update",
   "eventId": 5375547515,
@@ -802,6 +808,7 @@ func TestWsTradeData(t *testing.T) {
 }
 
 func TestWsAuctionData(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "eventId": 371469414,
     "socket_sequence":4009, 
@@ -834,6 +841,7 @@ func TestWsAuctionData(t *testing.T) {
 }
 
 func TestWsBlockTrade(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
    "type":"update",
    "eventId":1111597035,
@@ -855,6 +863,7 @@ func TestWsBlockTrade(t *testing.T) {
 }
 
 func TestWSTrade(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 		"type": "trade",
 		"symbol": "BTCUSD",
@@ -870,6 +879,7 @@ func TestWSTrade(t *testing.T) {
 }
 
 func TestWsCandles(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "type": "candles_15m_updates",
   "symbol": "BTCUSD",
@@ -898,6 +908,7 @@ func TestWsCandles(t *testing.T) {
 }
 
 func TestWsAuctions(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
     "eventId": 372481811,
     "socket_sequence":23,
@@ -975,6 +986,7 @@ func TestWsAuctions(t *testing.T) {
 }
 
 func TestWsMarketData(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
   "type": "update",
   "eventId": 5375461993,
@@ -1055,6 +1067,7 @@ func TestWsMarketData(t *testing.T) {
 }
 
 func TestWsError(t *testing.T) {
+	t.Parallel()
 	tt := []struct {
 		Data               []byte
 		ErrorExpected      bool
@@ -1098,6 +1111,7 @@ func TestWsError(t *testing.T) {
 }
 
 func TestWsLevel2Update(t *testing.T) {
+	t.Parallel()
 	pressXToJSON := []byte(`{
 		"type": "l2_updates",
 		"symbol": "BTCUSD",
@@ -1152,6 +1166,7 @@ func TestWsLevel2Update(t *testing.T) {
 }
 
 func TestResponseToStatus(t *testing.T) {
+	t.Parallel()
 	type TestCases struct {
 		Case   string
 		Result order.Status
@@ -1174,6 +1189,7 @@ func TestResponseToStatus(t *testing.T) {
 }
 
 func TestResponseToOrderType(t *testing.T) {
+	t.Parallel()
 	type TestCases struct {
 		Case   string
 		Result order.Type

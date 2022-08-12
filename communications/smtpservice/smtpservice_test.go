@@ -17,12 +17,14 @@ func TestSetup(t *testing.T) {
 }
 
 func TestConnect(t *testing.T) {
+	t.Parallel()
 	if err := s.Connect(); err != nil {
 		t.Error("smtpservice Connect() error", err)
 	}
 }
 
 func TestPushEvent(t *testing.T) {
+	t.Parallel()
 	err := s.PushEvent(base.Event{})
 	if err == nil {
 		t.Error("smtpservice PushEvent() error cannot be nil")
@@ -30,6 +32,7 @@ func TestPushEvent(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
+	t.Parallel()
 	err := s.Send("", "")
 	if err == nil {
 		t.Error("smtpservice Send() error cannot be nil")

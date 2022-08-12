@@ -135,6 +135,7 @@ func TestMakeNewSessionDK(t *testing.T) {
 }
 
 func TestEncryptTwiceReusesSaltButNewCipher(t *testing.T) {
+	t.Parallel()
 	c := &Config{
 		EncryptConfig: 1,
 	}
@@ -201,6 +202,7 @@ func TestEncryptTwiceReusesSaltButNewCipher(t *testing.T) {
 }
 
 func TestSaveAndReopenEncryptedConfig(t *testing.T) {
+	t.Parallel()
 	c := &Config{}
 	c.Name = "myCustomName"
 	c.EncryptConfig = 1
@@ -249,6 +251,7 @@ func setAnswersFile(t *testing.T, answerFile string) func() {
 }
 
 func TestReadConfigWithPrompt(t *testing.T) {
+	t.Parallel()
 	// Prepare temp dir
 	tempDir := t.TempDir()
 
@@ -312,6 +315,7 @@ func TestReadEncryptedConfigFromReader(t *testing.T) {
 
 // TestSaveConfigToFileWithErrorInPasswordPrompt should preserve the original file
 func TestSaveConfigToFileWithErrorInPasswordPrompt(t *testing.T) {
+	t.Parallel()
 	c := &Config{
 		Name:          "test",
 		EncryptConfig: fileEncryptionEnabled,

@@ -790,6 +790,7 @@ func TestCalculateTheResults(t *testing.T) {
 }
 
 func TestCalculateBiggestEventDrawdown(t *testing.T) {
+	t.Parallel()
 	tt1 := time.Now().Add(-gctkline.OneDay.Duration() * 7).Round(gctkline.OneDay.Duration())
 	exch := testExchange
 	a := asset.Spot
@@ -900,6 +901,7 @@ func TestCalculateBiggestEventDrawdown(t *testing.T) {
 }
 
 func TestCalculateBiggestValueAtTimeDrawdown(t *testing.T) {
+	t.Parallel()
 	var interval gctkline.Interval
 	_, err := CalculateBiggestValueAtTimeDrawdown(nil, interval)
 	if !errors.Is(err, errReceivedNoData) {

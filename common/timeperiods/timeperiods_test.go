@@ -6,6 +6,7 @@ import (
 )
 
 func TestFindTimeRangesContainingData(t *testing.T) {
+	t.Parallel()
 	// validation issues
 	_, err := FindTimeRangesContainingData(
 		time.Time{},
@@ -106,6 +107,7 @@ func TestFindTimeRangesContainingData(t *testing.T) {
 }
 
 func TestCalculateTimePeriodsInRange(t *testing.T) {
+	t.Parallel()
 	// validation issues
 	_, err := CalculateTimePeriodsInRange(time.Time{}, time.Time{}, 0)
 	if err != nil && err.Error() != "invalid start time, invalid end time, invalid period" {
@@ -157,6 +159,7 @@ func TestCalculateTimePeriodsInRange(t *testing.T) {
 }
 
 func TestValidateCalculatePeriods(t *testing.T) {
+	t.Parallel()
 	var tpc TimePeriodCalculator
 	tpc.calculatePeriods()
 	if len(tpc.TimePeriods) > 0 {
@@ -165,6 +168,7 @@ func TestValidateCalculatePeriods(t *testing.T) {
 }
 
 func TestSort(t *testing.T) {
+	t.Parallel()
 	var tpc TimePeriodCalculator
 	date1 := time.Date(2020, 1, 1, 1, 1, 1, 1, time.UTC)
 	date2 := time.Date(1901, 1, 1, 1, 1, 1, 1, time.UTC)

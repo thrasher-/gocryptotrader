@@ -31,6 +31,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestAudit(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name   string
 		config *database.Config
@@ -79,6 +80,7 @@ func TestAudit(t *testing.T) {
 	for _, tests := range testCases {
 		test := tests
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			if !testhelpers.CheckValidConfig(&test.config.ConnectionDetails) {
 				t.Skip("database not configured skipping test")
 			}

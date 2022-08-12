@@ -45,6 +45,7 @@ func TestUpper(t *testing.T) {
 }
 
 func TestPairUnmarshalJSON(t *testing.T) {
+	t.Parallel()
 	var unmarshalHere Pair
 	configPair, err := NewPairDelimiter("btc_usd", "_")
 	if err != nil {
@@ -73,6 +74,7 @@ func TestPairUnmarshalJSON(t *testing.T) {
 }
 
 func TestPairMarshalJSON(t *testing.T) {
+	t.Parallel()
 	quickstruct := struct {
 		Pair *Pair `json:"superPair"`
 	}{
@@ -92,6 +94,7 @@ func TestPairMarshalJSON(t *testing.T) {
 }
 
 func TestIsCryptoPair(t *testing.T) {
+	t.Parallel()
 	if !NewPair(BTC, LTC).IsCryptoPair() {
 		t.Error("TestIsCryptoPair. Expected true result")
 	}
@@ -102,6 +105,7 @@ func TestIsCryptoPair(t *testing.T) {
 }
 
 func TestIsCryptoFiatPair(t *testing.T) {
+	t.Parallel()
 	if !NewPair(BTC, USD).IsCryptoFiatPair() {
 		t.Error("TestIsCryptoPair. Expected true result")
 	}
@@ -112,6 +116,7 @@ func TestIsCryptoFiatPair(t *testing.T) {
 }
 
 func TestIsFiatPair(t *testing.T) {
+	t.Parallel()
 	if !NewPair(AUD, USD).IsFiatPair() {
 		t.Error("TestIsFiatPair. Expected true result")
 	}
@@ -122,6 +127,7 @@ func TestIsFiatPair(t *testing.T) {
 }
 
 func TestIsCryptoStablePair(t *testing.T) {
+	t.Parallel()
 	if !NewPair(BTC, USDT).IsCryptoStablePair() {
 		t.Error("TestIsCryptoStablePair. Expected true result")
 	}
@@ -136,6 +142,7 @@ func TestIsCryptoStablePair(t *testing.T) {
 }
 
 func TestIsStablePair(t *testing.T) {
+	t.Parallel()
 	if !NewPair(USDT, DAI).IsStablePair() {
 		t.Error("TestIsStablePair. Expected true result")
 	}
@@ -540,6 +547,7 @@ func TestNewPairFromFormattedPairs(t *testing.T) {
 }
 
 func TestContainsCurrency(t *testing.T) {
+	t.Parallel()
 	p := NewPair(BTC, USD)
 
 	if !p.Contains(BTC) {
@@ -552,6 +560,7 @@ func TestContainsCurrency(t *testing.T) {
 }
 
 func TestFormatPairs(t *testing.T) {
+	t.Parallel()
 	_, err := FormatPairs([]string{""}, "-", "")
 	if !errors.Is(err, errEmptyPairString) {
 		t.Fatalf("received: '%v' but expected: '%v'", err, errEmptyPairString)
@@ -585,6 +594,7 @@ func TestFormatPairs(t *testing.T) {
 }
 
 func TestCopyPairFormat(t *testing.T) {
+	t.Parallel()
 	pairOne := NewPair(BTC, USD)
 	pairOne.Delimiter = "-"
 
@@ -607,6 +617,7 @@ func TestCopyPairFormat(t *testing.T) {
 }
 
 func TestFindPairDifferences(t *testing.T) {
+	t.Parallel()
 	pairList, err := NewPairsFromStrings([]string{defaultPairWDelimiter, "ETH-USD", "LTC-USD"})
 	if err != nil {
 		t.Fatal(err)
@@ -649,6 +660,7 @@ func TestFindPairDifferences(t *testing.T) {
 }
 
 func TestPairsToStringArray(t *testing.T) {
+	t.Parallel()
 	var pairs Pairs
 	pairs = append(pairs, NewPair(BTC, USD))
 
@@ -661,6 +673,7 @@ func TestPairsToStringArray(t *testing.T) {
 }
 
 func TestRandomPairFromPairs(t *testing.T) {
+	t.Parallel()
 	// Test that an empty pairs array returns an empty currency pair
 	var emptyPairs Pairs
 	result := emptyPairs.GetRandomPair()
@@ -698,6 +711,7 @@ func TestRandomPairFromPairs(t *testing.T) {
 }
 
 func TestIsInvalid(t *testing.T) {
+	t.Parallel()
 	p := NewPair(LTC, LTC)
 	if !p.IsInvalid() {
 		t.Error("IsInvalid() error expect true but received false")
@@ -705,6 +719,7 @@ func TestIsInvalid(t *testing.T) {
 }
 
 func TestMatchPairsWithNoDelimiter(t *testing.T) {
+	t.Parallel()
 	p1, err := NewPairDelimiter("BTC-USDT", "-")
 	if err != nil {
 		t.Fatal(err)
@@ -788,6 +803,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 }
 
 func TestPairFormat_Format(t *testing.T) {
+	t.Parallel()
 	type fields struct {
 		Uppercase bool
 		Delimiter string
@@ -833,6 +849,7 @@ func TestPairFormat_Format(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			f := &PairFormat{
 				Uppercase: tt.fields.Uppercase,
 				Delimiter: tt.fields.Delimiter,
@@ -847,6 +864,7 @@ func TestPairFormat_Format(t *testing.T) {
 }
 
 func TestOther(t *testing.T) {
+	t.Parallel()
 	received, err := NewPair(DAI, XRP).Other(DAI)
 	if err != nil {
 		t.Fatal(err)

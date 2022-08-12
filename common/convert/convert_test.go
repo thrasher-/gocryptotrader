@@ -97,6 +97,7 @@ func TestTimeFromUnixTimestampFloat(t *testing.T) {
 }
 
 func TestTimeFromUnixTimestampDecimal(t *testing.T) {
+	t.Parallel()
 	r := TimeFromUnixTimestampDecimal(1590633982.5714)
 	if r.Year() != 2020 ||
 		r.Month().String() != "May" ||
@@ -144,6 +145,7 @@ func TestUnixTimestampStrToTime(t *testing.T) {
 }
 
 func TestBoolPtr(t *testing.T) {
+	t.Parallel()
 	y := BoolPtr(true)
 	if !*y {
 		t.Fatal("true expected received false")
@@ -277,6 +279,7 @@ func TestIntToHumanFriendlyString(t *testing.T) {
 }
 
 func TestNumberToHumanFriendlyString(t *testing.T) {
+	t.Parallel()
 	resp := numberToHumanFriendlyString("1", 1337, ".", ",", false)
 	if strings.Contains(resp, ".") {
 		t.Error("expected no comma")
@@ -284,6 +287,7 @@ func TestNumberToHumanFriendlyString(t *testing.T) {
 }
 
 func TestInterfaceToFloat64OrZeroValue(t *testing.T) {
+	t.Parallel()
 	var x interface{}
 	if r := InterfaceToFloat64OrZeroValue(x); r != 0 {
 		t.Errorf("expected 0, got: %v", r)
@@ -295,6 +299,7 @@ func TestInterfaceToFloat64OrZeroValue(t *testing.T) {
 }
 
 func TestInterfaceToIntOrZeroValue(t *testing.T) {
+	t.Parallel()
 	var x interface{}
 	if r := InterfaceToIntOrZeroValue(x); r != 0 {
 		t.Errorf("expected 0, got: %v", r)
@@ -306,6 +311,7 @@ func TestInterfaceToIntOrZeroValue(t *testing.T) {
 }
 
 func TestInterfaceToStringOrZeroValue(t *testing.T) {
+	t.Parallel()
 	var x interface{}
 	if r := InterfaceToStringOrZeroValue(x); r != "" {
 		t.Errorf("expected empty string, got: %v", r)

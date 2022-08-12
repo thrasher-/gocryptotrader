@@ -7,6 +7,7 @@ import (
 )
 
 func TestRoleString(t *testing.T) {
+	t.Parallel()
 	if Unset.String() != UnsetRoleString {
 		t.Errorf("Role String() error expected %s but received %s",
 			UnsetRoleString,
@@ -47,6 +48,7 @@ func TestRoleString(t *testing.T) {
 }
 
 func TestRoleMarshalJSON(t *testing.T) {
+	t.Parallel()
 	d, err := json.Marshal(Fiat)
 	if err != nil {
 		t.Error("Role MarshalJSON() error", err)
@@ -61,6 +63,7 @@ func TestRoleMarshalJSON(t *testing.T) {
 
 // TestRoleUnmarshalJSON logic test
 func TestRoleUnmarshalJSON(t *testing.T) {
+	t.Parallel()
 	type AllTheRoles struct {
 		RoleOne     Role `json:"RoleOne"`
 		RoleTwo     Role `json:"RoleTwo"`
@@ -165,6 +168,7 @@ func (b *BaseCodes) assertRole(t *testing.T, c Code, r Role) {
 }
 
 func TestBaseCode(t *testing.T) {
+	t.Parallel()
 	var main BaseCodes
 	if main.HasData() {
 		t.Errorf("BaseCode HasData() error expected false but received %v",
@@ -411,6 +415,7 @@ func TestBaseCode(t *testing.T) {
 }
 
 func TestCodeString(t *testing.T) {
+	t.Parallel()
 	if cc, expected := NewCode("TEST"), "TEST"; cc.String() != expected {
 		t.Errorf("Currency Code String() error expected %s but received %s",
 			expected, cc)
@@ -418,6 +423,7 @@ func TestCodeString(t *testing.T) {
 }
 
 func TestCodeLower(t *testing.T) {
+	t.Parallel()
 	if cc, expected := NewCode("TEST"), "test"; cc.Lower().String() != expected {
 		t.Errorf("Currency Code Lower() error expected %s but received %s",
 			expected,
@@ -426,6 +432,7 @@ func TestCodeLower(t *testing.T) {
 }
 
 func TestCodeUpper(t *testing.T) {
+	t.Parallel()
 	if cc, expected := NewCode("test"), "TEST"; cc.Upper().String() != expected {
 		t.Errorf("Currency Code Upper() error expected %s but received %s",
 			expected,
@@ -434,6 +441,7 @@ func TestCodeUpper(t *testing.T) {
 }
 
 func TestCodeUnmarshalJSON(t *testing.T) {
+	t.Parallel()
 	var unmarshalHere Code
 	expected := "BRO"
 	encoded, err := json.Marshal(expected)
@@ -468,6 +476,7 @@ func TestCodeUnmarshalJSON(t *testing.T) {
 }
 
 func TestCodeMarshalJSON(t *testing.T) {
+	t.Parallel()
 	quickstruct := struct {
 		Codey Code `json:"sweetCodes"`
 	}{
@@ -506,6 +515,7 @@ func TestCodeMarshalJSON(t *testing.T) {
 }
 
 func TestIsFiatCurrency(t *testing.T) {
+	t.Parallel()
 	if EMPTYCODE.IsFiatCurrency() {
 		t.Errorf("TestIsFiatCurrency cannot match currency, %s.",
 			EMPTYCODE)
@@ -534,6 +544,7 @@ func TestIsFiatCurrency(t *testing.T) {
 }
 
 func TestIsCryptocurrency(t *testing.T) {
+	t.Parallel()
 	if EMPTYCODE.IsCryptocurrency() {
 		t.Errorf("TestIsCryptocurrency cannot match currency, %s.",
 			EMPTYCODE)
@@ -561,6 +572,7 @@ func TestIsCryptocurrency(t *testing.T) {
 }
 
 func TestIsStableCurrency(t *testing.T) {
+	t.Parallel()
 	if EMPTYCODE.IsStableCurrency() {
 		t.Errorf("TestIsStableCurrency cannot match currency, %s.", EMPTYCODE)
 	}
@@ -582,6 +594,7 @@ func TestIsStableCurrency(t *testing.T) {
 }
 
 func TestItemString(t *testing.T) {
+	t.Parallel()
 	newItem := Item{
 		ID:         1337,
 		FullName:   "Hello,World",

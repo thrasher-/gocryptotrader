@@ -5,6 +5,7 @@ import (
 )
 
 func TestGetTranslation(t *testing.T) {
+	t.Parallel()
 	currencyPair := NewPair(BTC, USD)
 	expected := XBT
 	actual := GetTranslation(currencyPair.Base)
