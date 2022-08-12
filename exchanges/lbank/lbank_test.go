@@ -510,6 +510,7 @@ func Test_FormatExchangeKlineInterval(t *testing.T) {
 	for x := range testCases {
 		test := testCases[x]
 
+		t.Parallel()
 		t.Run(test.name, func(t *testing.T) {
 			ret := l.FormatExchangeKlineInterval(test.interval)
 

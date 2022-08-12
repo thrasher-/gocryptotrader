@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	bitstampWSURL = "wss://ws.bitstamp.net" // nolint // gosec false positive
+	bitstampWSURL = "wss://ws.bitstamp.net" //nolint // gosec false positive
 )
 
 // WsConnect connects to a websocket feed

@@ -108,7 +108,7 @@ func main() {
 	yn := quickParse(reader)
 	if yn == y || yn == yes {
 		var fp, wd string
-		extension := "strat" // nolint:misspell // its shorthand for strategy
+		extension := "strat" //nolint:misspell // its shorthand for strategy
 		for {
 			wd, err = os.Getwd()
 			if err != nil {

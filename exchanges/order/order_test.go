@@ -404,7 +404,8 @@ var filterOrdersByTypeBenchmark = &[]Detail{
 	{Type: Limit},
 }
 
-//  392455	      3226 ns/op	   15840 B/op	       5 allocs/op // PREV
+//	392455	      3226 ns/op	   15840 B/op	       5 allocs/op // PREV
+//
 // 9486490	       109.5 ns/op	       0 B/op	       0 allocs/op // CURRENT
 func BenchmarkFilterOrdersByType(b *testing.B) {
 	for x := 0; x < b.N; x++ {
@@ -454,7 +455,8 @@ var filterOrdersBySideBenchmark = &[]Detail{
 	{Side: Ask},
 }
 
-//   372594	      3049 ns/op	   15840 B/op	       5 allocs/op // PREV
+//	372594	      3049 ns/op	   15840 B/op	       5 allocs/op // PREV
+//
 // 7412187	       148.8 ns/op	       0 B/op	       0 allocs/op // CURRENT
 func BenchmarkFilterOrdersBySide(b *testing.B) {
 	for x := 0; x < b.N; x++ {
@@ -537,7 +539,8 @@ var filterOrdersByTimeRangeBenchmark = &[]Detail{
 	{Date: time.Unix(100, 0)},
 }
 
-//  390822	      3335 ns/op	   15840 B/op	       5 allocs/op // PREV
+//	390822	      3335 ns/op	   15840 B/op	       5 allocs/op // PREV
+//
 // 6201034	       172.1 ns/op	       0 B/op	       0 allocs/op // CURRENT
 func BenchmarkFilterOrdersByTimeRange(b *testing.B) {
 	for x := 0; x < b.N; x++ {
@@ -615,7 +618,8 @@ var filterOrdersByPairsBenchmark = &[]Detail{
 	{Pair: currency.NewPair(currency.BTC, currency.USD)},
 }
 
-//  400032	      2977 ns/op	   15840 B/op	       5 allocs/op // PREV
+//	400032	      2977 ns/op	   15840 B/op	       5 allocs/op // PREV
+//
 // 6977242	       172.8 ns/op	       0 B/op	       0 allocs/op // CURRENT
 func BenchmarkFilterOrdersByPairs(b *testing.B) {
 	pairs := []currency.Pair{currency.NewPair(currency.BTC, currency.USD)}
