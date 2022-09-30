@@ -1,4 +1,4 @@
-import {   Component,  OnInit,  OnDestroy} from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import {   WebsocketResponseHandlerService } from './../../services/websocket-response-handler/websocket-response-handler.service';
 import {  WebSocketMessageType } from './../../shared/classes/websocket';
 import {  ExchangeCurrency, TickerUpdate } from './../../shared/classes/ticker';

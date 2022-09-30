@@ -1,8 +1,7 @@
-import {  Component,  OnInit,  OnDestroy,  Pipe,  PipeTransform} from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import {  WebsocketResponseHandlerService} from './../../services/websocket-response-handler/websocket-response-handler.service';
 import {  WebSocketMessageType,  WebSocketMessage} from './../../shared/classes/websocket';
-import {  Config,  CurrencyPairRedux} from './../../shared/classes/config';
-import {  EnabledCurrenciesPipe,  IterateMapPipe} from './../../shared/classes/pipes';
+import {  Config } from './../../shared/classes/config';
 
 @Component({
   selector: 'app-currency-list',

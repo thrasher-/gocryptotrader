@@ -1,35 +1,32 @@
-import 'zone.js/dist/zone-mix';
+import 'zone.js/mix';
 import 'reflect-metadata';
 import 'polyfills';
 
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpModule } from '@angular/http';
-import { NgModule, Injectable } from '@angular/core';
+import { HttpClientModule } from '@angular/common/http';
+import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AmChartsModule } from '@amcharts/amcharts3-angular';
-
-import {
-  MatButtonModule,
-  MatCardModule,
-  MatMenuModule,
-  MatToolbarModule,
-  MatIconModule,
-  MatFormFieldModule,
-  MatInputModule,
-  MatCheckboxModule,
-  MatGridListModule,
-  MatProgressSpinnerModule,
-  MatSidenavModule,
-  MatListModule,
-  MatSortModule,
-  MatExpansionModule,
-  MatLineModule,
-  MatTooltipModule,
-  MatTabsModule,
-  MatSnackBarModule,
-  MatDialogModule,
-} from '@angular/material';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatIconModule } from '@angular/material/icon';
+import {MatFormFieldModule} from '@angular/material/form-field';
+import {MatInputModule} from '@angular/material/input';
+import {MatCheckboxModule} from '@angular/material/checkbox';
+import {MatGridListModule} from '@angular/material/grid-list';
+import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatSidenavModule} from '@angular/material/sidenav';
+import {MatListModule} from '@angular/material/list';
+import {MatSortModule} from '@angular/material/sort';
+import {MatExpansionModule} from '@angular/material/expansion';
+import { MatLineModule } from '@angular/material/core';
+import {MatTooltipModule} from '@angular/material/tooltip';
+import {MatTabsModule} from '@angular/material/tabs';
+import {MatSnackBarModule} from '@angular/material/snack-bar';
+import {MatDialogModule} from '@angular/material/dialog';
 
 // Pages
 import { AppComponent } from './app.component';
@@ -74,72 +71,69 @@ import { SellFormComponent } from './shared/sell-form/sell-form.component';
 
 
 @NgModule({
-  declarations: [
-    AppComponent,
-    HomeComponent,
-    AboutComponent,
-    NavbarComponent,
-    SettingsComponent,
-    DashboardComponent,
-    AllEnabledCurrencyTickersComponent,
-    WalletComponent,
-    ThemePickerComponent,
-    TradeHistoryComponent,
-    PriceHistoryComponent,
-    MyOrdersComponent,
-    OrdersComponent,
-    BuySellComponent,
-    DonateComponent,
-    SelectedCurrencyComponent,
-    TradingComponent,
-    HistoryComponent,
-    BuyFormComponent,
-    ExchangeGridComponent,
-    CurrencyListComponent,
-    SellFormComponent,
-    IterateMapPipe,
-    EnabledCurrenciesPipe,
-    EnabledCurrenciesDialogueComponent
-  ],
-  entryComponents: [
-    EnabledCurrenciesDialogueComponent
-  ],
-  imports: [
-    BrowserModule,
-    FormsModule,
-    HttpModule,
-    AppRoutingModule,
-    BrowserAnimationsModule,
-    MatButtonModule,
-    MatMenuModule,
-    MatCardModule,
-    MatToolbarModule,
-    MatIconModule,
-    MatFormFieldModule,
-    MatInputModule,
-    MatCheckboxModule,
-    MatGridListModule,
-    MatProgressSpinnerModule,
-    MatSidenavModule,
-    MatListModule,
-    MatSortModule,
-    MatExpansionModule,
-    MatLineModule,
-    MatTooltipModule,
-    MatTabsModule,
-    MatSnackBarModule,
-    MatDialogModule,
-    AmChartsModule,
-  ],
-  providers: [
-    ElectronService,
-    WebsocketService,
-    WebsocketResponseHandlerService,
-    SidebarService,
-    StyleManagerService,
-    ThemeStorageService,
-  ],
-  bootstrap: [AppComponent]
+    declarations: [
+        AppComponent,
+        HomeComponent,
+        AboutComponent,
+        NavbarComponent,
+        SettingsComponent,
+        DashboardComponent,
+        AllEnabledCurrencyTickersComponent,
+        WalletComponent,
+        ThemePickerComponent,
+        TradeHistoryComponent,
+        PriceHistoryComponent,
+        MyOrdersComponent,
+        OrdersComponent,
+        BuySellComponent,
+        DonateComponent,
+        SelectedCurrencyComponent,
+        TradingComponent,
+        HistoryComponent,
+        BuyFormComponent,
+        ExchangeGridComponent,
+        CurrencyListComponent,
+        SellFormComponent,
+        IterateMapPipe,
+        EnabledCurrenciesPipe,
+        EnabledCurrenciesDialogueComponent
+    ],
+    imports: [
+        BrowserModule,
+        FormsModule,
+        HttpClientModule,
+        AppRoutingModule,
+        BrowserAnimationsModule,
+        MatButtonModule,
+        MatMenuModule,
+        MatCardModule,
+        MatToolbarModule,
+        MatIconModule,
+        MatFormFieldModule,
+        MatInputModule,
+        MatCheckboxModule,
+        MatGridListModule,
+        MatProgressSpinnerModule,
+        MatSidenavModule,
+        MatListModule,
+        MatSortModule,
+        MatExpansionModule,
+        MatLineModule,
+        MatTooltipModule,
+        MatTabsModule,
+        MatSnackBarModule,
+        MatDialogModule,
+        AmChartsModule,
+    ],
+    providers: [
+        ElectronService,
+        WebsocketService,
+        WebsocketResponseHandlerService,
+        SidebarService,
+        StyleManagerService,
+        ThemeStorageService,
+    ],
+    bootstrap: [AppComponent]
 })
 export class AppModule {
 

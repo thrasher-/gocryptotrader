@@ -1,7 +1,4 @@
-import {
-  Component,
-  OnInit
-} from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import {
   BuySellComponent
 } from './../../shared/buy-sell/buy-sell.component';

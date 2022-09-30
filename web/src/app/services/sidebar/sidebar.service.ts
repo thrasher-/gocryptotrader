@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
-import { MatSidenav, MatDrawerToggleResult } from '@angular/material';
+import { MatSidenav } from '@angular/material/sidenav';
+import { MatDrawerToggleResult } from '@angular/material/sidenav';
 
 @Injectable()
 export class SidebarService {

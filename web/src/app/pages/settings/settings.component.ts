@@ -1,8 +1,10 @@
-import { Component, OnInit, OnDestroy, Inject } from '@angular/core';
+import { Component, OnInit, Inject } from '@angular/core';
 import { WebsocketResponseHandlerService } from './../../services/websocket-response-handler/websocket-response-handler.service';
 import { WebSocketMessageType, WebSocketMessage } from './../../shared/classes/websocket';
-import { Config, CurrencyPairRedux, Wallet } from './../../shared/classes/config';
-import { MatSnackBar, MatDialog, MatDialogRef, MAT_DIALOG_DATA} from '@angular/material';
+import { Config, Wallet } from './../../shared/classes/config';
+import { MatSnackBar } from '@angular/material/snack-bar' 
+import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog'
+
 import { WalletComponent } from '../wallet/wallet.component';
 
 @Component({

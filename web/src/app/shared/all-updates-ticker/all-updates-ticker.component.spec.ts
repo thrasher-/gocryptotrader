@@ -1,4 +1,4 @@
-import { async, ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, waitForAsync } from '@angular/core/testing';
 
 import { AllEnabledCurrencyTickersComponent } from './all-updates-ticker.component';
 
@@ -6,7 +6,7 @@ describe('AllEnabledCurrencyTickersComponent', () => {
   let component: AllEnabledCurrencyTickersComponent;
   let fixture: ComponentFixture<AllEnabledCurrencyTickersComponent>;
 
-  beforeEach(async(() => {
+  beforeEach(waitForAsync(() => {
     TestBed.configureTestingModule({
       declarations: [ AllEnabledCurrencyTickersComponent ]
     })

@@ -1,8 +1,7 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { WebsocketResponseHandlerService } from './../../services/websocket-response-handler/websocket-response-handler.service';
 import { Wallet, CoinTotal } from './../../shared/classes/wallet';
-import { Sort } from '@angular/material';
-import { WebSocketMessageType, WebSocketMessage } from './../../shared/classes/websocket';
+import { WebSocketMessageType } from './../../shared/classes/websocket';
 
 @Component({
   selector: 'app-wallet',
