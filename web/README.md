@@ -43,7 +43,7 @@ npm run start:web
 
 Currently runs with:
 
-- Angular v7
+- Angular v14
 
 ## To build for production
 

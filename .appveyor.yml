@@ -13,7 +13,7 @@ cache:
 environment:
   GOPATH: c:\gopath
   GO111MODULE: on
-  NODEJS_VER: 10.15.3
+  NODEJS_VER: 18.10.0
   APPVEYOR_SAVE_CACHE_ON_ERROR: true
   POSTGRES_PATH: C:\Program Files\PostgreSQL\9.6
   PGUSER: postgres
@@ -68,5 +68,5 @@ test_script:
   - node --version
   - npm --version
   - cd c:\gopath\src\github.com\thrasher-corp\gocryptotrader\web
-  - npm run lint
+  - ng lint
   - npm run build

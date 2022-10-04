@@ -2,7 +2,7 @@
 <h3>Select and monitor currencies from the same exchange</h3>
 <mat-accordion>
     <mat-expansion-panel  *ngFor="let exchange of exchangeCurrencies | iterateMap">
-        <mat-expansion-panel-header [ngClass]="{'selected' : selectedExchange == exchange.key}">
+        <mat-expansion-panel-header [ngClass]="{'selected' : selectedExchange === exchange.key}">
             <mat-panel-title>
                  {{exchange.value}}
             </mat-panel-title>
@@ -13,7 +13,7 @@
     </div>
         <form class="form-content">
             <mat-list>
-                <mat-list-item [ngClass]="{'selected' : selectedCurrency == currency.parsedName && selectedExchange == exchange.value }" *ngFor="let currency of exchange.key | enabledCurrencies" >
+                <mat-list-item [ngClass]="{'selected' : selectedCurrency === currency.parsedName && selectedExchange === exchange.value }" *ngFor="let currency of exchange.key | enabledCurrencies" >
                    <h4 matLine>{{currency.parsedName}}</h4>
                    <button mat-button (click)="selectCurrency(exchange.value,currency.parsedName)">SELECT</button>
                 </mat-list-item>
