@@ -1093,7 +1093,7 @@ func TestWithdrawInternationalBank(t *testing.T) {
 func TestGetOrderbook(t *testing.T) {
 	t.Parallel()
 	_, err := o.GetOrderBook(context.Background(),
-		&okgroup.GetOrderBookRequest{InstrumentID: "BTC-USDT"},
+		&okgroup.GetOrderBookRequest{InstrumentID: "BTC-USD"},
 		asset.Spot)
 	if err != nil {
 		t.Error(err)
@@ -1148,7 +1148,7 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 
 func TestGetRecentTrades(t *testing.T) {
 	t.Parallel()
-	currencyPair, err := currency.NewPairFromString("BTC-USDT")
+	currencyPair, err := currency.NewPairFromString("BTC-USD")
 	if err != nil {
 		t.Fatal(err)
 	}

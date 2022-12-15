@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/thrasher-corp/gocryptotrader/backtester/common"
@@ -28,6 +29,11 @@ func TestLoadCandles(t *testing.T) {
 	pFormat := &currency.PairFormat{Uppercase: true}
 	b := exch.GetBase()
 	exch.SetDefaults()
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = b.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
 		Available:     currency.Pairs{cp1},
@@ -64,6 +70,11 @@ func TestLoadTrades(t *testing.T) {
 	pFormat := &currency.PairFormat{Uppercase: true}
 	b := exch.GetBase()
 	exch.SetDefaults()
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = b.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
 		Available:     currency.Pairs{cp1},

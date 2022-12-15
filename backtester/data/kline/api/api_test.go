@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -26,6 +27,11 @@ func TestLoadCandles(t *testing.T) {
 	exch.SetDefaults()
 	cp := currency.NewPair(currency.BTC, currency.USDT)
 	b := exch.GetBase()
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = exch.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
 		Available:     currency.Pairs{cp},
@@ -64,6 +70,11 @@ func TestLoadTrades(t *testing.T) {
 	exch.SetDefaults()
 	cp := currency.NewPair(currency.BTC, currency.USDT)
 	b := exch.GetBase()
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = exch.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
 		Available:     currency.Pairs{cp},

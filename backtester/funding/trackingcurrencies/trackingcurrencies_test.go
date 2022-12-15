@@ -2,6 +2,7 @@ package trackingcurrencies
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -44,6 +45,11 @@ func TestCreateUSDTrackingPairs(t *testing.T) {
 	excher, err := em.NewExchangeByName(exch)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = excher.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
 	}
 	_, err = excher.GetDefaultConfig()
 	if err != nil {

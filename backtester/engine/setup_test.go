@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -171,6 +172,11 @@ func TestLoadDataAPI(t *testing.T) {
 	}
 	exch.SetDefaults()
 	b := exch.GetBase()
+	if r := os.Getenv("CI_PROXY"); r != "" {
+		if err = exch.SetClientProxyAddress(r); err != nil {
+			t.Fatal(err)
+		}
+	}
 	b.CurrencyPairs.Pairs = make(map[asset.Item]*currency.PairStore)
 	b.CurrencyPairs.Pairs[asset.Spot] = &currency.PairStore{
 		Available:     currency.Pairs{cp},

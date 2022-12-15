@@ -2,6 +2,7 @@ on: [push, pull_request]
 name: CI
 env:
   GO_VERSION: 1.19.x
+  PROXY: ${{ secrets.PROXY }}
 jobs:
   backend-psql:
     name: GoCryptoTrader back-end with PSQL
@@ -53,6 +54,7 @@ jobs:
         PSQL_SKIPSQLCMD: true
         PSQL_TESTDBNAME: gct_dev_ci
         PSQL_SSLMODE: disable
+        CI_PROXY: ${{ env.PROXY }}
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -116,6 +118,7 @@ jobs:
         GOARCH: 386
         CGO_ENABLED: 1
         CGO_CFLAGS: -fno-stack-protector
+        CI_PROXY: ${{ env.PROXY }}
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

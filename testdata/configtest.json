@@ -882,7 +882,7 @@
     }
    },
    "api": {
-    "authenticatedSupport": true,
+    "authenticatedSupport": false,
     "authenticatedWebsocketApiSupport": false,
     "credentials": {
      "key": "Key",
