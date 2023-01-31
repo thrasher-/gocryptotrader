@@ -62,7 +62,7 @@ func TestNewExchange(t *testing.T) {
 		t.Error(err)
 	}
 
-	cmd := exec.Command("go", "build")
+	cmd := exec.Command("go", "test")
 	cmd.Dir = testExchangeDir
 
 	if _, err = cmd.Output(); err != nil {
