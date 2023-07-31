@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,8 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/stream"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
@@ -1374,7 +1377,6 @@ func TestWsSubscriptionStatus(t *testing.T) {
 }
 
 func TestWsTicker(t *testing.T) {
-	t.Parallel()
 	pressXToJSON := []byte(`{
   "channelID": 1337,
   "channelName": "ticker",
@@ -1436,12 +1438,34 @@ func TestWsTicker(t *testing.T) {
 ]`)
 	err = k.wsHandleData(pressXToJSON)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+
+	expected := &ticker.Price{
+		ExchangeName: k.Name,
+		Open:         5760.7,
+		Close:        5525.1,
+		Volume:       2634.11501494,
+		High:         5783,
+		Low:          5505,
+		Bid:          5525.1,
+		Ask:          5525.4,
+		AssetType:    asset.Spot,
+		Pair:         currency.NewPair(currency.XBT, currency.EUR),
+	}
+
+	res := <-k.Websocket.DataHandler
+	switch r := res.(type) {
+	case *ticker.Price:
+		if !reflect.DeepEqual(expected, r) {
+			t.Errorf("expected %+v, received %+v", expected, r)
+		}
+	default:
+		t.Errorf("expected type *ticker.Price, received %T", r)
 	}
 }
 
 func TestWsOHLC(t *testing.T) {
-	t.Parallel()
 	pressXToJSON := []byte(`{
   "channelID": 13337,
   "channelName": "ohlc",
@@ -1470,21 +1494,45 @@ func TestWsOHLC(t *testing.T) {
     2
   ],
   "ohlc-5",
-  "XBT/USD"
+  "XBT/EUR"
 ]`)
 	err = k.wsHandleData(pressXToJSON)
 	if err != nil {
 		t.Error(err)
 	}
+
+	expected := stream.KlineData{
+		Exchange:   k.Name,
+		AssetType:  asset.Spot,
+		Pair:       currency.NewPair(currency.XBT, currency.EUR),
+		Interval:   "60",
+		OpenPrice:  3586.7,
+		HighPrice:  3586.7,
+		LowPrice:   3586.6,
+		ClosePrice: 3586.6,
+		Volume:     0.03373000,
+		StartTime:  convert.TimeFromUnixTimestampDecimal(1542057314.748456),
+		CloseTime:  convert.TimeFromUnixTimestampDecimal(1542057360.435743),
+	}
+
+	res := <-k.Websocket.DataHandler
+	switch r := res.(type) {
+	case stream.KlineData:
+		expected.Timestamp = r.Timestamp // mimic time.Now() behaviour
+		if !reflect.DeepEqual(expected, r) {
+			t.Errorf("expected %+v, received %+v", expected, r)
+		}
+	default:
+		t.Errorf("expected type stream.KlineData, received %T", r)
+	}
 }
 
 func TestWsTrade(t *testing.T) {
-	t.Parallel()
 	pressXToJSON := []byte(`{
   "channelID": 133337,
   "channelName": "trade",
   "event": "subscriptionStatus",
-  "pair": "XBT/EUR",
+  "pair": "XBT/USD",
   "status": "subscribed",
   "subscription": {
     "name": "trade"
@@ -1517,9 +1565,35 @@ func TestWsTrade(t *testing.T) {
   "trade",
   "XBT/USD"
 ]`)
+
+	k.SetTradeFeedStatus(true)
+	th := make(chan interface{}, 1)
+
+	k.Websocket.Trade.Setup(k.Name, true, th)
+
 	err = k.wsHandleData(pressXToJSON)
 	if err != nil {
 		t.Error(err)
+	}
+
+	expected := trade.Data{
+		Exchange:     k.Name,
+		AssetType:    asset.Spot,
+		CurrencyPair: currency.NewPair(currency.XBT, currency.USD),
+		Timestamp:    convert.TimeFromUnixTimestampDecimal(1534614057.321597),
+		Price:        5541.2,
+		Amount:       0.15850568,
+		Side:         order.Sell,
+	}
+
+	res := <-th
+	switch r := res.(type) {
+	case []trade.Data:
+		if !reflect.DeepEqual(expected, r[0]) {
+			t.Errorf("expected %+v, received %+v", expected, r)
+		}
+	default:
+		t.Errorf("expected type []trade.Data, received %T", r)
 	}
 }
 
@@ -1734,7 +1808,6 @@ func TestWsOrdrbook(t *testing.T) {
 }
 
 func TestWsOwnTrades(t *testing.T) {
-	t.Parallel()
 	pressXToJSON := []byte(`[
   [
     {
@@ -1804,136 +1877,167 @@ func TestWsOwnTrades(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	expected := order.Detail{
+		Exchange: k.Name,
+		OrderID:  "TDLH43-DVQXD-2KHVYY",
+		Trades: []order.TradeHistory{
+			{
+				Price:     100000,
+				Amount:    1000000000,
+				Fee:       1600,
+				Exchange:  k.Name,
+				TID:       "TDLH43-DVQXD-2KHVYY",
+				Type:      order.Limit,
+				Side:      order.Sell,
+				Timestamp: convert.TimeFromUnixTimestampDecimal(1560516023.070651),
+			},
+		},
+	}
+
+	res := <-k.Websocket.DataHandler
+	switch d := res.(type) {
+	case *order.Detail:
+		if !reflect.DeepEqual(expected, *d) {
+			t.Errorf("expected %+v, received %+v", expected, *d)
+		}
+	default:
+		t.Errorf("expected type *order.Detail, received %T", d)
+	}
 }
+
+const wsOpenOrdersData = `[
+	[
+	  {
+		"OGTT3Y-C6I3P-XRI6HX": {
+		  "avg_price": "34.50000",
+		  "cost": "0.00000",
+		  "descr": {
+			"close": "",
+			"leverage": "0:1",
+			"order": "sell 10.00345345 XBT/EUR @ limit 34.50000 with 0:1 leverage",
+			"ordertype": "limit",
+			"pair": "XBT/USD",
+			"price": "34.50000",
+			"price2": "0.00000",
+			"type": "sell"
+		  },
+		  "expiretm": "0.000000",
+		  "fee": "0.00000",
+		  "limitprice": "34.50000",
+		  "misc": "",
+		  "oflags": "fcib",
+		  "opentm": "0.000000",
+		  "refid": "OKIVMP-5GVZN-Z2D2UA",
+		  "starttm": "0.000000",
+		  "status": "open",
+		  "stopprice": "0.000000",
+		  "userref": 0,
+		  "vol": "10.00345345",
+		  "vol_exec": "0.00000000"
+		}
+	  },
+	  {
+		"OGTT3Y-C6I3P-XRI6HX": {
+		  "avg_price": "5334.60000",
+		  "cost": "0.00000",
+		  "descr": {
+			"close": "",
+			"leverage": "0:1",
+			"order": "sell 0.00000010 XBT/EUR @ limit 5334.60000 with 0:1 leverage",
+			"ordertype": "limit",
+			"pair": "XBT/USD",
+			"price": "5334.60000",
+			"price2": "0.00000",
+			"type": "sell"
+		  },
+		  "expiretm": "0.000000",
+		  "fee": "0.00000",
+		  "limitprice": "5334.60000",
+		  "misc": "",
+		  "oflags": "fcib",
+		  "opentm": "0.000000",
+		  "refid": "OKIVMP-5GVZN-Z2D2UA",
+		  "starttm": "0.000000",
+		  "status": "open",
+		  "stopprice": "0.000000",
+		  "userref": 0,
+		  "vol": "0.00000010",
+		  "vol_exec": "0.00000000"
+		}
+	  },
+	  {
+		"OGTT3Y-C6I3P-XRI6HX": {
+		  "avg_price": "90.40000",
+		  "cost": "0.00000",
+		  "descr": {
+			"close": "",
+			"leverage": "0:1",
+			"order": "sell 0.00001000 XBT/EUR @ limit 90.40000 with 0:1 leverage",
+			"ordertype": "limit",
+			"pair": "XBT/USD",
+			"price": "90.40000",
+			"price2": "0.00000",
+			"type": "sell"
+		  },
+		  "expiretm": "0.000000",
+		  "fee": "0.00000",
+		  "limitprice": "90.40000",
+		  "misc": "",
+		  "oflags": "fcib",
+		  "opentm": "0.000000",
+		  "refid": "OKIVMP-5GVZN-Z2D2UA",
+		  "starttm": "0.000000",
+		  "status": "open",
+		  "stopprice": "0.000000",
+		  "userref": 0,
+		  "vol": "0.00001000",
+		  "vol_exec": "0.00000000"
+		}
+	  },
+	  {
+		"OGTT3Y-C6I3P-XRI6HX": {
+		  "avg_price": "9.00000",
+		  "cost": "0.00000",
+		  "descr": {
+			"close": "",
+			"leverage": "0:1",
+			"order": "sell 0.00001000 XBT/EUR @ limit 9.00000 with 0:1 leverage",
+			"ordertype": "limit",
+			"pair": "XBT/USD",
+			"price": "9.00000",
+			"price2": "0.00000",
+			"type": "sell"
+		  },
+		  "expiretm": "0.000000",
+		  "fee": "0.00000",
+		  "limitprice": "9.00000",
+		  "misc": "",
+		  "oflags": "fcib",
+		  "opentm": "0.000000",
+		  "refid": "OKIVMP-5GVZN-Z2D2UA",
+		  "starttm": "0.000000",
+		  "status": "open",
+		  "stopprice": "0.000000",
+		  "userref": 0,
+		  "vol": "0.00001000",
+		  "vol_exec": "0.00000000"
+		}
+	  }
+	],
+	"openOrders",
+	{
+	  "sequence": 234
+	}
+  ]`
 
 func TestWsOpenOrders(t *testing.T) {
 	t.Parallel()
-	pressXToJSON := []byte(`[
-  [
-    {
-      "OGTT3Y-C6I3P-XRI6HX": {
-        "cost": "0.00000",
-        "descr": {
-          "close": "",
-          "leverage": "0.1",
-          "order": "sell 10.00345345 XBT/USD @ limit 34.50000 with 0:1 leverage",
-          "ordertype": "limit",
-          "pair": "XBT/USD",
-          "price": "34.50000",
-          "price2": "0.00000",
-          "type": "sell"
-        },
-        "expiretm": "0.000000",
-        "fee": "0.00000",
-        "limitprice": "34.50000",
-        "misc": "",
-        "oflags": "fcib",
-        "opentm": "0.000000",
-        "price": "34.50000",
-        "refid": "OKIVMP-5GVZN-Z2D2UA",
-        "starttm": "0.000000",
-        "status": "open",
-        "stopprice": "0.000000",
-        "userref": 0,
-        "vol": "10.00345345",
-        "vol_exec": "0.00000000"
-      }
-    },
-    {
-      "OGTT3Y-C6I3P-XRI6HX": {
-        "cost": "0.00000",
-        "descr": {
-          "close": "",
-          "leverage": "0.1",
-          "order": "sell 0.00000010 XBT/USD @ limit 5334.60000 with 0:1 leverage",
-          "ordertype": "limit",
-          "pair": "XBT/USD",
-          "price": "5334.60000",
-          "price2": "0.00000",
-          "type": "sell"
-        },
-        "expiretm": "0.000000",
-        "fee": "0.00000",
-        "limitprice": "5334.60000",
-        "misc": "",
-        "oflags": "fcib",
-        "opentm": "0.000000",
-        "price": "5334.60000",
-        "refid": "OKIVMP-5GVZN-Z2D2UA",
-        "starttm": "0.000000",
-        "status": "open",
-        "stopprice": "0.000000",
-        "userref": 0,
-        "vol": "0.00000010",
-        "vol_exec": "0.00000000"
-      }
-    },
-    {
-      "OGTT3Y-C6I3P-XRI6HX": {
-        "cost": "0.00000",
-        "descr": {
-          "close": "",
-          "leverage": "0.1",
-          "order": "sell 0.00001000 XBT/USD @ limit 90.40000 with 0:1 leverage",
-          "ordertype": "limit",
-          "pair": "XBT/USD",
-          "price": "90.40000",
-          "price2": "0.00000",
-          "type": "sell"
-        },
-        "expiretm": "0.000000",
-        "fee": "0.00000",
-        "limitprice": "90.40000",
-        "misc": "",
-        "oflags": "fcib",
-        "opentm": "0.000000",
-        "price": "90.40000",
-        "refid": "OKIVMP-5GVZN-Z2D2UA",
-        "starttm": "0.000000",
-        "status": "open",
-        "stopprice": "0.000000",
-        "userref": 0,
-        "vol": "0.00001000",
-        "vol_exec": "0.00000000"
-      }
-    },
-    {
-      "OGTT3Y-C6I3P-XRI6HX": {
-        "cost": "0.00000",
-        "descr": {
-          "close": "",
-          "leverage": "0.1",
-          "order": "sell 0.00001000 XBT/USD @ limit 9.00000 with 0:1 leverage",
-          "ordertype": "limit",
-          "pair": "XBT/USD",
-          "price": "9.00000",
-          "price2": "0.00000",
-          "type": "sell"
-        },
-        "expiretm": "0.000000",
-        "fee": "0.00000",
-        "limitprice": "9.00000",
-        "misc": "",
-        "oflags": "fcib",
-        "opentm": "0.000000",
-        "price": "9.00000",
-        "refid": "OKIVMP-5GVZN-Z2D2UA",
-        "starttm": "0.000000",
-        "status": "open",
-        "stopprice": "0.000000",
-        "userref": 0,
-        "vol": "0.00001000",
-        "vol_exec": "0.00000000"
-      }
-    }
-  ],
-  "openOrders"
-]`)
-	err := k.wsHandleData(pressXToJSON)
+	err := k.wsHandleData([]byte(wsOpenOrdersData))
 	if err != nil {
 		t.Error(err)
 	}
-	pressXToJSON = []byte(`[
+	pressXToJSON := []byte(`[
   [
     {
       "OGTT3Y-C6I3P-XRI6HX": {

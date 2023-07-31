@@ -548,9 +548,6 @@ type WebsocketSubscriptionResponseData struct {
 	Name string `json:"name"`
 }
 
-// WebsocketDataResponse defines a websocket data type
-type WebsocketDataResponse []interface{}
-
 // WebsocketErrorResponse defines a websocket error response
 type WebsocketErrorResponse struct {
 	ErrorMessage string `json:"errorMessage"`
@@ -561,7 +558,7 @@ type WebsocketErrorResponse struct {
 type WebsocketChannelData struct {
 	Subscription string
 	Pair         currency.Pair
-	ChannelID    *int64
+	ChannelID    int64
 	MaxDepth     int
 }
 
@@ -582,13 +579,13 @@ type wsSystemStatus struct {
 }
 
 type wsSubscription struct {
-	ChannelID    *int64 `json:"channelID"`
-	ChannelName  string `json:"channelName"`
-	ErrorMessage string `json:"errorMessage"`
-	Event        string `json:"event"`
-	Pair         string `json:"pair"`
-	RequestID    int64  `json:"reqid"`
-	Status       string `json:"status"`
+	ChannelID    int64         `json:"channelID"`
+	ChannelName  string        `json:"channelName"`
+	ErrorMessage string        `json:"errorMessage"`
+	Event        string        `json:"event"`
+	Pair         currency.Pair `json:"pair"`
+	RequestID    int64         `json:"reqid"`
+	Status       string        `json:"status"`
 	Subscription struct {
 		Depth    int    `json:"depth"`
 		Interval int    `json:"interval"`
@@ -617,7 +614,7 @@ type WsOpenOrder struct {
 		Close     string  `json:"close"`
 		Price     float64 `json:"price,string"`
 		Price2    float64 `json:"price2,string"`
-		Leverage  float64 `json:"leverage,string"`
+		Leverage  string  `json:"leverage"`
 		Order     string  `json:"order"`
 		OrderType string  `json:"ordertype"`
 		Pair      string  `json:"pair"`
@@ -720,6 +717,33 @@ type WsCancelOrderResponse struct {
 	ErrorMessage string `json:"errorMessage"`
 	RequestID    int64  `json:"reqid"`
 	Count        int64  `json:"count"`
+}
+
+type wsTicker struct {
+	Ask    [3]interface{} `json:"a"`
+	Bid    [3]interface{} `json:"b"`
+	Close  [2]string      `json:"c"`
+	Volume [2]string      `json:"v"`
+	VWAP   [2]string      `json:"p"`
+	Trades [2]int64       `json:"t"`
+	Low    [2]string      `json:"l"`
+	High   [2]string      `json:"h"`
+	Open   [2]string      `json:"o"`
+}
+
+type wsOrderbookSnapshot struct {
+	Bids [][3]string `json:"bs"`
+	Asks [][3]string `json:"as"`
+}
+
+type wsOrderbookUpdate struct {
+	Bids     [][4]string `json:"b"`
+	Asks     [][4]string `json:"a"`
+	Checksum uint32      `json:"c,string"`
+}
+
+type wsEvent struct {
+	Event string `json:"event"`
 }
 
 // OrderVars stores side, status and type for any order/trade
