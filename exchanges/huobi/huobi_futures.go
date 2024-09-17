@@ -1281,34 +1281,54 @@ func (h *HUOBI) convertContractShortHandToExpiry(pair currency.Pair, tt time.Tim
 		return currency.EMPTYPAIR, err
 	}
 	tt = tt.In(loc)
-	switch pair.Quote.Item.Symbol {
-	case "NW":
-		tt = tt.AddDate(0, 0, 7)
-		fallthrough
+	var expiry time.Time
+
+	isPastFourPM := tt.Hour() >= 16 // All contracts use 4pm as the delivery time
+
+	switch pair.Quote.String() {
 	case "CW":
-		for {
-			if tt.Weekday() == time.Friday {
-				break
-			}
-			tt = tt.AddDate(0, 0, 1)
+		if tt.Weekday() == time.Friday && isPastFourPM {
+			// If it's Friday after 4 PM, we need the next Friday
+			expiry = tt.AddDate(0, 0, 7)
+		} else {
+			// Otherwise, we need this Friday
+			daysUntilFriday := (5 - int(tt.Weekday()) + 7) % 7
+			expiry = tt.AddDate(0, 0, daysUntilFriday)
 		}
-	case "NQ":
-		tt = tt.AddDate(0, 3, 0)
-		fallthrough
-	case "CQ":
-		// Find the next quarter end
-		for !(tt.Month() == time.March || tt.Month() == time.June || tt.Month() == time.September || tt.Month() == time.December) {
-			tt = tt.AddDate(0, 1, 0)
+	case "NW":
+		daysUntilNextFriday := (5 - int(tt.Weekday()) + 7) % 7
+		switch {
+		case daysUntilNextFriday == 0 && !isPastFourPM:
+			// If it's Friday before 4 PM, we need next week's Friday
+			expiry = tt.AddDate(0, 0, 7)
+		case daysUntilNextFriday == 0 && isPastFourPM:
+			// If it's Friday after 4 PM, we need the Friday after next
+			expiry = tt.AddDate(0, 0, 7*2)
+		default:
+			// For all other cases, we need the Friday after next
+			expiry = tt.AddDate(0, 0, daysUntilNextFriday+7)
 		}
-		// Find the last day of the quarter
-		tt = time.Date(tt.Year(), tt.Month()+1, 0, 0, 0, 0, 0, time.UTC)
-		// Find the last Friday of the quarter
-		for tt.Weekday() != time.Friday {
-			tt = tt.AddDate(0, 0, -1)
+	case "CQ", "NQ":
+		quarters := 0
+		if pair.Quote.String() == "NQ" {
+			quarters = 1
+		}
+
+		// Find last Friday of the current quarter
+		quarterEnd := time.Date(tt.Year(), ((tt.Month()-1)/3+1)*3+1, 0, 0, 0, 0, 0, loc)
+		expiry = quarterEnd.AddDate(0, 0, -((int(quarterEnd.Weekday()) - 5 + 7) % 7))
+
+		// Check if we need to move to the next quarter
+		if expiry.Sub(tt) <= 14*24*time.Hour {
+			expiry = expiry.AddDate(0, 3*quarters+3, 0)
+			expiry = expiry.AddDate(0, 0, -((int(expiry.Weekday()) - 5 + 7) % 7))
+		} else if quarters > 0 {
+			expiry = expiry.AddDate(0, 3, 0)
+			expiry = expiry.AddDate(0, 0, -((int(expiry.Weekday()) - 5 + 7) % 7))
 		}
 	default:
-		return currency.EMPTYPAIR, fmt.Errorf(" %w %v", errInvalidContractType, pair)
+		return currency.EMPTYPAIR, fmt.Errorf("%w: %v", errInvalidContractType, pair.Quote)
 	}
-	pair.Quote = currency.NewCode(tt.Format(fContractDateFormat))
+	pair.Quote = currency.NewCode(expiry.Format(fContractDateFormat))
 	return pair, nil
 }

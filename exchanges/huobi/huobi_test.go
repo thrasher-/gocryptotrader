@@ -2883,61 +2883,65 @@ func TestUpdateTickers(t *testing.T) {
 
 func TestConvertContractShortHandToExpiry(t *testing.T) {
 	t.Parallel()
-	tt := time.Now()
-	cp := currency.NewPair(currency.BTC, currency.NewCode("CW"))
-	cp, err := h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, "CW", cp.Quote.String())
-	tick, err := h.FetchTicker(context.Background(), cp, asset.Futures)
-	if assert.NoError(t, err) {
-		assert.NotZero(t, tick.Close)
+
+	testCases := []struct {
+		name          string
+		contractType  string
+		inputDate     time.Time
+		expectedQuote string
+		expectError   bool
+	}{
+		{"CW Monday", "CW", time.Date(2024, 3, 18, 0, 0, 0, 0, time.UTC), "240322", false},
+		{"CW Friday before 4 PM SGT", "CW", time.Date(2024, 3, 22, 7, 59, 59, 0, time.UTC), "240322", false},
+		{"CW Friday after 4 PM SGT", "CW", time.Date(2024, 3, 22, 8, 0, 1, 0, time.UTC), "240329", false},
+		{"NW Monday", "NW", time.Date(2024, 3, 18, 0, 0, 0, 0, time.UTC), "240329", false},
+		{"NW Friday before 4 PM SGT", "NW", time.Date(2024, 3, 22, 7, 59, 59, 0, time.UTC), "240329", false},
+		{"NW Friday after 4 PM SGT", "NW", time.Date(2024, 3, 22, 8, 0, 1, 0, time.UTC), "240405", false},
+		{"CQ Start of quarter", "CQ", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "240329", false},
+		{"CQ 15 days before quarter end", "CQ", time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC), "240329", false},
+		{"CQ 14 days before quarter end", "CQ", time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC), "240628", false},
+		{"NQ Start of quarter", "NQ", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), "240628", false},
+		{"NQ 15 days before quarter end", "NQ", time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC), "240628", false},
+		{"NQ 14 days before quarter end", "NQ", time.Date(2024, 3, 15, 0, 0, 0, 0, time.UTC), "240927", false},
+		{"Invalid contract type", "ContractWifHat", time.Now().UTC(), "", true},
 	}
 
-	cp = currency.NewPair(currency.BTC, currency.NewCode("NW"))
-	cp, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, "NW", cp.Quote.String())
-	tick, err = h.FetchTicker(context.Background(), cp, asset.Futures)
-	if assert.NoError(t, err) {
-		assert.NotZero(t, tick.Close)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cp := currency.NewPair(currency.BTC, currency.NewCode(tc.contractType))
+			resultPair, err := h.convertContractShortHandToExpiry(cp, tc.inputDate)
+
+			if tc.expectError {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, errInvalidContractType)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.NotEqual(t, tc.contractType, resultPair.Quote.String())
+			assert.Equal(t, tc.expectedQuote, resultPair.Quote.String())
+		})
 	}
 
-	cp = currency.NewPair(currency.BTC, currency.NewCode("CQ"))
-	cp, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, "CQ", cp.Quote.String())
-	tick, err = h.FetchTicker(context.Background(), cp, asset.Futures)
-	if assert.NoError(t, err) {
-		assert.NotZero(t, tick.Close)
+	// Test with current time for dynamic contract types
+	currentTimeTests := []string{"CW", "NW", "CQ", "NQ"}
+	for _, contractType := range currentTimeTests {
+		t.Run(contractType, func(t *testing.T) {
+			cp := currency.NewPair(currency.BTC, currency.NewCode(contractType))
+
+			resultPair, err := h.convertContractShortHandToExpiry(cp, time.Now())
+			assert.NoError(t, err)
+			assert.NotEqual(t, contractType, resultPair.Quote.String())
+
+			tick, err := h.FetchTicker(context.Background(), resultPair, asset.Futures)
+			if err != nil && contractType == "NQ" {
+				return
+			}
+			assert.NoError(t, err)
+			assert.NotZero(t, tick.Close, "Close price should not be zero")
+		})
 	}
-
-	// calculate a specific date
-	cp = currency.NewPair(currency.BTC, currency.NewCode("CQ"))
-	tt = time.Date(2021, 6, 3, 0, 0, 0, 0, time.UTC)
-	cp, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.Equal(t, "210625", cp.Quote.String())
-
-	cp = currency.NewPair(currency.BTC, currency.NewCode("CW"))
-	cp, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.Equal(t, "210604", cp.Quote.String())
-
-	cp = currency.NewPair(currency.BTC, currency.NewCode("CWif hat"))
-	_, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.ErrorIs(t, err, errInvalidContractType)
-
-	tt = time.Now()
-	cp = currency.NewPair(currency.BTC, currency.NewCode("NQ"))
-	cp, err = h.convertContractShortHandToExpiry(cp, tt)
-	assert.NoError(t, err)
-	assert.NotEqual(t, "NQ", cp.Quote.String())
-	tick, err = h.FetchTicker(context.Background(), cp, asset.Futures)
-	if err != nil {
-		// Huobi doesn't always have a next-quarter contract, return if no data found
-		return
-	}
-	assert.NotZero(t, tick.Close)
 }
 
 func TestGetOpenInterest(t *testing.T) {
