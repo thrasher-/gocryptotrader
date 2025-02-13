@@ -3211,7 +3211,7 @@ func TestUpdateOrderExecutionLimits(t *testing.T) {
 }
 
 func BenchmarkIntervalToString(b *testing.B) {
-	for x := 0; x < b.N; x++ {
+	for b.Loop() {
 		result, err := IntervalToString(kline.OneWeek)
 		assert.NoError(b, err)
 		assert.NotNil(b, result)
