@@ -82,6 +82,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	ok.Verbose = true
 	err = ok.UpdateTradablePairs(contextGenerate(), true)
 	if err != nil {
 		log.Fatal(err)
