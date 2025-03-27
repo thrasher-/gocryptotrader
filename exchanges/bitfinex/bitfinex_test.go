@@ -314,7 +314,7 @@ func checkFundingTick(tb testing.TB, tick *Ticker) {
 	assert.Positive(tb, tick.AskPeriod, "Tick AskPeriod should be positive")
 	assert.Positive(tb, tick.AskSize, "Tick AskSize should be positive")
 	assert.Positive(tb, tick.Last, "Tick Last should be positive")
-	assert.Positive(tb, tick.FFRAmountAvailable, "Tick FFRAmountavailable should be positive")
+	// Can't test FRRAmountAvailable as it's occasionally 0
 }
 
 func TestGetTrades(t *testing.T) {
@@ -1134,6 +1134,8 @@ func TestWSAuth(t *testing.T) {
 func TestGenerateSubscriptions(t *testing.T) {
 	t.Parallel()
 
+	b := new(Bitfinex) //nolint:govet // Intentional shadow of b to avoid future copy/paste mistakes
+	require.NoError(t, testexch.Setup(b), "Setup must not error")
 	b.Websocket.SetCanUseAuthenticatedEndpoints(true)
 	require.True(t, b.Websocket.CanUseAuthenticatedEndpoints(), "CanUseAuthenticatedEndpoints must return true")
 	subs, err := b.generateSubscriptions()
