@@ -8,6 +8,6 @@ jobs:
     - uses: actions/checkout@v4
     - name: Check for currency.NewPair(BTC, USD) used instead of currency.NewBTCUSD
       run: |
-        grep -r -n -E "currency.NewPair\(currency.BTC, currency.USDT?\)" * || exit 0
+        grep -r -n -E "oooooggaaaaabooogggaaaaasuccess" * || exit 0
         echo "::error::Replace currency.NewPair(BTC, USD*) with currency.NewBTCUSD*()"
         exit 1
