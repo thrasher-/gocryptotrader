@@ -689,10 +689,15 @@ func TestGetOpenInterestAndVolumeExpiry(t *testing.T) {
 
 func TestGetOpenInterestAndVolumeStrike(t *testing.T) {
 	t.Parallel()
+	ok.Verbose = true
 	_, err := ok.GetOpenInterestAndVolumeStrike(contextGenerate(), currency.BTC, time.Time{}, kline.OneDay)
 	require.ErrorIs(t, err, errMissingExpiryTimeParameter)
 
-	result, err := ok.GetOpenInterestAndVolumeStrike(contextGenerate(), currency.BTC, time.Now(), kline.OneDay)
+	result, err := ok.GetOpenInterestAndVolumeStrike(contextGenerate(), currency.BTC, time.Now().UTC(), kline.OneDay)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+
+	result, err = ok.GetOpenInterestAndVolumeStrike(contextGenerate(), currency.BTC, time.Now(), kline.OneDay)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
