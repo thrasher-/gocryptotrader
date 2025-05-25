@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
 	"github.com/thrasher-corp/gocryptotrader/database/testhelpers"
@@ -77,9 +79,7 @@ func TestScript(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.runner != nil {
 				test.runner()
@@ -87,9 +87,7 @@ func TestScript(t *testing.T) {
 
 			if test.closer != nil {
 				err = test.closer(dbConn)
-				if err != nil {
-					t.Log(err)
-				}
+				assert.NoError(t, err)
 			}
 		})
 	}

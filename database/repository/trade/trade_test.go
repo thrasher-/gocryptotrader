@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
@@ -85,22 +87,16 @@ func TestTrades(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB()
-				if err != nil {
-					t.Error(err)
-				}
+				require.NoError(t, err)
 			}
 
 			tradeSQLTester(t)
 			err = testhelpers.CloseDatabase(dbConn)
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -125,9 +121,7 @@ func tradeSQLTester(t *testing.T) {
 		}
 	}
 	err := Insert(trades...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// insert the same trades to test conflict resolution
 
 	trades2 := make([]Data, 20)
@@ -147,9 +141,7 @@ func tradeSQLTester(t *testing.T) {
 		}
 	}
 	err = Insert(trades2...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	resp, err := GetInRange(
 		testExchanges[0].Name,
 		asset.Spot.String(),
@@ -158,9 +150,7 @@ func tradeSQLTester(t *testing.T) {
 		firstTime.Add(-time.Hour),
 		firstTime.Add(time.Hour),
 	)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	if len(resp) != 20 {
 		t.Fatalf("unique constraints failing, got %v", resp)
 	}
@@ -172,34 +162,24 @@ func tradeSQLTester(t *testing.T) {
 		currency.USD.String(),
 		firstTime.Add(-time.Hour),
 		firstTime.Add(time.Hour))
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	if len(v) == 0 {
 		t.Error("Bad get!")
 	}
 
 	ranges, err := kline.CalculateCandleDateRanges(firstTime, firstTime.Add(20*time.Minute), kline.OneMin, 100)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	err = VerifyTradeInIntervals(testExchanges[0].Name,
 		asset.Spot.String(),
 		currency.BTC.String(),
 		currency.USD.String(),
 		ranges)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	err = DeleteTrades(trades...)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	err = DeleteTrades(trades2...)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	v, err = GetInRange(
 		testExchanges[0].Name,
@@ -208,9 +188,7 @@ func tradeSQLTester(t *testing.T) {
 		currency.USD.String(),
 		time.Now().Add(-time.Hour),
 		time.Now().Add(time.Hour))
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 	if len(v) != 0 {
 		t.Errorf("should all be dead %v", v)
 	}

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
 	"github.com/thrasher-corp/gocryptotrader/database/testhelpers"
@@ -86,26 +88,18 @@ func TestInsertMany(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB()
-				if err != nil {
-					t.Error(err)
-				}
+				require.NoError(t, err)
 			}
 
 			err = InsertMany(testExchanges)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			err = testhelpers.CloseDatabase(dbConn)
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -142,34 +136,24 @@ func TestOneAndOneByUUID(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB()
-				if err != nil {
-					t.Error(err)
-				}
+				require.NoError(t, err)
 			}
 
 			ret, err := One("one")
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			ret2, err := OneByUUID(ret.UUID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if ret.Name != ret2.Name {
 				t.Fatalf("unexpected value received: %v", ret2.Name)
 			}
 			err = testhelpers.CloseDatabase(dbConn)
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -180,7 +164,6 @@ func seed() error {
 
 func TestLoadCSV(t *testing.T) {
 	testData := filepath.Join("..", "..", "..", "testdata", "exchangelist.csv")
-	if _, err := LoadCSV(testData); err != nil {
-		t.Fatal(err)
-	}
+	_, err := LoadCSV(testData)
+	require.NoError(t, err)
 }

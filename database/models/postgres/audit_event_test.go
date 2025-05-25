@@ -9,8 +9,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/sqlboiler/boil"
 	"github.com/thrasher-corp/sqlboiler/queries"
 	"github.com/thrasher-corp/sqlboiler/randomize"
@@ -39,22 +37,31 @@ func testAuditEventsDelete(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
-	rowsAff, err := o.Delete(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), rowsAff, "should only have deleted one row")
+	if rowsAff, err := o.Delete(ctx, tx); err != nil {
+		t.Error(err)
+	} else if rowsAff != 1 {
+		t.Error("should only have deleted one row, but affected:", rowsAff)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), count, "want zero records")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 0 {
+		t.Error("want zero records, got:", count)
+	}
 }
 
 func testAuditEventsQueryDeleteAll(t *testing.T) {
@@ -63,22 +70,31 @@ func testAuditEventsQueryDeleteAll(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
-	rowsAff, err := AuditEvents().DeleteAll(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), rowsAff, "should only have deleted one row")
+	if rowsAff, err := AuditEvents().DeleteAll(ctx, tx); err != nil {
+		t.Error(err)
+	} else if rowsAff != 1 {
+		t.Error("should only have deleted one row, but affected:", rowsAff)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), count, "want zero records")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 0 {
+		t.Error("want zero records, got:", count)
+	}
 }
 
 func testAuditEventsSliceDeleteAll(t *testing.T) {
@@ -87,24 +103,33 @@ func testAuditEventsSliceDeleteAll(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	slice := AuditEventSlice{o}
 
-	rowsAff, err := slice.DeleteAll(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), rowsAff, "should only have deleted one row")
+	if rowsAff, err := slice.DeleteAll(ctx, tx); err != nil {
+		t.Error(err)
+	} else if rowsAff != 1 {
+		t.Error("should only have deleted one row, but affected:", rowsAff)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(0), count, "want zero records")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 0 {
+		t.Error("want zero records, got:", count)
+	}
 }
 
 func testAuditEventsExists(t *testing.T) {
@@ -113,18 +138,24 @@ func testAuditEventsExists(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	e, err := AuditEventExists(ctx, tx, o.ID)
-	require.NoError(t, err, "Unable to check if AuditEvent exists")
-	require.True(t, e, "Expected AuditEventExists to return true")
+	if err != nil {
+		t.Errorf("Unable to check if AuditEvent exists: %s", err)
+	}
+	if !e {
+		t.Errorf("Expected AuditEventExists to return true, but got false.")
+	}
 }
 
 func testAuditEventsFind(t *testing.T) {
@@ -133,18 +164,25 @@ func testAuditEventsFind(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	auditEventFound, err := FindAuditEvent(ctx, tx, o.ID)
-	require.NoError(t, err)
-	require.NotNil(t, auditEventFound, "want a record, got nil")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if auditEventFound == nil {
+		t.Error("want a record, got nil")
+	}
 }
 
 func testAuditEventsBind(t *testing.T) {
@@ -153,17 +191,20 @@ func testAuditEventsBind(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
-	err = AuditEvents().Bind(ctx, tx, o)
-	require.NoError(t, err)
+	if err = AuditEvents().Bind(ctx, tx, o); err != nil {
+		t.Error(err)
+	}
 }
 
 func testAuditEventsOne(t *testing.T) {
@@ -172,18 +213,22 @@ func testAuditEventsOne(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
-	x, err := AuditEvents().One(ctx, tx)
-	require.NoError(t, err)
-	require.NotNil(t, x, "expected to get a non nil record")
+	if x, err := AuditEvents().One(ctx, tx); err != nil {
+		t.Error(err)
+	} else if x == nil {
+		t.Error("expected to get a non nil record")
+	}
 }
 
 func testAuditEventsAll(t *testing.T) {
@@ -193,22 +238,31 @@ func testAuditEventsAll(t *testing.T) {
 	var err error
 	auditEventOne := &AuditEvent{}
 	auditEventTwo := &AuditEvent{}
-	err = randomize.Struct(seed, auditEventOne, auditEventDBTypes, false, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct: auditEventOne")
-	err = randomize.Struct(seed, auditEventTwo, auditEventDBTypes, false, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct: auditEventTwo")
+	if err = randomize.Struct(seed, auditEventOne, auditEventDBTypes, false, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
+	if err = randomize.Struct(seed, auditEventTwo, auditEventDBTypes, false, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = auditEventOne.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
-	err = auditEventTwo.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = auditEventOne.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
+	if err = auditEventTwo.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	slice, err := AuditEvents().All(ctx, tx)
-	require.NoError(t, err)
-	require.Len(t, slice, 2, "want 2 records")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(slice) != 2 {
+		t.Error("want 2 records, got:", len(slice))
+	}
 }
 
 func testAuditEventsCount(t *testing.T) {
@@ -218,22 +272,31 @@ func testAuditEventsCount(t *testing.T) {
 	seed := randomize.NewSeed()
 	auditEventOne := &AuditEvent{}
 	auditEventTwo := &AuditEvent{}
-	err = randomize.Struct(seed, auditEventOne, auditEventDBTypes, false, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct: auditEventOne")
-	err = randomize.Struct(seed, auditEventTwo, auditEventDBTypes, false, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct: auditEventTwo")
+	if err = randomize.Struct(seed, auditEventOne, auditEventDBTypes, false, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
+	if err = randomize.Struct(seed, auditEventTwo, auditEventDBTypes, false, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = auditEventOne.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
-	err = auditEventTwo.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = auditEventOne.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
+	if err = auditEventTwo.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(2), count, "want 2 records")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 2 {
+		t.Error("want 2 records, got:", count)
+	}
 }
 
 func auditEventBeforeInsertHook(ctx context.Context, e boil.ContextExecutor, o *AuditEvent) error {
@@ -291,61 +354,89 @@ func testAuditEventsHooks(t *testing.T) {
 	o := &AuditEvent{}
 
 	seed := randomize.NewSeed()
-	err = randomize.Struct(seed, o, auditEventDBTypes, false)
-	require.NoError(t, err, "Unable to randomize AuditEvent object")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, false); err != nil {
+		t.Errorf("Unable to randomize AuditEvent object: %s", err)
+	}
 
 	AddAuditEventHook(boil.BeforeInsertHook, auditEventBeforeInsertHook)
-	err = o.doBeforeInsertHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doBeforeInsertHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected BeforeInsertHook function to empty object, but got: %#v", o)
+	if err = o.doBeforeInsertHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doBeforeInsertHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected BeforeInsertHook function to empty object, but got: %#v", o)
+	}
 	auditEventBeforeInsertHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.AfterInsertHook, auditEventAfterInsertHook)
-	err = o.doAfterInsertHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doAfterInsertHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected AfterInsertHook function to empty object, but got: %#v", o)
+	if err = o.doAfterInsertHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doAfterInsertHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected AfterInsertHook function to empty object, but got: %#v", o)
+	}
 	auditEventAfterInsertHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.AfterSelectHook, auditEventAfterSelectHook)
-	err = o.doAfterSelectHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doAfterSelectHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected AfterSelectHook function to empty object, but got: %#v", o)
+	if err = o.doAfterSelectHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doAfterSelectHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected AfterSelectHook function to empty object, but got: %#v", o)
+	}
 	auditEventAfterSelectHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.BeforeUpdateHook, auditEventBeforeUpdateHook)
-	err = o.doBeforeUpdateHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doBeforeUpdateHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected BeforeUpdateHook function to empty object, but got: %#v", o)
+	if err = o.doBeforeUpdateHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doBeforeUpdateHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected BeforeUpdateHook function to empty object, but got: %#v", o)
+	}
 	auditEventBeforeUpdateHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.AfterUpdateHook, auditEventAfterUpdateHook)
-	err = o.doAfterUpdateHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doAfterUpdateHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected AfterUpdateHook function to empty object, but got: %#v", o)
+	if err = o.doAfterUpdateHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doAfterUpdateHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected AfterUpdateHook function to empty object, but got: %#v", o)
+	}
 	auditEventAfterUpdateHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.BeforeDeleteHook, auditEventBeforeDeleteHook)
-	err = o.doBeforeDeleteHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doBeforeDeleteHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected BeforeDeleteHook function to empty object, but got: %#v", o)
+	if err = o.doBeforeDeleteHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doBeforeDeleteHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected BeforeDeleteHook function to empty object, but got: %#v", o)
+	}
 	auditEventBeforeDeleteHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.AfterDeleteHook, auditEventAfterDeleteHook)
-	err = o.doAfterDeleteHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doAfterDeleteHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected AfterDeleteHook function to empty object, but got: %#v", o)
+	if err = o.doAfterDeleteHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doAfterDeleteHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected AfterDeleteHook function to empty object, but got: %#v", o)
+	}
 	auditEventAfterDeleteHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.BeforeUpsertHook, auditEventBeforeUpsertHook)
-	err = o.doBeforeUpsertHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doBeforeUpsertHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected BeforeUpsertHook function to empty object, but got: %#v", o)
+	if err = o.doBeforeUpsertHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doBeforeUpsertHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected BeforeUpsertHook function to empty object, but got: %#v", o)
+	}
 	auditEventBeforeUpsertHooks = []AuditEventHook{}
 
 	AddAuditEventHook(boil.AfterUpsertHook, auditEventAfterUpsertHook)
-	err = o.doAfterUpsertHooks(ctx, nil)
-	require.NoError(t, err, "Unable to execute doAfterUpsertHooks")
-	require.True(t, reflect.DeepEqual(o, empty), "Expected AfterUpsertHook function to empty object, but got: %#v", o)
+	if err = o.doAfterUpsertHooks(ctx, nil); err != nil {
+		t.Errorf("Unable to execute doAfterUpsertHooks: %s", err)
+	}
+	if !reflect.DeepEqual(o, empty) {
+		t.Errorf("Expected AfterUpsertHook function to empty object, but got: %#v", o)
+	}
 	auditEventAfterUpsertHooks = []AuditEventHook{}
 }
 
@@ -355,18 +446,25 @@ func testAuditEventsInsert(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
 }
 
 func testAuditEventsInsertWhitelist(t *testing.T) {
@@ -375,18 +473,25 @@ func testAuditEventsInsertWhitelist(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Whitelist(auditEventColumnsWithoutDefault...))
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Whitelist(auditEventColumnsWithoutDefault...)); err != nil {
+		t.Error(err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
 }
 
 func testAuditEventsReload(t *testing.T) {
@@ -395,17 +500,20 @@ func testAuditEventsReload(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
-	err = o.Reload(ctx, tx)
-	require.NoError(t, err)
+	if err = o.Reload(ctx, tx); err != nil {
+		t.Error(err)
+	}
 }
 
 func testAuditEventsReloadAll(t *testing.T) {
@@ -414,19 +522,22 @@ func testAuditEventsReloadAll(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	slice := AuditEventSlice{o}
 
-	err = slice.ReloadAll(ctx, tx)
-	require.NoError(t, err)
+	if err = slice.ReloadAll(ctx, tx); err != nil {
+		t.Error(err)
+	}
 }
 
 func testAuditEventsSelect(t *testing.T) {
@@ -435,18 +546,25 @@ func testAuditEventsSelect(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	slice, err := AuditEvents().All(ctx, tx)
-	require.NoError(t, err)
-	require.Len(t, slice, 1, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if len(slice) != 1 {
+		t.Error("want one record, got:", len(slice))
+	}
 }
 
 var (
@@ -467,25 +585,35 @@ func testAuditEventsUpdate(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
 
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventPrimaryKeyColumns...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
 
-	rowsAff, err := o.Update(ctx, tx, boil.Infer())
-	require.NoError(t, err)
-	require.Equal(t, int64(1), rowsAff, "should only affect one row")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
+
+	if rowsAff, err := o.Update(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	} else if rowsAff != 1 {
+		t.Error("should only affect one row but affected", rowsAff)
+	}
 }
 
 func testAuditEventsSliceUpdateAll(t *testing.T) {
@@ -498,21 +626,29 @@ func testAuditEventsSliceUpdateAll(t *testing.T) {
 	seed := randomize.NewSeed()
 	var err error
 	o := &AuditEvent{}
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Insert(ctx, tx, boil.Infer())
-	require.NoError(t, err)
+	if err = o.Insert(ctx, tx, boil.Infer()); err != nil {
+		t.Error(err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
 
-	err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventPrimaryKeyColumns...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
+
+	if err = randomize.Struct(seed, o, auditEventDBTypes, true, auditEventPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	// Remove Primary keys and unique columns from what we plan to update
 	var fields []string
@@ -540,9 +676,11 @@ func testAuditEventsSliceUpdateAll(t *testing.T) {
 	}
 
 	slice := AuditEventSlice{o}
-	rowsAff, err := slice.UpdateAll(ctx, tx, updateMap)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), rowsAff, "wanted one record updated")
+	if rowsAff, err := slice.UpdateAll(ctx, tx, updateMap); err != nil {
+		t.Error(err)
+	} else if rowsAff != 1 {
+		t.Error("wanted one record updated but got", rowsAff)
+	}
 }
 
 func testAuditEventsUpsert(t *testing.T) {
@@ -556,27 +694,39 @@ func testAuditEventsUpsert(t *testing.T) {
 	var err error
 	// Attempt the INSERT side of an UPSERT
 	o := AuditEvent{}
-	err = randomize.Struct(seed, &o, auditEventDBTypes, true)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, &o, auditEventDBTypes, true); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	err = o.Upsert(ctx, tx, false, nil, boil.Infer(), boil.Infer())
-	require.NoError(t, err, "Unable to upsert AuditEvent")
+	if err = o.Upsert(ctx, tx, false, nil, boil.Infer(), boil.Infer()); err != nil {
+		t.Errorf("Unable to upsert AuditEvent: %s", err)
+	}
 
 	count, err := AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
 
 	// Attempt the UPDATE side of an UPSERT
-	err = randomize.Struct(seed, &o, auditEventDBTypes, false, auditEventPrimaryKeyColumns...)
-	require.NoError(t, err, "Unable to randomize AuditEvent struct")
+	if err = randomize.Struct(seed, &o, auditEventDBTypes, false, auditEventPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize AuditEvent struct: %s", err)
+	}
 
-	err = o.Upsert(ctx, tx, true, nil, boil.Infer(), boil.Infer())
-	require.NoError(t, err, "Unable to upsert AuditEvent")
+	if err = o.Upsert(ctx, tx, true, nil, boil.Infer(), boil.Infer()); err != nil {
+		t.Errorf("Unable to upsert AuditEvent: %s", err)
+	}
 
 	count, err = AuditEvents().Count(ctx, tx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), count, "want one record")
+	if err != nil {
+		t.Error(err)
+	}
+	if count != 1 {
+		t.Error("want one record, got:", count)
+	}
 }

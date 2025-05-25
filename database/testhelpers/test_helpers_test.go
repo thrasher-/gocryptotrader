@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
 )
@@ -72,23 +74,19 @@ func TestDatabaseConnect(t *testing.T) {
 			}
 
 			dbConn, err := ConnectToDatabase(test.config)
-			if err != nil {
-				switch v := test.output.(type) {
-				case error:
-					if v.Error() != err.Error() {
-						t.Fatal(err)
-					}
-					return
-				default:
-					break
-				}
+			if expectedErr, ok := test.output.(error); ok {
+				// An error is expected
+				require.Error(t, err)
+				require.EqualError(t, err, expectedErr.Error(), "ConnectToDatabase returned an unexpected error")
+				return // Test case is complete if an error was expected and matched
 			}
+
+			// No error was expected
+			require.NoError(t, err, "ConnectToDatabase returned an unexpected error when none was expected")
 
 			if test.closer != nil {
 				err = test.closer(dbConn)
-				if err != nil {
-					t.Log(err)
-				}
+				assert.NoError(t, err, "Closer returned an error")
 			}
 		})
 	}

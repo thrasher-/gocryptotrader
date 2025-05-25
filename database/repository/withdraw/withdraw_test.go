@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/database"
@@ -88,14 +90,10 @@ func TestWithdraw(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			err = exchange.InsertMany(testExchanges)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.runner != nil {
 				test.runner(t)
@@ -103,9 +101,7 @@ func TestWithdraw(t *testing.T) {
 
 			if test.closer != nil {
 				err = test.closer(dbConn)
-				if err != nil {
-					t.Log(err)
-				}
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -160,36 +156,28 @@ func withdrawHelper(t *testing.T) {
 
 	_, err := GetEventByUUID(withdraw.DryRunID.String())
 	if err != nil {
-		if !errors.Is(err, common.ErrNoResults) {
-			t.Fatal(err)
-		}
+		require.ErrorIs(t, err, common.ErrNoResults)
 	}
 
 	v, err := GetEventsByExchange(testExchanges[0].Name, 10)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if v[0].Exchange.Name != testExchanges[0].Name {
 		t.Fatalf("expected name to be translated to valid string instead received: %v", v[0].Exchange.Name)
 	}
 
 	_, err = GetEventByExchangeID(testExchanges[0].Name, "test-1")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if len(v) > 0 {
 		_, err = GetEventByUUID(v[0].ID.String())
 		if err != nil {
-			if !errors.Is(err, common.ErrNoResults) {
-				t.Error(err)
-			}
+			// If an error occurred, it must be common.ErrNoResults
+			// Using assert here as the original t.Error would not stop the test.
+			assert.ErrorIs(t, err, common.ErrNoResults)
 		}
 	}
 
 	_, err = GetEventsByDate(testExchanges[0].Name, time.Now().UTC().Add(-time.Minute), time.Now().UTC(), 5)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 }
