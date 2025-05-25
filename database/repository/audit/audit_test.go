@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
 	"github.com/thrasher-corp/gocryptotrader/database/testhelpers"
@@ -82,17 +84,13 @@ func TestAudit(t *testing.T) {
 				t.Skip("database not configured skipping test")
 			}
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if test.runner != nil {
 				test.runner(t)
 			}
 			if test.closer != nil {
 				err = test.closer(dbConn)
-				if err != nil {
-					t.Log(err)
-				}
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -119,7 +117,5 @@ func readHelper(t *testing.T) {
 	t.Helper()
 
 	_, err := GetEvent(time.Now().Add(-time.Hour*60), time.Now(), "asc", 1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 }

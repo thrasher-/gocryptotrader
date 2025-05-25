@@ -2,12 +2,15 @@ package candle
 
 import (
 	"errors"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
@@ -86,43 +89,31 @@ func TestInsert(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB(false)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 
 			data, err := genOHCLVData()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			r, err := Insert(&data)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if r != 365 {
 				t.Errorf("unexpected number inserted: %v", r)
 			}
 
 			d, err := DeleteCandles(&data)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if d != 365 {
 				t.Errorf("unexpected number deleted: %v", d)
 			}
 
 			err = testhelpers.CloseDatabase(dbConn)
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -159,31 +150,23 @@ func TestInsertFromCSV(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB(false)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 
 			exchange.ResetExchangeCache()
 			testFile := filepath.Join("..", "..", "..", "testdata", "binance_BTCUSDT_24h_2019_01_01_2020_01_01.csv")
 			count, err := InsertFromCSV(testExchanges[0].Name, "BTC", "USDT", 86400, "spot", testFile)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if count != 365 {
 				t.Fatalf("expected 365 results to be inserted received: %v", count)
 			}
 
 			err = testhelpers.CloseDatabase(dbConn)
-			if err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -220,15 +203,11 @@ func TestSeries(t *testing.T) {
 			}
 
 			dbConn, err := testhelpers.ConnectToDatabase(test.config)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			if test.seedDB != nil {
 				err = test.seedDB(true)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 			}
 
 			start := time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -237,28 +216,24 @@ func TestSeries(t *testing.T) {
 				"BTC", "USDT",
 				86400, "spot",
 				start, end)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			if len(ret.Candles) != 365 {
 				t.Errorf("unexpected number of results received:  %v", len(ret.Candles))
 			}
 
 			_, err = Series("", "", "", 0, "", start, end)
-			if !errors.Is(err, errInvalidInput) {
-				t.Fatal(err)
-			}
+			require.ErrorIs(t, err, errInvalidInput)
 
 			_, err = Series(testExchanges[0].Name,
 				"BTC", "MOON",
 				864000, "spot",
 				start, end)
-			if err != nil && !errors.Is(err, errInvalidInput) && !errors.Is(err, ErrNoCandleDataFound) {
-				t.Fatal(err)
+			// This allows either errInvalidInput or ErrNoCandleDataFound, or no error if data magically appears for MOON.
+			// If an error occurs, it must be one of the two.
+			if err != nil {
+				assert.True(t, errors.Is(err, errInvalidInput) || errors.Is(err, ErrNoCandleDataFound), "Unexpected error: %v", err)
 			}
-			if err = testhelpers.CloseDatabase(dbConn); err != nil {
-				t.Error(err)
-			}
+			assert.NoError(t, testhelpers.CloseDatabase(dbConn))
 		})
 	}
 }
