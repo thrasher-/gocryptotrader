@@ -68,13 +68,9 @@ func TestGetClientBankAccounts(t *testing.T) {
 	}}
 
 	_, err := cfg.GetClientBankAccounts("Kraken", "USD")
-	if err != nil {
-		t.Error("GetExchangeBankAccounts error", err)
-	}
+	assert.NoError(t, err, "GetExchangeBankAccounts error")
 	_, err = cfg.GetClientBankAccounts("noob exchange", "USD")
-	if err == nil {
-		t.Fatal("error cannot be nil")
-	}
+	assert.Error(t, err, "error cannot be nil")
 }
 
 func TestGetExchangeBankAccounts(t *testing.T) {
@@ -147,9 +143,7 @@ func TestUpdateExchangeBankAccounts(t *testing.T) {
 	}
 	b := []banking.Account{{Enabled: false}}
 	err := cfg.UpdateExchangeBankAccounts(bfx, b)
-	if err != nil {
-		t.Error("UpdateExchangeBankAccounts error", err)
-	}
+	assert.NoError(t, err, "UpdateExchangeBankAccounts error")
 	var count int
 	for i := range cfg.Exchanges {
 		if cfg.Exchanges[i].Name == bfx {
@@ -163,9 +157,7 @@ func TestUpdateExchangeBankAccounts(t *testing.T) {
 	}
 
 	err = cfg.UpdateExchangeBankAccounts("Not an exchange", b)
-	if err == nil {
-		t.Error("UpdateExchangeBankAccounts, no error returned for invalid exchange")
-	}
+	assert.Error(t, err, "UpdateExchangeBankAccounts, no error returned for invalid exchange")
 }
 
 func TestUpdateClientBankAccounts(t *testing.T) {
@@ -180,14 +172,10 @@ func TestUpdateClientBankAccounts(t *testing.T) {
 	}
 	b := banking.Account{Enabled: false, BankName: testString, AccountNumber: "1337"}
 	err := cfg.UpdateClientBankAccounts(&b)
-	if err != nil {
-		t.Error("UpdateClientBankAccounts error", err)
-	}
+	assert.NoError(t, err, "UpdateClientBankAccounts error")
 
 	err = cfg.UpdateClientBankAccounts(&banking.Account{})
-	if err == nil {
-		t.Error("UpdateClientBankAccounts error")
-	}
+	assert.Error(t, err, "UpdateClientBankAccounts error")
 
 	var count int
 	for _, bank := range cfg.BankAccounts {
@@ -308,9 +296,7 @@ func TestPurgeExchangeCredentials(t *testing.T) {
 	c.PurgeExchangeAPICredentials()
 
 	exchCfg, err := c.GetExchangeConfig(testString)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if exchCfg.API.Credentials.Key != DefaultAPIKey &&
 		exchCfg.API.Credentials.ClientID != DefaultAPIClientID &&
@@ -321,9 +307,7 @@ func TestPurgeExchangeCredentials(t *testing.T) {
 	}
 
 	exchCfg, err = c.GetExchangeConfig("test123")
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if exchCfg.API.Credentials.Key != "asdf" {
 		t.Error("unexpected values")
@@ -476,9 +460,7 @@ func TestGetExchangeAssetTypes(t *testing.T) {
 	t.Parallel()
 	var c Config
 	_, err := c.GetExchangeAssetTypes("void")
-	if err == nil {
-		t.Error("err should have been thrown on a non-existent exchange")
-	}
+	assert.Error(t, err, "err should have been thrown on a non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -494,9 +476,7 @@ func TestGetExchangeAssetTypes(t *testing.T) {
 
 	var assets asset.Items
 	assets, err = c.GetExchangeAssetTypes(testFakeExchangeName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if !assets.Contains(asset.Spot) || !assets.Contains(asset.Futures) {
 		t.Error("unexpected results")
@@ -504,18 +484,14 @@ func TestGetExchangeAssetTypes(t *testing.T) {
 
 	c.Exchanges[0].CurrencyPairs = nil
 	_, err = c.GetExchangeAssetTypes(testFakeExchangeName)
-	if err == nil {
-		t.Error("Expected error from nil currency pair")
-	}
+	assert.Error(t, err, "Expected error from nil currency pair")
 }
 
 func TestSupportsExchangeAssetType(t *testing.T) {
 	t.Parallel()
 	var c Config
 	err := c.SupportsExchangeAssetType("void", asset.Spot)
-	if err == nil {
-		t.Error("Expected error for non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error for non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -529,20 +505,14 @@ func TestSupportsExchangeAssetType(t *testing.T) {
 	)
 
 	err = c.SupportsExchangeAssetType(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	err = c.SupportsExchangeAssetType(testFakeExchangeName, asset.Empty)
-	if err == nil {
-		t.Error("Expected error from invalid asset item")
-	}
+	assert.Error(t, err, "Expected error from invalid asset item")
 
 	c.Exchanges[0].CurrencyPairs = nil
 	err = c.SupportsExchangeAssetType(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error from nil pair manager")
-	}
+	assert.Error(t, err, "Expected error from nil pair manager")
 }
 
 func TestSetPairs(t *testing.T) {
@@ -554,14 +524,10 @@ func TestSetPairs(t *testing.T) {
 	}
 
 	err := c.SetPairs("asdf", asset.Spot, true, nil)
-	if err == nil {
-		t.Error("Expected error from nil pairs")
-	}
+	assert.Error(t, err, "Expected error from nil pairs")
 
 	err = c.SetPairs("asdf", asset.Spot, true, pairs)
-	if err == nil {
-		t.Error("Expected error from non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error from non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -570,9 +536,7 @@ func TestSetPairs(t *testing.T) {
 	)
 
 	err = c.SetPairs(testFakeExchangeName, asset.Index, true, pairs)
-	if err == nil {
-		t.Error("Expected error from non initialised pair manager")
-	}
+	assert.Error(t, err, "Expected error from non initialised pair manager")
 
 	c.Exchanges[0].CurrencyPairs = &currency.PairsManager{
 		Pairs: map[asset.Item]*currency.PairStore{
@@ -581,23 +545,17 @@ func TestSetPairs(t *testing.T) {
 	}
 
 	err = c.SetPairs(testFakeExchangeName, asset.Index, true, pairs)
-	if err == nil {
-		t.Error("Expected error from non supported asset type")
-	}
+	assert.Error(t, err, "Expected error from non supported asset type")
 
 	err = c.SetPairs(testFakeExchangeName, asset.Spot, true, pairs)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestGetCurrencyPairConfig(t *testing.T) {
 	t.Parallel()
 	var c Config
 	_, err := c.GetCurrencyPairConfig("asdfg", asset.Spot)
-	if err == nil {
-		t.Error("Expected error with non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error with non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -606,9 +564,7 @@ func TestGetCurrencyPairConfig(t *testing.T) {
 	)
 
 	_, err = c.GetCurrencyPairConfig(testFakeExchangeName, asset.Index)
-	if err == nil {
-		t.Error("Expected error with nil currency pair store")
-	}
+	assert.Error(t, err, "Expected error with nil currency pair store")
 
 	pm := &currency.PairsManager{
 		Pairs: map[asset.Item]*currency.PairStore{
@@ -627,15 +583,11 @@ func TestGetCurrencyPairConfig(t *testing.T) {
 
 	c.Exchanges[0].CurrencyPairs = pm
 	_, err = c.GetCurrencyPairConfig(testFakeExchangeName, asset.Index)
-	if err == nil {
-		t.Error("Expected error with unsupported asset")
-	}
+	assert.Error(t, err, "Expected error with unsupported asset")
 
 	var p *currency.PairStore
 	p, err = c.GetCurrencyPairConfig(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if p.RequestFormat.Delimiter != "_" ||
 		p.RequestFormat.Uppercase ||
@@ -647,9 +599,7 @@ func TestGetCurrencyPairConfig(t *testing.T) {
 
 func TestCheckPairConfigFormats(t *testing.T) {
 	var c Config
-	if err := c.CheckPairConfigFormats("non-existent"); err == nil {
-		t.Error("non-existent exchange should throw an error")
-	}
+	assert.Error(t, c.CheckPairConfigFormats("non-existent"), "non-existent exchange should throw an error")
 	// Test nil pair store
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -657,9 +607,7 @@ func TestCheckPairConfigFormats(t *testing.T) {
 		},
 	)
 
-	if err := c.CheckPairConfigFormats(testFakeExchangeName); err == nil {
-		t.Error("nil pair store should return an error")
-	}
+	assert.Error(t, c.CheckPairConfigFormats(testFakeExchangeName), "nil pair store should return an error")
 
 	c.Exchanges[0].CurrencyPairs = &currency.PairsManager{
 		Pairs: map[asset.Item]*currency.PairStore{
@@ -667,9 +615,7 @@ func TestCheckPairConfigFormats(t *testing.T) {
 			asset.Futures: {},
 		},
 	}
-	if err := c.CheckPairConfigFormats(testFakeExchangeName); err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, c.CheckPairConfigFormats(testFakeExchangeName), "error cannot be nil")
 
 	c.Exchanges[0].CurrencyPairs = &currency.PairsManager{
 		Pairs: map[asset.Item]*currency.PairStore{
@@ -683,17 +629,11 @@ func TestCheckPairConfigFormats(t *testing.T) {
 			},
 		},
 	}
-	if err := c.CheckPairConfigFormats(testFakeExchangeName); err != nil {
-		t.Error("nil pairs should be okay to continue")
-	}
+	assert.NoError(t, c.CheckPairConfigFormats(testFakeExchangeName), "nil pairs should be okay to continue")
 	avail, err := currency.NewPairDelimiter(testPair, "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	enabled, err := currency.NewPairDelimiter("BTC~USD", "~")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	c.Exchanges[0].CurrencyPairs.Pairs = map[asset.Item]*currency.PairStore{
 		asset.Spot: {
 			RequestFormat: &currency.PairFormat{
@@ -833,9 +773,7 @@ func TestGetPairFormat(t *testing.T) {
 
 	var c Config
 	_, err := c.GetPairFormat("meow", asset.Spot)
-	if err == nil {
-		t.Error("Expected error from non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error from non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -843,9 +781,7 @@ func TestGetPairFormat(t *testing.T) {
 		},
 	)
 	_, err = c.GetPairFormat(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error from nil pair manager")
-	}
+	assert.Error(t, err, "Expected error from nil pair manager")
 
 	c.Exchanges[0].CurrencyPairs = &currency.PairsManager{
 		UseGlobalFormat: false,
@@ -863,9 +799,7 @@ func TestGetPairFormat(t *testing.T) {
 	}
 
 	_, err = c.GetPairFormat(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error from nil pair manager")
-	}
+	assert.Error(t, err, "Expected error from nil pair manager")
 
 	c.Exchanges[0].CurrencyPairs = &currency.PairsManager{
 		UseGlobalFormat: true,
@@ -882,20 +816,14 @@ func TestGetPairFormat(t *testing.T) {
 		},
 	}
 	_, err = c.GetPairFormat(testFakeExchangeName, asset.Empty)
-	if err == nil {
-		t.Error("Expected error from non-existent asset item")
-	}
+	assert.Error(t, err, "Expected error from non-existent asset item")
 
 	_, err = c.GetPairFormat(testFakeExchangeName, asset.Futures)
-	if err == nil {
-		t.Error("Expected error from valid but non supported asset type")
-	}
+	assert.Error(t, err, "Expected error from valid but non supported asset type")
 
 	var p currency.PairFormat
 	p, err = c.GetPairFormat(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if !p.Uppercase && p.Delimiter != "_" {
 		t.Error("unexpected results")
@@ -904,9 +832,7 @@ func TestGetPairFormat(t *testing.T) {
 	// Test nil pair store
 	c.Exchanges[0].CurrencyPairs.UseGlobalFormat = false
 	_, err = c.GetPairFormat(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error")
-	}
+	assert.Error(t, err, "Expected error")
 
 	c.Exchanges[0].CurrencyPairs.Pairs = map[asset.Item]*currency.PairStore{
 		asset.Spot: {
@@ -917,9 +843,7 @@ func TestGetPairFormat(t *testing.T) {
 		},
 	}
 	p, err = c.GetPairFormat(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	if p.Delimiter != "~" && !p.Uppercase {
 		t.Error("unexpected results")
@@ -931,9 +855,7 @@ func TestGetAvailablePairs(t *testing.T) {
 
 	var c Config
 	_, err := c.GetAvailablePairs("asdf", asset.Spot)
-	if err == nil {
-		t.Error("Expected error from non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error from non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -943,9 +865,7 @@ func TestGetAvailablePairs(t *testing.T) {
 	)
 
 	_, err = c.GetAvailablePairs(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error from nil pair manager")
-	}
+	assert.Error(t, err, "Expected error from nil pair manager")
 
 	c.Exchanges[0].CurrencyPairs.Pairs = map[asset.Item]*currency.PairStore{
 		asset.Spot: {
@@ -956,17 +876,13 @@ func TestGetAvailablePairs(t *testing.T) {
 		},
 	}
 	_, err = c.GetAvailablePairs(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error("Expected error from nil pairs")
-	}
+	assert.Error(t, err, "Expected error from nil pairs") // This was t.Error(err) but given the message, it seems an error is expected.
 
 	c.Exchanges[0].CurrencyPairs.Pairs[asset.Spot].Available = currency.Pairs{
 		currency.NewBTCUSD(),
 	}
 	_, err = c.GetAvailablePairs(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestGetEnabledPairs(t *testing.T) {
@@ -974,9 +890,7 @@ func TestGetEnabledPairs(t *testing.T) {
 
 	var c Config
 	_, err := c.GetEnabledPairs("asdf", asset.Spot)
-	if err == nil {
-		t.Error("Expected error from non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error from non-existent exchange")
 
 	c.Exchanges = append(c.Exchanges,
 		Exchange{
@@ -986,9 +900,7 @@ func TestGetEnabledPairs(t *testing.T) {
 	)
 
 	_, err = c.GetEnabledPairs(testFakeExchangeName, asset.Spot)
-	if err == nil {
-		t.Error("Expected error from nil pair manager")
-	}
+	assert.Error(t, err, "Expected error from nil pair manager")
 
 	c.Exchanges[0].CurrencyPairs.Pairs = map[asset.Item]*currency.PairStore{
 		asset.Spot: {
@@ -999,9 +911,7 @@ func TestGetEnabledPairs(t *testing.T) {
 		},
 	}
 	_, err = c.GetEnabledPairs(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error("nil pairs should return a nil error")
-	}
+	assert.NoError(t, err, "nil pairs should return a nil error") // This was t.Error(err) but given the message, it seems no error is expected.
 
 	c.Exchanges[0].CurrencyPairs.Pairs[asset.Spot].Enabled = currency.Pairs{
 		currency.NewBTCUSD(),
@@ -1012,9 +922,7 @@ func TestGetEnabledPairs(t *testing.T) {
 	}
 
 	_, err = c.GetEnabledPairs(testFakeExchangeName, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestGetEnabledExchanges(t *testing.T) {
@@ -1050,19 +958,11 @@ func TestGetDisabledExchanges(t *testing.T) {
 	}
 
 	exchCfg, err := cfg.GetExchangeConfig(bfx)
-	if err != nil {
-		t.Errorf(
-			"TestGetDisabledExchanges. GetExchangeConfig Error: %s", err.Error(),
-		)
-	}
+	require.NoError(t, err, "TestGetDisabledExchanges. GetExchangeConfig Error")
 
 	exchCfg.Enabled = false
 	err = cfg.UpdateExchangeConfig(exchCfg)
-	if err != nil {
-		t.Errorf(
-			"TestGetDisabledExchanges. UpdateExchangeConfig Error: %s", err.Error(),
-		)
-	}
+	require.NoError(t, err, "TestGetDisabledExchanges. UpdateExchangeConfig Error")
 
 	if len(cfg.GetDisabledExchanges()) != 1 {
 		t.Error(
@@ -1124,14 +1024,10 @@ func TestGetExchangeConfig(t *testing.T) {
 		},
 	}
 	_, err := cfg.GetExchangeConfig(bfx)
-	if err != nil {
-		t.Errorf("GetExchangeConfig.GetExchangeConfig Error: %s",
-			err.Error())
-	}
+	require.NoError(t, err, "GetExchangeConfig.GetExchangeConfig Error")
+
 	_, err = cfg.GetExchangeConfig("Testy")
-	if !errors.Is(err, ErrExchangeNotFound) {
-		t.Errorf("received '%v' expected '%v'", err, ErrExchangeNotFound)
-	}
+	require.ErrorIs(t, err, ErrExchangeNotFound)
 }
 
 func TestGetForexProviders(t *testing.T) {
@@ -1191,39 +1087,27 @@ func TestUpdateExchangeConfig(t *testing.T) {
 	}
 	e := &Exchange{}
 	err := cfg.UpdateExchangeConfig(e)
-	if err == nil {
-		t.Error("Expected error from non-existent exchange")
-	}
+	assert.Error(t, err, "Expected error from non-existent exchange")
 
 	e, err = cfg.GetExchangeConfig(ok)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	e.API.Credentials.Key = "test1234"
 	err = cfg.UpdateExchangeConfig(e)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 }
 
 // TestCheckExchangeConfigValues logic test
 func TestCheckExchangeConfigValues(t *testing.T) {
 	var cfg Config
-	if err := cfg.CheckExchangeConfigValues(); err == nil {
-		t.Error("nil exchanges should throw an err")
-	}
+	assert.Error(t, cfg.CheckExchangeConfigValues(), "nil exchanges should throw an err")
 
 	err := cfg.LoadConfig(TestFile, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Test our default test config and report any errors
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Test API settings migration
 	sptr := func(s string) *string { return &s }
@@ -1239,9 +1123,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].APIURL = sptr(APIURLNonDefaultMessage)
 	cfg.Exchanges[0].APIURLSecondary = sptr(APIURLNonDefaultMessage)
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	// Ensure that all of our previous settings are migrated
 	if cfg.Exchanges[0].API.Credentials.Key != "awesomeKey" ||
@@ -1273,9 +1155,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].Websocket = convert.BoolPtr(true)
 
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if !cfg.Exchanges[0].Features.Enabled.AutoPairUpdates ||
 		!cfg.Exchanges[0].Features.Enabled.Websocket ||
@@ -1288,9 +1168,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].Features.Supports.WebsocketCapabilities.AutoPairUpdates = false
 	cfg.Exchanges[0].CurrencyPairs.LastUpdated = 0
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	// Test websocket and HTTP timeout values
 	cfg.Exchanges[0].WebsocketResponseMaxLimit = 0
@@ -1299,9 +1177,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].WebsocketTrafficTimeout = 0
 	cfg.Exchanges[0].HTTPTimeout = 0
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if cfg.Exchanges[0].WebsocketResponseMaxLimit == 0 {
 		t.Errorf("expected exchange %s to have updated WebsocketResponseMaxLimit value",
@@ -1330,9 +1206,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].API.AuthenticatedSupport = true
 	cfg.Exchanges[0].API.AuthenticatedWebsocketSupport = true
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if cfg.Exchanges[0].API.AuthenticatedSupport ||
 		cfg.Exchanges[0].API.AuthenticatedWebsocketSupport {
 		t.Error("Expected authenticated endpoints to be false from invalid API keys")
@@ -1345,9 +1219,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].API.Credentials.ClientID = DefaultAPIClientID
 	cfg.Exchanges[0].API.Credentials.Secret = "TESTYTEST"
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if cfg.Exchanges[0].API.AuthenticatedSupport ||
 		cfg.Exchanges[0].API.AuthenticatedWebsocketSupport {
 		t.Error("Expected AuthenticatedAPISupport to be false from invalid API keys")
@@ -1360,9 +1232,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].API.Credentials.Secret = "test123"
 	cfg.Exchanges[0].API.Credentials.ClientID = "clientIDerino"
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if !cfg.Exchanges[0].API.AuthenticatedSupport ||
 		!cfg.Exchanges[0].API.AuthenticatedWebsocketSupport {
 		t.Error("Expected AuthenticatedAPISupport and AuthenticatedWebsocketAPISupport to be false from invalid API keys")
@@ -1375,9 +1245,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].Enabled = true
 	cfg.Exchanges[0].Name = ""
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if cfg.Exchanges[0].Enabled {
 		t.Errorf(
 			"Exchange with no name should be empty",
@@ -1388,9 +1256,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges = cfg.Exchanges[:1]
 	cfg.Exchanges[0].Enabled = false
 	err = cfg.CheckExchangeConfigValues()
-	if err == nil {
-		t.Error("Expected error from no enabled exchanges")
-	}
+	assert.Error(t, err, "Expected error from no enabled exchanges")
 
 	cfg.Exchanges = cpy
 	// Check bank account validation for exchange
@@ -1401,9 +1267,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	}
 
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if cfg.Exchanges[0].BankAccounts[0].Enabled {
 		t.Fatal("bank aaccount details not provided this should disable")
@@ -1422,9 +1286,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].BankAccounts[0].SWIFTCode = "some swifty"
 
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if !cfg.Exchanges[0].BankAccounts[0].Enabled {
 		t.Fatal("bank aaccount details provided this should not disable")
@@ -1444,9 +1306,7 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 	cfg.Exchanges[0].BankAccounts[0].SWIFTCode = ""
 
 	err = cfg.CheckExchangeConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if !cfg.Exchanges[0].BankAccounts[0].Enabled {
 		t.Fatal("bank account details provided this should not disable")
@@ -1468,14 +1328,10 @@ func TestCheckExchangeConfigValues(t *testing.T) {
 func TestReadConfigFromFile(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.ReadConfigFromFile(TestFile, true)
-	if err != nil {
-		t.Errorf("TestReadConfig %s", err.Error())
-	}
+	require.NoError(t, err, "TestReadConfig")
 
 	err = cfg.ReadConfigFromFile("bla", true)
-	if err == nil {
-		t.Error("TestReadConfig error cannot be nil")
-	}
+	assert.Error(t, err, "TestReadConfig error cannot be nil")
 }
 
 func TestReadConfigFromReader(t *testing.T) {
@@ -1493,14 +1349,10 @@ func TestReadConfigFromReader(t *testing.T) {
 func TestLoadConfig(t *testing.T) {
 	cfg := &Config{}
 	err := cfg.LoadConfig(TestFile, true)
-	if err != nil {
-		t.Error("TestLoadConfig " + err.Error())
-	}
+	require.NoError(t, err, "TestLoadConfig")
 
 	err = cfg.LoadConfig("testy", true)
-	if err == nil {
-		t.Error("TestLoadConfig Expected error")
-	}
+	assert.Error(t, err, "TestLoadConfig Expected error")
 }
 
 func TestSaveConfigToFile(t *testing.T) {
@@ -1534,10 +1386,7 @@ func TestDefaultFilePath(t *testing.T) {
 	// uses it
 	t.Parallel()
 	result := DefaultFilePath()
-	if !strings.Contains(result, File) &&
-		!strings.Contains(result, EncryptedFile) {
-		t.Error("result should have contained config.json or config.dat")
-	}
+	assert.True(t, strings.Contains(result, File) || strings.Contains(result, EncryptedFile), "result should have contained config.json or config.dat")
 }
 
 func TestGetFilePath(t *testing.T) {
@@ -1554,14 +1403,11 @@ func TestGetFilePath(t *testing.T) {
 	expected = DefaultFilePath()
 	result, wasDefault, err := GetFilePath("")
 	if file.Exists(expected) {
-		if err != nil || result != expected {
-			t.Errorf("TestGetFilePath: expected %s got %s", expected, result)
-		}
-		if !wasDefault {
-			t.Errorf("TestGetFilePath: expected default file")
-		}
-	} else if err == nil {
-		t.Error("Expected error when default config file does not exist")
+		require.NoError(t, err)
+		assert.Equal(t, expected, result, "TestGetFilePath: expected %s got %s", expected, result)
+		assert.True(t, wasDefault, "TestGetFilePath: expected default file")
+	} else {
+		assert.Error(t, err, "Expected error when default config file does not exist")
 	}
 }
 
@@ -1633,9 +1479,7 @@ func TestCheckConfig(t *testing.T) {
 			},
 		},
 	}
-	if err := cfg.CheckConfig(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cfg.CheckConfig())
 }
 
 func TestUpdateConfig(t *testing.T) {
@@ -1668,9 +1512,7 @@ func TestCheckLoggerConfig(t *testing.T) {
 	var c Config
 	c.Logging = log.Config{}
 	err := c.CheckLoggerConfig()
-	if err != nil {
-		t.Errorf("Failed to create default logger. Error: %s", err)
-	}
+	require.NoError(t, err, "Failed to create default logger.")
 
 	if !*c.Logging.Enabled {
 		t.Error("unexpected result")
@@ -1682,9 +1524,7 @@ func TestCheckLoggerConfig(t *testing.T) {
 	c.Logging.AdvancedSettings.ShowLogSystemName = nil
 
 	err = c.CheckLoggerConfig()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 
 	if c.Logging.LoggerFileConfig.FileName != "log.txt" ||
 		c.Logging.LoggerFileConfig.Rotate == nil ||
@@ -1701,26 +1541,21 @@ func TestDisableNTPCheck(t *testing.T) {
 	var c Config
 
 	warn, err := c.SetNTPCheck(strings.NewReader("w\n"))
-	if err != nil {
-		t.Fatalf("to create ntpclient failed reason: %v", err)
-	}
+	require.NoError(t, err, "to create ntpclient failed")
 
-	if warn != "Time sync has been set to warn only" {
-		t.Errorf("failed expected %v got %v", "Time sync has been set to warn only", warn)
-	}
-	alert, _ := c.SetNTPCheck(strings.NewReader("a\n"))
-	if alert != "Time sync has been set to alert" {
-		t.Errorf("failed expected %v got %v", "Time sync has been set to alert", alert)
-	}
+	assert.Equal(t, "Time sync has been set to warn only", warn)
+	alert, err := c.SetNTPCheck(strings.NewReader("a\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "Time sync has been set to alert", alert)
 
-	disable, _ := c.SetNTPCheck(strings.NewReader("d\n"))
-	if disable != "Future notifications for out of time sync has been disabled" {
-		t.Errorf("failed expected %v got %v", "Future notifications for out of time sync has been disabled", disable)
-	}
+	disable, err := c.SetNTPCheck(strings.NewReader("d\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "Future notifications for out of time sync has been disabled", disable)
 
 	_, err = c.SetNTPCheck(strings.NewReader(" "))
-	if err.Error() != "EOF" {
-		t.Errorf("failed expected EOF got: %v", err)
+	require.Error(t, err) // Expecting an EOF error or similar
+	if err != nil { // This check is redundant due to require.Error, but kept for specific message check
+		assert.Equal(t, "EOF", err.Error(), "failed expected EOF")
 	}
 }
 
@@ -1728,9 +1563,7 @@ func TestCheckGCTScriptConfig(t *testing.T) {
 	t.Parallel()
 
 	var c Config
-	if err := c.checkGCTScriptConfig(); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, c.checkGCTScriptConfig())
 
 	if c.GCTScript.ScriptTimeout != gctscript.DefaultTimeoutValue {
 		t.Fatal("unexpected value return")
@@ -1745,9 +1578,7 @@ func TestCheckDatabaseConfig(t *testing.T) {
 	t.Parallel()
 
 	var c Config
-	if err := c.checkDatabaseConfig(); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, c.checkDatabaseConfig())
 
 	if c.Database.Driver != database.DBSQLite3 ||
 		c.Database.Database != database.DefaultSQLiteDatabase ||
@@ -1757,15 +1588,11 @@ func TestCheckDatabaseConfig(t *testing.T) {
 
 	c.Database.Enabled = true
 	c.Database.Driver = "mssqlisthebest"
-	if err := c.checkDatabaseConfig(); err == nil {
-		t.Error("unexpected result")
-	}
+	assert.Error(t, c.checkDatabaseConfig(), "unexpected result")
 
 	c.Database.Driver = database.DBSQLite3
 	c.Database.Enabled = true
-	if err := c.checkDatabaseConfig(); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, c.checkDatabaseConfig())
 }
 
 func TestCheckNTPConfig(t *testing.T) {
@@ -1797,9 +1624,7 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	cfg.Currency.ForexProviders = nil
 	cfg.Currency.CryptocurrencyProvider = currency.Provider{}
 	err := cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if cfg.Currency.ForexProviders == nil {
 		t.Error("Failed to populate c.Currency.ForexProviders")
 	}
@@ -1822,9 +1647,7 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	cfg.FiatDisplayCurrency = &currency.BTC
 	cfg.Currency.CryptocurrencyProvider.Enabled = true
 	err = cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if !cfg.Currency.CurrencyPairFormat.Uppercase {
 		t.Error("Failed to apply c.CurrencyPairFormat format to c.Currency.CurrencyPairFormat")
 	}
@@ -1838,9 +1661,7 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	cfg.Currency.ForexProviders[0].PrimaryProvider = true
 	cfg.Cryptocurrencies = &currency.Currencies{}
 	err = cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if cfg.FiatDisplayCurrency != nil {
 		t.Error("Failed to clear c.FiatDisplayCurrency")
 	}
@@ -1864,16 +1685,12 @@ func TestRemoveExchange(t *testing.T) {
 		Name: testExchangeName,
 	})
 	_, err := c.GetExchangeConfig(testExchangeName)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if success := c.RemoveExchange(testExchangeName); !success {
 		t.Fatal("exchange should of been removed")
 	}
 	_, err = c.GetExchangeConfig(testExchangeName)
-	if err == nil {
-		t.Fatal("non-existent exchange should throw an error")
-	}
+	assert.Error(t, err, "non-existent exchange should throw an error")
 	if success := c.RemoveExchange("1D10TH0RS3"); success {
 		t.Fatal("exchange shouldn't exist")
 	}
@@ -2006,14 +1823,10 @@ func TestMigrateConfig(t *testing.T) {
 
 func TestExchangeConfigValidate(t *testing.T) {
 	err := (*Exchange)(nil).Validate()
-	if !errors.Is(err, errExchangeConfigIsNil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errExchangeConfigIsNil)
-	}
+	require.ErrorIs(t, err, errExchangeConfigIsNil)
 
 	err = (&Exchange{}).Validate()
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
-	}
+	require.NoError(t, err)
 }
 
 func TestGetDefaultSyncManagerConfig(t *testing.T) {

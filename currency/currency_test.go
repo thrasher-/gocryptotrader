@@ -3,13 +3,14 @@ package currency
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetDefaultExchangeRates(t *testing.T) {
 	rates, err := GetDefaultExchangeRates()
-	if err != nil {
-		t.Error("GetDefaultExchangeRates() err", err)
-	}
+	assert.NoError(t, err, "GetDefaultExchangeRates() err")
 
 	for _, val := range rates {
 		if !val.IsFiat() {
@@ -21,9 +22,7 @@ func TestGetDefaultExchangeRates(t *testing.T) {
 
 func TestGetExchangeRates(t *testing.T) {
 	rates, err := GetExchangeRates()
-	if err != nil {
-		t.Error("GetExchangeRates() err", err)
-	}
+	assert.NoError(t, err, "GetExchangeRates() err")
 
 	for _, val := range rates {
 		if !val.IsFiat() {
@@ -35,14 +34,10 @@ func TestGetExchangeRates(t *testing.T) {
 
 func TestUpdateBaseCurrency(t *testing.T) {
 	err := UpdateBaseCurrency(AUD)
-	if err != nil {
-		t.Error("UpdateBaseCurrency() err", err)
-	}
+	assert.NoError(t, err, "UpdateBaseCurrency() err")
 
 	err = UpdateBaseCurrency(LTC)
-	if err == nil {
-		t.Error("UpdateBaseCurrency() error cannot be nil")
-	}
+	assert.Error(t, err, "UpdateBaseCurrency() error cannot be nil for LTC")
 
 	if !GetBaseCurrency().Equal(AUD) {
 		t.Errorf("GetBaseCurrency() expected %s but received %s",
@@ -91,29 +86,19 @@ func TestUpdateCurrencies(t *testing.T) {
 
 func TestConvertFiat(t *testing.T) {
 	_, err := ConvertFiat(0, LTC, USD)
-	if !errors.Is(err, errInvalidAmount) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errInvalidAmount)
-	}
+	require.ErrorIs(t, err, errInvalidAmount)
 
 	_, err = ConvertFiat(100, LTC, USD)
-	if !errors.Is(err, errNotFiatCurrency) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errNotFiatCurrency)
-	}
+	require.ErrorIs(t, err, errNotFiatCurrency)
 
 	_, err = ConvertFiat(100, USD, LTC)
-	if !errors.Is(err, errNotFiatCurrency) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errNotFiatCurrency)
-	}
+	require.ErrorIs(t, err, errNotFiatCurrency)
 
 	_, err = ConvertFiat(100, AUD, USD)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	r, err := ConvertFiat(100, AUD, AUD)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if r != 100 {
 		t.Errorf("ConvertCurrency error, incorrect rate return %2.f but received %2.f",
@@ -121,40 +106,28 @@ func TestConvertFiat(t *testing.T) {
 	}
 
 	_, err = ConvertFiat(100, USD, AUD)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	_, err = ConvertFiat(100, CNY, AUD)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestGetForeignExchangeRate(t *testing.T) {
 	_, err := GetForeignExchangeRate(NewPair(EMPTYCODE, EMPTYCODE))
-	if !errors.Is(err, errNotFiatCurrency) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errNotFiatCurrency)
-	}
+	require.ErrorIs(t, err, errNotFiatCurrency)
 
 	_, err = GetForeignExchangeRate(NewPair(USD, EMPTYCODE))
-	if !errors.Is(err, errNotFiatCurrency) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errNotFiatCurrency)
-	}
+	require.ErrorIs(t, err, errNotFiatCurrency)
 
 	one, err := GetForeignExchangeRate(NewPair(USD, USD))
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
-	}
+	require.NoError(t, err)
 
 	if one != 1 {
 		t.Fatal("unexpected value")
 	}
 
 	rate, err := GetForeignExchangeRate(NewPair(AUD, USD))
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
-	}
+	require.NoError(t, err)
 
 	if rate <= 0 {
 		t.Fatal("unexpected value")

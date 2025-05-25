@@ -51,9 +51,7 @@ func TestRoleString(t *testing.T) {
 
 func TestRoleMarshalJSON(t *testing.T) {
 	d, err := json.Marshal(Fiat)
-	if err != nil {
-		t.Error("Role MarshalJSON() error", err)
-	}
+	assert.NoError(t, err, "Role MarshalJSON() error")
 
 	if expected := `"fiatcurrency"`; string(d) != expected {
 		t.Errorf("Role MarshalJSON() error expected %s but received %s",
@@ -84,25 +82,17 @@ func TestRoleUnmarshalJSON(t *testing.T) {
 	}
 
 	e, err := json.Marshal(1337)
-	if err != nil {
-		t.Fatal("Role UnmarshalJSON() error", err)
-	}
+	require.NoError(t, err, "Role UnmarshalJSON() error marshalling 1337")
 
 	var incoming AllTheRoles
 	err = json.Unmarshal(e, &incoming)
-	if err == nil {
-		t.Fatal("Role UnmarshalJSON() Expected error")
-	}
+	assert.Error(t, err, "Role UnmarshalJSON() Expected error when unmarshalling 1337 to AllTheRoles")
 
 	e, err = json.Marshal(outgoing)
-	if err != nil {
-		t.Fatal("Role UnmarshalJSON() error", err)
-	}
+	require.NoError(t, err, "Role UnmarshalJSON() error marshalling outgoing")
 
 	err = json.Unmarshal(e, &incoming)
-	if err != nil {
-		t.Fatal("Role UnmarshalJSON() error", err)
-	}
+	require.NoError(t, err, "Role UnmarshalJSON() error unmarshalling to incoming")
 
 	if incoming.RoleOne != Unset {
 		t.Errorf("Role String() error expected %s but received %s",
@@ -141,14 +131,10 @@ func TestRoleUnmarshalJSON(t *testing.T) {
 	}
 	var unhandled Role
 	err = unhandled.UnmarshalJSON([]byte("\"ThisIsntReal\""))
-	if err == nil {
-		t.Error("Expected unmarshall error")
-	}
+	assert.Error(t, err, "Expected unmarshall error for ThisIsntReal")
 
 	err = unhandled.UnmarshalJSON([]byte(`1336`))
-	if err == nil {
-		t.Error("Expected unmarshall error")
-	}
+	assert.Error(t, err, "Expected unmarshall error for 1336")
 }
 
 func (b *BaseCodes) assertRole(t *testing.T, c Code, r Role) {
@@ -243,9 +229,7 @@ func TestBaseCode(t *testing.T) {
 		Symbol:   "XBTUSD",
 		Role:     Contract,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	main.Register("BTC", Unset)
 	err = main.UpdateCurrency(&Item{
@@ -253,9 +237,7 @@ func TestBaseCode(t *testing.T) {
 		Symbol:   "BTC",
 		ID:       1337,
 	})
-	if !errors.Is(err, errRoleUnset) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errRoleUnset)
-	}
+	require.ErrorIs(t, err, errRoleUnset)
 
 	err = main.UpdateCurrency(&Item{
 		FullName: "Bitcoin",
@@ -263,9 +245,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1337,
 		Role:     Cryptocurrency,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	aud := main.Register("AUD", Unset)
 	err = main.UpdateCurrency(&Item{
@@ -274,9 +254,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1111,
 		Role:     Fiat,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if aud.Item.FullName != "Unreal Dollar" {
 		t.Error("Expected fullname to update for AUD")
@@ -288,9 +266,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1336,
 		Role:     Fiat,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	aud.Item.Role = Unset
 	err = main.UpdateCurrency(&Item{
@@ -299,9 +275,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1336,
 		Role:     Fiat,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if aud.Item.Role != Fiat {
 		t.Error("Expected role to change to Fiat")
 	}
@@ -314,9 +288,7 @@ func TestBaseCode(t *testing.T) {
 		ID:         1335,
 		Role:       Token,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	contract := main.Register("XBTUSD", Unset)
 
@@ -331,14 +303,10 @@ func TestBaseCode(t *testing.T) {
 	}
 
 	err = main.LoadItem(nil)
-	if !errors.Is(err, errItemIsNil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errItemIsNil)
-	}
+	require.ErrorIs(t, err, errItemIsNil)
 
 	err = main.LoadItem(&Item{})
-	if !errors.Is(err, errItemIsEmpty) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, errItemIsEmpty)
-	}
+	require.ErrorIs(t, err, errItemIsEmpty)
 
 	err = main.LoadItem(&Item{
 		ID:       0,
@@ -346,9 +314,7 @@ func TestBaseCode(t *testing.T) {
 		Role:     Cryptocurrency,
 		Symbol:   "ADA",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	err = main.LoadItem(&Item{
 		ID:       0,
@@ -356,14 +322,10 @@ func TestBaseCode(t *testing.T) {
 		Role:     Cryptocurrency,
 		Symbol:   "ADA",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	full, err := main.GetFullCurrencyData()
-	if err != nil {
-		t.Error("BaseCode GetFullCurrencyData error", err)
-	}
+	assert.NoError(t, err, "BaseCode GetFullCurrencyData error")
 
 	if len(full.Contracts) != 1 {
 		t.Errorf("BaseCode GetFullCurrencyData() error expected 1 but received %v",
@@ -405,13 +367,9 @@ func TestBaseCode(t *testing.T) {
 		Role:     Role(99),
 		Symbol:   "ADA",
 	})
-	if err != nil {
-		t.Error("BaseCode LoadItem() error", err)
-	}
+	assert.NoError(t, err, "BaseCode LoadItem() error") // This was t.Error, assuming NoError is expected unless message means something else
 	_, err = main.GetFullCurrencyData()
-	if err == nil {
-		t.Error("Expected 'Role undefined'")
-	}
+	assert.Error(t, err, "Expected 'Role undefined'")
 
 	main.Items["CATS"][0].FullName = "Hello"
 	err = main.UpdateCurrency(&Item{
@@ -420,9 +378,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1338,
 		Role:     Fiat,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if main.Items["CATS"][0].FullName != "MEWOW" {
 		t.Error("Fullname not updated")
@@ -434,9 +390,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       3,
 		Role:     Fiat,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Creates a new item under a different currency role
 	if main.Items["CATS"][0].ID != 3 {
@@ -451,9 +405,7 @@ func TestBaseCode(t *testing.T) {
 		ID:       1338,
 		Role:     Cryptocurrency,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if main.Items["CATS"][0].ID != 1338 {
 		t.Error("ID not updated")
 	}
@@ -496,19 +448,14 @@ func TestCodeUnmarshalJSON(t *testing.T) {
 	var unmarshalHere Code
 	expected := "BRO"
 	encoded, err := json.Marshal(expected)
-	if err != nil {
-		t.Fatal("Currency Code UnmarshalJSON error", err)
-	}
+	require.NoError(t, err, "Currency Code UnmarshalJSON error marshalling expected")
 
 	err = json.Unmarshal(encoded, &unmarshalHere)
-	if err != nil {
-		t.Fatal("Currency Code UnmarshalJSON error", err)
-	}
+	require.NoError(t, err, "Currency Code UnmarshalJSON error unmarshalling to unmarshalHere first time")
 
+	// Repeating unmarshal to the same variable, assuming this was intentional for some test reason.
 	err = json.Unmarshal(encoded, &unmarshalHere)
-	if err != nil {
-		t.Fatal("Currency Code UnmarshalJSON error", err)
-	}
+	require.NoError(t, err, "Currency Code UnmarshalJSON error unmarshalling to unmarshalHere second time")
 
 	if unmarshalHere.String() != expected {
 		t.Errorf("Currency Code Upper() error expected %s but received %s",
@@ -517,13 +464,9 @@ func TestCodeUnmarshalJSON(t *testing.T) {
 	}
 
 	encoded, err = json.Marshal(1336) // :'(
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "Currency Code UnmarshalJSON error marshalling 1336")
 	err = json.Unmarshal(encoded, &unmarshalHere)
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	assert.Error(t, err, "expected error when unmarshalling int to Code")
 }
 
 func TestCodeMarshalJSON(t *testing.T) {
@@ -536,9 +479,7 @@ func TestCodeMarshalJSON(t *testing.T) {
 	expectedJSON := `{"sweetCodes":"BRO"}`
 
 	encoded, err := json.Marshal(quickstruct)
-	if err != nil {
-		t.Fatal("Currency Code UnmarshalJSON error", err)
-	}
+	require.NoError(t, err, "Currency Code MarshalJSON error for normal struct")
 
 	if string(encoded) != expectedJSON {
 		t.Errorf("Currency Code Upper() error expected %s but received %s",
@@ -553,9 +494,7 @@ func TestCodeMarshalJSON(t *testing.T) {
 	}
 
 	encoded, err = json.Marshal(quickstruct)
-	if err != nil {
-		t.Fatal("Currency Code UnmarshalJSON error", err)
-	}
+	require.NoError(t, err, "Currency Code MarshalJSON error for struct with EMPTYCODE")
 
 	newExpectedJSON := `{"sweetCodes":""}`
 	if string(encoded) != newExpectedJSON {

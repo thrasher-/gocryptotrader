@@ -34,89 +34,67 @@ func TestSendHTTPRequest(t *testing.T) {
 		methodGarbage, "https://www.google.com", headers,
 		strings.NewReader(""), true,
 	)
-	if err == nil {
-		t.Error("Expected error 'invalid HTTP method specified'")
-	}
+	assert.Error(t, err, "Expected error 'invalid HTTP method specified'")
+
 	_, err = SendHTTPRequest(t.Context(),
 		methodPost, "https://www.google.com", headers,
 		strings.NewReader(""), true,
 	)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
+
 	_, err = SendHTTPRequest(t.Context(),
 		methodGet, "https://www.google.com", headers,
 		strings.NewReader(""), true,
 	)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
 
 	err = SetHTTPUserAgent("GCTbot/1337.69 (+http://www.lol.com/)")
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: %v but expected: %v", err, nil)
-	}
+	require.NoError(t, err)
 
 	_, err = SendHTTPRequest(t.Context(),
 		methodDelete, "https://www.google.com", headers,
 		strings.NewReader(""), true,
 	)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err)
+
 	_, err = SendHTTPRequest(t.Context(),
 		methodGet, ":missingprotocolscheme", headers,
 		strings.NewReader(""), true,
 	)
-	if err == nil {
-		t.Error("Common HTTPRequest accepted missing protocol")
-	}
+	assert.Error(t, err, "Common HTTPRequest accepted missing protocol")
+
 	_, err = SendHTTPRequest(t.Context(),
 		methodGet, "test://unsupportedprotocolscheme", headers,
 		strings.NewReader(""), true,
 	)
-	if err == nil {
-		t.Error("Common HTTPRequest accepted invalid protocol")
-	}
+	assert.Error(t, err, "Common HTTPRequest accepted invalid protocol")
 }
 
 func TestSetHTTPClientWithTimeout(t *testing.T) {
 	t.Parallel()
 	err := SetHTTPClientWithTimeout(-0)
-	if !errors.Is(err, errCannotSetInvalidTimeout) {
-		t.Fatalf("received: %v but expected: %v", err, errCannotSetInvalidTimeout)
-	}
+	require.ErrorIs(t, err, errCannotSetInvalidTimeout)
 
 	err = SetHTTPClientWithTimeout(time.Second * 15)
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: %v but expected: %v", err, nil)
-	}
+	require.NoError(t, err)
 }
 
 func TestSetHTTPUserAgent(t *testing.T) {
 	t.Parallel()
 	err := SetHTTPUserAgent("")
-	if !errors.Is(err, errUserAgentInvalid) {
-		t.Fatalf("received: %v but expected: %v", err, errUserAgentInvalid)
-	}
+	require.ErrorIs(t, err, errUserAgentInvalid)
 
 	err = SetHTTPUserAgent("testy test")
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: %v but expected: %v", err, nil)
-	}
+	require.NoError(t, err)
 }
 
 func TestSetHTTPClient(t *testing.T) {
 	t.Parallel()
 	err := SetHTTPClient(nil)
-	if !errors.Is(err, errHTTPClientInvalid) {
-		t.Fatalf("received: %v but expected: %v", err, errHTTPClientInvalid)
-	}
+	require.ErrorIs(t, err, errHTTPClientInvalid)
 
 	err = SetHTTPClient(new(http.Client))
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: %v but expected: %v", err, nil)
-	}
+	require.NoError(t, err)
 }
 
 func TestIsEnabled(t *testing.T) {
@@ -269,9 +247,8 @@ func TestGetURIPath(t *testing.T) {
 
 func TestGetExecutablePath(t *testing.T) {
 	t.Parallel()
-	if _, err := GetExecutablePath(); err != nil {
-		t.Errorf("Common GetExecutablePath. Error: %s", err)
-	}
+	_, err := GetExecutablePath()
+	require.NoError(t, err)
 }
 
 func TestGetDefaultDataDir(t *testing.T) {
@@ -311,9 +288,7 @@ func TestCreateDir(t *testing.T) {
 	case "windows":
 		// test for looking up an invalid directory
 		err := CreateDir("")
-		if err == nil {
-			t.Fatal("expected err due to invalid path, but got nil")
-		}
+		assert.Error(t, err, "expected err due to invalid path, but got nil")
 
 		// test for a directory that exists
 		dir, ok := os.LookupEnv("TEMP")
@@ -321,9 +296,7 @@ func TestCreateDir(t *testing.T) {
 			t.Fatal("LookupEnv failed. TEMP is not set")
 		}
 		err = CreateDir(dir)
-		if err != nil {
-			t.Fatalf("CreateDir failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 
 		// test for creating a directory
 		dir, ok = os.LookupEnv("APPDATA")
@@ -332,24 +305,16 @@ func TestCreateDir(t *testing.T) {
 		}
 		dir = filepath.Join(dir, "GoCryptoTrader", "TestFileASDFG")
 		err = CreateDir(dir)
-		if err != nil {
-			t.Fatalf("CreateDir failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		err = os.Remove(dir)
-		if err != nil {
-			t.Fatalf("Failed to remove file. Err: %v", err)
-		}
+		require.NoError(t, err)
 	default:
 		err := CreateDir("")
-		if err == nil {
-			t.Fatal("expected err due to invalid path, but got nil")
-		}
+		assert.Error(t, err, "expected err due to invalid path, but got nil")
 
 		dir := "/home"
 		err = CreateDir(dir)
-		if err != nil {
-			t.Fatalf("CreateDir failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		var ok bool
 		dir, ok = os.LookupEnv("HOME")
 		if !ok {
@@ -357,13 +322,9 @@ func TestCreateDir(t *testing.T) {
 		}
 		dir = filepath.Join(dir, ".gocryptotrader", "TestFileASFG")
 		err = CreateDir(dir)
-		if err != nil {
-			t.Errorf("CreateDir failed. Err: %s", err)
-		}
+		require.NoError(t, err)
 		err = os.Remove(dir)
-		if err != nil {
-			t.Fatalf("Failed to remove file. Err: %v", err)
-		}
+		require.NoError(t, err)
 	}
 }
 
@@ -373,50 +334,30 @@ func TestChangePermission(t *testing.T) {
 	switch runtime.GOOS {
 	case "windows":
 		err := ChangePermission("*")
-		if err == nil {
-			t.Fatal("expected an error on non-existent path")
-		}
+		assert.Error(t, err, "expected an error on non-existent path")
 		err = os.Mkdir(testDir, 0o777)
-		if err != nil {
-			t.Fatalf("Mkdir failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		err = ChangePermission(testDir)
-		if err != nil {
-			t.Fatalf("ChangePerm was unsuccessful. Err: %v", err)
-		}
+		require.NoError(t, err)
 		_, err = os.Stat(testDir)
-		if err != nil {
-			t.Fatalf("os.Stat failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		err = os.Remove(testDir)
-		if err != nil {
-			t.Fatalf("os.Remove failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 	default:
 		err := ChangePermission("")
-		if err == nil {
-			t.Fatal("expected an error on non-existent path")
-		}
+		assert.Error(t, err, "expected an error on non-existent path")
 		err = os.Mkdir(testDir, 0o777)
-		if err != nil {
-			t.Fatalf("Mkdir failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		err = ChangePermission(testDir)
-		if err != nil {
-			t.Fatalf("ChangePerm was unsuccessful. Err: %v", err)
-		}
+		require.NoError(t, err)
 		var a os.FileInfo
 		a, err = os.Stat(testDir)
-		if err != nil {
-			t.Fatalf("os.Stat failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 		if a.Mode().Perm() != file.DefaultPermissionOctal {
 			t.Fatalf("expected file permissions differ. expecting file.DefaultPermissionOctal got %#o", a.Mode().Perm())
 		}
 		err = os.Remove(testDir)
-		if err != nil {
-			t.Fatalf("os.Remove failed. Err: %v", err)
-		}
+		require.NoError(t, err)
 	}
 }
 
@@ -517,44 +458,28 @@ func TestParseStartEndDate(t *testing.T) {
 	nt := time.Time{}
 
 	err := StartEndTimeCheck(nt, nt)
-	if !errors.Is(err, ErrDateUnset) {
-		t.Errorf("received %v, expected %v", err, ErrDateUnset)
-	}
+	assert.ErrorIs(t, err, ErrDateUnset)
 
 	err = StartEndTimeCheck(et, nt)
-	if !errors.Is(err, ErrDateUnset) {
-		t.Errorf("received %v, expected %v", err, ErrDateUnset)
-	}
+	assert.ErrorIs(t, err, ErrDateUnset)
 
 	err = StartEndTimeCheck(et, zeroValueUnix)
-	if !errors.Is(err, ErrDateUnset) {
-		t.Errorf("received %v, expected %v", err, ErrDateUnset)
-	}
+	assert.ErrorIs(t, err, ErrDateUnset)
 
 	err = StartEndTimeCheck(zeroValueUnix, et)
-	if !errors.Is(err, ErrDateUnset) {
-		t.Errorf("received %v, expected %v", err, ErrDateUnset)
-	}
+	assert.ErrorIs(t, err, ErrDateUnset)
 
 	err = StartEndTimeCheck(et, et)
-	if !errors.Is(err, ErrStartEqualsEnd) {
-		t.Errorf("received %v, expected %v", err, ErrStartEqualsEnd)
-	}
+	assert.ErrorIs(t, err, ErrStartEqualsEnd)
 
 	err = StartEndTimeCheck(et, pt)
-	if !errors.Is(err, ErrStartAfterEnd) {
-		t.Errorf("received %v, expected %v", err, ErrStartAfterEnd)
-	}
+	assert.ErrorIs(t, err, ErrStartAfterEnd)
 
 	err = StartEndTimeCheck(ft, ft.Add(time.Hour))
-	if !errors.Is(err, ErrStartAfterTimeNow) {
-		t.Errorf("received %v, expected %v", err, ErrStartAfterTimeNow)
-	}
+	assert.ErrorIs(t, err, ErrStartAfterTimeNow)
 
 	err = StartEndTimeCheck(pt, et)
-	if !errors.Is(err, nil) {
-		t.Errorf("received %v, expected %v", err, nil)
-	}
+	assert.NoError(t, err)
 }
 
 func TestGetAssertError(t *testing.T) {
@@ -569,9 +494,7 @@ func TestGetAssertError(t *testing.T) {
 	}
 
 	err = GetTypeAssertError("bruh", struct{}{})
-	if !errors.Is(err, ErrTypeAssertFailure) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, ErrTypeAssertFailure)
-	}
+	assert.ErrorIs(t, err, ErrTypeAssertFailure)
 
 	err = GetTypeAssertError("string", struct{}{})
 	if err.Error() != "type assert failure from struct {} to string" {
@@ -606,32 +529,38 @@ func TestMatchesEmailPattern(t *testing.T) {
 func TestGenerateRandomString(t *testing.T) {
 	t.Parallel()
 	sample, err := GenerateRandomString(5, NumberCharacters)
-	if err != nil {
-		t.Errorf("GenerateRandomString()  %v", err)
-	}
+	assert.NoError(t, err)
+
 	value, err := strconv.Atoi(sample)
-	if len(sample) != 5 || err != nil || value < 0 {
-		t.Error("GenerateRandomString() unexpected test validation result")
-	}
+	// NOTE: The original test was: if len(sample) != 5 || err != nil || value < 0
+	// We break this into multiple assertions for clarity.
+	assert.Equal(t, 5, len(sample), "Sample length should be 5")
+	assert.NoError(t, err, "strconv.Atoi should not error for a valid number string")
+	assert.True(t, value >= 0, "Generated number string should be positive")
+
 	sample, err = GenerateRandomString(5)
-	if err != nil {
-		t.Errorf("GenerateRandomString()  %v", err)
-	}
+	assert.NoError(t, err)
+
 	values, err := strconv.ParseInt(sample, 10, 64)
-	if len(sample) != 5 || err != nil || values < 0 {
-		t.Error("GenerateRandomString() unexpected test validation result")
-	}
+	// NOTE: The original test was: if len(sample) != 5 || err != nil || values < 0
+	assert.Equal(t, 5, len(sample), "Sample length should be 5")
+	assert.NoError(t, err, "strconv.ParseInt should not error for a valid number string")
+	assert.True(t, values >= 0, "Generated number string should be positive")
+
 	_, err = GenerateRandomString(1, "")
-	if err == nil {
-		t.Errorf("GenerateRandomString() expecting %s, but found %v", "invalid characters, character must not be empty", err)
+	assert.Error(t, err, "GenerateRandomString() expecting an error for empty characters")
+	if err != nil { // Check if err is not nil before asserting its content
+		assert.Contains(t, err.Error(), "invalid characters, character must not be empty", "Error message mismatch")
 	}
+
 	sample, err = GenerateRandomString(0, "")
-	if err != nil && !strings.Contains(err.Error(), "invalid length") {
-		t.Errorf("GenerateRandomString()  %v", err)
+	// original: if err != nil && !strings.Contains(err.Error(), "invalid length")
+	// This implies an error is expected, and it must contain "invalid length"
+	assert.Error(t, err)
+	if err != nil {
+		assert.Contains(t, err.Error(), "invalid length")
 	}
-	if sample != "" {
-		t.Error("GenerateRandomString() unexpected test validation result")
-	}
+	assert.Equal(t, "", sample, "Sample should be empty for 0 length")
 }
 
 // TestErrorCollector exercises the error collector

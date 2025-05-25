@@ -18,13 +18,9 @@ const (
 func TestLower(t *testing.T) {
 	t.Parallel()
 	pair, err := NewPairFromString(defaultPair)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected, err := NewPairFromString(defaultPair)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if actual := pair.Lower(); actual.String() != expected.Lower().String() {
 		t.Errorf("Lower(): %s was not equal to expected value: %s",
 			actual,
@@ -35,13 +31,9 @@ func TestLower(t *testing.T) {
 func TestUpper(t *testing.T) {
 	t.Parallel()
 	pair, err := NewPairFromString(defaultPair)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected, err := NewPairFromString(defaultPair)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if actual := pair.Upper(); actual.String() != expected.String() {
 		t.Errorf("Upper(): %s was not equal to expected value: %s",
 			actual, expected)
@@ -71,9 +63,7 @@ func TestPairMarshalJSON(t *testing.T) {
 	}
 
 	encoded, err := json.Marshal(quickstruct)
-	if err != nil {
-		t.Fatal("Pair MarshalJSON() error", err)
-	}
+	require.NoError(t, err, "Pair MarshalJSON() error")
 
 	expected := `{"superPair":"BTC-USD"}`
 	if string(encoded) != expected {
@@ -185,13 +175,9 @@ func TestPair(t *testing.T) {
 func TestDisplay(t *testing.T) {
 	t.Parallel()
 	_, err := NewPairDelimiter(defaultPairWDelimiter, "wow")
-	if err == nil {
-		t.Fatal("error cannot be nil")
-	}
+	require.Error(t, err, "error cannot be nil when delimiter is not found")
 	pair, err := NewPairDelimiter(defaultPairWDelimiter, "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	actual := pair.String()
 	expected := defaultPairWDelimiter
 	if actual != expected {
@@ -378,9 +364,7 @@ func TestNewPairFromString(t *testing.T) {
 	t.Parallel()
 	pairStr := defaultPairWDelimiter
 	pair, err := NewPairFromString(pairStr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	actual := pair.String()
 	expected := defaultPairWDelimiter
 	if actual != expected {
@@ -392,9 +376,7 @@ func TestNewPairFromString(t *testing.T) {
 
 	pairStr = defaultPair
 	pair, err = NewPairFromString(pairStr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	actual = pair.String()
 	expected = defaultPair
 	if actual != expected {
@@ -415,9 +397,7 @@ func TestNewPairFromString(t *testing.T) {
 	}
 	for key, expectedPair := range pairMap {
 		pair, err = NewPairFromString(key)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if !pair.Equal(expectedPair) || pair.Delimiter != expectedPair.Delimiter {
 			t.Errorf("Pair(): %s was not equal to expected value: %s", pair.String(), expectedPair.String())
 		}
@@ -427,13 +407,9 @@ func TestNewPairFromString(t *testing.T) {
 func TestNewPairFromFormattedPairs(t *testing.T) {
 	t.Parallel()
 	p1, err := NewPairDelimiter("BTC-USDT", "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p2, err := NewPairDelimiter("LTC-USD", "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pairs := Pairs{
 		p1,
 		p2,
@@ -442,18 +418,14 @@ func TestNewPairFromFormattedPairs(t *testing.T) {
 	p, err := NewPairFromFormattedPairs("BTCUSDT", pairs, PairFormat{
 		Uppercase: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if p.String() != "BTC-USDT" {
 		t.Error("TestNewPairFromFormattedPairs: Expected currency was not found")
 	}
 
 	p, err = NewPairFromFormattedPairs("btcusdt", pairs, PairFormat{Uppercase: false})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if p.String() != "BTC-USDT" {
 		t.Error("TestNewPairFromFormattedPairs: Expected currency was not found")
@@ -461,9 +433,7 @@ func TestNewPairFromFormattedPairs(t *testing.T) {
 
 	// Now a wrong one, will default to NewPairFromString
 	p, err = NewPairFromFormattedPairs("ethusdt", pairs, EMPTYFORMAT)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	if p.String() != "ethusdt" && p.Base.String() != "eth" {
 		t.Error("TestNewPairFromFormattedPairs: Expected currency was not found")
@@ -543,9 +513,7 @@ func TestRandomPairFromPairs(t *testing.T) {
 	// Test that an empty pairs array returns an empty currency pair
 	var emptyPairs Pairs
 	result, err := emptyPairs.GetRandomPair()
-	if !errors.Is(err, ErrCurrencyPairsEmpty) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, ErrCurrencyPairsEmpty)
-	}
+	require.ErrorIs(t, err, ErrCurrencyPairsEmpty)
 	if !result.IsEmpty() {
 		t.Error("TestRandomPairFromPairs: Unexpected values")
 	}
@@ -554,9 +522,7 @@ func TestRandomPairFromPairs(t *testing.T) {
 	var pairs Pairs
 	pairs = append(pairs, NewBTCUSD())
 	result, err = pairs.GetRandomPair()
-	if !errors.Is(err, nil) {
-		t.Fatalf("received: '%v' but expected: '%v'", err, nil)
-	}
+	require.NoError(t, err)
 
 	if result.IsEmpty() {
 		t.Error("TestRandomPairFromPairs: Unexpected values")
@@ -568,9 +534,7 @@ func TestRandomPairFromPairs(t *testing.T) {
 	expectedResults := make(map[string]bool)
 	for range 50 {
 		result, err = pairs.GetRandomPair()
-		if !errors.Is(err, nil) {
-			t.Fatalf("received: '%v' but expected: '%v'", err, nil)
-		}
+		require.NoError(t, err)
 		expectedResults[result.String()] = true
 	}
 
@@ -590,25 +554,15 @@ func TestIsInvalid(t *testing.T) {
 
 func TestMatchPairsWithNoDelimiter(t *testing.T) {
 	p1, err := NewPairDelimiter("BTC-USDT", "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p2, err := NewPairDelimiter("LTC-USD", "-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p3, err := NewPairFromStrings("EQUAD", "BTC")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p4, err := NewPairFromStrings("HTDF", "USDT")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	p5, err := NewPairFromStrings("BETHER", "ETH")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pairs := Pairs{
 		p1,
 		p2,
@@ -620,9 +574,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 	p, err := MatchPairsWithNoDelimiter("BTCUSDT", pairs, PairFormat{
 		Uppercase: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if p.Quote.String() != "USDT" && p.Base.String() != "BTC" {
 		t.Error("unexpected response")
 	}
@@ -630,9 +582,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 	p, err = MatchPairsWithNoDelimiter("EQUADBTC", pairs, PairFormat{
 		Uppercase: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if p.Base.String() != "EQUAD" && p.Quote.String() != "BTC" {
 		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
 	}
@@ -641,9 +591,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 		Uppercase: true,
 		Delimiter: "/",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if p.Base.String() != "EQUAD" && p.Quote.String() != "BTC" {
 		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
 	}
@@ -652,9 +600,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 		Uppercase: true,
 		Delimiter: "/",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if p.Base.String() != "HTDF" && p.Quote.String() != "USDT" {
 		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
 	}
@@ -663,9 +609,7 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 		Uppercase: true,
 		Delimiter: "/",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if p.Base.String() != "BETHER" && p.Quote.String() != "ETH" {
 		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
 	}
@@ -729,22 +673,17 @@ func TestPairFormat_Format(t *testing.T) {
 
 func TestOther(t *testing.T) {
 	received, err := NewPair(DAI, XRP).Other(DAI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !received.Equal(XRP) {
 		t.Fatal("unexpected value")
 	}
 	received, err = NewPair(DAI, XRP).Other(XRP)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if !received.Equal(DAI) {
 		t.Fatal("unexpected value")
 	}
-	if _, err := NewPair(DAI, XRP).Other(BTC); !errors.Is(err, ErrCurrencyCodeEmpty) {
-		t.Fatal("unexpected value")
-	}
+	_, err = NewPair(DAI, XRP).Other(BTC)
+	require.ErrorIs(t, err, ErrCurrencyCodeEmpty, "unexpected value")
 }
 
 func TestIsPopulated(t *testing.T) {
@@ -805,9 +744,7 @@ func TestGetOrderParameters(t *testing.T) {
 				resp, err = tc.Pair.LimitBuyOrderParameters(tc.currency)
 			}
 
-			if !errors.Is(err, tc.expectedError) {
-				t.Fatalf("received %v, expected %v", err, tc.expectedError)
-			}
+			require.ErrorIs(t, err, tc.expectedError)
 
 			if tc.expectedParams == nil {
 				if resp != nil {
