@@ -603,7 +603,7 @@ func TestCompareJobsToData(t *testing.T) {
 	}
 }
 
-func TestRunJob(t *testing.T) { //nolint:tparallel // There is a race condition caused by the DataHistoryJob and it's a big change to fix.
+func TestRunJob(t *testing.T) {
 	t.Parallel()
 	tt := time.Now().Truncate(kline.OneHour.Duration())
 	testCases := []*DataHistoryJob{
@@ -672,29 +672,25 @@ func TestRunJob(t *testing.T) { //nolint:tparallel // There is a race condition 
 		},
 	}
 
-	m, _ := createDHM(t)
-	m.tradeSaver = dataHistoryTradeSaver
-	m.candleSaver = dataHistoryCandleSaver
-	m.tradeLoader = dataHistoryTraderLoader
 	for x := range testCases {
 		test := testCases[x]
 		t.Run(test.Nickname, func(t *testing.T) {
+			m, _ := createDHM(t)
+			m.tradeSaver = dataHistoryTradeSaver
+			m.candleSaver = dataHistoryCandleSaver
+			m.tradeLoader = dataHistoryTraderLoader
 			err := m.UpsertJob(test, false)
 			assert.NoError(t, err)
 
 			test.Status = dataHistoryIntervalIssuesFound
 			err = m.runJob(test)
-			if !errors.Is(err, errJobInvalid) {
-				t.Errorf("error '%v', expected '%v'", err, errJobInvalid)
-			}
+			assert.ErrorIs(t, err, errJobInvalid)
 
 			rh := test.rangeHolder
 			test.Status = dataHistoryStatusActive
 			test.rangeHolder = nil
 			err = m.runJob(test)
-			if !errors.Is(err, errJobInvalid) {
-				t.Errorf("error '%v', expected '%v'", err, errJobInvalid)
-			}
+			assert.ErrorIs(t, err, errJobInvalid)
 
 			test.rangeHolder = rh
 			err = m.runJob(test)
@@ -703,14 +699,10 @@ func TestRunJob(t *testing.T) { //nolint:tparallel // There is a race condition 
 	}
 	var badM *DataHistoryManager
 	err := badM.runJob(nil)
-	if !errors.Is(err, ErrNilSubsystem) {
-		t.Errorf("error '%v', expected '%v'", err, ErrNilSubsystem)
-	}
+	assert.ErrorIs(t, err, ErrNilSubsystem)
 	badM = &DataHistoryManager{}
 	err = badM.runJob(nil)
-	if !errors.Is(err, ErrSubSystemNotStarted) {
-		t.Errorf("error '%v', expected '%v'", err, ErrSubSystemNotStarted)
-	}
+	assert.ErrorIs(t, err, ErrSubSystemNotStarted)
 }
 
 func TestGenerateJobSummaryTest(t *testing.T) {
