@@ -673,27 +673,27 @@ func TestRunJob(t *testing.T) {
 	}
 
 	for x := range testCases {
-		test := testCases[x]
-		t.Run(test.Nickname, func(t *testing.T) {
+		t.Run(testCases[x].Nickname, func(t *testing.T) {
+			t.Parallel()
 			m, _ := createDHM(t)
 			m.tradeSaver = dataHistoryTradeSaver
 			m.candleSaver = dataHistoryCandleSaver
 			m.tradeLoader = dataHistoryTraderLoader
-			err := m.UpsertJob(test, false)
+			err := m.UpsertJob(testCases[x], false)
 			assert.NoError(t, err)
 
-			test.Status = dataHistoryIntervalIssuesFound
-			err = m.runJob(test)
+			testCases[x].Status = dataHistoryIntervalIssuesFound
+			err = m.runJob(testCases[x])
 			assert.ErrorIs(t, err, errJobInvalid)
 
-			rh := test.rangeHolder
-			test.Status = dataHistoryStatusActive
-			test.rangeHolder = nil
-			err = m.runJob(test)
+			rh := testCases[x].rangeHolder
+			testCases[x].Status = dataHistoryStatusActive
+			testCases[x].rangeHolder = nil
+			err = m.runJob(testCases[x])
 			assert.ErrorIs(t, err, errJobInvalid)
 
-			test.rangeHolder = rh
-			err = m.runJob(test)
+			testCases[x].rangeHolder = rh
+			err = m.runJob(testCases[x])
 			assert.NoError(t, err)
 		})
 	}
