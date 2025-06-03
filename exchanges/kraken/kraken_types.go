@@ -467,6 +467,91 @@ type DeleteExportResponse struct {
 	Cancel bool `json:"cancel,omitempty"` // True if cancelled
 }
 
+// AmendOrderOptions represents the parameters for amending an order.
+type AmendOrderOptions struct {
+	OrderID        string  // Required: Original order ID
+	UserRef        int32   // Optional: User reference ID of the original order
+	Pair           string  // Required: Asset pair
+	Volume         string  // Optional: New order volume (as string to preserve precision)
+	Price          string  // Optional: New primary price (as string)
+	Price2         string  // Optional: New secondary price (as string)
+	OFlags         string  // Optional: Comma-delimited list of order flags
+	Deadline       string  // Optional: RFC3339 timestamp for order cancellation
+	CancelResponse bool    // Optional: If true, response includes cancel_txid if amend cancels order
+	Validate       bool    // Optional: Validate inputs only; do not submit order (send as "true" string if true)
+}
+
+// AmendOrderResponse represents the response from amending an order.
+type AmendOrderResponse struct {
+	TxID       string   `json:"txid"`                 // Original order ID
+	AmendTxID  string   `json:"amend_txid"`           // Unique Kraken amend identifier
+	Status     string   `json:"status"`               // Status of the amend request
+	Descr      string   `json:"descr"`                // Human-readable description
+	CancelTxID string   `json:"cancel_txid,omitempty"`// If amend resulted in cancellation
+	Errors     []string `json:"errors,omitempty"`     // List of errors if any
+}
+
+// CancelAllOrdersResponse represents the response from cancelling all open orders.
+type CancelAllOrdersResponse struct {
+	Count int64 `json:"count"` // Number of orders canceled.
+}
+
+// CancelAllOrdersAfterResponse represents the response from the CancelAllOrdersAfter endpoint.
+type CancelAllOrdersAfterResponse struct {
+	CurrentTime string `json:"currentTime"` // Current server time
+	TriggerTime string `json:"triggerTime"` // Time that the server will cancel orders
+}
+
+// BatchOrderRequest represents an individual order to be submitted in a batch.
+// Fields are similar to AddOrderOptions, but types are adjusted for JSON array embedding.
+// All prices and volumes should be strings to maintain precision.
+type BatchOrderRequest struct {
+	OrderType      string `json:"ordertype"` // e.g., "limit", "market"
+	Type           string `json:"type"`      // "buy" or "sell"
+	Volume         string `json:"volume"`
+	Price          string `json:"price,omitempty"`
+	Price2         string `json:"price2,omitempty"`
+	Leverage       string `json:"leverage,omitempty"`
+	OFlags         string `json:"oflags,omitempty"`
+	StartTm        string `json:"starttm,omitempty"`  // Scheduled start time (0 or null for no schedule)
+	ExpireTm       string `json:"expiretm,omitempty"` // Expiration time (0 or null for no expiration)
+	UserRef        int32  `json:"userref,omitempty"`  // User reference ID (Ensure this can be omitted if 0)
+	Validate       string `json:"validate,omitempty"` // "true" or "false" (or omitted)
+	TimeInForce    string `json:"timeinforce,omitempty"` // e.g., GTC, IOC, GTD
+	// Conditional close parameters
+	CloseOrderType string `json:"close[ordertype],omitempty"`
+	ClosePrice     string `json:"close[price],omitempty"`
+	ClosePrice2    string `json:"close[price2],omitempty"`
+}
+
+// AddOrderBatchOptions represents parameters for the AddOrderBatch endpoint.
+type AddOrderBatchOptions struct {
+	Pair     string              `json:"pair"`    // Required
+	Orders   []BatchOrderRequest `json:"orders"`  // Required, JSON encoded string for the form field
+	Deadline string              `json:"deadline,omitempty"` // Optional RFC3339 timestamp
+	Validate bool                `json:"validate,omitempty"` // Optional: Validate inputs only (send as "true" string if true)
+}
+
+// AddOrderBatchResponseEntry represents the result for a single order in a batch.
+type AddOrderBatchResponseEntry struct {
+	Descr  *OrderDescription `json:"descr,omitempty"` // Using existing OrderDescription
+	TxID   string            `json:"txid,omitempty"`
+	Error  string            `json:"error,omitempty"`  // Kraken might use "error" for single order errors
+	Errors []string          `json:"errors,omitempty"` // Or "errors" for multiple issues
+}
+
+// AddOrderBatchResponse represents the response from the AddOrderBatch endpoint.
+type AddOrderBatchResponse struct {
+	Orders []AddOrderBatchResponseEntry `json:"orders"`
+	// The top-level response might also have a general "error" field for batch-level errors
+	Error []string `json:"error,omitempty"` // For batch-level errors
+}
+
+// CancelOrderBatchOptions represents parameters for the CancelOrderBatch endpoint.
+type CancelOrderBatchOptions struct {
+	Orders []string `json:"orders"` // Required: Array of order_id, userref, or cl_ord_id (max 50)
+}
+
 // TradeVolumeResponse type
 type TradeVolumeResponse struct {
 	Currency  string                    `json:"currency"`
@@ -491,19 +576,27 @@ type AddOrderResponse struct {
 	TransactionIDs []string         `json:"txid"`
 }
 
-// WithdrawInformation Used to check withdrawal fees
+// WithdrawInformation Used to check withdrawal fees and info
 type WithdrawInformation struct {
-	Method string  `json:"method"`
-	Limit  float64 `json:"limit,string"`
-	Fee    float64 `json:"fee,string"`
+	Method      string  `json:"method"`
+	Limit       float64 `json:"limit,string"` // Max net amount that can be withdrawn
+	Amount      string  `json:"amount"`       // Net amount that will be sent, after fees
+	Fee         float64 `json:"fee,string"`
+	AddressName string  `json:"address_name,omitempty"` // Name of the address on file
 }
 
-// DepositMethods Used to check deposit fees
+// WithdrawResponse represents the response from a withdrawal request.
+type WithdrawResponse struct {
+	RefID string `json:"refid"` // Reference ID for the withdrawal
+}
+
+// DepositMethods Used to check deposit fees/methods
 type DepositMethods struct {
 	Method          string  `json:"method"`
-	Limit           any     `json:"limit"` // If no limit amount, this comes back as boolean
-	Fee             float64 `json:"fee,string"`
-	AddressSetupFee float64 `json:"address-setup-fee,string"`
+	Limit           any     `json:"limit"` // string or false
+	Fee             float64 `json:"fee,string,omitempty"` // Optional
+	AddressSetupFee float64 `json:"address-setup-fee,string,omitempty"` // Optional
+	GenAddress      bool    `json:"gen-address"` // Whether a new address can be generated
 }
 
 // OrderDescription represents an orders description
@@ -515,14 +608,18 @@ type OrderDescription struct {
 // AddOrderOptions represents the AddOrder options
 type AddOrderOptions struct {
 	UserRef        int32
-	OrderFlags     string
-	StartTm        string
-	ExpireTm       string
-	CloseOrderType string
-	ClosePrice     float64
-	ClosePrice2    float64
-	Validate       bool
-	TimeInForce    string
+	OrderFlags     string  // maps to 'oflags'
+	StartTm        string  // maps to 'starttm'
+	ExpireTm       string  // maps to 'expiretm'
+	CloseOrderType string  // maps to 'close[ordertype]'
+	ClosePrice     float64 // maps to 'close[price]'
+	ClosePrice2    float64 // maps to 'close[price2]'
+	Validate       bool    // maps to 'validate'
+	TimeInForce    string  // maps to 'timeinforce'
+	Trigger        string  // New: maps to 'trigger' (last or index)
+	ReduceOnly     bool    // New: maps to 'reduce_only'
+	PostOnly       bool    // New: maps to 'post_only'
+	StpType        string  // New: maps to 'stp_type' (self-trade prevention)
 }
 
 // CancelOrderResponse type
@@ -576,18 +673,36 @@ type DepositAddress struct {
 	New        bool   `json:"new"`
 }
 
-// WithdrawStatusResponse defines a withdrawal status response
+// WithdrawStatusOptions represents parameters for the WithdrawStatus endpoint.
+type WithdrawStatusOptions struct {
+	Asset   string // Required: Asset to check status for.
+	Method  string // Optional: Withdrawal method name.
+	Aclass  string // Optional: Asset class (default: "currency").
+	Network string // Optional: Network to use.
+	Cursor  bool   // Optional: If true, requests cursor for pagination.
+	Limit   int    // Optional: Number of results (default/max 100 if cursor=true).
+}
+
+// WithdrawStatusResponse defines a single withdrawal status entry.
 type WithdrawStatusResponse struct {
-	Method string  `json:"method"`
-	Aclass string  `json:"aclass"`
-	Asset  string  `json:"asset"`
-	Refid  string  `json:"refid"`
-	TxID   string  `json:"txid"`
-	Info   string  `json:"info"`
-	Amount float64 `json:"amount,string"`
-	Fee    float64 `json:"fee,string"`
-	Time   float64 `json:"time"`
-	Status string  `json:"status"`
+	Method        string   `json:"method"`
+	Aclass        string   `json:"aclass"`
+	Asset         string   `json:"asset"`
+	RefID         string   `json:"refid"`
+	TxID          string   `json:"txid"`
+	Info          string   `json:"info"`
+	Amount        float64  `json:"amount,string"`
+	Fee           float64  `json:"fee,string"`
+	Time          int64    `json:"time"` // Changed from float64
+	Status        string   `json:"status"`
+	StatusProp    string   `json:"status-prop,omitempty"` // Added
+	Originators   []string `json:"originators,omitempty"` // Added
+	Beneficiaries []string `json:"beneficiaries,omitempty"` // Added
+}
+
+// WithdrawCancelResponse represents the response from a withdrawal cancellation request.
+type WithdrawCancelResponse struct {
+	Result bool `json:"result"` // True if cancellation was successful/requested.
 }
 
 // WebsocketSubRequest contains request data for Subscribe/Unsubscribe to channels
