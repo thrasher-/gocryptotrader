@@ -85,22 +85,26 @@ func (k *Kraken) GetAssets(ctx context.Context) (map[string]*Asset, error) {
 // GetAssetPairs returns a full asset pair list
 // Parameter 'info' only supports 4 strings: "fees", "leverage", "margin", "info" <- (default)
 func (k *Kraken) GetAssetPairs(ctx context.Context, assetPairs []string, info string) (map[string]*AssetPairs, error) {
-	path := fmt.Sprintf("/%s/public/%s", krakenAPIVersion, krakenAssetPairs)
+	requestPath := fmt.Sprintf("/%s/public/%s", krakenAPIVersion, krakenAssetPairs)
 	params := url.Values{}
-	var assets string
 	if len(assetPairs) != 0 {
-		assets = strings.Join(assetPairs, ",")
+		assets := strings.Join(assetPairs, ",")
 		params.Set("pair", assets)
 	}
 
-	var result map[string]*AssetPairs
 	if info != "" {
 		if info != "margin" && info != "leverage" && info != "fees" && info != "info" {
 			return nil, errors.New("parameter info can only be 'asset', 'margin', 'fees' or 'leverage'")
 		}
 		params.Set("info", info)
 	}
-	if err := k.SendHTTPRequest(ctx, exchange.RestSpot, path+params.Encode(), &result); err != nil {
+
+	if len(params) > 0 {
+		requestPath = requestPath + "?" + params.Encode()
+	}
+
+	var result map[string]*AssetPairs
+	if err := k.SendHTTPRequest(ctx, exchange.RestSpot, requestPath, &result); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -133,7 +137,7 @@ func (k *Kraken) GetTicker(ctx context.Context, symbol currency.Pair) (*Ticker, 
 		tick.Trades = v.Trades[1]
 		tick.Low = v.Low[1].Float64()
 		tick.High = v.High[1].Float64()
-		tick.Open = v.Open.Float64()
+	tick.Open = v.Open[0].Float64()
 	}
 	return &tick, nil
 }
@@ -142,22 +146,25 @@ func (k *Kraken) GetTicker(ctx context.Context, symbol currency.Pair) (*Ticker, 
 // pairList must be in the format pairs separated by commas
 // ("LTCUSD,ETCUSD")
 func (k *Kraken) GetTickers(ctx context.Context, pairList string) (map[string]Ticker, error) {
-	values := url.Values{}
+	requestPath := fmt.Sprintf("/%s/public/%s", krakenAPIVersion, krakenTicker)
+	params := url.Values{}
 	if pairList != "" {
-		values.Set("pair", pairList)
+		params.Set("pair", pairList)
+	}
+
+	if len(params) > 0 {
+		requestPath = requestPath + "?" + params.Encode()
 	}
 
 	var result map[string]*TickerResponse
-	path := fmt.Sprintf("/%s/public/%s?%s", krakenAPIVersion, krakenTicker, values.Encode())
-
-	err := k.SendHTTPRequest(ctx, exchange.RestSpot, path, &result)
+	err := k.SendHTTPRequest(ctx, exchange.RestSpot, requestPath, &result)
 	if err != nil {
 		return nil, err
 	}
 
 	tickers := make(map[string]Ticker, len(result))
-	for k, v := range result {
-		tickers[k] = Ticker{
+	for pairName, v := range result {
+		tickers[pairName] = Ticker{
 			Ask:                        v.Ask[0].Float64(),
 			AskSize:                    v.Ask[2].Float64(),
 			Bid:                        v.Bid[0].Float64(),
@@ -168,7 +175,7 @@ func (k *Kraken) GetTickers(ctx context.Context, pairList string) (map[string]Ti
 			Trades:                     v.Trades[1],
 			Low:                        v.Low[1].Float64(),
 			High:                       v.High[1].Float64(),
-			Open:                       v.Open.Float64(),
+			Open:                       v.Open[0].Float64(), // Adjusted
 		}
 	}
 	return tickers, nil
@@ -237,9 +244,11 @@ func (k *Kraken) GetOHLC(ctx context.Context, symbol currency.Pair, interval str
 		if o.Volume, err = convert.FloatFromString(subData[6]); err != nil {
 			return nil, err
 		}
-		if o.Count, ok = subData[7].(float64); !ok {
-			return nil, errors.New("unable to type assert count")
+		countFloat, ok := subData[7].(float64)
+		if !ok {
+			return nil, fmt.Errorf("unable to type assert OHLC count data (index 7) to float64: got %T", subData[7])
 		}
+		o.Count = int64(countFloat)
 		OHLC[x] = o
 	}
 	return OHLC, nil
@@ -457,6 +466,16 @@ func (k *Kraken) Withdraw(ctx context.Context, asset, key string, amount float64
 	}
 
 	return referenceID, nil
+}
+
+// GetSystemStatus returns the current system status or trading mode.
+func (k *Kraken) GetSystemStatus(ctx context.Context) (*SystemStatusResponse, error) {
+	path := fmt.Sprintf("/%s/public/%s", krakenAPIVersion, krakenSystemStatus)
+	var result SystemStatusResponse
+	if err := k.SendHTTPRequest(ctx, exchange.RestSpot, path, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // GetDepositMethods gets withdrawal fees

@@ -17,7 +17,7 @@ const (
 	krakenAPIVersion       = "0"
 	krakenServerTime       = "Time"
 	krakenAssets           = "Assets"
-	krakenAssetPairs       = "AssetPairs?"
+	krakenAssetPairs       = "AssetPairs"
 	krakenTicker           = "Ticker"
 	krakenOHLC             = "OHLC"
 	krakenDepth            = "Depth"
@@ -43,6 +43,7 @@ const (
 	krakenWithdrawStatus   = "WithdrawStatus"
 	krakenWithdrawCancel   = "WithdrawCancel"
 	krakenWebsocketToken   = "GetWebSocketsToken"
+	krakenSystemStatus     = "SystemStatus"
 
 	// Futures
 	futuresTickers      = "/api/v3/tickers"
@@ -78,6 +79,18 @@ const (
 	krakenFormat = "2006-01-02T15:04:05.000Z"
 )
 
+// SystemStatusResponse defines the response for the system status endpoint
+type SystemStatusResponse struct {
+	Status    string `json:"status"` // online, maintenance, cancel_only, post_only
+	Timestamp string `json:"timestamp"` // Current server time
+}
+
+// TimeResponse represents the server time.
+type TimeResponse struct {
+	Unixtime int64  `json:"unixtime"` // Server time as Unix timestamp
+	Rfc1123  string `json:"rfc1123"`  // Server time in RFC1123 format
+}
+
 var (
 	assetTranslator assetTranslatorStore
 
@@ -101,7 +114,7 @@ type genericFuturesResponse struct {
 // Asset holds asset information
 type Asset struct {
 	Altname         string `json:"altname"`
-	AclassBase      string `json:"aclass_base"`
+	Aclass          string `json:"aclass"` // Changed from aclass_base
 	Decimals        int    `json:"decimals"`
 	DisplayDecimals int    `json:"display_decimals"`
 }
@@ -158,7 +171,7 @@ type TickerResponse struct {
 	Trades                     [2]int64        `json:"t"`
 	Low                        [2]types.Number `json:"l"`
 	High                       [2]types.Number `json:"h"`
-	Open                       types.Number    `json:"o"`
+	Open                       [2]types.Number    `json:"o"`
 }
 
 // OpenHighLowClose contains ticker event information
@@ -170,7 +183,7 @@ type OpenHighLowClose struct {
 	Close                      float64
 	VolumeWeightedAveragePrice float64
 	Volume                     float64
-	Count                      float64
+	Count                      int64
 }
 
 // RecentTrades holds recent trade data
