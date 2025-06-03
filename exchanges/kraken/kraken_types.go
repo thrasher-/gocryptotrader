@@ -14,36 +14,8 @@ import (
 )
 
 const (
-	krakenAPIVersion       = "0"
-	krakenServerTime       = "Time"
-	krakenAssets           = "Assets"
-	krakenAssetPairs       = "AssetPairs"
-	krakenTicker           = "Ticker"
-	krakenOHLC             = "OHLC"
-	krakenDepth            = "Depth"
-	krakenTrades           = "Trades"
-	krakenSpread           = "Spread"
-	krakenBalance          = "BalanceEx"
-	krakenTradeBalance     = "TradeBalance"
-	krakenOpenOrders       = "OpenOrders"
-	krakenClosedOrders     = "ClosedOrders"
-	krakenQueryOrders      = "QueryOrders"
-	krakenTradeHistory     = "TradesHistory"
-	krakenQueryTrades      = "QueryTrades"
-	krakenOpenPositions    = "OpenPositions"
-	krakenLedgers          = "Ledgers"
-	krakenQueryLedgers     = "QueryLedgers"
-	krakenTradeVolume      = "TradeVolume"
-	krakenOrderCancel      = "CancelOrder"
-	krakenOrderPlace       = "AddOrder"
-	krakenWithdrawInfo     = "WithdrawInfo"
-	krakenWithdraw         = "Withdraw"
-	krakenDepositMethods   = "DepositMethods"
-	krakenDepositAddresses = "DepositAddresses"
-	krakenWithdrawStatus   = "WithdrawStatus"
-	krakenWithdrawCancel   = "WithdrawCancel"
-	krakenWebsocketToken   = "GetWebSocketsToken"
-	krakenSystemStatus     = "SystemStatus"
+	krakenAPIVersion = "0"
+	// All private method constants removed, they are now local to their respective functions in kraken.go
 
 	// Futures
 	futuresTickers      = "/api/v3/tickers"
@@ -193,7 +165,7 @@ type RecentTrades struct {
 	Time          float64
 	BuyOrSell     string
 	MarketOrLimit string
-	Miscellaneous any
+	Miscellaneous string // Changed from any
 	TradeID       int64
 }
 
@@ -225,8 +197,7 @@ type Balance struct {
 
 // TradeBalanceOptions type
 type TradeBalanceOptions struct {
-	Aclass string
-	Asset  string
+	Asset string // Base asset used to determine balance (default = ZUSD)
 }
 
 // TradeBalanceInfo type
@@ -235,6 +206,8 @@ type TradeBalanceInfo struct {
 	TradeBalance      float64 `json:"tb,string"` // combined balance of all equity currencies
 	MarginAmount      float64 `json:"m,string"`  // margin amount of open positions
 	Net               float64 `json:"n,string"`  // unrealized net profit/loss of open positions
+	CostBasis         float64 `json:"c,string"`  // cost basis of open positions
+	FloatingValuation float64 `json:"v,string"`  // current floating valuation of open positions
 	Equity            float64 `json:"e,string"`  // trade balance + unrealized net profit/loss
 	FreeMargin        float64 `json:"mf,string"` // equity - initial margin (maximum margin available to open new positions)
 	MarginLevel       float64 `json:"ml,string"` // (equity / initial margin) * 100
@@ -245,10 +218,10 @@ type OrderInfo struct {
 	RefID       string  `json:"refid"`
 	UserRef     int32   `json:"userref"`
 	Status      string  `json:"status"`
-	OpenTime    float64 `json:"opentm"`
-	CloseTime   float64 `json:"closetm"`
-	StartTime   float64 `json:"starttm"`
-	ExpireTime  float64 `json:"expiretm"`
+	OpenTime    int64   `json:"opentm"`
+	CloseTime   int64   `json:"closetm"`
+	StartTime   int64   `json:"starttm"`
+	ExpireTime  int64   `json:"expiretm"`
 	Description struct {
 		Pair      string  `json:"pair"`
 		Type      string  `json:"type"`
@@ -269,12 +242,12 @@ type OrderInfo struct {
 	Misc           string   `json:"misc"`
 	OrderFlags     string   `json:"oflags"`
 	Trades         []string `json:"trades"`
+		Reason         string   `json:"reason,omitempty"` // Added
 }
 
 // OpenOrders type
 type OpenOrders struct {
 	Open  map[string]OrderInfo `json:"open"`
-	Count int64                `json:"count"`
 }
 
 // ClosedOrders type
@@ -301,11 +274,12 @@ type OrderInfoOptions struct {
 
 // GetTradesHistoryOptions type
 type GetTradesHistoryOptions struct {
-	Type   string
-	Trades bool
-	Start  string
-	End    string
-	Ofs    int64
+	Type             string `json:"type,omitempty"`
+	Trades           bool   `json:"trades,omitempty"`
+	Start            string `json:"start,omitempty"`
+	End              string `json:"end,omitempty"`
+	Ofs              int64  `json:"ofs,omitempty"`
+	ConsolidateTaker *bool  `json:"consolidate_taker,omitempty"` // Pointer
 }
 
 // TradesHistory type
@@ -318,7 +292,7 @@ type TradesHistory struct {
 type TradeInfo struct {
 	OrderTxID                  string   `json:"ordertxid"`
 	Pair                       string   `json:"pair"`
-	Time                       float64  `json:"time"`
+	Time                       int64    `json:"time"` // Changed
 	Type                       string   `json:"type"`
 	OrderType                  string   `json:"ordertype"`
 	Price                      float64  `json:"price,string"`
@@ -327,33 +301,35 @@ type TradeInfo struct {
 	Volume                     float64  `json:"vol,string"`
 	Margin                     float64  `json:"margin,string"`
 	Misc                       string   `json:"misc"`
-	PosTxID                    string   `json:"postxid"`
-	ClosedPositionAveragePrice float64  `json:"cprice,string"`
-	ClosedPositionFee          float64  `json:"cfee,string"`
-	ClosedPositionVolume       float64  `json:"cvol,string"`
-	ClosedPositionMargin       float64  `json:"cmargin,string"`
-	Trades                     []string `json:"trades"`
-	PosStatus                  string   `json:"posstatus"`
+	PosTxID                    string   `json:"postxid,omitempty"` // Added omitempty
+	ClosedPositionAveragePrice float64  `json:"cprice,string,omitempty"` // Added omitempty
+	ClosedPositionFee          float64  `json:"cfee,string,omitempty"`   // Added omitempty
+	ClosedPositionVolume       float64  `json:"cvol,string,omitempty"`   // Added omitempty
+	ClosedPositionMargin       float64  `json:"cmargin,string,omitempty"`// Added omitempty
+	Net                        float64  `json:"net,string,omitempty"`    // Added
+	Trades                     []string `json:"trades,omitempty"`        // Added omitempty
+	PosStatus                  string   `json:"posstatus,omitempty"`     // Added omitempty
 }
 
 // Position holds the opened position
 type Position struct {
-	Ordertxid      string  `json:"ordertxid"`
-	Pair           string  `json:"pair"`
-	Time           float64 `json:"time"`
-	Type           string  `json:"type"`
-	OrderType      string  `json:"ordertype"`
-	Cost           float64 `json:"cost,string"`
-	Fee            float64 `json:"fee,string"`
-	Volume         float64 `json:"vol,string"`
-	VolumeClosed   float64 `json:"vol_closed,string"`
-	Margin         float64 `json:"margin,string"`
-	RolloverTime   int64   `json:"rollovertm,string"`
-	Misc           string  `json:"misc"`
-	OrderFlags     string  `json:"oflags"`
-	PositionStatus string  `json:"posstatus"`
-	Net            string  `json:"net"`
-	Terms          string  `json:"terms"`
+	Ordertxid    string  `json:"ordertxid"`
+	Pair         string  `json:"pair"`
+	Time         int64   `json:"time"` // Changed
+	Type         string  `json:"type"`
+	OrderType    string  `json:"ordertype"`
+	Cost         float64 `json:"cost,string"`
+	Fee          float64 `json:"fee,string"`
+	Volume       float64 `json:"vol,string"`
+	VolumeClosed float64 `json:"vol_closed,string"`
+	Margin       float64 `json:"margin,string"`
+	Value        float64 `json:"value,string,omitempty"` // Added
+	Net          string  `json:"net,omitempty"`        // Added omitempty, type was already string
+	RolloverTime int64   `json:"rollovertm,string"`
+	Misc         string  `json:"misc"`
+	OrderFlags   string  `json:"oflags"`
+	Terms        string  `json:"terms"`
+	// PositionStatus field removed
 }
 
 // GetLedgersOptions type
@@ -375,13 +351,120 @@ type Ledgers struct {
 // LedgerInfo type
 type LedgerInfo struct {
 	Refid   string  `json:"refid"`
-	Time    float64 `json:"time"`
+	Time    int64   `json:"time"` // Changed
 	Type    string  `json:"type"`
+	Subtype string  `json:"subtype,omitempty"` // Added
 	Aclass  string  `json:"aclass"`
 	Asset   string  `json:"asset"`
 	Amount  float64 `json:"amount,string"`
 	Fee     float64 `json:"fee,string"`
 	Balance float64 `json:"balance,string"`
+}
+
+// GetOrderAmendsOptions represents the parameters for fetching order amends.
+type GetOrderAmendsOptions struct {
+	OrderID string // Required: The order ID to retrieve amends for.
+	UserRef int32  // Optional: Restrict results to given user reference id.
+}
+
+// OrderAmendEntry represents a single amend transaction.
+type OrderAmendEntry struct {
+	TxID       string  `json:"txid"`        // Amend transaction ID
+	OrderID    string  `json:"order_id"`    // Order ID
+	AmendID    string  `json:"amend_id"`    // Unique ID for this amend
+	AmendType  string  `json:"amend_type"`  // Type of amend
+	NewPrice   string  `json:"new_price,omitempty"`
+	OrigPrice  string  `json:"orig_price,omitempty"`
+	NewVolume  string  `json:"new_volume,omitempty"`
+	OrigVolume string  `json:"orig_volume,omitempty"`
+	Timestamp  int64   `json:"timestamp"`   // Unix timestamp
+	UserRef    int32   `json:"userref,omitempty"`
+	Pair       string  `json:"pair,omitempty"`
+	Fee        string  `json:"fee,omitempty"`
+	Error      string  `json:"error,omitempty"`
+}
+
+// GetOrderAmendsResponse represents the response from the GetOrderAmends endpoint.
+type GetOrderAmendsResponse struct {
+	Count  int64             `json:"count"`
+	Amends []OrderAmendEntry `json:"amends"`
+}
+
+// ExportReportType defines the type of report to export.
+type ExportReportType string
+
+const (
+	ExportReportTypeTrades  ExportReportType = "trades"
+	ExportReportTypeLedgers ExportReportType = "ledgers"
+)
+
+// ExportReportFormat defines the file format for the export.
+type ExportReportFormat string
+
+const (
+	ExportReportFormatCSV ExportReportFormat = "CSV"
+	ExportReportFormatTSV ExportReportFormat = "TSV"
+)
+
+// RequestExportReportOptions represents parameters for requesting an export report.
+type RequestExportReportOptions struct {
+	Report      ExportReportType   // Required: trades or ledgers
+	Format      ExportReportFormat // Optional: CSV (default) or TSV
+	Description string             // Required: User-defined description
+	Fields      string             // Optional: Comma-delimited list of fields, default "all"
+	StartTm     int64              // Optional: Unix start timestamp
+	EndTm       int64              // Optional: Unix end timestamp
+	Asset       string             // Optional: Comma-delimited list of assets (for ledgers report)
+}
+
+// RequestExportReportResponse represents the response from requesting an export.
+type RequestExportReportResponse struct {
+	ID string `json:"id"` // Report ID
+}
+
+// ExportStatusOptions represents parameters for getting export report status.
+type ExportStatusOptions struct {
+	Report ExportReportType // Required: trades or ledgers
+}
+
+// ExportReportInfo represents information about a single export report.
+type ExportReportInfo struct {
+	ID          string             `json:"id"`
+	Descr       string             `json:"descr"`
+	Format      ExportReportFormat `json:"format"`
+	Report      ExportReportType   `json:"report"`
+	Subtype     string             `json:"subtype,omitempty"` // e.g. "all", specific assets
+	Status      string             `json:"status"`
+	Flags       string             `json:"flags,omitempty"`
+	Fields      string             `json:"fields"`
+	CreatedTm   int64              `json:"createdtm,string"` // Timestamp string
+	StartTm     int64              `json:"starttm,string"`   // Timestamp string
+	EndTm       int64              `json:"endtm,string"`     // Timestamp string
+	CompletedTm int64              `json:"completedtm,string,omitempty"` // Timestamp string
+	DataStartTm int64              `json:"datastarttm,string,omitempty"` // Timestamp string
+	DataEndTm   int64              `json:"dataendtm,string,omitempty"`   // Timestamp string
+	Aclass      string             `json:"aclass,omitempty"`
+	Asset       string             `json:"asset,omitempty"` // Comma-delimited list of assets
+}
+
+// DeleteExportType defines the type of delete operation.
+type DeleteExportType string
+
+const (
+	DeleteExportTypeDelete DeleteExportType = "delete"
+	DeleteExportTypeCancel DeleteExportType = "cancel"
+)
+
+// DeleteExportOptions represents parameters for deleting or cancelling an export.
+type DeleteExportOptions struct {
+	ID   string           // Required: Report ID to delete or cancel
+	Type DeleteExportType // Required: "delete" or "cancel"
+}
+
+// DeleteExportResponse represents the response from deleting/cancelling an export.
+type DeleteExportResponse struct {
+	Delete bool `json:"delete,omitempty"` // True if deleted
+	Cancel bool `json:"cancel,omitempty"` // True if cancelled
 }
 
 // TradeVolumeResponse type
