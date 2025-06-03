@@ -214,6 +214,38 @@ func (k *Kraken) GetAssets(ctx context.Context) (map[string]*Asset, error) {
 	return result, nil
 }
 
+// GetWithdrawalAddresses retrieves a list of withdrawal addresses available for the user.
+func (k *Kraken) GetWithdrawalAddresses(ctx context.Context, opts WithdrawalAddressOptions) ([]WithdrawalAddress, error) {
+	params := url.Values{}
+	if opts.Asset != "" {
+		params.Set("asset", opts.Asset)
+	}
+	if opts.Aclass != "" {
+		params.Set("aclass", opts.Aclass)
+	}
+	if opts.Network != "" {
+		params.Set("network", opts.Network)
+	}
+	if opts.Method != "" {
+		params.Set("method", opts.Method)
+	}
+	if opts.Key != "" {
+		params.Set("key", opts.Key)
+	}
+	if opts.Verified { // Only send if true, as API default is false (any status)
+		params.Set("verified", "true")
+	}
+
+	const methodSpecificPath = "WithdrawAddresses"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var result []WithdrawalAddress
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetAccountBalance retrieves all cash balances, net of pending withdrawals.
 // It calls the /private/Balance endpoint.
 func (k *Kraken) GetAccountBalance(ctx context.Context) (map[string]string, error) {
@@ -1625,6 +1657,220 @@ func (k *Kraken) WithdrawCancel(ctx context.Context, asset string, refID string,
 		return false, err
 	}
 	return responsePayload.Result, nil
+}
+
+// GetDepositStatus retrieves information about recent deposits.
+// Returns the list of deposit statuses, a cursor for pagination (if requested and available), and an error.
+func (k *Kraken) GetDepositStatus(ctx context.Context, opts DepositStatusOptions) ([]DepositStatusEntry, string, error) {
+	params := url.Values{}
+	if opts.Asset != "" {
+		params.Set("asset", opts.Asset)
+	}
+	if opts.Aclass != "" {
+		params.Set("aclass", opts.Aclass)
+	}
+	if opts.Method != "" {
+		params.Set("method", opts.Method)
+	}
+	if opts.Network != "" {
+		params.Set("network", opts.Network)
+	}
+	if opts.Cursor {
+		params.Set("cursor", "true")
+	}
+	if opts.Limit > 0 {
+		params.Set("limit", strconv.Itoa(opts.Limit))
+	}
+
+	const methodSpecificPath = "DepositStatus"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload DepositStatusPage
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		// If the error is a JSON unmarshal error AND opts.Cursor was false,
+		// it might be because API returned a direct array.
+		// A more robust solution would try to unmarshal into []DepositStatusEntry as a fallback.
+		// For now, we return the error.
+		if !opts.Cursor && strings.Contains(err.Error(), "json: cannot unmarshal array into Go value of type kraken.DepositStatusPage") {
+			 // Attempt to parse as direct array if cursor was not requested and unmarshal failed for object
+			 var directArrayResult []DepositStatusEntry
+			 if errRetry := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &directArrayResult); errRetry == nil {
+				 return directArrayResult, "", nil
+			 }
+			 // Fall through to return original error if retry also fails or different error
+		}
+		return nil, "", fmt.Errorf("failed to get deposit status: %w", err)
+	}
+	return responsePayload.Deposits, responsePayload.NextCursor, nil
+}
+
+// GetWithdrawalMethods retrieves a list of withdrawal methods available for the user.
+func (k *Kraken) GetWithdrawalMethods(ctx context.Context, opts WithdrawalMethodOptions) ([]WithdrawalMethod, error) {
+	params := url.Values{}
+	if opts.Asset != "" {
+		params.Set("asset", opts.Asset)
+	}
+	if opts.Aclass != "" {
+		params.Set("aclass", opts.Aclass)
+	}
+	if opts.Network != "" {
+		params.Set("network", opts.Network)
+	}
+
+	const methodSpecificPath = "WithdrawMethods"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var result []WithdrawalMethod
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// RequestWalletTransfer transfers funds from a Kraken spot wallet to a Kraken Futures wallet.
+func (k *Kraken) RequestWalletTransfer(ctx context.Context, opts WalletTransferOptions) (*WalletTransferResponse, error) {
+	if opts.Asset == "" || opts.Amount == "" || opts.From == "" || opts.To == "" {
+		return nil, errors.New("asset, amount, from wallet, and to wallet are required parameters")
+	}
+
+	params := url.Values{}
+	params.Set("asset", opts.Asset)
+	params.Set("amount", opts.Amount)
+	params.Set("from", opts.From)
+	params.Set("to", opts.To)
+
+	const methodSpecificPath = "WalletTransfer"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload WalletTransferResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return nil, err
+	}
+	return &responsePayload, nil
+}
+
+// ListEarnAllocations lists all Earn allocations for the user.
+func (k *Kraken) ListEarnAllocations(ctx context.Context, opts ListEarnAllocationsOptions) (*ListEarnAllocationsResponse, error) {
+	params := url.Values{}
+	if opts.HideZeroAllocations {
+		params.Set("hide_zero_allocations", "true")
+	}
+	if opts.ConvertedAsset != "" {
+		params.Set("converted_asset", opts.ConvertedAsset)
+	}
+	if opts.Cursor != "" {
+		// Kraken docs say paging isn't implemented yet for this endpoint
+		params.Set("cursor", opts.Cursor)
+	}
+	if opts.Limit > 0 {
+		// Kraken docs say paging isn't implemented yet
+		params.Set("limit", strconv.Itoa(opts.Limit))
+	}
+
+	const methodSpecificPath = "Earn/Allocations" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload ListEarnAllocationsResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return nil, err
+	}
+	return &responsePayload, nil
+}
+
+// ListEarnStrategies lists available Earn strategies along with their parameters.
+func (k *Kraken) ListEarnStrategies(ctx context.Context, opts ListEarnStrategiesOptions) (*ListEarnStrategiesResponse, error) {
+	params := url.Values{}
+	if opts.Asset != "" {
+		params.Set("asset", opts.Asset)
+	}
+	if opts.LockType != "" {
+		params.Set("lock_type", opts.LockType)
+	}
+	if opts.Cursor != "" {
+		// Kraken docs say paging isn't implemented yet, but include for future-proofing
+		params.Set("cursor", opts.Cursor)
+	}
+	if opts.Limit > 0 {
+		// Kraken docs say paging isn't implemented yet
+		params.Set("limit", strconv.Itoa(opts.Limit))
+	}
+
+	const methodSpecificPath = "Earn/Strategies" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload ListEarnStrategiesResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return nil, err
+	}
+	return &responsePayload, nil
+}
+
+// AllocateEarnFunds allocates funds to an Earn Strategy. This operation is asynchronous.
+func (k *Kraken) AllocateEarnFunds(ctx context.Context, opts AllocateEarnFundsOptions) (bool, error) {
+	if opts.StrategyID == "" || opts.Amount == "" {
+		return false, errors.New("strategy_id and amount are required parameters")
+	}
+	// Validate amount is positive? API likely does this.
+
+	params := url.Values{}
+	params.Set("strategy_id", opts.StrategyID)
+	params.Set("amount", opts.Amount)
+
+	const methodSpecificPath = "Earn/Allocate" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload AllocateEarnFundsResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return false, err
+	}
+	return responsePayload.Result, nil
+}
+
+// CreateSubaccount creates a new trading subaccount.
+// This must be called using an API key from the master account.
+func (k *Kraken) CreateSubaccount(ctx context.Context, opts CreateSubaccountOptions) (bool, error) {
+	if opts.Username == "" || opts.Email == "" {
+		return false, errors.New("username and email are required parameters")
+	}
+
+	params := url.Values{}
+	params.Set("username", opts.Username)
+	params.Set("email", opts.Email)
+	if opts.Password != "" {
+		params.Set("password", opts.Password)
+	}
+
+	const methodSpecificPath = "CreateSubaccount"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload CreateSubaccountResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return false, err
+	}
+	return responsePayload.Result, nil
+}
+
+// AccountTransfer transfers funds to and from master and subaccounts.
+// This must be called using an API key from the master account.
+func (k *Kraken) AccountTransfer(ctx context.Context, opts AccountTransferOptions) (*AccountTransferResponse, error) {
+	if opts.Asset == "" || opts.Amount == "" || opts.FromAccount == "" || opts.ToAccount == "" {
+		return nil, errors.New("asset, amount, from_account, and to_account are required parameters")
+	}
+
+	params := url.Values{}
+	params.Set("asset", opts.Asset)
+	params.Set("amount", opts.Amount)
+	params.Set("from_account", opts.FromAccount) // API uses from_account
+	params.Set("to_account", opts.ToAccount)     // API uses to_account
+
+	const methodSpecificPath = "AccountTransfer"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload AccountTransferResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return nil, err
+	}
+	return &responsePayload, nil
 }
 
 // GetWebsocketToken returns a websocket token

@@ -705,6 +705,219 @@ type WithdrawCancelResponse struct {
 	Result bool `json:"result"` // True if cancellation was successful/requested.
 }
 
+// DepositStatusOptions represents parameters for the DepositStatus endpoint.
+type DepositStatusOptions struct {
+	Asset   string // Optional: Asset to filter by.
+	Aclass  string // Optional: Asset class (default: "currency").
+	Method  string // Optional: Name of deposit method.
+	Network string // Optional: Network to use.
+	Cursor  bool   // Optional: If true, requests cursor for pagination.
+	Limit   int    // Optional: Number of results (default/max 100 if cursor=true).
+}
+
+// DepositStatusEntry defines a single deposit status entry.
+type DepositStatusEntry struct {
+	Method        string   `json:"method"`
+	Aclass        string   `json:"aclass"`
+	Asset         string   `json:"asset"`
+	RefID         string   `json:"refid"`
+	TxID          string   `json:"txid"`
+	Info          string   `json:"info"`
+	Amount        float64  `json:"amount,string"`
+	Fee           float64  `json:"fee,string"` // Typically 0 for deposits, but field exists
+	Time          int64    `json:"time"`
+	Status        string   `json:"status"`
+	StatusProp    string   `json:"status-prop,omitempty"`
+	Originators   []string `json:"originators,omitempty"`
+	Beneficiaries []string `json:"beneficiaries,omitempty"`
+}
+
+// DepositStatusPage represents the full response for DepositStatus, possibly with a cursor.
+type DepositStatusPage struct {
+	Deposits   []DepositStatusEntry `json:"deposits"`
+	NextCursor string               `json:"next_cursor,omitempty"`
+}
+
+// WithdrawalMethodOptions represents parameters for the GetWithdrawalMethods endpoint.
+type WithdrawalMethodOptions struct {
+	Asset   string // Optional: Asset to get withdrawal methods for.
+	Aclass  string // Optional: Asset class (default: "currency").
+	Network string // Optional: Network to use.
+}
+
+// WithdrawalMethod represents a single withdrawal method.
+type WithdrawalMethod struct {
+	Asset   string `json:"asset"`   // Asset associated with the method
+	Method  string `json:"method"`  // Display name of the withdrawal method
+	Network string `json:"network"` // Network used by the method
+	Minimum string `json:"minimum"` // Minimum net amount that can be withdrawn (as string)
+}
+
+// WithdrawalAddressOptions represents parameters for the GetWithdrawalAddresses endpoint.
+type WithdrawalAddressOptions struct {
+	Asset    string // Optional: Asset to get withdrawal addresses for.
+	Aclass   string // Optional: Asset class (default: "currency").
+	Network  string // Optional: Network to use.
+	Method   string // Optional: Withdrawal method name to filter by.
+	Key      string // Optional: Name of the withdrawal key to filter by.
+	Verified bool   // Optional: Filter by verification status (default: false - any status).
+}
+
+// WithdrawalAddress represents a single withdrawal address.
+type WithdrawalAddress struct {
+	Address  string `json:"address"`  // Withdrawal address
+	Asset    string `json:"asset"`    // Asset of the address
+	Aclass   string `json:"aclass"`   // Asset class
+	Network  string `json:"network"`  // Network of the address
+	Key      string `json:"key"`      // Withdrawal key name
+	Verified bool   `json:"verified"` // Whether the address is verified
+	Method   string `json:"method"`   // Method name associated with this address
+	Memo     string `json:"memo,omitempty"` // Memo/tag for the address, if applicable
+}
+
+// WalletTransferOptions represents parameters for the WalletTransfer endpoint.
+type WalletTransferOptions struct {
+	Asset  string // Required: Asset to transfer.
+	Amount string // Required: Amount to transfer (as string for precision).
+	From   string // Required: Source wallet name (e.g., "Spot Wallet").
+	To     string // Required: Destination wallet name (e.g., "Futures Wallet").
+}
+
+// WalletTransferResponse represents the response from a wallet transfer request.
+type WalletTransferResponse struct {
+	RefID string `json:"refid"` // Reference ID for the transfer
+}
+
+// CreateSubaccountOptions represents parameters for the CreateSubaccount endpoint.
+type CreateSubaccountOptions struct {
+	Username string // Required: Username for the new subaccount.
+	Email    string // Required: Email address for the new subaccount.
+	Password string // Optional: Password. If not provided, subaccount is API-only.
+}
+
+// CreateSubaccountResponse represents the response from creating a subaccount.
+type CreateSubaccountResponse struct {
+	Result bool `json:"result"` // True if subaccount creation was successful/requested.
+}
+
+// AccountTransferOptions represents parameters for the AccountTransfer endpoint.
+type AccountTransferOptions struct {
+	Asset       string // Required: Asset to transfer.
+	Amount      string // Required: Amount to transfer (as string for precision).
+	FromAccount string // Required: Account ID of the source account.
+	ToAccount   string // Required: Account ID of the destination account.
+}
+
+// AccountTransferResponse represents the response from an account transfer request.
+type AccountTransferResponse struct {
+	TransferID string `json:"transfer_id"` // Unique identifier for the transfer
+	Status     string `json:"status"`      // Status of the transfer (e.g., "Success", "Pending")
+}
+
+// ListEarnStrategiesOptions represents parameters for the ListEarnStrategies endpoint.
+type ListEarnStrategiesOptions struct {
+	Asset    string // Optional: Comma-delimited list of assets to filter by.
+	LockType string // Optional: Comma-delimited list of lock types (flex, bonded, instant).
+	Cursor   string // Optional: For pagination (currently not implemented by Kraken per docs).
+	Limit    int    // Optional: Number of results (currently not implemented by Kraken per docs).
+}
+
+// APREstimate holds the estimated APR range for an Earn strategy.
+type APREstimate struct {
+	Min string `json:"min"` // Minimum APR (string representation of a number)
+	Max string `json:"max"` // Maximum APR (string representation of a number)
+}
+
+// YieldSource describes the source of the yield.
+type YieldSource struct {
+	Type string `json:"type"` // e.g., "staking"
+}
+
+// BondingInfo describes unbonding parameters if applicable.
+type BondingInfo struct {
+	Period  int  `json:"period"`  // Unbonding period in days
+	Rewards bool `json:"rewards"` // If rewards accrue during unbonding
+}
+
+// AllocationRestrictionInfo describes why allocation might be restricted.
+type AllocationRestrictionInfo struct {
+	Type string `json:"type"` // e.g., "Tier"
+}
+
+// EarnStrategy represents a single Earn strategy.
+type EarnStrategy struct {
+	ID                        string                       `json:"id"`          // Unique ID for the strategy
+	Asset                     string                       `json:"asset"`       // Asset of the strategy
+	LockType                  string                       `json:"lock_type"`   // flex, bonded, or instant
+	APREstimate               APREstimate                  `json:"apr_estimate"`
+	UserMinAllocation         string                       `json:"user_min_allocation"` // Minimum amount user can allocate (string repr of number)
+	AllocationAsset           string                       `json:"allocation_asset"`
+	DeallocationAsset         string                       `json:"deallocation_asset"`
+	CanAllocate               bool                         `json:"can_allocate"`
+	CanDeallocate             bool                         `json:"can_deallocate"`
+	IsHidden                  bool                         `json:"is_hidden"`
+	YieldSource               YieldSource                  `json:"yield_source"`
+	Bonding                   *BondingInfo                 `json:"bonding,omitempty"` // Optional
+	AllocationRestrictionInfo *AllocationRestrictionInfo `json:"allocation_restriction_info,omitempty"` // Optional
+}
+
+// ListEarnStrategiesResponse represents the response from the ListEarnStrategies endpoint.
+type ListEarnStrategiesResponse struct {
+	Items      []EarnStrategy `json:"items"`
+	NextCursor string         `json:"next_cursor,omitempty"` // For future pagination
+}
+
+// ListEarnAllocationsOptions represents parameters for the ListEarnAllocations endpoint.
+type ListEarnAllocationsOptions struct {
+	HideZeroAllocations bool   // Optional: If true, removes zero balance entries. Default false.
+	ConvertedAsset      string // Optional: Asset to denominate all amounts in.
+	Cursor              string // Optional: For pagination (currently not implemented by Kraken per docs).
+	Limit               int    // Optional: Number of results (currently not implemented by Kraken per docs).
+}
+
+// BondingStatus represents the status of funds in bonding, unbonding, or exit_queue.
+type BondingStatus struct {
+	Amount            string `json:"amount"`                        // Amount in native_asset
+	AmountConverted   string `json:"amount_converted,omitempty"`    // Amount in converted_asset
+	Expires           int64  `json:"expires,omitempty"`           // Unix timestamp when period ends
+	AccruedRewards    string `json:"accrued_rewards,omitempty"`   // (Not explicitly in listAllocations doc, but common for such states)
+	RewardsAccruing   bool   `json:"rewards_accruing,omitempty"`  // (Not explicitly in listAllocations doc)
+}
+
+// EarnAllocation represents a single Earn allocation.
+type EarnAllocation struct {
+	StrategyID              string         `json:"strategy_id"`
+	NativeAsset             string         `json:"native_asset"`
+	TotalAllocated          string         `json:"total_allocated"`           // In native_asset
+	TotalRewarded           string         `json:"total_rewarded"`            // In native_asset
+	NextRewardTimestamp     int64          `json:"next_reward_timestamp,omitempty"`
+	ConvertedAsset          string         `json:"converted_asset,omitempty"` // If conversion was requested
+	TotalAllocatedConverted string         `json:"total_allocated_converted,omitempty"`
+	TotalRewardedConverted  string         `json:"total_rewarded_converted,omitempty"`
+	Bonding                 *BondingStatus `json:"bonding,omitempty"`
+	Unbonding               *BondingStatus `json:"unbonding,omitempty"`
+	ExitQueue               *BondingStatus `json:"exit_queue,omitempty"` // ETH only
+}
+
+// ListEarnAllocationsResponse represents the response from the ListEarnAllocations endpoint.
+type ListEarnAllocationsResponse struct {
+	Items      []EarnAllocation `json:"items"`
+	NextCursor string           `json:"next_cursor,omitempty"` // For future pagination
+}
+
+// AllocateEarnFundsOptions represents parameters for the AllocateEarnFunds endpoint.
+type AllocateEarnFundsOptions struct {
+	StrategyID string // Required: ID of the Earn strategy.
+	Amount     string // Required: Amount to allocate (as string for precision).
+}
+
+// AllocateEarnFundsResponse represents the response from allocating funds to an Earn strategy.
+type AllocateEarnFundsResponse struct {
+	// Assuming a simple boolean success for initiating the async operation, nested in "result".
+	// This might need adjustment if the API returns a specific ID for the pending operation.
+	Result bool `json:"result"`
+}
+
 // WebsocketSubRequest contains request data for Subscribe/Unsubscribe to channels
 type WebsocketSubRequest struct {
 	Event        string                    `json:"event"`
