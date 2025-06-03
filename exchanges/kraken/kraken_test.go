@@ -1,9 +1,12 @@
 package kraken
 
 import (
+	"context" // Added
 	"errors"
+	"fmt" // Added
 	"log"
 	"net/http"
+	"net/http/httptest" // Added
 	"os"
 	"strings"
 	"testing"
@@ -142,6 +145,1034 @@ func TestUpdateTickers(t *testing.T) {
 	err = k.UpdateTickers(t.Context(), asset.Index)
 	assert.ErrorIs(t, err, asset.ErrNotSupported, "UpdateTickers should error correctly for asset.Index")
 }
+
+func TestGetCurrentServerTime_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Time" {
+			t.Errorf("Expected to request '/0/public/Time', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"error":[], "result":{"unixtime":1672531200, "rfc1123":"Sun, 01 Jan 2023 00:00:00 GMT"}}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetCurrentServerTime(context.Background())
+	require.NoError(t, err, "GetCurrentServerTime should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	assert.Equal(t, int64(1672531200), resp.Unixtime, "Unixtime should match")
+	assert.Equal(t, "Sun, 01 Jan 2023 00:00:00 GMT", resp.Rfc1123, "Rfc1123 should match")
+}
+
+func TestGetCurrentServerTime_Error(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Time" {
+			t.Errorf("Expected to request '/0/public/Time', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"error":["EGeneral:Internal error"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetCurrentServerTime(context.Background())
+	require.Error(t, err, "GetCurrentServerTime should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Internal error", "Error message should contain the API error")
+}
+
+func TestGetSystemStatus_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/SystemStatus" {
+			t.Errorf("Expected to request '/0/public/SystemStatus', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"error":[], "result":{"status":"online", "timestamp":"2023-10-27T10:00:00Z"}}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL) // Override with mock server URL
+
+	resp, err := k.GetSystemStatus(context.Background())
+	require.NoError(t, err, "GetSystemStatus should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	assert.Equal(t, "online", resp.Status, "Status should be 'online'")
+	assert.Equal(t, "2023-10-27T10:00:00Z", resp.Timestamp, "Timestamp should match")
+}
+
+func TestGetSystemStatus_Error(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/SystemStatus" {
+			t.Errorf("Expected to request '/0/public/SystemStatus', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// Simulate a Kraken API error
+		fmt.Fprintln(w, `{"error":["EService:Unavailable"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL) // Override with mock server URL
+
+	resp, err := k.GetSystemStatus(context.Background())
+	require.Error(t, err, "GetSystemStatus should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EService:Unavailable", "Error message should contain the API error")
+}
+
+func TestGetAssets_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Assets" {
+			t.Errorf("Expected to request '/0/public/Assets', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{
+			"error": [],
+			"result": {
+				"XXBT": {
+					"aclass": "currency",
+					"altname": "XBT",
+					"decimals": 10,
+					"display_decimals": 5
+				},
+				"ZEUR": {
+					"aclass": "currency",
+					"altname": "EUR",
+					"decimals": 4,
+					"display_decimals": 2
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssets(context.Background())
+	require.NoError(t, err, "GetAssets should not return an error on success")
+	require.NotNil(t, result, "Result map should not be nil")
+	require.Len(t, result, 2, "Result map should contain 2 entries")
+
+	xxbt, ok := result["XXBT"]
+	require.True(t, ok, "XXBT should be in the result map")
+	assert.Equal(t, "currency", xxbt.Aclass, "XXBT Aclass should be 'currency'")
+	assert.Equal(t, "XBT", xxbt.Altname, "XXBT Altname should be 'XBT'")
+	assert.Equal(t, 10, xxbt.Decimals, "XXBT Decimals should be 10")
+	assert.Equal(t, 5, xxbt.DisplayDecimals, "XXBT DisplayDecimals should be 5")
+
+	zeur, ok := result["ZEUR"]
+	require.True(t, ok, "ZEUR should be in the result map")
+	assert.Equal(t, "currency", zeur.Aclass, "ZEUR Aclass should be 'currency'")
+	assert.Equal(t, "EUR", zeur.Altname, "ZEUR Altname should be 'EUR'")
+	assert.Equal(t, 4, zeur.Decimals, "ZEUR Decimals should be 4")
+	assert.Equal(t, 2, zeur.DisplayDecimals, "ZEUR DisplayDecimals should be 2")
+}
+
+func TestGetAssets_Error(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Assets" {
+			t.Errorf("Expected to request '/0/public/Assets', got: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"error":["EQuery:Invalid asset"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssets(context.Background())
+	require.Error(t, err, "GetAssets should return an error when API returns an error")
+	require.Nil(t, result, "Result map should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Invalid asset", "Error message should contain the API error")
+}
+
+func TestGetAssetPairs_Success_SinglePair_DefaultInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/AssetPairs" {
+			t.Errorf("Expected path '/0/public/AssetPairs', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != "XXBTZUSD" {
+			t.Errorf("Expected pair 'XXBTZUSD', got %s", r.URL.Query().Get("pair"))
+		}
+		if r.URL.Query().Get("info") != "" && r.URL.Query().Get("info") != "info" { // Default info can be empty or "info"
+			t.Errorf("Expected info default, got %s", r.URL.Query().Get("info"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": {
+					"altname": "XBTUSD", "wsname": "XBT/USD", "aclass_base": "currency", "base": "XXBT",
+					"aclass_quote": "currency", "quote": "ZUSD", "lot": "unit", "pair_decimals": 1,
+					"lot_decimals": 8, "lot_multiplier": 1, "leverage_buy": [2,3,4,5], "leverage_sell": [2,3,4,5],
+					"fees": [[0,0.26],[50000,0.24]], "fees_maker": [[0,0.16],[50000,0.14]],
+					"fee_volume_currency": "ZUSD", "margin_call": 80, "margin_stop": 40,
+					"ordermin": "0.0001", "tick_size": "0.1", "status": "online"
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssetPairs(context.Background(), []string{"XXBTZUSD"}, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 1)
+
+	pairInfo, ok := result["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, "XBTUSD", pairInfo.Altname)
+	assert.Equal(t, "XBT/USD", pairInfo.Wsname)
+	assert.Equal(t, "currency", pairInfo.AclassBase)
+	assert.Equal(t, "XXBT", pairInfo.Base)
+	assert.Equal(t, "currency", pairInfo.AclassQuote)
+	assert.Equal(t, "ZUSD", pairInfo.Quote)
+	assert.Equal(t, "unit", pairInfo.Lot)
+	assert.Equal(t, 1, pairInfo.PairDecimals)
+	assert.Equal(t, 8, pairInfo.LotDecimals)
+	assert.Equal(t, 1, pairInfo.LotMultiplier)
+	assert.Equal(t, []int{2, 3, 4, 5}, pairInfo.LeverageBuy)
+	assert.Equal(t, []int{2, 3, 4, 5}, pairInfo.LeverageSell)
+	assert.Equal(t, [][]float64{{0, 0.26}, {50000, 0.24}}, pairInfo.Fees)
+	assert.Equal(t, [][]float64{{0, 0.16}, {50000, 0.14}}, pairInfo.FeesMaker)
+	assert.Equal(t, "ZUSD", pairInfo.FeeVolumeCurrency)
+	assert.Equal(t, 80, pairInfo.MarginCall)
+	assert.Equal(t, 40, pairInfo.MarginStop)
+	assert.Equal(t, 0.0001, pairInfo.OrderMinimum)
+	assert.Equal(t, 0.1, pairInfo.TickSize)
+	assert.Equal(t, "online", pairInfo.Status)
+}
+
+func TestGetAssetPairs_Success_MultiplePairs_FeesInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/AssetPairs" {
+			t.Errorf("Expected path '/0/public/AssetPairs', got %s", r.URL.Path)
+		}
+		assert.Equal(t, "fees", r.URL.Query().Get("info"), "Info should be 'fees'")
+		assert.Equal(t, "XXBTZUSD,XETHZUSD", r.URL.Query().Get("pair"), "Pair query param incorrect")
+		w.Header().Set("Content-Type", "application/json")
+		// Using minimal valid fields for brevity, assuming other fields are optional or have defaults in struct
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": { "altname": "XBTUSD", "base": "XXBT", "quote": "ZUSD", "fees": [[0,0.262]], "fees_maker": [[0,0.162]], "ordermin": "0.01", "tick_size": "0.01" },
+				"XETHZUSD": { "altname": "ETHUSD", "base": "XETH", "quote": "ZUSD", "fees": [[0,0.252]], "fees_maker": [[0,0.152]], "ordermin": "0.1", "tick_size": "0.001" }
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssetPairs(context.Background(), []string{"XXBTZUSD", "XETHZUSD"}, "fees")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+
+	xxbtzusd, ok := result["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, [][]float64{{0, 0.262}}, xxbtzusd.Fees)
+	assert.Equal(t, [][]float64{{0, 0.162}}, xxbtzusd.FeesMaker)
+
+	xethzusd, ok := result["XETHZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, [][]float64{{0, 0.252}}, xethzusd.Fees)
+	assert.Equal(t, [][]float64{{0, 0.152}}, xethzusd.FeesMaker)
+}
+
+func TestGetAssetPairs_Success_NoPairs_DefaultInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/AssetPairs" {
+			t.Errorf("Expected path '/0/public/AssetPairs', got %s", r.URL.Path)
+		}
+		assert.Equal(t, "", r.URL.Query().Get("pair"), "Pair query param should be empty")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": { "altname": "XBTUSD", "base": "XXBT", "quote": "ZUSD", "ordermin": "0.01", "tick_size": "0.01" },
+				"XETHZUSD": { "altname": "ETHUSD", "base": "XETH", "quote": "ZUSD", "ordermin": "0.1", "tick_size": "0.001" }
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssetPairs(context.Background(), []string{}, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+	assert.Contains(t, result, "XXBTZUSD")
+	assert.Contains(t, result, "XETHZUSD")
+}
+
+func TestGetAssetPairs_InvalidInfoType_ClientError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	// No mock server needed as this should be a client-side error
+	_, err = k.GetAssetPairs(context.Background(), []string{"XXBTZUSD"}, "invalid_info_type")
+	require.Error(t, err, "GetAssetPairs should return an error for invalid info type")
+	assert.Contains(t, err.Error(), "parameter info can only be", "Error message should indicate invalid info parameter")
+}
+
+func TestGetAssetPairs_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/AssetPairs" {
+			t.Errorf("Expected path '/0/public/AssetPairs', got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAssetPairs(context.Background(), []string{"UNKNOWNPAIR"}, "")
+	require.Error(t, err, "GetAssetPairs should return an error when API returns an error")
+	require.Nil(t, result, "Result map should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Unknown asset pair", "Error message should contain API error")
+}
+
+// GetTicker Tests
+func TestGetTicker_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Ticker" {
+			t.Fatalf("Expected path '/0/public/Ticker', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": {
+					"a": ["50000.1", "1", "1.234"], "b": ["49999.9", "2", "2.345"],
+					"c": ["50000.0", "0.001"], "v": ["1000.123", "2000.456"],
+					"p": ["50001.5", "50002.5"], "t": [100, 200],
+					"l": ["49000.0", "48000.0"], "h": ["51000.0", "52000.0"],
+					"o": ["49500.0", "48500.0"]
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetTicker(context.Background(), pair)
+	require.NoError(t, err, "GetTicker should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+
+	assert.Equal(t, 50000.1, resp.Ask, "Ask price")
+	assert.Equal(t, 1.234, resp.AskSize, "Ask size")
+	assert.Equal(t, 49999.9, resp.Bid, "Bid price")
+	assert.Equal(t, 2.345, resp.BidSize, "Bid size")
+	assert.Equal(t, 50000.0, resp.Last, "Last price")
+	assert.Equal(t, 2000.456, resp.Volume, "Volume")
+	assert.Equal(t, 50002.5, resp.VolumeWeightedAveragePrice, "VWAP")
+	assert.Equal(t, int64(200), resp.Trades, "Trades count")
+	assert.Equal(t, 48000.0, resp.Low, "Low price")
+	assert.Equal(t, 52000.0, resp.High, "High price")
+	assert.Equal(t, 49500.0, resp.Open, "Open price") // v.Open[0]
+}
+
+func TestGetTicker_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Ticker" {
+			t.Fatalf("Expected path '/0/public/Ticker', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetTicker(context.Background(), pair)
+	require.Error(t, err, "GetTicker should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Unknown asset pair", "Error message should contain API error")
+}
+
+func TestGetTicker_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	// No mock server needed, this is a client-side error
+	_, err = k.GetTicker(context.Background(), currency.Pair{})
+	require.Error(t, err, "GetTicker should return an error for invalid pair formatting")
+	// The exact error message depends on FormatSymbol, check if it's non-nil
+}
+
+// GetTickers Tests
+func TestGetTickers_Success_MultiplePairs(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pairsStr := "XXBTZUSD,XETHZUSD"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Ticker" {
+			t.Fatalf("Expected path '/0/public/Ticker', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != pairsStr {
+			t.Fatalf("Expected pair query param '%s', got %s", pairsStr, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": {"a":["101"],"b":["100"],"c":["100.5"],"v":["10","20"],"p":["100.6","100.7"],"t":[5,10],"l":["99","98"],"h":["102","103"],"o":["100.0", "99.0"]},
+				"XETHZUSD": {"a":["11"],"b":["10"],"c":["10.5"],"v":["1","2"],"p":["10.6","10.7"],"t":[1,2],"l":["9","8"],"h":["12","13"],"o":["10.0", "9.0"]}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTickers(context.Background(), pairsStr)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+
+	xxbt, ok := result["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 100.0, xxbt.Open)
+
+	xeth, ok := result["XETHZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 10.0, xeth.Open)
+}
+
+func TestGetTickers_Success_AllPairs(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Ticker" {
+			t.Fatalf("Expected path '/0/public/Ticker', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != "" {
+			t.Fatalf("Expected no pair query param for all pairs, got %s", r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": {"a":["101"],"b":["100"],"c":["100.5"],"v":["10","20"],"p":["100.6","100.7"],"t":[5,10],"l":["99","98"],"h":["102","103"],"o":["100.0", "99.0"]},
+				"XETHZUSD": {"a":["11"],"b":["10"],"c":["10.5"],"v":["1","2"],"p":["10.6","10.7"],"t":[1,2],"l":["9","8"],"h":["12","13"],"o":["10.0", "9.0"]}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTickers(context.Background(), "") // Empty string for all pairs
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+
+	xxbt, ok := result["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 100.0, xxbt.Open)
+
+	xeth, ok := result["XETHZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 10.0, xeth.Open)
+}
+
+func TestGetTickers_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pairsStr := "XXBTZUSD"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Internal error"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetTickers(context.Background(), pairsStr)
+	require.Error(t, err, "GetTickers should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Internal error", "Error message should contain API error")
+}
+
+// GetOHLC Tests
+func TestGetOHLC_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+	interval := "1" // 1 minute
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/OHLC" {
+			t.Fatalf("Expected path '/0/public/OHLC', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		if r.URL.Query().Get("interval") != interval {
+			t.Fatalf("Expected interval '%s', got %s", interval, r.URL.Query().Get("interval"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": [
+					[1672531200, "49500.0", "49600.0", "49400.0", "49550.0", "49520.0", "10.5", 50],
+					[1672531260, "49550.0", "49650.0", "49450.0", "49600.0", "49580.0", "12.3", 60.0]
+				],
+				"last": 1672531260
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetOHLC(context.Background(), pair, interval)
+	require.NoError(t, err, "GetOHLC should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	require.Len(t, resp, 2, "Should have 2 OHLC entries")
+
+	// First entry
+	entry1 := resp[0]
+	assert.Equal(t, time.Unix(1672531200, 0).UTC(), entry1.Time.UTC(), "Entry 1 Time")
+	assert.Equal(t, 49500.0, entry1.Open, "Entry 1 Open")
+	assert.Equal(t, 49600.0, entry1.High, "Entry 1 High")
+	assert.Equal(t, 49400.0, entry1.Low, "Entry 1 Low")
+	assert.Equal(t, 49550.0, entry1.Close, "Entry 1 Close")
+	assert.Equal(t, 49520.0, entry1.VolumeWeightedAveragePrice, "Entry 1 VWAP")
+	assert.Equal(t, 10.5, entry1.Volume, "Entry 1 Volume")
+	assert.Equal(t, int64(50), entry1.Count, "Entry 1 Count")
+
+	// Second entry
+	entry2 := resp[1]
+	assert.Equal(t, time.Unix(1672531260, 0).UTC(), entry2.Time.UTC(), "Entry 2 Time")
+	assert.Equal(t, 49550.0, entry2.Open, "Entry 2 Open")
+	assert.Equal(t, int64(60), entry2.Count, "Entry 2 Count should be parsed from 60.0")
+}
+
+func TestGetOHLC_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	invalidInterval := "invalid_interval"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Invalid arguments:interval"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetOHLC(context.Background(), pair, invalidInterval)
+	require.Error(t, err, "GetOHLC should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Invalid arguments:interval", "Error message should contain API error")
+}
+
+func TestGetOHLC_InvalidDataFormat_ShortArray(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	interval := "1"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "49500.0"]], "last": 1672531200}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetOHLC(context.Background(), pair, interval)
+	require.Error(t, err, "GetOHLC should return an error for malformed short array data")
+	assert.Contains(t, err.Error(), "unexpected data length returned", "Error message for short array")
+}
+
+func TestGetOHLC_InvalidDataFormat_BadCountType(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	interval := "1"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "0","0","0","0","0","0","notacount"]], "last": 1672531200}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetOHLC(context.Background(), pair, interval)
+	require.Error(t, err, "GetOHLC should return an error for malformed count type")
+	assert.Contains(t, err.Error(), "unable to type assert OHLC count data", "Error message for bad count type")
+}
+
+func TestGetOHLC_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	// No mock server needed, this is a client-side error
+	_, err = k.GetOHLC(context.Background(), currency.Pair{}, "1")
+	require.Error(t, err, "GetOHLC should return an error for invalid pair formatting")
+}
+
+// GetDepth Tests
+func TestGetDepth_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Depth" {
+			t.Fatalf("Expected path '/0/public/Depth', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": {
+					"asks": [
+						["50000.10000", "1.234", 1672531200],
+						["50000.20000", "0.567", 1672531201]
+					],
+					"bids": [
+						["49999.90000", "2.345", 1672531202],
+						["49999.80000", "3.456", 1672531203]
+					]
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetDepth(context.Background(), pair)
+	require.NoError(t, err, "GetDepth should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	require.Len(t, resp.Asks, 2, "Should have 2 asks")
+	require.Len(t, resp.Bids, 2, "Should have 2 bids")
+
+	assert.Equal(t, types.Number("50000.10000"), resp.Asks[0].Price, "Ask 0 Price")
+	assert.Equal(t, types.Number("1.234"), resp.Asks[0].Amount, "Ask 0 Amount")
+	assert.Equal(t, time.Unix(1672531200, 0).UTC(), resp.Asks[0].Timestamp.UTC(), "Ask 0 Timestamp")
+
+	assert.Equal(t, types.Number("49999.90000"), resp.Bids[0].Price, "Bid 0 Price")
+	assert.Equal(t, types.Number("2.345"), resp.Bids[0].Amount, "Bid 0 Amount")
+	assert.Equal(t, time.Unix(1672531202, 0).UTC(), resp.Bids[0].Timestamp.UTC(), "Bid 0 Timestamp")
+}
+
+func TestGetDepth_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetDepth(context.Background(), pair)
+	require.Error(t, err, "GetDepth should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Unknown asset pair", "Error message should contain API error")
+}
+
+func TestGetDepth_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	_, err = k.GetDepth(context.Background(), currency.Pair{})
+	require.Error(t, err, "GetDepth should return an error for invalid pair formatting")
+}
+
+func TestGetDepth_MalformedData_IncorrectTupleLength(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": {"asks": [["50000.1", "1.234"]], "bids": []}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetDepth(context.Background(), pair)
+	require.Error(t, err, "GetDepth should return an error for malformed data (incorrect tuple length)")
+	// Expecting an error from json.Unmarshal due to mismatched array length for [3]types.Number
+}
+
+func TestGetDepth_MalformedData_NonNumericPrice(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": {"asks": [["not-a-price", "1.234", 1672531200]], "bids": []}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetDepth(context.Background(), pair)
+	require.Error(t, err, "GetDepth should return an error for malformed data (non-numeric price)")
+	// types.Number unmarshalling should fail for "not-a-price"
+	assert.Contains(t, err.Error(), "cannot unmarshal string into Go value of type float64", "Error message for non-numeric price")
+}
+
+// GetTrades Tests
+func TestGetTrades_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Trades" {
+			t.Fatalf("Expected path '/0/public/Trades', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": [
+					["50000.0", "0.10000000", 1672531200.1234567, "b", "l", "misc1,misc2", 12345],
+					["50001.0", "0.20000000", 1672531205.6543210, "s", "m", "", 12346.0]
+				],
+				"last": "1672531205654321000"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetTrades(context.Background(), pair)
+	require.NoError(t, err, "GetTrades should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	require.Len(t, resp, 2, "Should have 2 trade entries")
+
+	// First trade
+	trade1 := resp[0]
+	assert.Equal(t, 50000.0, trade1.Price, "Trade 1 Price")
+	assert.Equal(t, 0.1, trade1.Volume, "Trade 1 Volume")
+	assert.Equal(t, 1672531200.1234567, trade1.Time, "Trade 1 Time")
+	assert.Equal(t, "b", trade1.BuyOrSell, "Trade 1 BuyOrSell")
+	assert.Equal(t, "l", trade1.MarketOrLimit, "Trade 1 MarketOrLimit")
+	assert.Equal(t, "misc1,misc2", trade1.Miscellaneous, "Trade 1 Miscellaneous")
+	assert.Equal(t, int64(12345), trade1.TradeID, "Trade 1 TradeID")
+
+	// Second trade
+	trade2 := resp[1]
+	assert.Equal(t, 50001.0, trade2.Price, "Trade 2 Price")
+	assert.Equal(t, int64(12346), trade2.TradeID, "Trade 2 TradeID should be parsed from 12346.0")
+	assert.Equal(t, "", trade2.Miscellaneous, "Trade 2 Miscellaneous")
+}
+
+func TestGetTrades_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetTrades(context.Background(), pair)
+	require.Error(t, err, "GetTrades should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Unknown asset pair", "Error message should contain API error")
+}
+
+func TestGetTrades_InvalidDataFormat_ShortTradeArray(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [["50000.0", "0.1"]], "last": "1672531200000000000"}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetTrades(context.Background(), pair)
+	require.Error(t, err, "GetTrades should return an error for malformed short trade array data")
+	assert.Contains(t, err.Error(), "unrecognised trade data received", "Error message for short trade array")
+}
+
+func TestGetTrades_InvalidDataFormat_BadPriceType(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[50000.0, "0.1", 1672531200.123456, "b", "l", "misc1", 12345]], "last": "1672531200000000000"}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetTrades(context.Background(), pair)
+	require.Error(t, err, "GetTrades should return an error for malformed price type")
+	assert.ErrorContains(t, err, "price", "Error message for bad price type")
+}
+
+func TestGetTrades_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	_, err = k.GetTrades(context.Background(), currency.Pair{})
+	require.Error(t, err, "GetTrades should return an error for invalid pair formatting")
+}
+
+// GetSpread Tests
+func TestGetSpread_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pair, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/public/Spread" {
+			t.Fatalf("Expected path '/0/public/Spread', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("pair") != formattedPair {
+			t.Fatalf("Expected pair '%s', got %s", formattedPair, r.URL.Query().Get("pair"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"XXBTZUSD": [
+					[1672531200, "49999.9", "50000.1"],
+					[1672531205, "49999.8", "50000.0"]
+				],
+				"last": 1672531205
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetSpread(context.Background(), pair)
+	require.NoError(t, err, "GetSpread should not return an error on success")
+	require.NotNil(t, resp, "Response should not be nil")
+	require.Len(t, resp, 2, "Should have 2 spread entries")
+
+	// First spread entry
+	entry1 := resp[0]
+	assert.Equal(t, time.Unix(1672531200, 0).UTC(), entry1.Time.UTC(), "Entry 1 Time")
+	assert.Equal(t, 49999.9, entry1.Bid, "Entry 1 Bid")
+	assert.Equal(t, 50000.1, entry1.Ask, "Entry 1 Ask")
+}
+
+func TestGetSpread_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	resp, err := k.GetSpread(context.Background(), pair)
+	require.Error(t, err, "GetSpread should return an error when API returns an error")
+	require.Nil(t, resp, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EQuery:Unknown asset pair", "Error message should contain API error")
+}
+
+func TestGetSpread_InvalidDataFormat_ShortSpreadArray(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "49999.9"]], "last": 1672531200}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetSpread(context.Background(), pair)
+	require.Error(t, err, "GetSpread should return an error for malformed short spread array data")
+	assert.Contains(t, err.Error(), "unexpected data length", "Error message for short spread array")
+}
+
+func TestGetSpread_InvalidDataFormat_BadBidType(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	pair := currency.NewPair(currency.XBT, currency.USD)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, 49999.9, "50000.1"]], "last": 1672531200}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetSpread(context.Background(), pair)
+	require.Error(t, err, "GetSpread should return an error for malformed bid type")
+	assert.ErrorContains(t, err, "convert.FloatFromString", "Error message for bad bid type")
+}
+
+func TestGetSpread_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+
+	_, err = k.GetSpread(context.Background(), currency.Pair{})
+	require.Error(t, err, "GetSpread should return an error for invalid pair formatting")
+}
+
 
 func TestUpdateOrderbook(t *testing.T) {
 	t.Parallel()
@@ -399,56 +1430,803 @@ func TestGetSpread(t *testing.T) {
 }
 
 // TestGetBalance API endpoint test
-func TestGetBalance(t *testing.T) {
+// This function is now GetExtendedBalance. The old TestGetBalance might be for GetAccountBalance or needs removal/renaming.
+// For now, I will add new tests for GetExtendedBalance.
+// func TestGetBalance(t *testing.T) {
+// 	t.Parallel()
+// 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
+// 	_, err := k.GetBalance(t.Context()) // This would now be GetExtendedBalance
+// 	assert.NoError(t, err, "GetBalance should not error")
+// }
+
+func TestGetExtendedBalance_Success(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.GetBalance(t.Context())
-	assert.NoError(t, err, "GetBalance should not error")
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true // Ensure authenticated support is enabled
+	k.SetCredentials("testapi", "testsecret", "", "", "", "") // Set dummy credentials
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/BalanceEx" {
+			t.Fatalf("Expected path '/0/private/BalanceEx', got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ZUSD": {"balance": "1000.50", "hold_trade": "100.00"},
+				"XXBT": {"balance": "0.5000000000", "hold_trade": "0.0100000000"}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetExtendedBalance(context.Background())
+	require.NoError(t, err, "GetExtendedBalance should not return an error on success")
+	require.NotNil(t, result, "Result map should not be nil")
+	require.Len(t, result, 2, "Result map should contain 2 entries")
+
+	zusdBalance, ok := result["ZUSD"]
+	require.True(t, ok, "ZUSD should be in result")
+	assert.Equal(t, 1000.50, zusdBalance.Total, "ZUSD Total balance")
+	assert.Equal(t, 100.00, zusdBalance.Hold, "ZUSD Hold balance")
+
+	xxbtBalance, ok := result["XXBT"]
+	require.True(t, ok, "XXBT should be in result")
+	assert.Equal(t, 0.5, xxbtBalance.Total, "XXBT Total balance")
+	assert.Equal(t, 0.01, xxbtBalance.Hold, "XXBT Hold balance")
 }
 
-// TestGetTradeBalance API endpoint test
+func TestGetExtendedBalance_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetExtendedBalance(context.Background())
+	require.Error(t, err, "GetExtendedBalance should return an error when API returns an error")
+	require.Nil(t, result, "Result map should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Permission denied", "Error message should contain API error")
+}
+
+func TestGetExtendedBalance_MalformedData_BalanceNotString(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"ZUSD": {"balance": 1000.50, "hold_trade": "100.00"}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetExtendedBalance(context.Background())
+	require.Error(t, err, "GetExtendedBalance should return an error for malformed data")
+	// Error comes from json.Unmarshal trying to put a number into a string field with ,string tag
+	assert.Contains(t, err.Error(), "json: invalid use of ,string struct tag, trying to unmarshal unquoted value into Go string field", "Error message for malformed balance data")
+}
+
+func TestGetAccountBalance_Success(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/Balance" {
+			t.Fatalf("Expected path '/0/private/Balance', got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ZUSD": "1234.5678",
+				"XXBT": "0.1234567890"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAccountBalance(context.Background())
+	require.NoError(t, err, "GetAccountBalance should not return an error on success")
+	require.NotNil(t, result, "Result map should not be nil")
+	require.Len(t, result, 2, "Result map should contain 2 entries")
+
+	assert.Equal(t, "1234.5678", result["ZUSD"], "ZUSD balance")
+	assert.Equal(t, "0.1234567890", result["XXBT"], "XXBT balance")
+}
+
+func TestGetAccountBalance_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetAccountBalance(context.Background())
+	require.Error(t, err, "GetAccountBalance should return an error when API returns an error")
+	require.Nil(t, result, "Result map should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Permission denied", "Error message should contain API error")
+}
+
+func TestGetAccountBalance_MalformedData_BalanceNotString(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"ZUSD": 1234.5678, "XXBT": "0.1234567890"}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetAccountBalance(context.Background())
+	require.Error(t, err, "GetAccountBalance should return an error for malformed data")
+	// Error comes from json.Unmarshal trying to put a number into a map[string]string
+	assert.Contains(t, err.Error(), "json: cannot unmarshal number into Go struct field", "Error message for malformed balance data")
+}
+
+// TestGetOpenOrders Tests
+func TestGetOpenOrders_Success_NoOptions(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/OpenOrders" {
+			t.Fatalf("Expected path '/0/private/OpenOrders', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("trades") != "" || r.URL.Query().Get("userref") != "" {
+			t.Errorf("Expected no trades or userref params, got trades=%s, userref=%s",
+				r.URL.Query().Get("trades"), r.URL.Query().Get("userref"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"open": {
+					"ORDERID123": {
+						"refid": null, "userref": 0, "status": "open",
+						"opentm": 1672531200, "starttm": 0, "expiretm": 0,
+						"descr": {"pair":"XBTUSD", "type":"buy", "ordertype":"limit", "price":"49000.0", "price2":"0", "leverage":"none", "order":"buy 0.10000000 XBTUSD @ limit 49000.0"},
+						"vol": "0.10000000", "vol_exec": "0.00000000", "cost": "0", "fee": "0",
+						"price": "0", "stopprice": "0", "limitprice": "0",
+						"misc": "", "oflags": "fciq", "trades": []
+					}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{})
+	require.NoError(t, err, "GetOpenOrders (no options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	require.Len(t, result.Open, 1, "Should have 1 open order")
+
+	order, ok := result.Open["ORDERID123"]
+	require.True(t, ok, "ORDERID123 should be present")
+	assert.Equal(t, "open", order.Status, "Order status")
+	assert.Equal(t, int64(1672531200), order.OpenTime, "OpenTime")
+	assert.Equal(t, "XBTUSD", order.Description.Pair, "Descr.Pair")
+	assert.Equal(t, "buy", order.Description.Type, "Descr.Type")
+	assert.Equal(t, 0.1, order.Volume, "Volume")
+	assert.Equal(t, 0.0, order.VolumeExecuted, "VolumeExecuted")
+}
+
+func TestGetOpenOrders_Success_WithTradesAndUserRef(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	userRef := int32(123)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("trades") != "true" {
+			t.Errorf("Expected trades=true, got %s", r.URL.Query().Get("trades"))
+		}
+		if r.URL.Query().Get("userref") != strconv.FormatInt(int64(userRef), 10) {
+			t.Errorf("Expected userref=%d, got %s", userRef, r.URL.Query().Get("userref"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"open": {
+					"ORDERID456": {
+						"refid": "ORDERABC", "userref": 123, "status": "open", "opentm": 1672531260,
+						"descr": {"pair":"ETHUSD", "type":"sell", "ordertype":"market"},
+						"vol": "1.0", "vol_exec": "0.5", "cost": "500", "fee": "1",
+						"price": "0", "stopprice": "0", "limitprice": "0",
+						"misc": "", "oflags": "fciq", "trades": ["TRADEID1", "TRADEID2"]
+					}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{Trades: true, UserRef: userRef})
+	require.NoError(t, err, "GetOpenOrders (with options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	require.Len(t, result.Open, 1, "Should have 1 open order")
+
+	order, ok := result.Open["ORDERID456"]
+	require.True(t, ok, "ORDERID456 should be present")
+	assert.Equal(t, userRef, order.UserRef, "UserRef")
+	assert.Equal(t, []string{"TRADEID1", "TRADEID2"}, order.Trades, "Trades")
+}
+
+func TestGetOpenOrders_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Invalid order"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{})
+	require.Error(t, err, "GetOpenOrders should return an error when API returns an error")
+	require.Nil(t, result, "Response should be nil on error") // The result struct itself is nil, not result.Open
+	assert.Contains(t, err.Error(), "EOrder:Invalid order", "Error message should contain API error")
+}
+
+func TestGetOpenOrders_MalformedData_OpenTmNotInt(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"open": {"ORDERID789": {"opentm": "not-a-timestamp"}}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetOpenOrders(context.Background(), OrderInfoOptions{})
+	require.Error(t, err, "GetOpenOrders should return an error for malformed opentm type")
+	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.opentm of type int64", "Error message for malformed opentm")
+}
+
+// TestQueryOrdersInfo Tests
+func TestQueryOrdersInfo_Success_SingleTxID_NoOptions(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERID123"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/QueryOrders" {
+			t.Fatalf("Expected path '/0/private/QueryOrders', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("txid") != txid {
+			t.Errorf("Expected txid '%s', got '%s'", txid, r.URL.Query().Get("txid"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ORDERID123": {
+					"refid": null, "userref": 0, "status": "closed", "reason":"Filled",
+					"opentm": 1672530000, "closetm": 1672531200, "starttm":0, "expiretm":0,
+					"descr": {"pair":"XBTUSD", "type":"buy", "ordertype":"limit", "price":"48000.0"},
+					"vol": "0.1", "vol_exec": "0.1", "cost": "4800.0", "fee": "7.68",
+					"price": "48000.0", "misc": "", "oflags": "fciq",
+					"trades": ["TRADEIDXYZ"]
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
+	require.NoError(t, err, "QueryOrdersInfo should not error")
+	require.NotNil(t, result, "Result map should not be nil")
+	require.Len(t, result, 1, "Result map should contain 1 entry")
+
+	order, ok := result[txid]
+	require.True(t, ok, "Order ID should be in result")
+	assert.Equal(t, "closed", order.Status)
+	assert.Equal(t, "Filled", order.Reason)
+	assert.Equal(t, int64(1672530000), order.OpenTime)
+	assert.Equal(t, int64(1672531200), order.CloseTime)
+}
+
+func TestQueryOrdersInfo_Success_MultipleTxIDs_WithTrades(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid1 := "ORDERID123"
+	txid2 := "ORDERID456"
+	expectedTxIDs := txid1 + "," + txid2
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("trades"))
+		assert.Equal(t, expectedTxIDs, r.URL.Query().Get("txid"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ORDERID123": { "status": "closed", "trades": ["T1", "T2"], "descr": {"pair":"XBTUSD"}},
+				"ORDERID456": { "status": "open", "trades": ["T3"], "descr": {"pair":"ETHUSD"}}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{Trades: true}, txid1, txid2)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+
+	order1, ok1 := result[txid1]
+	require.True(t, ok1)
+	assert.Equal(t, []string{"T1", "T2"}, order1.Trades)
+
+	order2, ok2 := result[txid2]
+	require.True(t, ok2)
+	assert.Equal(t, []string{"T3"}, order2.Trades)
+}
+
+func TestQueryOrdersInfo_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "UNKNOWNORDER")
+	require.Error(t, err, "QueryOrdersInfo should return an error")
+	require.Nil(t, result)
+	assert.Contains(t, err.Error(), "EOrder:Unknown order")
+}
+
+func TestQueryOrdersInfo_MalformedData_BadTimestamp(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERIDXYZ"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"ORDERIDXYZ": {"opentm": "not-a-timestamp"}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
+	require.Error(t, err, "QueryOrdersInfo should return an error for malformed timestamp")
+	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.opentm of type int64")
+}
+
+func TestQueryOrdersInfo_NoTxIDProvided_APIErr(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("txid") == "" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments:txid"], "result":{}}`)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":["EGeneral:Unexpected test case"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "")
+	require.Error(t, err, "QueryOrdersInfo should return an error if txid is empty and API errors")
+	require.Nil(t, result, "Result should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments:txid", "Error message should reflect API's complaint about txid")
+}
+
+// TestGetClosedOrders Tests
+func TestGetClosedOrders_Success_MinimalOptions(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/ClosedOrders" {
+			t.Fatalf("Expected path '/0/private/ClosedOrders', got %s", r.URL.Path)
+		}
+		// Minimal options, so few query params expected beyond nonce
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"closed": {
+					"ORDERID789": {
+						"refid": null, "userref": 0, "status": "closed",
+						"opentm": 1672530000, "starttm": 0, "expiretm": 0, "closetm": 1672531200,
+						"reason": "Filled",
+						"descr": {"pair":"XBTUSD", "type":"buy", "ordertype":"limit", "price":"48000.0", "price2":"0", "leverage":"none", "order":"buy 0.1 XBTUSD @ limit 48000.0"},
+						"vol": "0.1", "vol_exec": "0.1", "cost": "4800.0", "fee": "7.68",
+						"price": "48000.0", "stopprice": "0", "limitprice": "0",
+						"misc": "", "oflags": "fciq", "trades": ["TRADEIDXYZ"]
+					}
+				},
+				"count": 1
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
+	require.NoError(t, err, "GetClosedOrders (minimal options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	assert.Equal(t, int64(1), result.Count, "Count of closed orders")
+	require.Len(t, result.Closed, 1, "Should have 1 closed order")
+
+	order, ok := result.Closed["ORDERID789"]
+	require.True(t, ok, "ORDERID789 should be present")
+	assert.Equal(t, "closed", order.Status, "Order status")
+	assert.Equal(t, int64(1672531200), order.CloseTime, "CloseTime")
+	assert.Equal(t, "Filled", order.Reason, "Reason")
+	assert.Equal(t, 0.1, order.VolumeExecuted, "VolumeExecuted")
+}
+
+func TestGetClosedOrders_Success_AllOptions(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := GetClosedOrdersOptions{
+		Trades:    true,
+		UserRef:   123,
+		Start:     "1672530000",
+		End:       "1672540000",
+		Ofs:       0, // API default is 0, sending it explicitly for test
+		CloseTime: "close",
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/ClosedOrders" {
+			t.Fatalf("Expected path '/0/private/ClosedOrders', got %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		assert.Equal(t, "true", q.Get("trades"), "Trades param")
+		assert.Equal(t, "123", q.Get("userref"), "UserRef param")
+		assert.Equal(t, "1672530000", q.Get("start"), "Start param")
+		assert.Equal(t, "1672540000", q.Get("end"), "End param")
+		assert.Equal(t, "0", q.Get("ofs"), "Ofs param") // Kraken API expects ofs as int
+		assert.Equal(t, "close", q.Get("closetime"), "CloseTime param")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"closed": {
+					"ORDERIDXYZ": {"refid":null, "userref":123, "status":"closed", "closetm":1672530500, "vol_exec":"1.0", "trades":["T1"], "reason":"User canceled", "opentm":1672530000, "descr": {"pair":"XBTUSD"}}
+				},
+				"count": 1
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetClosedOrders(context.Background(), opts)
+	require.NoError(t, err, "GetClosedOrders (all options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	assert.Equal(t, int64(1), result.Count, "Count")
+	order, ok := result.Closed["ORDERIDXYZ"]
+	require.True(t, ok, "ORDERIDXYZ should be present")
+	assert.Equal(t, int32(123), order.UserRef)
+	assert.NotEmpty(t, order.Trades)
+	assert.Equal(t, "User canceled", order.Reason)
+}
+
+func TestGetClosedOrders_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Invalid arguments"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
+	require.Error(t, err, "GetClosedOrders should return an error when API returns an error")
+	require.Nil(t, result, "Response should be nil on error")
+	assert.Contains(t, err.Error(), "EOrder:Invalid arguments", "Error message should contain API error")
+}
+
+func TestGetClosedOrders_MalformedData_CloseTmNotInt(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"closed": {"ORDERIDABC": {"closetm": "not-a-timestamp"}}, "count":1}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
+	require.Error(t, err, "GetClosedOrders should return an error for malformed closetm type")
+	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.closetm of type int64", "Error message for malformed closetm")
+}
+
+// TestQueryOrdersInfo Tests
+func TestQueryOrdersInfo_Success_SingleTxID_NoOptions(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERID123"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/QueryOrders" {
+			t.Fatalf("Expected path '/0/private/QueryOrders', got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("txid") != txid {
+			t.Errorf("Expected txid '%s', got '%s'", txid, r.URL.Query().Get("txid"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ORDERID123": {
+					"refid": null, "userref": 0, "status": "closed", "reason":"Filled",
+					"opentm": 1672530000, "closetm": 1672531200, "starttm":0, "expiretm":0,
+					"descr": {"pair":"XBTUSD", "type":"buy", "ordertype":"limit", "price":"48000.0"},
+					"vol": "0.1", "vol_exec": "0.1", "cost": "4800.0", "fee": "7.68",
+					"price": "48000.0", "misc": "", "oflags": "fciq",
+					"trades": ["TRADEIDXYZ"]
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
+	require.NoError(t, err, "QueryOrdersInfo should not error")
+	require.NotNil(t, result, "Result map should not be nil")
+	require.Len(t, result, 1, "Result map should contain 1 entry")
+
+	order, ok := result[txid]
+	require.True(t, ok, "Order ID should be in result")
+	assert.Equal(t, "closed", order.Status)
+	assert.Equal(t, "Filled", order.Reason)
+	assert.Equal(t, int64(1672530000), order.OpenTime)
+	assert.Equal(t, int64(1672531200), order.CloseTime)
+}
+
+func TestQueryOrdersInfo_Success_MultipleTxIDs_WithTrades(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid1 := "ORDERID123"
+	txid2 := "ORDERID456"
+	expectedTxIDs := txid1 + "," + txid2
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("trades"))
+		assert.Equal(t, expectedTxIDs, r.URL.Query().Get("txid"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"ORDERID123": { "status": "closed", "trades": ["T1", "T2"], "descr": {"pair":"XBTUSD"}},
+				"ORDERID456": { "status": "open", "trades": ["T3"], "descr": {"pair":"ETHUSD"}}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{Trades: true}, txid1, txid2)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result, 2)
+
+	order1, ok1 := result[txid1]
+	require.True(t, ok1)
+	assert.Equal(t, []string{"T1", "T2"}, order1.Trades)
+
+	order2, ok2 := result[txid2]
+	require.True(t, ok2)
+	assert.Equal(t, []string{"T3"}, order2.Trades)
+}
+
+func TestQueryOrdersInfo_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "UNKNOWNORDER")
+	require.Error(t, err, "QueryOrdersInfo should return an error")
+	require.Nil(t, result)
+	assert.Contains(t, err.Error(), "EOrder:Unknown order")
+}
+
+func TestQueryOrdersInfo_MalformedData_BadTimestamp(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERIDXYZ"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result": {"ORDERIDXYZ": {"opentm": "not-a-timestamp"}}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	_, err = k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
+	require.Error(t, err, "QueryOrdersInfo should return an error for malformed timestamp")
+	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.opentm of type int64")
+}
+
+func TestQueryOrdersInfo_NoTxIDProvided_APIErr(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("txid") == "" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments:txid"], "result":{}}`)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":["EGeneral:Unexpected test case"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "")
+	require.Error(t, err, "QueryOrdersInfo should return an error if txid is empty and API errors")
+	require.Nil(t, result, "Result should be nil on error")
+	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments:txid", "Error message should reflect API's complaint about txid")
+}
+
+// TestGetDepositMethods API endpoint test
 func TestGetDepositMethods(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.GetDepositMethods(t.Context(), "USDT")
+	_, err := k.GetDepositMethods(t.Context(), "USDT", "") // Added network param
 	assert.NoError(t, err, "GetDepositMethods should not error")
 }
 
 // TestGetTradeBalance API endpoint test
-func TestGetTradeBalance(t *testing.T) {
+// func TestGetTradeBalance(t *testing.T) { // This is the old one, new ones are above
+// 	t.Parallel()
+// 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
+// 	args := TradeBalanceOptions{Asset: "ZEUR"}
+// 	_, err := k.GetTradeBalance(t.Context(), args)
+// 	assert.NoError(t, err)
+// }
+
+// TestGetDepositMethods API endpoint test
+func TestGetDepositMethods(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	args := TradeBalanceOptions{Asset: "ZEUR"}
-	_, err := k.GetTradeBalance(t.Context(), args)
-	assert.NoError(t, err)
+	_, err := k.GetDepositMethods(t.Context(), "USDT", "") // Added network param
+	assert.NoError(t, err, "GetDepositMethods should not error")
 }
 
-// TestGetOpenOrders API endpoint test
-func TestGetOpenOrders(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	args := OrderInfoOptions{Trades: true}
-	_, err := k.GetOpenOrders(t.Context(), args)
-	assert.NoError(t, err)
-}
-
-// TestGetClosedOrders API endpoint test
-func TestGetClosedOrders(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	args := GetClosedOrdersOptions{Trades: true, Start: "OE4KV4-4FVQ5-V7XGPU"}
-	_, err := k.GetClosedOrders(t.Context(), args)
-	assert.NoError(t, err)
-}
-
-// TestQueryOrdersInfo API endpoint test
-func TestQueryOrdersInfo(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	args := OrderInfoOptions{Trades: true}
-	_, err := k.QueryOrdersInfo(t.Context(), args, "OR6ZFV-AA6TT-CKFFIW", "OAMUAJ-HLVKG-D3QJ5F")
-	assert.NoError(t, err)
-}
+// TestGetTradeBalance API endpoint test
+// func TestGetTradeBalance(t *testing.T) { // This is the old one, new ones are above
+// 	t.Parallel()
+// 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
+// 	args := TradeBalanceOptions{Asset: "ZEUR"}
+// 	_, err := k.GetTradeBalance(t.Context(), args)
+// 	assert.NoError(t, err)
+// }
 
 // TestGetTradesHistory API endpoint test
 func TestGetTradesHistory(t *testing.T) {
@@ -1741,3 +3519,5 @@ func TestEnforceStandardChannelNames(t *testing.T) {
 		assert.ErrorIsf(t, err, subscription.ErrUseConstChannelName, "Private channel names should not be allowed for %s", n)
 	}
 }
+
+[end of exchanges/kraken/kraken_test.go]

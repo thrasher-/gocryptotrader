@@ -918,6 +918,38 @@ type AllocateEarnFundsResponse struct {
 	Result bool `json:"result"`
 }
 
+// DeallocateEarnFundsOptions represents parameters for the DeallocateEarnFunds endpoint.
+type DeallocateEarnFundsOptions struct {
+	StrategyID string // Required: ID of the Earn strategy.
+	Amount     string // Required: Amount to deallocate (as string for precision).
+}
+
+// DeallocateEarnFundsResponse represents the response from deallocating funds from an Earn strategy.
+type DeallocateEarnFundsResponse struct {
+	// Assuming a simple boolean success for initiating the async operation, nested in "result".
+	Result bool `json:"result"`
+}
+
+// GetAllocationStatusOptions represents parameters for the GetAllocationStatus endpoint.
+type GetAllocationStatusOptions struct {
+	StrategyID string // Required: ID of the Earn strategy.
+}
+
+// AllocationStatusResponse represents the response from the GetAllocationStatus endpoint.
+type AllocationStatusResponse struct {
+	Pending bool `json:"pending"` // True if operation is in progress, false if completed.
+}
+
+// GetDeallocationStatusOptions represents parameters for the GetDeallocationStatus endpoint.
+type GetDeallocationStatusOptions struct {
+	StrategyID string // Required: ID of the Earn strategy.
+}
+
+// DeallocationStatusResponse represents the response from the GetDeallocationStatus endpoint.
+type DeallocationStatusResponse struct {
+	Pending bool `json:"pending"` // True if operation is in progress, false if completed.
+}
+
 // WebsocketSubRequest contains request data for Subscribe/Unsubscribe to channels
 type WebsocketSubRequest struct {
 	Event        string                    `json:"event"`

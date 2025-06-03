@@ -1659,6 +1659,26 @@ func (k *Kraken) WithdrawCancel(ctx context.Context, asset string, refID string,
 	return responsePayload.Result, nil
 }
 
+// DeallocateEarnFunds deallocates funds from an Earn Strategy. This operation is asynchronous.
+func (k *Kraken) DeallocateEarnFunds(ctx context.Context, opts DeallocateEarnFundsOptions) (bool, error) {
+	if opts.StrategyID == "" || opts.Amount == "" {
+		return false, errors.New("strategy_id and amount are required parameters")
+	}
+
+	params := url.Values{}
+	params.Set("strategy_id", opts.StrategyID)
+	params.Set("amount", opts.Amount)
+
+	const methodSpecificPath = "Earn/Deallocate" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload DeallocateEarnFundsResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return false, err
+	}
+	return responsePayload.Result, nil
+}
+
 // GetDepositStatus retrieves information about recent deposits.
 // Returns the list of deposit statuses, a cursor for pagination (if requested and available), and an error.
 func (k *Kraken) GetDepositStatus(ctx context.Context, opts DepositStatusOptions) ([]DepositStatusEntry, string, error) {
@@ -1749,6 +1769,25 @@ func (k *Kraken) RequestWalletTransfer(ctx context.Context, opts WalletTransferO
 	return &responsePayload, nil
 }
 
+// GetDeallocationStatus retrieves the status of the last deallocation request for an Earn strategy.
+func (k *Kraken) GetDeallocationStatus(ctx context.Context, opts GetDeallocationStatusOptions) (*DeallocationStatusResponse, error) {
+	if opts.StrategyID == "" {
+		return nil, errors.New("strategy_id is a required parameter")
+	}
+
+	params := url.Values{}
+	params.Set("strategy_id", opts.StrategyID)
+
+	const methodSpecificPath = "Earn/DeallocateStatus" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload DeallocationStatusResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		return nil, err
+	}
+	return &responsePayload, nil
+}
+
 // ListEarnAllocations lists all Earn allocations for the user.
 func (k *Kraken) ListEarnAllocations(ctx context.Context, opts ListEarnAllocationsOptions) (*ListEarnAllocationsResponse, error) {
 	params := url.Values{}
@@ -1824,6 +1863,27 @@ func (k *Kraken) AllocateEarnFunds(ctx context.Context, opts AllocateEarnFundsOp
 		return false, err
 	}
 	return responsePayload.Result, nil
+}
+
+// GetAllocationStatus retrieves the status of the last allocation request for an Earn strategy.
+func (k *Kraken) GetAllocationStatus(ctx context.Context, opts GetAllocationStatusOptions) (*AllocationStatusResponse, error) {
+	if opts.StrategyID == "" {
+		return nil, errors.New("strategy_id is a required parameter")
+	}
+
+	params := url.Values{}
+	params.Set("strategy_id", opts.StrategyID)
+
+	const methodSpecificPath = "Earn/AllocateStatus" // Path includes "Earn/"
+	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	var responsePayload AllocationStatusResponse
+	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &responsePayload); err != nil {
+		// This error could be a Kraken API error related to the original async operation
+		// (e.g., EEarnings:Insufficient funds)
+		return nil, err
+	}
+	return &responsePayload, nil
 }
 
 // CreateSubaccount creates a new trading subaccount.
