@@ -15,6 +15,8 @@ import (
 
 const (
 	krakenAPIVersion = "0"
+	// Public facing constant for SystemStatus endpoint
+	krakenSystemStatus = "SystemStatus"
 	// All private method constants removed, they are now local to their respective functions in kraken.go
 
 	// Futures
@@ -345,7 +347,7 @@ type GetLedgersOptions struct {
 // Ledgers type
 type Ledgers struct {
 	Ledger map[string]LedgerInfo `json:"ledger"`
-	Count  int64                 `json:"count"`
+	Count  string                `json:"count"`  // Changed from int64 to string
 }
 
 // LedgerInfo type

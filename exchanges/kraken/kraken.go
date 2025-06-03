@@ -1101,17 +1101,20 @@ func (k *Kraken) AddOrder(ctx context.Context, symbol currency.Pair, side, order
 
 // CancelExistingOrder cancels order by orderID
 func (k *Kraken) CancelExistingOrder(ctx context.Context, txid string) (*CancelOrderResponse, error) {
-	values := url.Values{
-		"txid": {txid},
+	if txid == "" { // Added client-side validation
+		return nil, errors.New("txid is a required parameter for cancelling an order")
 	}
 
 	const methodSpecificPath = "CancelOrder"
 	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
+
+	values := url.Values{}
+	values.Set("txid", txid)
+
 	var result CancelOrderResponse
 	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, values, &result); err != nil {
 		return nil, err
 	}
-
 	return &result, nil
 }
 

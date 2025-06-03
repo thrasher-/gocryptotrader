@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest" // Added
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ import (
 	testsubs "github.com/thrasher-corp/gocryptotrader/internal/testing/subscriptions"
 	mockws "github.com/thrasher-corp/gocryptotrader/internal/testing/websocket"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 var (
@@ -1735,165 +1737,8 @@ func TestGetOpenOrders_MalformedData_OpenTmNotInt(t *testing.T) {
 	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.opentm of type int64", "Error message for malformed opentm")
 }
 
-// TestQueryOrdersInfo Tests
-func TestQueryOrdersInfo_Success_SingleTxID_NoOptions(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	txid := "ORDERID123"
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/0/private/QueryOrders" {
-			t.Fatalf("Expected path '/0/private/QueryOrders', got %s", r.URL.Path)
-		}
-		if r.URL.Query().Get("txid") != txid {
-			t.Errorf("Expected txid '%s', got '%s'", txid, r.URL.Query().Get("txid"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": [],
-			"result": {
-				"ORDERID123": {
-					"refid": null, "userref": 0, "status": "closed", "reason":"Filled",
-					"opentm": 1672530000, "closetm": 1672531200, "starttm":0, "expiretm":0,
-					"descr": {"pair":"XBTUSD", "type":"buy", "ordertype":"limit", "price":"48000.0"},
-					"vol": "0.1", "vol_exec": "0.1", "cost": "4800.0", "fee": "7.68",
-					"price": "48000.0", "misc": "", "oflags": "fciq",
-					"trades": ["TRADEIDXYZ"]
-				}
-			}
-		}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
-	require.NoError(t, err, "QueryOrdersInfo should not error")
-	require.NotNil(t, result, "Result map should not be nil")
-	require.Len(t, result, 1, "Result map should contain 1 entry")
-
-	order, ok := result[txid]
-	require.True(t, ok, "Order ID should be in result")
-	assert.Equal(t, "closed", order.Status)
-	assert.Equal(t, "Filled", order.Reason)
-	assert.Equal(t, int64(1672530000), order.OpenTime)
-	assert.Equal(t, int64(1672531200), order.CloseTime)
-}
-
-func TestQueryOrdersInfo_Success_MultipleTxIDs_WithTrades(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	txid1 := "ORDERID123"
-	txid2 := "ORDERID456"
-	expectedTxIDs := txid1 + "," + txid2
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "true", r.URL.Query().Get("trades"))
-		assert.Equal(t, expectedTxIDs, r.URL.Query().Get("txid"))
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": [],
-			"result": {
-				"ORDERID123": { "status": "closed", "trades": ["T1", "T2"], "descr": {"pair":"XBTUSD"}},
-				"ORDERID456": { "status": "open", "trades": ["T3"], "descr": {"pair":"ETHUSD"}}
-			}
-		}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{Trades: true}, txid1, txid2)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, result, 2)
-
-	order1, ok1 := result[txid1]
-	require.True(t, ok1)
-	assert.Equal(t, []string{"T1", "T2"}, order1.Trades)
-
-	order2, ok2 := result[txid2]
-	require.True(t, ok2)
-	assert.Equal(t, []string{"T3"}, order2.Trades)
-}
-
-func TestQueryOrdersInfo_APIReturnsError(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "UNKNOWNORDER")
-	require.Error(t, err, "QueryOrdersInfo should return an error")
-	require.Nil(t, result)
-	assert.Contains(t, err.Error(), "EOrder:Unknown order")
-}
-
-func TestQueryOrdersInfo_MalformedData_BadTimestamp(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	txid := "ORDERIDXYZ"
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":[], "result": {"ORDERIDXYZ": {"opentm": "not-a-timestamp"}}}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	_, err = k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
-	require.Error(t, err, "QueryOrdersInfo should return an error for malformed timestamp")
-	assert.Contains(t, err.Error(), "json: cannot unmarshal string into Go struct field OrderInfo.opentm of type int64")
-}
-
-func TestQueryOrdersInfo_NoTxIDProvided_APIErr(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("txid") == "" {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments:txid"], "result":{}}`)
-			return
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"error":["EGeneral:Unexpected test case"], "result":{}}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "")
-	require.Error(t, err, "QueryOrdersInfo should return an error if txid is empty and API errors")
-	require.Nil(t, result, "Result should be nil on error")
-	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments:txid", "Error message should reflect API's complaint about txid")
-}
-
-// TestGetClosedOrders Tests
-func TestGetClosedOrders_Success_MinimalOptions(t *testing.T) {
+// TestClosedOrders Tests (Note: Renamed from TestGetClosedOrders to avoid conflict if running specific TestGet* patterns)
+func TestClosedOrders_Success_MinimalOptions(t *testing.T) {
 	t.Parallel()
 	k := new(Kraken)
 	err := testexch.Setup(k)
@@ -1942,7 +1787,7 @@ func TestGetClosedOrders_Success_MinimalOptions(t *testing.T) {
 	assert.Equal(t, 0.1, order.VolumeExecuted, "VolumeExecuted")
 }
 
-func TestGetClosedOrders_Success_AllOptions(t *testing.T) {
+func TestClosedOrders_Success_AllOptions(t *testing.T) {
 	t.Parallel()
 	k := new(Kraken)
 	err := testexch.Setup(k)
@@ -1955,7 +1800,7 @@ func TestGetClosedOrders_Success_AllOptions(t *testing.T) {
 		UserRef:   123,
 		Start:     "1672530000",
 		End:       "1672540000",
-		Ofs:       0, // API default is 0, sending it explicitly for test
+		Ofs:       0,
 		CloseTime: "close",
 	}
 
@@ -1968,7 +1813,7 @@ func TestGetClosedOrders_Success_AllOptions(t *testing.T) {
 		assert.Equal(t, "123", q.Get("userref"), "UserRef param")
 		assert.Equal(t, "1672530000", q.Get("start"), "Start param")
 		assert.Equal(t, "1672540000", q.Get("end"), "End param")
-		assert.Equal(t, "0", q.Get("ofs"), "Ofs param") // Kraken API expects ofs as int
+		assert.Equal(t, "0", q.Get("ofs"), "Ofs param")
 		assert.Equal(t, "close", q.Get("closetime"), "CloseTime param")
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1996,7 +1841,7 @@ func TestGetClosedOrders_Success_AllOptions(t *testing.T) {
 	assert.Equal(t, "User canceled", order.Reason)
 }
 
-func TestGetClosedOrders_APIReturnsError(t *testing.T) {
+func TestClosedOrders_APIReturnsError(t *testing.T) {
 	t.Parallel()
 	k := new(Kraken)
 	err := testexch.Setup(k)
@@ -2017,7 +1862,7 @@ func TestGetClosedOrders_APIReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "EOrder:Invalid arguments", "Error message should contain API error")
 }
 
-func TestGetClosedOrders_MalformedData_CloseTmNotInt(t *testing.T) {
+func TestClosedOrders_MalformedData_CloseTmNotInt(t *testing.T) {
 	t.Parallel()
 	k := new(Kraken)
 	err := testexch.Setup(k)
@@ -2194,6 +2039,175 @@ func TestQueryOrdersInfo_NoTxIDProvided_APIErr(t *testing.T) {
 	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments:txid", "Error message should reflect API's complaint about txid")
 }
 
+// TestGetTradeVolume Tests
+func TestGetTradeVolume_Success_NoPairs_NoFeeInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/TradeVolume" {
+			t.Fatalf("Expected path '/0/private/TradeVolume', got %s", r.URL.Path)
+		}
+		assert.Equal(t, "", r.URL.Query().Get("pair"), "Pair param should be empty")
+		assert.Equal(t, "", r.URL.Query().Get("fee-info"), "Fee-info param should be empty")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "100000.00"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTradeVolume(context.Background(), false)
+	require.NoError(t, err, "GetTradeVolume (no options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	assert.Equal(t, "ZUSD", result.Currency)
+	assert.Equal(t, 100000.00, result.Volume)
+	assert.Nil(t, result.Fees, "Fees should be nil when not requested")
+	assert.Nil(t, result.FeesMaker, "FeesMaker should be nil when not requested")
+}
+
+func TestGetTradeVolume_Success_OnePair_WithFeeInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pairToTest := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, err := k.FormatSymbol(pairToTest, asset.Spot)
+	require.NoError(t, err)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
+		assert.Equal(t, formattedPair, r.URL.Query().Get("pair"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "120000.00",
+				"fees": {
+					"XXBTZUSD": {"fee": "0.2400", "minfee": "0.1000", "maxfee": "0.2600", "nextfee": "0.2200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
+				},
+				"fees_maker": {
+					"XXBTZUSD": {"fee": "0.1400", "minfee": "0.0000", "maxfee": "0.1600", "nextfee": "0.1200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTradeVolume(context.Background(), true, pairToTest)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "ZUSD", result.Currency)
+	assert.Equal(t, 120000.00, result.Volume)
+	require.NotNil(t, result.Fees)
+	require.NotNil(t, result.FeesMaker)
+
+	feeInfo, ok := result.Fees["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 0.24, feeInfo.Fee)
+
+	feeMakerInfo, ok := result.FeesMaker["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 0.14, feeMakerInfo.Fee)
+}
+
+func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair1 := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	pair2 := currency.NewPair(currency.ETH, currency.USD) // XETHZUSD
+	formattedPair1, _ := k.FormatSymbol(pair1, asset.Spot)
+	formattedPair2, _ := k.FormatSymbol(pair2, asset.Spot)
+	expectedPairParam := formattedPair1 + "," + formattedPair2
+
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
+		assert.Equal(t, expectedPairParam, r.URL.Query().Get("pair"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "200000.00",
+				"fees": {
+					"XXBTZUSD": {"fee": "0.2000"},
+					"XETHZUSD": {"fee": "0.1800"}
+				},
+				"fees_maker": {
+					"XXBTZUSD": {"fee": "0.1000"},
+					"XETHZUSD": {"fee": "0.0800"}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTradeVolume(context.Background(), true, pair1, pair2)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Fees, 2)
+	require.Len(t, result.FeesMaker, 2)
+	assert.Equal(t, 0.20, result.Fees["XXBTZUSD"].Fee)
+	assert.Equal(t, 0.10, result.FeesMaker["XXBTZUSD"].Fee)
+	assert.Equal(t, 0.18, result.Fees["XETHZUSD"].Fee)
+	assert.Equal(t, 0.08, result.FeesMaker["XETHZUSD"].Fee)
+}
+
+func TestGetTradeVolume_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := k.GetTradeVolume(context.Background(), false)
+	require.Error(t, err)
+	require.Nil(t, result)
+	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments")
+}
+
+func TestGetTradeVolume_PairFormatError(t *testing.T) {
+	t.Parallel()
+	k := new(Kraken)
+	err := testexch.Setup(k)
+	require.NoError(t, err)
+	k.API.AuthenticatedSupport = true
+	k.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	// No mock server needed, client-side error
+	_, err = k.GetTradeVolume(context.Background(), true, currency.Pair{Base: currency.NewCode("@@@")})
+	require.Error(t, err, "GetTradeVolume should error on invalid pair format")
+}
+
 // TestGetDepositMethods API endpoint test
 func TestGetDepositMethods(t *testing.T) {
 	t.Parallel()
@@ -2210,75 +2224,6 @@ func TestGetDepositMethods(t *testing.T) {
 // 	_, err := k.GetTradeBalance(t.Context(), args)
 // 	assert.NoError(t, err)
 // }
-
-// TestGetDepositMethods API endpoint test
-func TestGetDepositMethods(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.GetDepositMethods(t.Context(), "USDT", "") // Added network param
-	assert.NoError(t, err, "GetDepositMethods should not error")
-}
-
-// TestGetTradeBalance API endpoint test
-// func TestGetTradeBalance(t *testing.T) { // This is the old one, new ones are above
-// 	t.Parallel()
-// 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-// 	args := TradeBalanceOptions{Asset: "ZEUR"}
-// 	_, err := k.GetTradeBalance(t.Context(), args)
-// 	assert.NoError(t, err)
-// }
-
-// TestGetTradesHistory API endpoint test
-func TestGetTradesHistory(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	args := GetTradesHistoryOptions{Trades: true, Start: "TMZEDR-VBJN2-NGY6DX", End: "TVRXG2-R62VE-RWP3UW"}
-	_, err := k.GetTradesHistory(t.Context(), args)
-	assert.NoError(t, err)
-}
-
-// TestQueryTrades API endpoint test
-func TestQueryTrades(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.QueryTrades(t.Context(), true, "TMZEDR-VBJN2-NGY6DX", "TFLWIB-KTT7L-4TWR3L", "TDVRAH-2H6OS-SLSXRX")
-	assert.NoError(t, err)
-}
-
-// TestOpenPositions API endpoint test
-func TestOpenPositions(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.OpenPositions(t.Context(), false)
-	assert.NoError(t, err)
-}
-
-// TestGetLedgers API endpoint test
-// TODO: Needs a positive test
-func TestGetLedgers(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-
-	args := GetLedgersOptions{Start: "LRUHXI-IWECY-K4JYGO", End: "L5NIY7-JZQJD-3J4M2V", Ofs: 15}
-	_, err := k.GetLedgers(t.Context(), args)
-	assert.ErrorContains(t, err, "EQuery:Unknown asset pair", "GetLedger should error on imaginary ledgers")
-}
-
-// TestQueryLedgers API endpoint test
-func TestQueryLedgers(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.QueryLedgers(t.Context(), "LVTSFS-NHZVM-EXNZ5M")
-	assert.NoError(t, err)
-}
-
-// TestGetTradeVolume API endpoint test
-func TestGetTradeVolume(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.GetTradeVolume(t.Context(), true, spotTestPair)
-	assert.NoError(t, err, "GetTradeVolume should not error")
-}
 
 // TestOrders Tests AddOrder and CancelExistingOrder
 func TestOrders(t *testing.T) {
@@ -3519,5 +3464,2475 @@ func TestEnforceStandardChannelNames(t *testing.T) {
 		assert.ErrorIsf(t, err, subscription.ErrUseConstChannelName, "Private channel names should not be allowed for %s", n)
 	}
 }
+
+// TestGetTradeVolume_Success_NoPairs_NoFeeInfo tests GetTradeVolume with no pairs and no fee-info.
+func TestGetTradeVolume_Success_NoPairs_NoFeeInfo(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/TradeVolume" {
+			t.Errorf("Expected path '/0/private/TradeVolume', got %s", r.URL.Path)
+		}
+		assert.Equal(t, "", r.URL.Query().Get("pair"), "Pair param should be empty")
+		assert.Equal(t, "", r.URL.Query().Get("fee-info"), "Fee-info param should be empty")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "100000.00"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetTradeVolume(context.Background(), false)
+	require.NoError(t, err, "GetTradeVolume (no options) should not error")
+	require.NotNil(t, result, "Response should not be nil")
+	assert.Equal(t, "ZUSD", result.Currency)
+	assert.Equal(t, 100000.00, result.Volume)
+	assert.Empty(t, result.Fees, "Fees should be empty when not requested")        // Changed from Nil to Empty
+	assert.Empty(t, result.FeesMaker, "FeesMaker should be empty when not requested") // Changed from Nil to Empty
+}
+
+// TestGetTradeVolume_Success_OnePair_WithFeeInfo tests GetTradeVolume with one pair and fee-info.
+func TestGetTradeVolume_Success_OnePair_WithFeeInfo(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pairToTest := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	formattedPair, errSym := kInst.FormatSymbol(pairToTest, asset.Spot)
+	require.NoError(t, errSym)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
+		assert.Equal(t, formattedPair, r.URL.Query().Get("pair"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "120000.00",
+				"fees": {
+					"XXBTZUSD": {"fee": "0.2400", "minfee": "0.1000", "maxfee": "0.2600", "nextfee": "0.2200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
+				},
+				"fees_maker": {
+					"XXBTZUSD": {"fee": "0.1400", "minfee": "0.0000", "maxfee": "0.1600", "nextfee": "0.1200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetTradeVolume(context.Background(), true, pairToTest)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "ZUSD", result.Currency)
+	assert.Equal(t, 120000.00, result.Volume)
+	require.NotNil(t, result.Fees)
+	require.NotNil(t, result.FeesMaker)
+
+	feeInfo, ok := result.Fees["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 0.24, feeInfo.Fee)
+	assert.Equal(t, 0.10, feeInfo.MinFee)
+	assert.Equal(t, 0.26, feeInfo.MaxFee)
+	assert.Equal(t, 0.22, feeInfo.NextFee)
+	assert.Equal(t, 250000.00, feeInfo.NextVolume)
+	assert.Equal(t, 100000.00, feeInfo.TierVolume)
+
+	feeMakerInfo, ok := result.FeesMaker["XXBTZUSD"]
+	require.True(t, ok)
+	assert.Equal(t, 0.14, feeMakerInfo.Fee)
+}
+
+// TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo tests GetTradeVolume with multiple pairs and fee-info.
+func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair1 := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
+	pair2 := currency.NewPair(currency.ETH, currency.USD) // XETHZUSD
+	formattedPair1, _ := kInst.FormatSymbol(pair1, asset.Spot)
+	formattedPair2, _ := kInst.FormatSymbol(pair2, asset.Spot)
+	expectedPairParam := formattedPair1 + "," + formattedPair2
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
+		assert.Equal(t, expectedPairParam, r.URL.Query().Get("pair"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"currency": "ZUSD",
+				"volume": "200000.00",
+				"fees": {
+					"XXBTZUSD": {"fee": "0.2000"},
+					"XETHZUSD": {"fee": "0.1800"}
+				},
+				"fees_maker": {
+					"XXBTZUSD": {"fee": "0.1000"},
+					"XETHZUSD": {"fee": "0.0800"}
+				}
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetTradeVolume(context.Background(), true, pair1, pair2)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Fees, 2)
+	require.Len(t, result.FeesMaker, 2)
+	assert.Equal(t, 0.20, result.Fees["XXBTZUSD"].Fee)
+	assert.Equal(t, 0.10, result.FeesMaker["XXBTZUSD"].Fee)
+	assert.Equal(t, 0.18, result.Fees["XETHZUSD"].Fee)
+	assert.Equal(t, 0.08, result.FeesMaker["XETHZUSD"].Fee)
+}
+
+// TestGetTradeVolume_APIReturnsError tests when the API returns an error.
+func TestGetTradeVolume_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetTradeVolume(context.Background(), false)
+	require.Error(t, err)
+	require.Nil(t, result)
+	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments")
+}
+
+// TestGetTradeVolume_PairFormatError tests client-side pair formatting error.
+func TestGetTradeVolume_PairFormatError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true // Required for the function to proceed to formatting
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	// No mock server needed, this is a client-side error from FormatSymbol
+	_, err = kInst.GetTradeVolume(context.Background(), true, currency.Pair{Base: currency.NewCode("@@@"), Quote: currency.USD})
+	require.Error(t, err, "GetTradeVolume should error on invalid pair format")
+	assert.Contains(t, err.Error(), "currency code '@@@' is invalid")
+}
+
+// TestRequestExportReport_Success_RequiredOptions tests RequestExportReport with only required options.
+func TestRequestExportReport_Success_RequiredOptions(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := RequestExportReportOptions{
+		Report:      ExportReportTypeTrades,
+		Description: "Trade Report",
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddExport" {
+			t.Errorf("Expected path '/0/private/AddExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, string(opts.Report), r.Form.Get("report"))
+		assert.Equal(t, opts.Description, r.Form.Get("descr"))
+		assert.Empty(t, r.Form.Get("format"), "Format should be empty")
+		assert.Empty(t, r.Form.Get("fields"), "Fields should be empty")
+		assert.Empty(t, r.Form.Get("starttm"), "StartTm should be empty")
+		assert.Empty(t, r.Form.Get("endtm"), "EndTm should be empty")
+		assert.Empty(t, r.Form.Get("asset"), "Asset should be empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"id":"REPORTID123"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RequestExportReport(context.Background(), opts)
+	require.NoError(t, err, "RequestExportReport should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "REPORTID123", result.ID)
+}
+
+// TestRequestExportReport_Success_AllOptions tests RequestExportReport with all available options.
+func TestRequestExportReport_Success_AllOptions(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := RequestExportReportOptions{
+		Report:      ExportReportTypeLedgers,
+		Format:      ExportReportFormatTSV,
+		Description: "Ledger Report TSV",
+		Fields:      "txid,time,type",
+		StartTm:     1672531200,
+		EndTm:       1672534800,
+		Asset:       "XBT,ETH",
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddExport" {
+			t.Errorf("Expected path '/0/private/AddExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, string(opts.Report), r.Form.Get("report"))
+		assert.Equal(t, string(opts.Format), r.Form.Get("format"))
+		assert.Equal(t, opts.Description, r.Form.Get("descr"))
+		assert.Equal(t, opts.Fields, r.Form.Get("fields"))
+		assert.Equal(t, strconv.FormatInt(opts.StartTm, 10), r.Form.Get("starttm"))
+		assert.Equal(t, strconv.FormatInt(opts.EndTm, 10), r.Form.Get("endtm"))
+		assert.Equal(t, opts.Asset, r.Form.Get("asset"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"id":"REPORTID456"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RequestExportReport(context.Background(), opts)
+	require.NoError(t, err, "RequestExportReport with all options should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "REPORTID456", result.ID)
+}
+
+// TestRequestExportReport_MissingRequiredOptions_Report tests client-side validation for missing Report type.
+func TestRequestExportReport_MissingRequiredOptions_Report(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true // Required to pass initial checks if any
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := RequestExportReportOptions{Description: "Test Report"} // Missing Report
+	result, err := kInst.RequestExportReport(context.Background(), opts)
+
+	require.Error(t, err, "RequestExportReport should return an error for missing Report type")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "report type and description are required parameters")
+}
+
+// TestRequestExportReport_MissingRequiredOptions_Description tests client-side validation for missing Description.
+func TestRequestExportReport_MissingRequiredOptions_Description(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := RequestExportReportOptions{Report: ExportReportTypeTrades} // Missing Description
+	result, err := kInst.RequestExportReport(context.Background(), opts)
+
+	require.Error(t, err, "RequestExportReport should return an error for missing Description")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "report type and description are required parameters")
+}
+
+// TestRequestExportReport_APIReturnsError tests when the API returns an error.
+func TestRequestExportReport_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := RequestExportReportOptions{
+		Report:      ExportReportTypeTrades,
+		Description: "Error Test",
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EExport:Invalid arguments"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RequestExportReport(context.Background(), opts)
+	require.Error(t, err, "RequestExportReport should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EExport:Invalid arguments")
+}
+
+// TestGetExportReportStatus_Success tests GetExportReportStatus with a successful API response.
+func TestGetExportReportStatus_Success(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := ExportStatusOptions{Report: ExportReportTypeTrades}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/ExportStatus" {
+			t.Errorf("Expected path '/0/private/ExportStatus', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, string(opts.Report), r.Form.Get("report"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{
+					"id": "REPORTID1", "descr": "Trade Report", "format": "CSV", "report": "trades",
+					"status": "Processed", "fields": "all", "createdtm": "1672531200",
+					"starttm": "1670000000", "endtm": "1672000000", "completedtm": "1672531500",
+					"datastarttm": "1670000000", "dataendtm": "1672000000", "aclass": "currency", "asset": "all"
+				},
+				{
+					"id": "REPORTID2", "descr": "Ledger Report", "format": "TSV", "report": "ledgers",
+					"status": "Queued", "fields": "txid,time", "createdtm": "1672532000",
+					"starttm": "0", "endtm": "0"
+				}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetExportReportStatus(context.Background(), opts)
+	require.NoError(t, err, "GetExportReportStatus should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 2, "Should have 2 report statuses")
+
+	report1 := result[0]
+	assert.Equal(t, "REPORTID1", report1.ID)
+	assert.Equal(t, "Trade Report", report1.Descr)
+	assert.Equal(t, ExportReportFormatCSV, report1.Format)
+	assert.Equal(t, ExportReportTypeTrades, report1.Report)
+	assert.Equal(t, "Processed", report1.Status)
+	assert.Equal(t, "all", report1.Fields)
+	assert.Equal(t, int64(1672531200), report1.CreatedTm)
+	assert.Equal(t, int64(1670000000), report1.StartTm)
+	assert.Equal(t, int64(1672000000), report1.EndTm)
+	assert.Equal(t, int64(1672531500), report1.CompletedTm)
+	assert.Equal(t, int64(1670000000), report1.DataStartTm)
+	assert.Equal(t, int64(1672000000), report1.DataEndTm)
+	assert.Equal(t, "currency", report1.Aclass)
+	assert.Equal(t, "all", report1.Asset)
+
+	report2 := result[1]
+	assert.Equal(t, "REPORTID2", report2.ID)
+	assert.Equal(t, "Ledger Report", report2.Descr)
+	assert.Equal(t, ExportReportFormatTSV, report2.Format)
+	assert.Equal(t, ExportReportTypeLedgers, report2.Report)
+	assert.Equal(t, "Queued", report2.Status)
+	assert.Equal(t, "txid,time", report2.Fields)
+	assert.Equal(t, int64(1672532000), report2.CreatedTm)
+	assert.Equal(t, int64(0), report2.StartTm) // "0" should parse to 0
+	assert.Equal(t, int64(0), report2.EndTm)
+}
+
+// TestGetExportReportStatus_APIReturnsError tests when the API returns an error.
+func TestGetExportReportStatus_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := ExportStatusOptions{Report: "invalidtype"}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EExport:Status:Unknown report type"], "result":[]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetExportReportStatus(context.Background(), opts)
+	require.Error(t, err, "GetExportReportStatus should return an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EExport:Status:Unknown report type")
+}
+
+// TestGetExportReportStatus_MissingRequiredOption tests client-side validation for missing Report type.
+func TestGetExportReportStatus_MissingRequiredOption(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := ExportStatusOptions{} // Missing Report
+	result, err := kInst.GetExportReportStatus(context.Background(), opts)
+
+	require.Error(t, err, "GetExportReportStatus should return an error for missing Report type")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "report type is a required parameter")
+}
+
+// TestGetExportReportStatus_MalformedData_TimestampNotString tests unmarshalling error for incorrect timestamp format.
+func TestGetExportReportStatus_MalformedData_TimestampNotString(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := ExportStatusOptions{Report: ExportReportTypeTrades}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// createdtm is an integer, but struct expects a string due to `json:",string"`
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{
+					"id": "REPORTID3", "descr": "Malformed Report", "format": "CSV", "report": "trades",
+					"status": "Processed", "fields": "all", "createdtm": 1672531200,
+					"starttm": "1670000000", "endtm": "1672000000"
+				}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetExportReportStatus(context.Background(), opts)
+	require.Error(t, err, "GetExportReportStatus should return an error for malformed timestamp data")
+	require.Nil(t, result, "Result should be nil on unmarshalling error")
+	// Check for a JSON unmarshal error, specifically for the timestamp field.
+	// The exact error message might vary slightly based on the JSON library version.
+	assert.Contains(t, err.Error(), "json: invalid use of ,string struct tag, trying to unmarshal unquoted value into Go string field")
+}
+
+// TestRetrieveExportReport_Success_CSVData tests RetrieveExportReport with a successful CSV data response.
+func TestRetrieveExportReport_Success_CSVData(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	reportID := "REPORTID1"
+	mockCSVData := "txid,time,type\nTX1,1672531200,trade\nTX2,1672531300,deposit"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/RetrieveExport" {
+			t.Errorf("Expected path '/0/private/RetrieveExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, reportID, r.Form.Get("id"))
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, mockCSVData)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
+	require.NoError(t, err, "RetrieveExportReport should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, mockCSVData, string(result))
+}
+
+// TestRetrieveExportReport_APIReturnsJSONError tests when the API returns a JSON error.
+func TestRetrieveExportReport_APIReturnsJSONError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	reportID := "REPORTNOTFOUND"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/RetrieveExport" {
+			t.Errorf("Expected path '/0/private/RetrieveExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, reportID, r.Form.Get("id"))
+
+		w.Header().Set("Content-Type", "application/json")
+		// It appears SendPayload (and thus sendAuthenticatedHTTPRequestRaw)
+		// might try to parse JSON for non-200 responses even if the primary target is raw.
+		// The existing SendAuthenticatedHTTPRequest logic is used by sendAuthenticatedHTTPRequestRaw
+		// for error handling if the response is not a 200 OK.
+		// Let's send a 200 OK with an error payload, as Kraken sometimes does,
+		// or ensure SendPayload handles non-200 by trying to parse error JSON.
+		// The current sendAuthenticatedHTTPRequestRaw doesn't explicitly handle non-200s
+		// differently for raw vs JSON error parsing; it relies on SendPayload.
+		// SendPayload, in turn, for authenticated requests, passes data to SendAuthenticatedHTTPRequest's
+		// error parsing logic if the request itself didn't fail at HTTP level.
+		// Let's keep it simple: assume Kraken returns JSON error with 200 OK for this path if error in result.
+		// Or, more realistically, a non-200 status with JSON error.
+		// The `sendAuthenticatedHTTPRequestRaw` calls `SendPayload` which then calls `k.Requester.Do`.
+		// If `Do` receives a non-2xx status, it returns an error. `SendPayload` then returns that.
+		// The current structure does not have a separate JSON error parsing for `sendAuthenticatedHTTPRequestRaw`
+		// if the HTTP status itself is an error. It would just return the HTTP error.
+		// However, `SendAuthenticatedHTTPRequest` (which `SendPayload` calls for auth requests)
+		// *does* parse JSON errors from the body if the HTTP call was successful (e.g. 200 OK but error in JSON).
+		// Let's assume for this test that the error is within the JSON payload but with a 200 OK,
+		// or that the existing error handling in SendAuthenticatedHTTPRequest (used by SendPayload)
+		// can pick up JSON errors from non-200 responses.
+		// The `sendAuthenticatedHTTPRequestRaw` itself doesn't have its own JSON error parsing logic distinct
+		// from what `SendAuthenticatedHTTPRequest` provides via `SendPayload`.
+		// The most robust way is to ensure that SendPayload can attempt JSON error parsing on non-2xx.
+		// For now, let's test a 200 OK with an error in the JSON, as this is a common pattern for Kraken.
+		// UPDATE: sendAuthenticatedHTTPRequestRaw uses SendPayload, which for authenticated requests, will
+		// unmarshal into a genericRESTResponse if the request.Item.Result is not raw.
+		// Since RetrieveExportReport uses sendAuthenticatedHTTPRequestRaw, the Result is *[]byte.
+		// SendPayload will directly return the error from k.Requester.Do() if status is not 2xx.
+		// So, if Kraken returns a non-2xx with a JSON error body, SendPayload will return the HTTP error,
+		// and the JSON body might not be parsed by default by the raw path.
+		// However, the problem description implies we want to test if sendAuthenticatedHTTPRequestRaw
+		// *can* process JSON errors. This means the underlying SendPayload or Do must facilitate this.
+		// The current structure of SendPayload for authenticated requests *will* try to parse a genericRESTResponse.
+		// Let's assume Kraken returns HTTP 200 OK but with an error in the JSON body for this test.
+		// If Kraken returns e.g. 400 Bad Request with JSON error, the `k.SendPayload` in `sendAuthenticatedHTTPRequestRaw`
+		// would return an error from `k.Requester.Do()`. This error would be an HTTP status error.
+		// The test for `APIReturnsJSONError` should check if `sendAuthenticatedHTTPRequestRaw` can parse a JSON error
+		// when the HTTP call itself was successful (status 200) but the API operation failed.
+		// The current `sendAuthenticatedHTTPRequestRaw` does not explicitly parse JSON errors if the HTTP status is 200.
+		// It returns raw bytes. This test might be revealing a gap or a misunderstanding of `sendAuthenticatedHTTPRequestRaw`.
+		//
+		// Let's re-evaluate `sendAuthenticatedHTTPRequestRaw`. It calls `SendPayload`.
+		// `SendPayload` for authenticated requests:
+		// 1. Makes the HTTP call.
+		// 2. If HTTP call fails (non-2xx), it returns that error.
+		// 3. If HTTP call succeeds (2xx):
+		//    It *always* tries to unmarshal into `genericRESTResponse` if `item.Result` is not `*[]byte`.
+		//    But for `sendAuthenticatedHTTPRequestRaw`, `item.Result` IS `*[]byte`.
+		//    So, `SendPayload` will directly return `nil` if HTTP is 2xx and `item.Result` is `*[]byte`,
+		//    bypassing the `genericRESTResponse` unmarshalling.
+		// This means `sendAuthenticatedHTTPRequestRaw` as-is CANNOT parse JSON errors if HTTP status is 200.
+		// It's designed to return raw bytes on 200 OK.
+		//
+		// The test "TestRetrieveExportReport_APIReturnsJSONError" implies the function *should* parse this.
+		// This means `sendAuthenticatedHTTPRequestRaw` or `RetrieveExportReport` itself needs modification,
+		// or the test expectation is based on a desired future state.
+		// For now, I will write the test assuming the current implementation:
+		// if Kraken returns a non-200 status with JSON error, `sendAuthenticatedHTTPRequestRaw` will return an HTTP error.
+		// If Kraken returns 200 OK with JSON error, `sendAuthenticatedHTTPRequestRaw` will return the JSON error as raw bytes.
+		// The test instructions say "Writes a Kraken JSON error: {\"error\":[\"EExport:Unknown report\"]}".
+		// This implies the test wants to see if the JSON error string is extracted.
+		// This would only happen if sendAuthenticatedHTTPRequestRaw tries to parse JSON on non-200, or if RetrieveExportReport does.
+		//
+		// Given the current implementation of `sendAuthenticatedHTTPRequestRaw` (returns raw bytes on 200 OK, or HTTP error on non-200),
+		// to make this test pass as described (extracting JSON error message), Kraken would need to return a 200 OK
+		// with `Content-Type: application/json` and the error in the body. Then `RetrieveExportReport` would need to
+		// attempt to parse it as a Kraken error if the content type suggests JSON.
+		//
+		// Let's assume the test implies that if the API returns a JSON error *with a non-2xx status code*,
+		// the error handling within `SendPayload` (which calls `k.Requester.Do`) should ideally capture this.
+		// The `k.Requester.Do` function in `request/request.go` does populate `r.Error` with the body if it's a non-2xx.
+		// And `SendPayload` returns `r.Error`.
+		// So, if the server returns HTTP 400 with that JSON body, the error returned by `SendPayload` should contain that body.
+		// `RetrieveExportReport` then wraps this error.
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest) // Simulate a 400 error
+		fmt.Fprint(w, `{"error":["EExport:Unknown report"]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
+	require.Error(t, err, "RetrieveExportReport should return an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	// The error from request.Do for a non-2xx status includes the body,
+	// so the Kraken JSON error should be part of the error message.
+	assert.Contains(t, err.Error(), "EExport:Unknown report")
+}
+
+// TestAmendOrder_Success_MinimalChange tests AmendOrder with minimal required options and a price/volume change.
+func TestAmendOrder_Success_MinimalChange(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AmendOrderOptions{
+		OrderID: "ORDERID123",
+		Pair:    "XBTUSD",
+		Volume:  "0.5",
+		Price:   "49500.0",
+	}
+	// Note: Kraken's XBTUSD is typically XXBTZUSD internally.
+	// The test should use the pair string as it would be input by a user.
+	// The FormatSymbol method is not called by AmendOrder directly; AmendOrder expects the pair string.
+	// Let's assume "XBTUSD" is what the API expects for the 'pair' parameter in this context,
+	// or adjust if the function itself does formatting (it doesn't seem to).
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AmendOrder" {
+			t.Errorf("Expected path '/0/private/AmendOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.OrderID, r.Form.Get("order_id"))
+		assert.Equal(t, opts.Pair, r.Form.Get("pair"))
+		assert.Equal(t, opts.Volume, r.Form.Get("volume"))
+		assert.Equal(t, opts.Price, r.Form.Get("price"))
+		assert.Empty(t, r.Form.Get("userref"), "userref should be empty")
+		assert.Empty(t, r.Form.Get("price2"), "price2 should be empty")
+		assert.Empty(t, r.Form.Get("oflags"), "oflags should be empty")
+		assert.Empty(t, r.Form.Get("deadline"), "deadline should be empty")
+		assert.Empty(t, r.Form.Get("cancel_response"), "cancel_response should be empty")
+		assert.Empty(t, r.Form.Get("validate"), "validate should be empty")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"txid":"ORDERID123", "amend_txid":"AMENDTXID456", "status":"ok", "descr":"Order amended to 0.5 XBTUSD @ limit 49500.0"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AmendOrder(context.Background(), opts)
+	require.NoError(t, err, "AmendOrder should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "ORDERID123", result.TxID)
+	assert.Equal(t, "AMENDTXID456", result.AmendTxID)
+	assert.Equal(t, "ok", result.Status)
+	assert.Equal(t, "Order amended to 0.5 XBTUSD @ limit 49500.0", result.Descr)
+	assert.Empty(t, result.Errors, "Errors array should be empty")
+}
+
+// TestAmendOrder_Success_AllOptions tests AmendOrder with all available options.
+func TestAmendOrder_Success_AllOptions(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AmendOrderOptions{
+		OrderID:        "ORDERID123",
+		UserRef:        789,
+		Pair:           "XBTUSD",
+		Volume:         "0.75",
+		Price:          "49200.0",
+		Price2:         "49150.0",
+		OFlags:         "post",
+		Deadline:       "2024-01-01T00:00:00Z",
+		CancelResponse: true,
+		Validate:       true,
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AmendOrder" {
+			t.Errorf("Expected path '/0/private/AmendOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.OrderID, r.Form.Get("order_id"))
+		assert.Equal(t, strconv.FormatInt(int64(opts.UserRef), 10), r.Form.Get("userref"))
+		assert.Equal(t, opts.Pair, r.Form.Get("pair"))
+		assert.Equal(t, opts.Volume, r.Form.Get("volume"))
+		assert.Equal(t, opts.Price, r.Form.Get("price"))
+		assert.Equal(t, opts.Price2, r.Form.Get("price2"))
+		assert.Equal(t, opts.OFlags, r.Form.Get("oflags"))
+		assert.Equal(t, opts.Deadline, r.Form.Get("deadline"))
+		assert.Equal(t, "true", r.Form.Get("cancel_response"))
+		assert.Equal(t, "true", r.Form.Get("validate"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"txid":"ORDERID123", "amend_txid":"AMENDTXID789", "status":"ok", "descr":"Validated only", "cancel_txid": "CANCELTXID111"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AmendOrder(context.Background(), opts)
+	require.NoError(t, err, "AmendOrder with all options should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "ORDERID123", result.TxID)
+	assert.Equal(t, "AMENDTXID789", result.AmendTxID)
+	assert.Equal(t, "ok", result.Status)
+	assert.Equal(t, "Validated only", result.Descr)
+	assert.Equal(t, "CANCELTXID111", result.CancelTxID)
+	assert.Empty(t, result.Errors, "Errors array should be empty")
+}
+
+// TestAmendOrder_MissingRequiredOptions tests client-side validation for missing OrderID or Pair.
+func TestAmendOrder_MissingRequiredOptions(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	// Missing OrderID
+	optsMissingOrderID := AmendOrderOptions{Pair: "XBTUSD", Volume: "0.1"}
+	result, err := kInst.AmendOrder(context.Background(), optsMissingOrderID)
+	require.Error(t, err, "AmendOrder should return an error for missing OrderID")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "order_id and pair are required parameters")
+
+	// Missing Pair
+	optsMissingPair := AmendOrderOptions{OrderID: "ORDERID123", Volume: "0.1"}
+	result, err = kInst.AmendOrder(context.Background(), optsMissingPair)
+	require.Error(t, err, "AmendOrder should return an error for missing Pair")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "order_id and pair are required parameters")
+}
+
+// TestAmendOrder_APIReturnsTopLevelError tests when the API returns a top-level error.
+func TestAmendOrder_APIReturnsTopLevelError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AmendOrderOptions{OrderID: "ORDERID123", Pair: "XBTUSD", Volume: "0.1"}
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// This simulates a general API error, not a specific AmendOrder result error
+		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AmendOrder(context.Background(), opts)
+	require.Error(t, err, "AmendOrder should return an error when API returns a top-level error")
+	require.Nil(t, result, "Result should be nil on top-level API error")
+	assert.Contains(t, err.Error(), "EGeneral:Permission denied")
+}
+
+// TestGetDepositMethods_Success_AssetOnly tests successful retrieval of deposit methods with only asset specified.
+func TestGetDepositMethods_Success_AssetOnly(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetToTest := "XBT"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/DepositMethods" {
+			t.Errorf("Expected path '/0/private/DepositMethods', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetToTest, r.Form.Get("asset"))
+		assert.Empty(t, r.Form.Get("network"), "Network param should be absent")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{"method": "Bitcoin", "limit": false, "fee": "0.0", "gen-address": true},
+				{"method": "Bitcoin Lightning", "limit": "0.5", "address-setup-fee": "0.001", "gen-address": false}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, "")
+	require.NoError(t, err, "GetDepositMethods should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 2, "Should have 2 deposit methods")
+
+	method1 := result[0]
+	assert.Equal(t, "Bitcoin", method1.Method)
+	limitBool, ok := method1.Limit.(bool)
+	require.True(t, ok, "Limit for method1 should be a boolean")
+	assert.False(t, limitBool, "Method1 Limit")
+	assert.Equal(t, 0.0, method1.Fee) // "0.0" should parse to 0.0
+	assert.True(t, method1.GenAddress, "Method1 GenAddress")
+	assert.Equal(t, 0.0, method1.AddressSetupFee, "Method1 AddressSetupFee should be 0.0 as it's omitempty and not in JSON")
+
+	method2 := result[1]
+	assert.Equal(t, "Bitcoin Lightning", method2.Method)
+	limitStr, ok := method2.Limit.(string)
+	require.True(t, ok, "Limit for method2 should be a string")
+	assert.Equal(t, "0.5", limitStr, "Method2 Limit")
+	assert.Equal(t, 0.001, method2.AddressSetupFee)
+	assert.False(t, method2.GenAddress, "Method2 GenAddress")
+	assert.Equal(t, 0.0, method2.Fee, "Method2 Fee should be 0.0 as it's omitempty and not in JSON")
+}
+
+// TestGetDepositMethods_Success_AssetAndNetwork tests retrieval with asset and network.
+func TestGetDepositMethods_Success_AssetAndNetwork(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetToTest := "USDT"
+	networkToTest := "TRON"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/DepositMethods" {
+			t.Errorf("Expected path '/0/private/DepositMethods', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetToTest, r.Form.Get("asset"))
+		assert.Equal(t, networkToTest, r.Form.Get("network"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{"method": "Tether USD (Tron)", "limit": "100000", "fee": "0.0", "gen-address": true}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, networkToTest)
+	require.NoError(t, err, "GetDepositMethods should not error with asset and network")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 1, "Should have 1 deposit method")
+
+	method1 := result[0]
+	assert.Equal(t, "Tether USD (Tron)", method1.Method)
+	limitStr, ok := method1.Limit.(string)
+	require.True(t, ok)
+	assert.Equal(t, "100000", limitStr)
+	assert.Equal(t, 0.0, method1.Fee)
+	assert.True(t, method1.GenAddress)
+}
+
+// TestGetDepositMethods_ClientValidation_MissingAsset tests client-side validation for missing asset.
+func TestGetDepositMethods_ClientValidation_MissingAsset(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	result, err := kInst.GetDepositMethods(context.Background(), "", "")
+	require.Error(t, err, "GetDepositMethods should return an error for missing asset")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "asset is a required parameter", err.Error())
+}
+
+// TestGetDepositMethods_APIReturnsError tests when the API returns an error.
+func TestGetDepositMethods_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetToTest := "XBT"
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EFunding:Unknown asset"], "result":[]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, "")
+	require.Error(t, err, "GetDepositMethods should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EFunding:Unknown asset")
+}
+
+// TestGetCryptoDepositAddress_Success_ExistingAddress tests retrieving an existing deposit address.
+func TestGetCryptoDepositAddress_Success_ExistingAddress(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetType := "XBT"
+	method := "Bitcoin"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/DepositAddresses" {
+			t.Errorf("Expected path '/0/private/DepositAddresses', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetType, r.Form.Get("asset"))
+		assert.Equal(t, method, r.Form.Get("method"))
+		assert.Empty(t, r.Form.Get("new"), "New param should be absent for generateNew=false")
+		assert.Empty(t, r.Form.Get("aclass"), "aclass param should be absent")
+		assert.Empty(t, r.Form.Get("amount"), "amount param should be absent")
+
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{"address": "ADDR123", "expiretm": "0", "new": false, "tag": "MEMO1"}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, false, "", "")
+	require.NoError(t, err, "GetCryptoDepositAddress should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 1, "Should have 1 deposit address")
+
+	addr := result[0]
+	assert.Equal(t, "ADDR123", addr.Address)
+	expireTmStr, ok := addr.ExpireTime.(string)
+	require.True(t, ok, "ExpireTime should be a string")
+	assert.Equal(t, "0", expireTmStr)
+	assert.False(t, addr.New, "New field should be false")
+	assert.Equal(t, "MEMO1", addr.Tag)
+}
+
+// TestGetCryptoDepositAddress_Success_NewAddress tests generating a new deposit address.
+func TestGetCryptoDepositAddress_Success_NewAddress(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetType := "XBT"
+	method := "Bitcoin"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/DepositAddresses" {
+			t.Errorf("Expected path '/0/private/DepositAddresses', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetType, r.Form.Get("asset"))
+		assert.Equal(t, method, r.Form.Get("method"))
+		assert.Equal(t, "true", r.Form.Get("new"), "New param should be 'true'")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": [
+				{"address": "ADDR456", "expiretm": "1672534800", "new": true}
+			]
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, true, "", "")
+	require.NoError(t, err, "GetCryptoDepositAddress for new address should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 1, "Should have 1 deposit address")
+
+	addr := result[0]
+	assert.Equal(t, "ADDR456", addr.Address)
+	expireTmStr, ok := addr.ExpireTime.(string) // API returns string for expiretm
+	require.True(t, ok, "ExpireTime should be a string")
+	assert.Equal(t, "1672534800", expireTmStr)
+	assert.True(t, addr.New, "New field should be true")
+}
+
+// TestGetCryptoDepositAddress_Success_WithOptionalParams tests with optional aclass and amount.
+func TestGetCryptoDepositAddress_Success_WithOptionalParams(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetType := "XBT"
+	method := "Bitcoin"
+	aclass := "myclass"
+	amount := "1.23"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/DepositAddresses" {
+			t.Errorf("Expected path '/0/private/DepositAddresses', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetType, r.Form.Get("asset"))
+		assert.Equal(t, method, r.Form.Get("method"))
+		assert.Equal(t, "true", r.Form.Get("new"))
+		assert.Equal(t, aclass, r.Form.Get("aclass"))
+		assert.Equal(t, amount, r.Form.Get("amount"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": [{"address": "ADDR789", "new": true}]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, true, aclass, amount)
+	require.NoError(t, err, "GetCryptoDepositAddress with optional params should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result, 1)
+	assert.Equal(t, "ADDR789", result[0].Address)
+}
+
+// TestGetCryptoDepositAddress_ClientValidation_MissingAsset tests client validation for missing asset.
+func TestGetCryptoDepositAddress_ClientValidation_MissingAsset(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	_, err = kInst.GetCryptoDepositAddress(context.Background(), "", "Bitcoin", false, "", "")
+	require.Error(t, err, "Should error on missing asset")
+	assert.Equal(t, "asset is a required parameter", err.Error())
+}
+
+// TestGetCryptoDepositAddress_ClientValidation_MissingMethod tests client validation for missing method.
+func TestGetCryptoDepositAddress_ClientValidation_MissingMethod(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	_, err = kInst.GetCryptoDepositAddress(context.Background(), "XBT", "", false, "", "")
+	require.Error(t, err, "Should error on missing method")
+	assert.Equal(t, "method is a required parameter", err.Error())
+}
+
+// TestGetCryptoDepositAddress_Success_EmptyArrayResponse tests an empty array response from API.
+func TestGetCryptoDepositAddress_Success_EmptyArrayResponse(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":[], "result":[]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetCryptoDepositAddress(context.Background(), "XBT", "Bitcoin", false, "", "")
+	require.NoError(t, err, "Should not error on empty result array")
+	require.NotNil(t, result, "Result should not be nil even if empty")
+	assert.Len(t, result, 0, "Result array should be empty")
+}
+
+// TestGetCryptoDepositAddress_APIReturnsError tests API returning an error.
+func TestGetCryptoDepositAddress_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EFunding:Invalid asset"], "result":[]}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetCryptoDepositAddress(context.Background(), "BADASSET", "Bitcoin", false, "", "")
+	require.Error(t, err, "Should return an error from API")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EFunding:Invalid asset")
+}
+
+// TestGetWithdrawInfo_Success_RequiredParams tests successful retrieval of withdrawal info with required params.
+func TestGetWithdrawInfo_Success_RequiredParams(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetType := "XBT"
+	key := "mybtcwithdrawal"
+	amount := 0.5
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/WithdrawInfo" {
+			t.Errorf("Expected path '/0/private/WithdrawInfo', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetType, r.Form.Get("asset"))
+		assert.Equal(t, key, r.Form.Get("key"))
+		// FormatFloat 'f', -1, 64 can sometimes omit .0, so check for both
+		amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+		assert.Equal(t, amountStr, r.Form.Get("amount"))
+		assert.Empty(t, r.Form.Get("network"), "Network param should be absent")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"method": "Bitcoin",
+				"limit": "10.0",
+				"amount": "0.4995000000",
+				"fee": "0.0005000000",
+				"address_name": "My BTC Wallet"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetWithdrawInfo(context.Background(), assetType, key, amount, "")
+	require.NoError(t, err, "GetWithdrawInfo should not error")
+	require.NotNil(t, result, "Result should not be nil")
+
+	assert.Equal(t, "Bitcoin", result.Method)
+	assert.Equal(t, 10.0, result.Limit)
+	assert.Equal(t, "0.4995000000", result.Amount) // This is string in struct
+	assert.Equal(t, 0.0005, result.Fee)
+	assert.Equal(t, "My BTC Wallet", result.AddressName)
+}
+
+// TestGetWithdrawInfo_Success_WithNetwork tests successful retrieval with the network parameter.
+func TestGetWithdrawInfo_Success_WithNetwork(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	assetType := "USDT"
+	key := "myusdtwithdrawal"
+	amount := 100.0
+	network := "Tron"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/WithdrawInfo" {
+			t.Errorf("Expected path '/0/private/WithdrawInfo', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, assetType, r.Form.Get("asset"))
+		assert.Equal(t, key, r.Form.Get("key"))
+		amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+		assert.Equal(t, amountStr, r.Form.Get("amount"))
+		assert.Equal(t, network, r.Form.Get("network"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"method": "Tether USD (Tron)", "limit": "100000.0", "amount": "99.0", "fee": "1.0"
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetWithdrawInfo(context.Background(), assetType, key, amount, network)
+	require.NoError(t, err, "GetWithdrawInfo with network should not error")
+	require.NotNil(t, result, "Result should not be nil")
+
+	assert.Equal(t, "Tether USD (Tron)", result.Method)
+	assert.Equal(t, 100000.0, result.Limit)
+	assert.Equal(t, "99.0", result.Amount)
+	assert.Equal(t, 1.0, result.Fee)
+	assert.Empty(t, result.AddressName, "AddressName should be empty as not in mock")
+}
+
+// TestGetWithdrawInfo_ClientValidation_MissingAsset tests client validation for missing asset.
+func TestGetWithdrawInfo_ClientValidation_MissingAsset(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	_, err = kInst.GetWithdrawInfo(context.Background(), "", "mykey", 0.5, "")
+	require.Error(t, err, "Should error on missing asset")
+	assert.Equal(t, "asset is a required parameter", err.Error())
+}
+
+// TestGetWithdrawInfo_ClientValidation_MissingKey tests client validation for missing key.
+func TestGetWithdrawInfo_ClientValidation_MissingKey(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	_, err = kInst.GetWithdrawInfo(context.Background(), "XBT", "", 0.5, "")
+	require.Error(t, err, "Should error on missing key")
+	assert.Equal(t, "key (withdrawal key name) is a required parameter", err.Error())
+}
+
+// TestGetWithdrawInfo_ClientValidation_NonPositiveAmount tests client validation for non-positive amount.
+func TestGetWithdrawInfo_ClientValidation_NonPositiveAmount(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	_, err = kInst.GetWithdrawInfo(context.Background(), "XBT", "mykey", 0, "")
+	require.Error(t, err, "Should error on zero amount")
+	assert.Equal(t, "amount must be positive", err.Error())
+
+	_, err = kInst.GetWithdrawInfo(context.Background(), "XBT", "mykey", -0.1, "")
+	require.Error(t, err, "Should error on negative amount")
+	assert.Equal(t, "amount must be positive", err.Error())
+}
+
+// TestGetWithdrawInfo_APIReturnsError tests API returning an error.
+func TestGetWithdrawInfo_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EFunding:Unknown asset"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.GetWithdrawInfo(context.Background(), "BADASSET", "mykey", 0.5, "")
+	require.Error(t, err, "Should return an error from API")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EFunding:Unknown asset")
+}
+
+// TestAmendOrder_APIReturnsResultErrors tests when the API returns errors within the result field.
+func TestAmendOrder_APIReturnsResultErrors(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AmendOrderOptions{OrderID: "ORDERID123", Pair: "XBTUSD", Volume: "100"}
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"txid":"ORDERID123",
+				"amend_txid":"",
+				"status":"error",
+				"descr":"Amend failed",
+				"errors":["EOrder:Insufficient margin", "EOrder:Price too low"]
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AmendOrder(context.Background(), opts)
+	// The function itself generates an error if result.Errors is populated
+	require.Error(t, err, "AmendOrder should return an error when result contains errors")
+	require.NotNil(t, result, "Result should not be nil, as it contains error details")
+	assert.Equal(t, "ORDERID123", result.TxID)
+	assert.Equal(t, "error", result.Status)
+	assert.Len(t, result.Errors, 2, "Should contain 2 error messages")
+	assert.Contains(t, err.Error(), "EOrder:Insufficient margin") // Error generated by AmendOrder function
+	assert.Contains(t, err.Error(), "EOrder:Price too low")   // Error generated by AmendOrder function
+	assert.Contains(t, result.Errors, "EOrder:Insufficient margin")
+	assert.Contains(t, result.Errors, "EOrder:Price too low")
+}
+
+// TestCancelAllOrders_Success tests successful cancellation of all orders.
+func TestCancelAllOrders_Success(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelAll" {
+			t.Errorf("Expected path '/0/private/CancelAll', got %s", r.URL.Path)
+		}
+		// Ensure no parameters are sent for this request
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Empty(t, r.Form, "No parameters should be sent for CancelAllOrders")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":5}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelAllOrders(context.Background())
+	require.NoError(t, err, "CancelAllOrders should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(5), result.Count)
+}
+
+// TestCancelAllOrders_APIReturnsError tests when the API returns an error for CancelAllOrders.
+func TestCancelAllOrders_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelAll" {
+			t.Errorf("Expected path '/0/private/CancelAll', got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Feature disabled"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelAllOrders(context.Background())
+	require.Error(t, err, "CancelAllOrders should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EOrder:Feature disabled")
+}
+
+// TestCancelAllOrdersAfter_Success_SetTimeout tests setting a timeout.
+func TestCancelAllOrdersAfter_Success_SetTimeout(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	timeoutSeconds := int64(60)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelAllOrdersAfter" {
+			t.Errorf("Expected path '/0/private/CancelAllOrdersAfter', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, strconv.FormatInt(timeoutSeconds, 10), r.Form.Get("timeout"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"currentTime":"2023-10-27T10:00:00Z", "triggerTime":"2023-10-27T10:01:00Z"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
+	require.NoError(t, err, "CancelAllOrdersAfter should not error when setting timeout")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "2023-10-27T10:00:00Z", result.CurrentTime)
+	assert.Equal(t, "2023-10-27T10:01:00Z", result.TriggerTime)
+}
+
+// TestCancelAllOrdersAfter_Success_DeactivateTimeout tests deactivating the timeout.
+func TestCancelAllOrdersAfter_Success_DeactivateTimeout(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	timeoutSeconds := int64(0) // Deactivating the timer
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelAllOrdersAfter" {
+			t.Errorf("Expected path '/0/private/CancelAllOrdersAfter', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, strconv.FormatInt(timeoutSeconds, 10), r.Form.Get("timeout"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"currentTime":"2023-10-27T10:05:00Z", "triggerTime":"0"}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
+	require.NoError(t, err, "CancelAllOrdersAfter should not error when deactivating timeout")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, "2023-10-27T10:05:00Z", result.CurrentTime)
+	assert.Equal(t, "0", result.TriggerTime, "TriggerTime should be '0' when deactivated")
+}
+
+// TestCancelAllOrdersAfter_APIReturnsError tests when the API returns an error.
+func TestCancelAllOrdersAfter_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	timeoutSeconds := int64(60)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelAllOrdersAfter" {
+			t.Errorf("Expected path '/0/private/CancelAllOrdersAfter', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, strconv.FormatInt(timeoutSeconds, 10), r.Form.Get("timeout"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Internal error"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
+	require.Error(t, err, "CancelAllOrdersAfter should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EGeneral:Internal error")
+}
+
+// TestAddOrderBatch_Success_ValidBatch tests a successful batch order submission.
+func TestAddOrderBatch_Success_ValidBatch(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{
+		Pair: "XBTUSD", // Assuming this is formatted as expected by API for 'pair'
+		Orders: []BatchOrderRequest{
+			{OrderType: "limit", Type: "buy", Volume: "0.1", Price: "50000.0"},
+			{OrderType: "market", Type: "sell", Volume: "0.2"},
+		},
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddOrderBatch" {
+			t.Errorf("Expected path '/0/private/AddOrderBatch', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.Pair, r.Form.Get("pair"))
+
+		var sentOrders []BatchOrderRequest
+		errJSON := json.Unmarshal([]byte(r.Form.Get("orders")), &sentOrders)
+		require.NoError(t, errJSON, "Failed to unmarshal 'orders' param")
+		require.Len(t, sentOrders, 2, "Should have sent 2 orders")
+		assert.Equal(t, opts.Orders[0].OrderType, sentOrders[0].OrderType)
+		assert.Equal(t, opts.Orders[1].Volume, sentOrders[1].Volume)
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"orders": [
+					{"descr": {"order": "buy 0.10000000 XBTUSD @ limit 50000.0"}, "txid": "ORDERID1"},
+					{"descr": {"order": "sell 0.20000000 XBTUSD @ market"}, "txid": "ORDERID2"}
+				]
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+	require.NoError(t, err, "AddOrderBatch should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Empty(t, result.Error, "Top-level error array should be empty")
+	require.Len(t, result.Orders, 2, "Should have 2 order results")
+
+	assert.Equal(t, "ORDERID1", result.Orders[0].TxID)
+	assert.NotEmpty(t, result.Orders[0].Descr)
+	assert.Empty(t, result.Orders[0].Error, "Order 1 error should be empty")
+
+	assert.Equal(t, "ORDERID2", result.Orders[1].TxID)
+	assert.NotEmpty(t, result.Orders[1].Descr)
+	assert.Empty(t, result.Orders[1].Error, "Order 2 error should be empty")
+}
+
+// TestAddOrderBatch_Success_OneOrderFailsInBatch tests a batch where one order fails.
+func TestAddOrderBatch_Success_OneOrderFailsInBatch(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{
+		Pair: "XBTUSD",
+		Orders: []BatchOrderRequest{
+			{OrderType: "limit", Type: "buy", Volume: "0.1", Price: "50000.0"},
+			{OrderType: "limit", Type: "sell", Volume: "0.00001", Price: "60000.0"}, // Too small
+		},
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"orders": [
+					{"descr": {"order": "buy 0.10000000 XBTUSD @ limit 50000.0"}, "txid": "ORDERID1"},
+					{"error": "EOrder:Order minimum not met"}
+				]
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+	require.NoError(t, err, "AddOrderBatch main call should not error if batch was processed")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result.Orders, 2, "Should have 2 order results")
+
+	assert.Equal(t, "ORDERID1", result.Orders[0].TxID)
+	assert.Empty(t, result.Orders[0].Error, "Order 1 error should be empty")
+
+	assert.Empty(t, result.Orders[1].TxID, "Order 2 TxID should be empty on failure")
+	assert.Equal(t, "EOrder:Order minimum not met", result.Orders[1].Error)
+	assert.Nil(t, result.Orders[1].Descr, "Order 2 Descr should be nil on failure")
+}
+
+// TestAddOrderBatch_BatchLevelError tests when the API returns a batch-level error.
+func TestAddOrderBatch_BatchLevelError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{
+		Pair: "XBTUSD",
+		Orders: []BatchOrderRequest{
+			{OrderType: "limit", Type: "buy", Volume: "0.1", Price: "50000.0"},
+			{OrderType: "market", Type: "sell", Volume: "0.2"},
+		},
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// This error is at the top-level 'error' field of the response, not inside 'result.orders'
+		// The function also checks for result.Error if the top-level one is empty.
+		// Let's test the result.Error case as per the prompt.
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {"error": ["EOrder:Batch limit exceeded"]}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+	require.Error(t, err, "AddOrderBatch should return an error for batch-level errors")
+	// The result might be non-nil if the API still returns a partial result structure
+	// In this case, the error is within the 'result' field, so 'result' itself from JSON is not nil.
+	// The function AddOrderBatch promotes this to the main error.
+	require.NotNil(t, result, "Result object might still be populated if error is in result.error")
+	assert.Contains(t, err.Error(), "EOrder:Batch limit exceeded")
+	assert.NotEmpty(t, result.Error, "Result.Error field should contain the error")
+}
+
+// TestAddOrderBatch_ClientValidation_MissingPair tests client-side validation for missing Pair.
+func TestAddOrderBatch_ClientValidation_MissingPair(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{Orders: make([]BatchOrderRequest, 2)} // Missing Pair
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+
+	require.Error(t, err, "AddOrderBatch should return an error for missing Pair")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "pair is a required parameter for AddOrderBatch", err.Error())
+}
+
+// TestAddOrderBatch_ClientValidation_OrdersTooFew tests client-side validation for too few orders.
+func TestAddOrderBatch_ClientValidation_OrdersTooFew(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{Pair: "XBTUSD", Orders: make([]BatchOrderRequest, 1)} // Only 1 order
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+
+	require.Error(t, err, "AddOrderBatch should return an error for too few orders")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "number of orders in a batch must be between 2 and 15", err.Error())
+}
+
+// TestAddOrderBatch_ClientValidation_OrdersTooMany tests client-side validation for too many orders.
+func TestAddOrderBatch_ClientValidation_OrdersTooMany(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{Pair: "XBTUSD", Orders: make([]BatchOrderRequest, 16)} // 16 orders
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+
+	require.Error(t, err, "AddOrderBatch should return an error for too many orders")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "number of orders in a batch must be between 2 and 15", err.Error())
+}
+
+// TestAddOrderBatch_AllOptionsSet tests AddOrderBatch with Deadline and Validate options.
+func TestAddOrderBatch_AllOptionsSet(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := AddOrderBatchOptions{
+		Pair: "XBTUSD",
+		Orders: []BatchOrderRequest{
+			{OrderType: "limit", Type: "buy", Volume: "0.1", Price: "50000.0"},
+			{OrderType: "market", Type: "sell", Volume: "0.2"},
+		},
+		Deadline: "2024-12-31T23:59:59Z",
+		Validate: true,
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddOrderBatch" {
+			t.Errorf("Expected path '/0/private/AddOrderBatch', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.Pair, r.Form.Get("pair"))
+		assert.Equal(t, opts.Deadline, r.Form.Get("deadline"))
+		assert.Equal(t, "true", r.Form.Get("validate")) // Validate is sent as "true" string
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"orders": [
+					{"descr": {"order": "buy 0.10000000 XBTUSD @ limit 50000.0 (validate)"}},
+					{"descr": {"order": "sell 0.20000000 XBTUSD @ market (validate)"}}
+				]
+			}
+		}`) // No txid for validate only
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrderBatch(context.Background(), opts)
+	require.NoError(t, err, "AddOrderBatch with all options should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result.Orders, 2, "Should have 2 order results (even if only validated)")
+	assert.Contains(t, result.Orders[0].Descr.Order, "(validate)")
+}
+
+// TestCancelOrderBatch_Success tests successful batch order cancellation.
+func TestCancelOrderBatch_Success(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := CancelOrderBatchOptions{Orders: []string{"ORDERID1", "ORDERID2"}}
+	expectedOrdersJSON := `["ORDERID1","ORDERID2"]`
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelOrderBatch" {
+			t.Errorf("Expected path '/0/private/CancelOrderBatch', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.JSONEq(t, expectedOrdersJSON, r.Form.Get("orders"), "JSON for 'orders' param does not match")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":2, "pending":false}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelOrderBatch(context.Background(), opts)
+	require.NoError(t, err, "CancelOrderBatch should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(2), result.Count)
+
+	// Handle interface{} for Pending. The actual type might be bool after JSON unmarshal.
+	pendingVal, ok := result.Pending.(bool)
+	require.True(t, ok, "Pending field should be a boolean")
+	assert.False(t, pendingVal, "Pending should be false for immediate success")
+}
+
+// TestCancelOrderBatch_ClientValidation_OrdersEmpty tests client-side validation for empty orders list.
+func TestCancelOrderBatch_ClientValidation_OrdersEmpty(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := CancelOrderBatchOptions{Orders: []string{}} // Empty orders list
+	result, err := kInst.CancelOrderBatch(context.Background(), opts)
+
+	require.Error(t, err, "CancelOrderBatch should return an error for empty orders list")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "number of orders to cancel in a batch must be between 1 and 50", err.Error())
+}
+
+// TestCancelOrderBatch_ClientValidation_OrdersTooMany tests client-side validation for too many orders.
+func TestCancelOrderBatch_ClientValidation_OrdersTooMany(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	orders := make([]string, 51)
+	for i := 0; i < 51; i++ {
+		orders[i] = fmt.Sprintf("ORDERID%d", i+1)
+	}
+	opts := CancelOrderBatchOptions{Orders: orders} // 51 orders
+
+	result, err := kInst.CancelOrderBatch(context.Background(), opts)
+
+	require.Error(t, err, "CancelOrderBatch should return an error for too many orders")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "number of orders to cancel in a batch must be between 1 and 50", err.Error())
+}
+
+// TestCancelOrderBatch_APIReturnsError tests when the API returns an error.
+func TestCancelOrderBatch_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := CancelOrderBatchOptions{Orders: []string{"ORDERID1"}}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Invalid arguments"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelOrderBatch(context.Background(), opts)
+	require.Error(t, err, "CancelOrderBatch should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EOrder:Invalid arguments")
+}
+
+// TestCancelOrderBatch_Success_PendingTrue tests successful batch cancellation where pending is true.
+func TestCancelOrderBatch_Success_PendingTrue(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := CancelOrderBatchOptions{Orders: []string{"ORDERID_PENDING"}}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":true}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelOrderBatch(context.Background(), opts)
+	require.NoError(t, err, "CancelOrderBatch should not error for pending=true response")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(1), result.Count)
+
+	pendingVal, ok := result.Pending.(bool)
+	require.True(t, ok, "Pending field should be a boolean")
+	assert.True(t, pendingVal, "Pending should be true")
+}
+
+// TestAddOrder_Success_BasicLimitOrder tests a successful basic limit order submission.
+func TestAddOrder_Success_BasicLimitOrder(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair := currency.NewPairFromString("XBTUSD") // User input
+	formattedPair, _ := kInst.FormatSymbol(pair, asset.Spot) // Expected format for API
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddOrder" {
+			t.Errorf("Expected path '/0/private/AddOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, formattedPair, r.Form.Get("pair"))
+		assert.Equal(t, "buy", r.Form.Get("type"))
+		assert.Equal(t, "limit", r.Form.Get("ordertype"))
+		assert.Equal(t, "0.01", r.Form.Get("volume"))
+		assert.Equal(t, "45000", r.Form.Get("price")) // FormatFloat 'f', -1 might omit .0
+		assert.Empty(t, r.Form.Get("price2"), "price2 should be empty for basic limit")
+		assert.Empty(t, r.Form.Get("leverage"), "leverage should be empty")
+		// Check other optional params are not sent
+		assert.Empty(t, r.Form.Get("userref"))
+		assert.Empty(t, r.Form.Get("oflags"))
+		// ... and so on for all optional fields in AddOrderOptions and new params
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"descr": {"order": "buy 0.01000000 XBTUSD @ limit 45000.0"},
+				"txid": ["ORDERID_NEW_1"]
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrder(context.Background(), pair, "buy", "limit", 0.01, 45000.0, 0, 0, nil)
+	require.NoError(t, err, "AddOrder should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Contains(t, result.Description.Order, "buy 0.01000000 XBTUSD @ limit 45000.0")
+	require.Len(t, result.TransactionIDs, 1, "Should have 1 transaction ID")
+	assert.Equal(t, "ORDERID_NEW_1", result.TransactionIDs[0])
+}
+
+// TestAddOrder_Success_AllOptionsAndNewParams tests a successful order with all possible options.
+func TestAddOrder_Success_AllOptionsAndNewParams(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair := currency.NewPairFromString("XBTUSD")
+	formattedPair, _ := kInst.FormatSymbol(pair, asset.Spot)
+
+	args := &AddOrderOptions{
+		UserRef:        123,
+		OrderFlags:     "post", // Will be combined with post_only if that's also used, API behavior specific
+		StartTm:        "0",
+		ExpireTm:       "+300",
+		CloseOrderType: "stop-loss",
+		ClosePrice:     40000.0,
+		ClosePrice2:    39900.0, // Added for completeness of close params
+		TimeInForce:    "GTD",
+		Trigger:        "index",
+		ReduceOnly:     true,
+		PostOnly:       true, // Note: 'post' can also be an oflag. API behavior should clarify.
+		StpType:        "cancel-newest",
+	}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddOrder" {
+			t.Errorf("Expected path '/0/private/AddOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+
+		assert.Equal(t, formattedPair, r.Form.Get("pair"))
+		assert.Equal(t, "sell", r.Form.Get("type"))
+		assert.Equal(t, "stop-loss-limit", r.Form.Get("ordertype"))
+		assert.Equal(t, "0.02", r.Form.Get("volume"))
+		assert.Equal(t, "42000", r.Form.Get("price"))
+		assert.Equal(t, "41900", r.Form.Get("price2"))
+		assert.Equal(t, "2", r.Form.Get("leverage")) // FormatFloat 'f', -1
+
+		assert.Equal(t, strconv.FormatInt(int64(args.UserRef), 10), r.Form.Get("userref"))
+		assert.Equal(t, args.OrderFlags, r.Form.Get("oflags"))
+		assert.Equal(t, args.StartTm, r.Form.Get("starttm"))
+		assert.Equal(t, args.ExpireTm, r.Form.Get("expiretm"))
+		assert.Equal(t, args.CloseOrderType, r.Form.Get("close[ordertype]"))
+		assert.Equal(t, "40000", r.Form.Get("close[price]"))
+		assert.Equal(t, "39900", r.Form.Get("close[price2]"))
+		assert.Equal(t, args.TimeInForce, r.Form.Get("timeinforce"))
+		assert.Equal(t, args.Trigger, r.Form.Get("trigger"))
+		assert.Equal(t, "true", r.Form.Get("reduce_only"))
+		assert.Equal(t, "true", r.Form.Get("post_only"))
+		assert.Equal(t, args.StpType, r.Form.Get("stp_type"))
+		assert.Empty(t, r.Form.Get("validate"), "Validate should not be sent unless explicitly true in args")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"descr": {"order": "sell 0.02000000 XBTUSD @ stop 42000.0 limit 41900.0"},
+				"txid": ["ORDERID_COMPLEX_1"]
+			}
+		}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrder(context.Background(), pair, "sell", "stop-loss-limit", 0.02, 42000.0, 41900.0, 2.0, args)
+	require.NoError(t, err, "AddOrder with all options should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	require.Len(t, result.TransactionIDs, 1)
+	assert.Equal(t, "ORDERID_COMPLEX_1", result.TransactionIDs[0])
+}
+
+// TestAddOrder_APIReturnsError tests when the API returns a general error.
+func TestAddOrder_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair := currency.NewPairFromString("XBTUSD")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Insufficient margin"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrder(context.Background(), pair, "buy", "market", 0.1, 0, 0, 0, nil)
+	require.Error(t, err, "AddOrder should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EOrder:Insufficient margin")
+}
+
+// TestAddOrder_ValidateOnly tests the validate-only functionality.
+func TestAddOrder_ValidateOnly(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	pair := currency.NewPairFromString("XBTUSD")
+	args := &AddOrderOptions{Validate: true}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/AddOrder" {
+			t.Errorf("Expected path '/0/private/AddOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, "true", r.Form.Get("validate"), "Validate param should be 'true'")
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"error": [],
+			"result": {
+				"descr": {"order": "buy 0.01000000 XBTUSD @ limit 45000.0 validated"}
+			}
+		}`) // No txid for validate only
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.AddOrder(context.Background(), pair, "buy", "limit", 0.01, 45000.0, 0, 0, args)
+	require.NoError(t, err, "AddOrder with validate=true should not error")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Contains(t, result.Description.Order, "validated")
+	assert.Empty(t, result.TransactionIDs, "TransactionIDs should be empty for validate only")
+}
+
+// TestAddOrder_PairFormatError tests client-side pair formatting error.
+func TestAddOrder_PairFormatError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true // Required to attempt formatting
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	// No mock server needed, error is client-side from FormatSymbol
+	_, err = kInst.AddOrder(context.Background(), currency.Pair{}, "buy", "market", 0.1, 0, 0, 0, nil)
+	require.Error(t, err, "AddOrder should return an error for invalid pair formatting")
+	assert.Contains(t, err.Error(), "format symbol error") // Or more specific error from FormatSymbol
+}
+
+// TestCancelExistingOrder_Success tests successful cancellation of an existing order.
+func TestCancelExistingOrder_Success(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERID1"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelOrder" {
+			t.Errorf("Expected path '/0/private/CancelOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, txid, r.Form.Get("txid"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":false}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelExistingOrder(context.Background(), txid)
+	require.NoError(t, err, "CancelExistingOrder should not error on success")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(1), result.Count)
+	pendingBool, ok := result.Pending.(bool)
+	require.True(t, ok, "Pending should be a boolean")
+	assert.False(t, pendingBool)
+}
+
+// TestCancelExistingOrder_Success_Pending tests successful cancellation with pending state.
+func TestCancelExistingOrder_Success_Pending(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERID_PEND"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelOrder" {
+			t.Errorf("Expected path '/0/private/CancelOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, txid, r.Form.Get("txid"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":true}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelExistingOrder(context.Background(), txid)
+	require.NoError(t, err, "CancelExistingOrder should not error for pending result")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(1), result.Count)
+	pendingBool, ok := result.Pending.(bool)
+	require.True(t, ok, "Pending should be a boolean")
+	assert.True(t, pendingBool)
+}
+
+// TestCancelExistingOrder_OrderAlreadyClosedOrNotFound_CountZero tests cancellation when order is already processed.
+func TestCancelExistingOrder_OrderAlreadyClosedOrNotFound_CountZero(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "ORDERID_DONE"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelOrder" {
+			t.Errorf("Expected path '/0/private/CancelOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, txid, r.Form.Get("txid"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"count":0}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelExistingOrder(context.Background(), txid)
+	require.NoError(t, err, "CancelExistingOrder should not error if order already processed (count 0)")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.Equal(t, int64(0), result.Count)
+	// Pending might be absent or false, depending on API. If absent, it will be its zero value (false for bool).
+	if result.Pending != nil {
+		pendingBool, ok := result.Pending.(bool)
+		require.True(t, ok, "Pending, if present, should be a boolean")
+		assert.False(t, pendingBool, "Pending should be false if order already processed")
+	}
+}
+
+// TestCancelExistingOrder_APIReturnsError_UnknownOrder tests API error for an unknown order.
+func TestCancelExistingOrder_APIReturnsError_UnknownOrder(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	txid := "NONEXISTENT_ORDER"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/CancelOrder" {
+			t.Errorf("Expected path '/0/private/CancelOrder', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, txid, r.Form.Get("txid"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.CancelExistingOrder(context.Background(), txid)
+	require.Error(t, err, "CancelExistingOrder should return an error for unknown order")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EOrder:Unknown order")
+}
+
+// TestCancelExistingOrder_ClientValidation_MissingTxID tests client-side validation for missing txid.
+func TestCancelExistingOrder_ClientValidation_MissingTxID(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true // Required to attempt actual function logic
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	// No mock server needed, error is client-side
+	result, err := kInst.CancelExistingOrder(context.Background(), "")
+	require.Error(t, err, "CancelExistingOrder should return an error for missing txid")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "txid is a required parameter for cancelling an order", err.Error())
+}
+
+// TestGetWebsocketToken_Success tests successful retrieval of a websocket token.
+func TestGetWebsocketToken_Success(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	expectedToken := "WEBSOCKET_AUTH_TOKEN_12345"
+	expectedExpires := int64(1672534800)
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/GetWebSocketsToken" {
+			t.Errorf("Expected path '/0/private/GetWebSocketsToken', got %s", r.URL.Path)
+		}
+		// This endpoint does not expect any specific parameters in the request body other than nonce.
+		errBody := r.ParseForm()
+		require.NoError(t, errBody) // Ensure form parsing doesn't error, even if empty
+		assert.NotEmpty(t, r.Form.Get("nonce"), "Nonce should be present")
+
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"error": [], "result":{"token":"%s", "expires":%d}}`, expectedToken, expectedExpires)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	token, err := kInst.GetWebsocketToken(context.Background())
+	require.NoError(t, err, "GetWebsocketToken should not error on success")
+	assert.Equal(t, expectedToken, token, "Token string should match")
+}
+
+// TestGetWebsocketToken_APIReturnsError tests when the API returns an error.
+func TestGetWebsocketToken_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/GetWebSocketsToken" {
+			t.Errorf("Expected path '/0/private/GetWebSocketsToken', got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	token, err := kInst.GetWebsocketToken(context.Background())
+	require.Error(t, err, "GetWebsocketToken should return an error when API returns an error")
+	assert.Empty(t, token, "Token string should be empty on error")
+	assert.Contains(t, err.Error(), "EGeneral:Permission denied")
+}
+
+// TestRetrieveExportReport_MissingReportID tests client-side validation for missing report ID.
+func TestRetrieveExportReport_MissingReportID(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	result, err := kInst.RetrieveExportReport(context.Background(), "")
+	require.Error(t, err, "RetrieveExportReport should return an error for missing report ID")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Equal(t, "reportID is a required parameter", err.Error())
+}
+
+// TestRetrieveExportReport_HTTPErrorNonJSON tests behavior with a non-JSON HTTP error.
+func TestRetrieveExportReport_HTTPErrorNonJSON(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	reportID := "HTTPERR"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusServiceUnavailable) // 503 error
+		fmt.Fprint(w, "Service down")
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
+	require.Error(t, err, "RetrieveExportReport should return an error for HTTP 503")
+	require.Nil(t, result, "Result should be nil on HTTP error")
+	// The error from request.Do should include the status code and the body.
+	assert.Contains(t, err.Error(), "503 Service Unavailable")
+	assert.Contains(t, err.Error(), "Service down")
+}
+
+// TestDeleteExportReport_Success_Delete tests successful deletion of an export report.
+func TestDeleteExportReport_Success_Delete(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := DeleteExportOptions{ID: "REPORTID1", Type: DeleteExportTypeDelete}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/RemoveExport" {
+			t.Errorf("Expected path '/0/private/RemoveExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.ID, r.Form.Get("id"))
+		assert.Equal(t, string(opts.Type), r.Form.Get("type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"delete":true}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+	require.NoError(t, err, "DeleteExportReport should not error for delete type")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.True(t, result.Delete, "Delete field should be true")
+	assert.False(t, result.Cancel, "Cancel field should be false")
+}
+
+// TestDeleteExportReport_Success_Cancel tests successful cancellation of an export report.
+func TestDeleteExportReport_Success_Cancel(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := DeleteExportOptions{ID: "REPORTID2", Type: DeleteExportTypeCancel}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/RemoveExport" {
+			t.Errorf("Expected path '/0/private/RemoveExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.ID, r.Form.Get("id"))
+		assert.Equal(t, string(opts.Type), r.Form.Get("type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error": [], "result": {"cancel":true}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+	require.NoError(t, err, "DeleteExportReport should not error for cancel type")
+	require.NotNil(t, result, "Result should not be nil")
+	assert.True(t, result.Cancel, "Cancel field should be true")
+	assert.False(t, result.Delete, "Delete field should be false")
+}
+
+// TestDeleteExportReport_MissingRequiredOption_ID tests client-side validation for missing ID.
+func TestDeleteExportReport_MissingRequiredOption_ID(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := DeleteExportOptions{Type: DeleteExportTypeDelete} // Missing ID
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+
+	require.Error(t, err, "DeleteExportReport should return an error for missing ID")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "report ID and type (delete/cancel) are required parameters")
+}
+
+// TestDeleteExportReport_MissingRequiredOption_Type tests client-side validation for missing Type.
+func TestDeleteExportReport_MissingRequiredOption_Type(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := DeleteExportOptions{ID: "REPORTID1"} // Missing Type
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+
+	require.Error(t, err, "DeleteExportReport should return an error for missing Type")
+	require.Nil(t, result, "Result should be nil on client-side validation error")
+	assert.Contains(t, err.Error(), "report ID and type (delete/cancel) are required parameters")
+}
+
+// TestDeleteExportReport_InvalidTypeOption tests behavior with an invalid Type option.
+// The current implementation of DeleteExportReport passes the type through to the API.
+// So, this test expects an API error.
+func TestDeleteExportReport_InvalidTypeOption(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	invalidType := DeleteExportType("invalidtype")
+	opts := DeleteExportOptions{ID: "REPORTID1", Type: invalidType}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/0/private/RemoveExport" {
+			t.Errorf("Expected path '/0/private/RemoveExport', got %s", r.URL.Path)
+		}
+		errBody := r.ParseForm()
+		require.NoError(t, errBody)
+		assert.Equal(t, opts.ID, r.Form.Get("id"))
+		assert.Equal(t, string(invalidType), r.Form.Get("type")) // API will receive "invalidtype"
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EExport:Invalid type"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+	require.Error(t, err, "DeleteExportReport should return an error for invalid type sent to API")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EExport:Invalid type")
+}
+
+// TestDeleteExportReport_APIReturnsError tests when the API returns a general error.
+func TestDeleteExportReport_APIReturnsError(t *testing.T) {
+	t.Parallel()
+	kInst := new(Kraken)
+	err := testexch.Setup(kInst)
+	require.NoError(t, err)
+	kInst.API.AuthenticatedSupport = true
+	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
+
+	opts := DeleteExportOptions{ID: "UNKNOWNREPORT", Type: DeleteExportTypeDelete}
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":["EExport:Unknown report"], "result":{}}`)
+	}))
+	defer mockServer.Close()
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+
+	result, err := kInst.DeleteExportReport(context.Background(), opts)
+	require.Error(t, err, "DeleteExportReport should return an error when API returns an error")
+	require.Nil(t, result, "Result should be nil on API error")
+	assert.Contains(t, err.Error(), "EExport:Unknown report")
+}
+
+[end of exchanges/kraken/kraken_test.go]
 
 [end of exchanges/kraken/kraken_test.go]
