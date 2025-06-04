@@ -534,7 +534,7 @@ func (k *Kraken) UpdateAccountInfo(ctx context.Context, assetType asset.Item) (a
 	}
 	switch assetType {
 	case asset.Spot:
-		bal, err := k.GetBalance(ctx)
+		bal, err := k.GetExtendedBalance(ctx)
 		if err != nil {
 			return info, err
 		}
@@ -594,7 +594,7 @@ func (k *Kraken) GetAccountFundingHistory(_ context.Context) ([]exchange.Funding
 
 // GetWithdrawalsHistory returns previous withdrawals data
 func (k *Kraken) GetWithdrawalsHistory(ctx context.Context, c currency.Code, _ asset.Item) ([]exchange.WithdrawalHistory, error) {
-	withdrawals, err := k.WithdrawStatus(ctx, c, "")
+	withdrawals, err := k.WithdrawStatus(ctx, WithdrawStatusOptions{Asset: c.String()})
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +602,7 @@ func (k *Kraken) GetWithdrawalsHistory(ctx context.Context, c currency.Code, _ a
 	for i := range withdrawals {
 		resp[i] = exchange.WithdrawalHistory{
 			Status:          withdrawals[i].Status,
-			TransferID:      withdrawals[i].Refid,
+			TransferID:      withdrawals[i].RefID,
 			Timestamp:       time.Unix(int64(withdrawals[i].Time), 0),
 			Amount:          withdrawals[i].Amount,
 			Fee:             withdrawals[i].Fee,
@@ -941,8 +941,8 @@ func (k *Kraken) GetOrderInfo(ctx context.Context, orderID string, _ currency.Pa
 			Pair:            p,
 			Side:            side,
 			Type:            oType,
-			Date:            convert.TimeFromUnixTimestampDecimal(orderInfo.OpenTime),
-			CloseTime:       convert.TimeFromUnixTimestampDecimal(orderInfo.CloseTime),
+			Date:            orderInfo.OpenTime.Time(),
+			CloseTime:       orderInfo.CloseTime.Time(),
 			Status:          status,
 			Price:           price,
 			Amount:          orderInfo.Volume,
@@ -999,7 +999,7 @@ func (k *Kraken) GetOrderInfo(ctx context.Context, orderID string, _ currency.Pa
 // GetDepositAddress returns a deposit address for a specified currency
 func (k *Kraken) GetDepositAddress(ctx context.Context, cryptocurrency currency.Code, _, chain string) (*deposit.Address, error) {
 	if chain == "" {
-		methods, err := k.GetDepositMethods(ctx, cryptocurrency.String())
+		methods, err := k.GetDepositMethods(ctx, cryptocurrency.String(), chain)
 		if err != nil {
 			return nil, err
 		}
@@ -1009,10 +1009,10 @@ func (k *Kraken) GetDepositAddress(ctx context.Context, cryptocurrency currency.
 		chain = methods[0].Method
 	}
 
-	depositAddr, err := k.GetCryptoDepositAddress(ctx, chain, cryptocurrency.String(), false)
+	depositAddr, err := k.GetCryptoDepositAddress(ctx, cryptocurrency.String(), chain, false, "", "")
 	if err != nil {
 		if strings.Contains(err.Error(), "no addresses returned") {
-			depositAddr, err = k.GetCryptoDepositAddress(ctx, chain, cryptocurrency.String(), true)
+			depositAddr, err = k.GetCryptoDepositAddress(ctx, cryptocurrency.String(), chain, true, "", "")
 			if err != nil {
 				return nil, err
 			}
@@ -1035,7 +1035,11 @@ func (k *Kraken) WithdrawCryptocurrencyFunds(ctx context.Context, withdrawReques
 	v, err := k.Withdraw(ctx,
 		withdrawRequest.Currency.String(),
 		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+		withdrawRequest.Amount,
+		"",
+		0,
+		"",
+		withdrawRequest.Crypto.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -1053,7 +1057,11 @@ func (k *Kraken) WithdrawFiatFunds(ctx context.Context, withdrawRequest *withdra
 	v, err := k.Withdraw(ctx,
 		withdrawRequest.Currency.String(),
 		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+		withdrawRequest.Amount,
+		"",
+		0,
+		"",
+		withdrawRequest.Crypto.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,7 +1079,11 @@ func (k *Kraken) WithdrawFiatFundsToInternationalBank(ctx context.Context, withd
 	v, err := k.Withdraw(ctx,
 		withdrawRequest.Currency.String(),
 		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+		withdrawRequest.Amount,
+		"",
+		0,
+		"",
+		withdrawRequest.Crypto.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -1143,7 +1155,7 @@ func (k *Kraken) GetActiveOrders(ctx context.Context, req *order.MultiOrderReque
 				RemainingAmount: resp.Open[i].Volume - resp.Open[i].VolumeExecuted,
 				ExecutedAmount:  resp.Open[i].VolumeExecuted,
 				Exchange:        k.Name,
-				Date:            convert.TimeFromUnixTimestampDecimal(resp.Open[i].OpenTime),
+				Date:            resp.Open[i].OpenTime.Time(),
 				Price:           resp.Open[i].Description.Price,
 				Side:            side,
 				Type:            orderType,
@@ -1276,8 +1288,8 @@ func (k *Kraken) GetOrderHistory(ctx context.Context, getOrdersRequest *order.Mu
 				Cost:            resp.Closed[i].Cost,
 				CostAsset:       p.Quote,
 				Exchange:        k.Name,
-				Date:            convert.TimeFromUnixTimestampDecimal(resp.Closed[i].OpenTime),
-				CloseTime:       convert.TimeFromUnixTimestampDecimal(resp.Closed[i].CloseTime),
+				Date:            resp.Closed[i].OpenTime.Time(),
+				CloseTime:       resp.Closed[i].CloseTime.Time(),
 				Price:           resp.Closed[i].Description.Price,
 				Side:            side,
 				Status:          status,
@@ -1549,7 +1561,7 @@ func compatibleFillOrderType(fillType string) (order.Type, error) {
 // GetAvailableTransferChains returns the available transfer blockchains for the specific
 // cryptocurrency
 func (k *Kraken) GetAvailableTransferChains(ctx context.Context, cryptocurrency currency.Code) ([]string, error) {
-	methods, err := k.GetDepositMethods(ctx, cryptocurrency.String())
+	methods, err := k.GetDepositMethods(ctx, cryptocurrency.String(), "")
 	if err != nil {
 		return nil, err
 	}

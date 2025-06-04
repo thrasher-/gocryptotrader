@@ -236,12 +236,6 @@ type FuturesOrderbookData struct {
 	} `json:"orderBook"`
 }
 
-// TimeResponse type
-type TimeResponse struct {
-	Unixtime int64  `json:"unixtime"`
-	Rfc1123  string `json:"rfc1123"`
-}
-
 // FuturesInstrumentData stores info for futures market
 type FuturesInstrumentData struct {
 	Instruments []struct {

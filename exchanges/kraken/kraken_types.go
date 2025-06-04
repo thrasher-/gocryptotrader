@@ -55,7 +55,7 @@ const (
 
 // SystemStatusResponse defines the response for the system status endpoint
 type SystemStatusResponse struct {
-	Status    string `json:"status"` // online, maintenance, cancel_only, post_only
+	Status    string `json:"status"`    // online, maintenance, cancel_only, post_only
 	Timestamp string `json:"timestamp"` // Current server time
 }
 
@@ -145,7 +145,7 @@ type TickerResponse struct {
 	Trades                     [2]int64        `json:"t"`
 	Low                        [2]types.Number `json:"l"`
 	High                       [2]types.Number `json:"h"`
-	Open                       [2]types.Number    `json:"o"`
+	Open                       types.Number    `json:"o"`
 }
 
 // OpenHighLowClose contains ticker event information
@@ -217,13 +217,13 @@ type TradeBalanceInfo struct {
 
 // OrderInfo type
 type OrderInfo struct {
-	RefID       string  `json:"refid"`
-	UserRef     int32   `json:"userref"`
-	Status      string  `json:"status"`
-	OpenTime    int64   `json:"opentm"`
-	CloseTime   int64   `json:"closetm"`
-	StartTime   int64   `json:"starttm"`
-	ExpireTime  int64   `json:"expiretm"`
+	RefID       string     `json:"refid"`
+	UserRef     int32      `json:"userref"`
+	Status      string     `json:"status"`
+	OpenTime    types.Time `json:"opentm"`
+	CloseTime   types.Time `json:"closetm"`
+	StartTime   types.Time `json:"starttm"`
+	ExpireTime  types.Time `json:"expiretm"`
 	Description struct {
 		Pair      string  `json:"pair"`
 		Type      string  `json:"type"`
@@ -244,12 +244,12 @@ type OrderInfo struct {
 	Misc           string   `json:"misc"`
 	OrderFlags     string   `json:"oflags"`
 	Trades         []string `json:"trades"`
-		Reason         string   `json:"reason,omitempty"` // Added
+	Reason         string   `json:"reason,omitempty"` // Added
 }
 
 // OpenOrders type
 type OpenOrders struct {
-	Open  map[string]OrderInfo `json:"open"`
+	Open map[string]OrderInfo `json:"open"`
 }
 
 // ClosedOrders type
@@ -303,14 +303,14 @@ type TradeInfo struct {
 	Volume                     float64  `json:"vol,string"`
 	Margin                     float64  `json:"margin,string"`
 	Misc                       string   `json:"misc"`
-	PosTxID                    string   `json:"postxid,omitempty"` // Added omitempty
-	ClosedPositionAveragePrice float64  `json:"cprice,string,omitempty"` // Added omitempty
-	ClosedPositionFee          float64  `json:"cfee,string,omitempty"`   // Added omitempty
-	ClosedPositionVolume       float64  `json:"cvol,string,omitempty"`   // Added omitempty
-	ClosedPositionMargin       float64  `json:"cmargin,string,omitempty"`// Added omitempty
-	Net                        float64  `json:"net,string,omitempty"`    // Added
-	Trades                     []string `json:"trades,omitempty"`        // Added omitempty
-	PosStatus                  string   `json:"posstatus,omitempty"`     // Added omitempty
+	PosTxID                    string   `json:"postxid,omitempty"`        // Added omitempty
+	ClosedPositionAveragePrice float64  `json:"cprice,string,omitempty"`  // Added omitempty
+	ClosedPositionFee          float64  `json:"cfee,string,omitempty"`    // Added omitempty
+	ClosedPositionVolume       float64  `json:"cvol,string,omitempty"`    // Added omitempty
+	ClosedPositionMargin       float64  `json:"cmargin,string,omitempty"` // Added omitempty
+	Net                        float64  `json:"net,string,omitempty"`     // Added
+	Trades                     []string `json:"trades,omitempty"`         // Added omitempty
+	PosStatus                  string   `json:"posstatus,omitempty"`      // Added omitempty
 }
 
 // Position holds the opened position
@@ -326,7 +326,7 @@ type Position struct {
 	VolumeClosed float64 `json:"vol_closed,string"`
 	Margin       float64 `json:"margin,string"`
 	Value        float64 `json:"value,string,omitempty"` // Added
-	Net          string  `json:"net,omitempty"`        // Added omitempty, type was already string
+	Net          string  `json:"net,omitempty"`          // Added omitempty, type was already string
 	RolloverTime int64   `json:"rollovertm,string"`
 	Misc         string  `json:"misc"`
 	OrderFlags   string  `json:"oflags"`
@@ -347,7 +347,7 @@ type GetLedgersOptions struct {
 // Ledgers type
 type Ledgers struct {
 	Ledger map[string]LedgerInfo `json:"ledger"`
-	Count  string                `json:"count"`  // Changed from int64 to string
+	Count  string                `json:"count"` // Changed from int64 to string
 }
 
 // LedgerInfo type
@@ -371,19 +371,19 @@ type GetOrderAmendsOptions struct {
 
 // OrderAmendEntry represents a single amend transaction.
 type OrderAmendEntry struct {
-	TxID       string  `json:"txid"`        // Amend transaction ID
-	OrderID    string  `json:"order_id"`    // Order ID
-	AmendID    string  `json:"amend_id"`    // Unique ID for this amend
-	AmendType  string  `json:"amend_type"`  // Type of amend
-	NewPrice   string  `json:"new_price,omitempty"`
-	OrigPrice  string  `json:"orig_price,omitempty"`
-	NewVolume  string  `json:"new_volume,omitempty"`
-	OrigVolume string  `json:"orig_volume,omitempty"`
-	Timestamp  int64   `json:"timestamp"`   // Unix timestamp
-	UserRef    int32   `json:"userref,omitempty"`
-	Pair       string  `json:"pair,omitempty"`
-	Fee        string  `json:"fee,omitempty"`
-	Error      string  `json:"error,omitempty"`
+	TxID       string `json:"txid"`       // Amend transaction ID
+	OrderID    string `json:"order_id"`   // Order ID
+	AmendID    string `json:"amend_id"`   // Unique ID for this amend
+	AmendType  string `json:"amend_type"` // Type of amend
+	NewPrice   string `json:"new_price,omitempty"`
+	OrigPrice  string `json:"orig_price,omitempty"`
+	NewVolume  string `json:"new_volume,omitempty"`
+	OrigVolume string `json:"orig_volume,omitempty"`
+	Timestamp  int64  `json:"timestamp"` // Unix timestamp
+	UserRef    int32  `json:"userref,omitempty"`
+	Pair       string `json:"pair,omitempty"`
+	Fee        string `json:"fee,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // GetOrderAmendsResponse represents the response from the GetOrderAmends endpoint.
@@ -439,9 +439,9 @@ type ExportReportInfo struct {
 	Status      string             `json:"status"`
 	Flags       string             `json:"flags,omitempty"`
 	Fields      string             `json:"fields"`
-	CreatedTm   int64              `json:"createdtm,string"` // Timestamp string
-	StartTm     int64              `json:"starttm,string"`   // Timestamp string
-	EndTm       int64              `json:"endtm,string"`     // Timestamp string
+	CreatedTm   int64              `json:"createdtm,string"`             // Timestamp string
+	StartTm     int64              `json:"starttm,string"`               // Timestamp string
+	EndTm       int64              `json:"endtm,string"`                 // Timestamp string
 	CompletedTm int64              `json:"completedtm,string,omitempty"` // Timestamp string
 	DataStartTm int64              `json:"datastarttm,string,omitempty"` // Timestamp string
 	DataEndTm   int64              `json:"dataendtm,string,omitempty"`   // Timestamp string
@@ -471,26 +471,26 @@ type DeleteExportResponse struct {
 
 // AmendOrderOptions represents the parameters for amending an order.
 type AmendOrderOptions struct {
-	OrderID        string  // Required: Original order ID
-	UserRef        int32   // Optional: User reference ID of the original order
-	Pair           string  // Required: Asset pair
-	Volume         string  // Optional: New order volume (as string to preserve precision)
-	Price          string  // Optional: New primary price (as string)
-	Price2         string  // Optional: New secondary price (as string)
-	OFlags         string  // Optional: Comma-delimited list of order flags
-	Deadline       string  // Optional: RFC3339 timestamp for order cancellation
-	CancelResponse bool    // Optional: If true, response includes cancel_txid if amend cancels order
-	Validate       bool    // Optional: Validate inputs only; do not submit order (send as "true" string if true)
+	OrderID        string // Required: Original order ID
+	UserRef        int32  // Optional: User reference ID of the original order
+	Pair           string // Required: Asset pair
+	Volume         string // Optional: New order volume (as string to preserve precision)
+	Price          string // Optional: New primary price (as string)
+	Price2         string // Optional: New secondary price (as string)
+	OFlags         string // Optional: Comma-delimited list of order flags
+	Deadline       string // Optional: RFC3339 timestamp for order cancellation
+	CancelResponse bool   // Optional: If true, response includes cancel_txid if amend cancels order
+	Validate       bool   // Optional: Validate inputs only; do not submit order (send as "true" string if true)
 }
 
 // AmendOrderResponse represents the response from amending an order.
 type AmendOrderResponse struct {
-	TxID       string   `json:"txid"`                 // Original order ID
-	AmendTxID  string   `json:"amend_txid"`           // Unique Kraken amend identifier
-	Status     string   `json:"status"`               // Status of the amend request
-	Descr      string   `json:"descr"`                // Human-readable description
-	CancelTxID string   `json:"cancel_txid,omitempty"`// If amend resulted in cancellation
-	Errors     []string `json:"errors,omitempty"`     // List of errors if any
+	TxID       string   `json:"txid"`                  // Original order ID
+	AmendTxID  string   `json:"amend_txid"`            // Unique Kraken amend identifier
+	Status     string   `json:"status"`                // Status of the amend request
+	Descr      string   `json:"descr"`                 // Human-readable description
+	CancelTxID string   `json:"cancel_txid,omitempty"` // If amend resulted in cancellation
+	Errors     []string `json:"errors,omitempty"`      // List of errors if any
 }
 
 // CancelAllOrdersResponse represents the response from cancelling all open orders.
@@ -508,18 +508,18 @@ type CancelAllOrdersAfterResponse struct {
 // Fields are similar to AddOrderOptions, but types are adjusted for JSON array embedding.
 // All prices and volumes should be strings to maintain precision.
 type BatchOrderRequest struct {
-	OrderType      string `json:"ordertype"` // e.g., "limit", "market"
-	Type           string `json:"type"`      // "buy" or "sell"
-	Volume         string `json:"volume"`
-	Price          string `json:"price,omitempty"`
-	Price2         string `json:"price2,omitempty"`
-	Leverage       string `json:"leverage,omitempty"`
-	OFlags         string `json:"oflags,omitempty"`
-	StartTm        string `json:"starttm,omitempty"`  // Scheduled start time (0 or null for no schedule)
-	ExpireTm       string `json:"expiretm,omitempty"` // Expiration time (0 or null for no expiration)
-	UserRef        int32  `json:"userref,omitempty"`  // User reference ID (Ensure this can be omitted if 0)
-	Validate       string `json:"validate,omitempty"` // "true" or "false" (or omitted)
-	TimeInForce    string `json:"timeinforce,omitempty"` // e.g., GTC, IOC, GTD
+	OrderType   string `json:"ordertype"` // e.g., "limit", "market"
+	Type        string `json:"type"`      // "buy" or "sell"
+	Volume      string `json:"volume"`
+	Price       string `json:"price,omitempty"`
+	Price2      string `json:"price2,omitempty"`
+	Leverage    string `json:"leverage,omitempty"`
+	OFlags      string `json:"oflags,omitempty"`
+	StartTm     string `json:"starttm,omitempty"`     // Scheduled start time (0 or null for no schedule)
+	ExpireTm    string `json:"expiretm,omitempty"`    // Expiration time (0 or null for no expiration)
+	UserRef     int32  `json:"userref,omitempty"`     // User reference ID (Ensure this can be omitted if 0)
+	Validate    string `json:"validate,omitempty"`    // "true" or "false" (or omitted)
+	TimeInForce string `json:"timeinforce,omitempty"` // e.g., GTC, IOC, GTD
 	// Conditional close parameters
 	CloseOrderType string `json:"close[ordertype],omitempty"`
 	ClosePrice     string `json:"close[price],omitempty"`
@@ -528,8 +528,8 @@ type BatchOrderRequest struct {
 
 // AddOrderBatchOptions represents parameters for the AddOrderBatch endpoint.
 type AddOrderBatchOptions struct {
-	Pair     string              `json:"pair"`    // Required
-	Orders   []BatchOrderRequest `json:"orders"`  // Required, JSON encoded string for the form field
+	Pair     string              `json:"pair"`               // Required
+	Orders   []BatchOrderRequest `json:"orders"`             // Required, JSON encoded string for the form field
 	Deadline string              `json:"deadline,omitempty"` // Optional RFC3339 timestamp
 	Validate bool                `json:"validate,omitempty"` // Optional: Validate inputs only (send as "true" string if true)
 }
@@ -595,10 +595,10 @@ type WithdrawResponse struct {
 // DepositMethods Used to check deposit fees/methods
 type DepositMethods struct {
 	Method          string  `json:"method"`
-	Limit           any     `json:"limit"` // string or false
-	Fee             float64 `json:"fee,string,omitempty"` // Optional
+	Limit           any     `json:"limit"`                              // string or false
+	Fee             float64 `json:"fee,string,omitempty"`               // Optional
 	AddressSetupFee float64 `json:"address-setup-fee,string,omitempty"` // Optional
-	GenAddress      bool    `json:"gen-address"` // Whether a new address can be generated
+	GenAddress      bool    `json:"gen-address"`                        // Whether a new address can be generated
 }
 
 // OrderDescription represents an orders description
@@ -697,8 +697,8 @@ type WithdrawStatusResponse struct {
 	Fee           float64  `json:"fee,string"`
 	Time          int64    `json:"time"` // Changed from float64
 	Status        string   `json:"status"`
-	StatusProp    string   `json:"status-prop,omitempty"` // Added
-	Originators   []string `json:"originators,omitempty"` // Added
+	StatusProp    string   `json:"status-prop,omitempty"`   // Added
+	Originators   []string `json:"originators,omitempty"`   // Added
 	Beneficiaries []string `json:"beneficiaries,omitempty"` // Added
 }
 
@@ -767,13 +767,13 @@ type WithdrawalAddressOptions struct {
 
 // WithdrawalAddress represents a single withdrawal address.
 type WithdrawalAddress struct {
-	Address  string `json:"address"`  // Withdrawal address
-	Asset    string `json:"asset"`    // Asset of the address
-	Aclass   string `json:"aclass"`   // Asset class
-	Network  string `json:"network"`  // Network of the address
-	Key      string `json:"key"`      // Withdrawal key name
-	Verified bool   `json:"verified"` // Whether the address is verified
-	Method   string `json:"method"`   // Method name associated with this address
+	Address  string `json:"address"`        // Withdrawal address
+	Asset    string `json:"asset"`          // Asset of the address
+	Aclass   string `json:"aclass"`         // Asset class
+	Network  string `json:"network"`        // Network of the address
+	Key      string `json:"key"`            // Withdrawal key name
+	Verified bool   `json:"verified"`       // Whether the address is verified
+	Method   string `json:"method"`         // Method name associated with this address
 	Memo     string `json:"memo,omitempty"` // Memo/tag for the address, if applicable
 }
 
@@ -848,18 +848,18 @@ type AllocationRestrictionInfo struct {
 
 // EarnStrategy represents a single Earn strategy.
 type EarnStrategy struct {
-	ID                        string                       `json:"id"`          // Unique ID for the strategy
-	Asset                     string                       `json:"asset"`       // Asset of the strategy
-	LockType                  string                       `json:"lock_type"`   // flex, bonded, or instant
-	APREstimate               APREstimate                  `json:"apr_estimate"`
-	UserMinAllocation         string                       `json:"user_min_allocation"` // Minimum amount user can allocate (string repr of number)
-	AllocationAsset           string                       `json:"allocation_asset"`
-	DeallocationAsset         string                       `json:"deallocation_asset"`
-	CanAllocate               bool                         `json:"can_allocate"`
-	CanDeallocate             bool                         `json:"can_deallocate"`
-	IsHidden                  bool                         `json:"is_hidden"`
-	YieldSource               YieldSource                  `json:"yield_source"`
-	Bonding                   *BondingInfo                 `json:"bonding,omitempty"` // Optional
+	ID                        string                     `json:"id"`        // Unique ID for the strategy
+	Asset                     string                     `json:"asset"`     // Asset of the strategy
+	LockType                  string                     `json:"lock_type"` // flex, bonded, or instant
+	APREstimate               APREstimate                `json:"apr_estimate"`
+	UserMinAllocation         string                     `json:"user_min_allocation"` // Minimum amount user can allocate (string repr of number)
+	AllocationAsset           string                     `json:"allocation_asset"`
+	DeallocationAsset         string                     `json:"deallocation_asset"`
+	CanAllocate               bool                       `json:"can_allocate"`
+	CanDeallocate             bool                       `json:"can_deallocate"`
+	IsHidden                  bool                       `json:"is_hidden"`
+	YieldSource               YieldSource                `json:"yield_source"`
+	Bonding                   *BondingInfo               `json:"bonding,omitempty"`                     // Optional
 	AllocationRestrictionInfo *AllocationRestrictionInfo `json:"allocation_restriction_info,omitempty"` // Optional
 }
 
@@ -879,19 +879,19 @@ type ListEarnAllocationsOptions struct {
 
 // BondingStatus represents the status of funds in bonding, unbonding, or exit_queue.
 type BondingStatus struct {
-	Amount            string `json:"amount"`                        // Amount in native_asset
-	AmountConverted   string `json:"amount_converted,omitempty"`    // Amount in converted_asset
-	Expires           int64  `json:"expires,omitempty"`           // Unix timestamp when period ends
-	AccruedRewards    string `json:"accrued_rewards,omitempty"`   // (Not explicitly in listAllocations doc, but common for such states)
-	RewardsAccruing   bool   `json:"rewards_accruing,omitempty"`  // (Not explicitly in listAllocations doc)
+	Amount          string `json:"amount"`                     // Amount in native_asset
+	AmountConverted string `json:"amount_converted,omitempty"` // Amount in converted_asset
+	Expires         int64  `json:"expires,omitempty"`          // Unix timestamp when period ends
+	AccruedRewards  string `json:"accrued_rewards,omitempty"`  // (Not explicitly in listAllocations doc, but common for such states)
+	RewardsAccruing bool   `json:"rewards_accruing,omitempty"` // (Not explicitly in listAllocations doc)
 }
 
 // EarnAllocation represents a single Earn allocation.
 type EarnAllocation struct {
 	StrategyID              string         `json:"strategy_id"`
 	NativeAsset             string         `json:"native_asset"`
-	TotalAllocated          string         `json:"total_allocated"`           // In native_asset
-	TotalRewarded           string         `json:"total_rewarded"`            // In native_asset
+	TotalAllocated          string         `json:"total_allocated"` // In native_asset
+	TotalRewarded           string         `json:"total_rewarded"`  // In native_asset
 	NextRewardTimestamp     int64          `json:"next_reward_timestamp,omitempty"`
 	ConvertedAsset          string         `json:"converted_asset,omitempty"` // If conversion was requested
 	TotalAllocatedConverted string         `json:"total_allocated_converted,omitempty"`

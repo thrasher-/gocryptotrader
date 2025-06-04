@@ -114,7 +114,7 @@ func (k *Kraken) AddOrderBatch(ctx context.Context, opts AddOrderBatchOptions) (
 
 	// Check for top-level batch errors
 	if len(result.Error) > 0 {
-		 return &result, fmt.Errorf("kraken API batch error: %s", strings.Join(result.Error, ", "))
+		return &result, fmt.Errorf("kraken API batch error: %s", strings.Join(result.Error, ", "))
 	}
 	return &result, nil
 }
@@ -136,7 +136,7 @@ func (k *Kraken) CancelAllOrdersAfter(ctx context.Context, timeout int64) (*Canc
 }
 
 // CancelAllOrders cancels all open spot orders.
-func (k *Kraken) CancelAllOrders(ctx context.Context) (*CancelAllOrdersResponse, error) {
+func (k *Kraken) CancelAllOrdersAPI(ctx context.Context) (*CancelAllOrdersResponse, error) {
 	const methodSpecificPath = "CancelAll"
 	requestPath := "/" + krakenAPIVersion + "/private/" + methodSpecificPath
 
@@ -172,7 +172,7 @@ func (k *Kraken) RequestExportReport(ctx context.Context, opts RequestExportRepo
 		params.Set("endtm", strconv.FormatInt(opts.EndTm, 10))
 	}
 	if opts.Asset != "" {
-		 params.Set("asset", opts.Asset)
+		params.Set("asset", opts.Asset)
 	}
 
 	var result RequestExportReportResponse
@@ -316,7 +316,7 @@ func (k *Kraken) GetTicker(ctx context.Context, symbol currency.Pair) (*Ticker, 
 		tick.Trades = v.Trades[1]
 		tick.Low = v.Low[1].Float64()
 		tick.High = v.High[1].Float64()
-	tick.Open = v.Open[0].Float64()
+		tick.Open = v.Open.Float64()
 	}
 	return &tick, nil
 }
@@ -356,7 +356,7 @@ func (k *Kraken) GetTickers(ctx context.Context, pairList string) (map[string]Ti
 			Trades:                     v.Trades[1],
 			Low:                        v.Low[1].Float64(),
 			High:                       v.High[1].Float64(),
-			Open:                       v.Open[0].Float64(), // Adjusted
+			Open:                       v.Open.Float64(), // Adjusted
 		}
 	}
 	return tickers, nil
@@ -1033,15 +1033,14 @@ func (k *Kraken) AddOrder(ctx context.Context, symbol currency.Pair, side, order
 	// Volume is required for most types, handle if 0 is not allowed by API for those.
 	// Current code sends it as is. The API might reject if volume is missing for non-settle-position orders.
 	if volume > 0 { // Only set volume if it's greater than 0, API might require it for non-settle.
-		 params.Set("volume", strconv.FormatFloat(volume, 'f', -1, 64))
+		params.Set("volume", strconv.FormatFloat(volume, 'f', -1, 64))
 	}
-
 
 	// Price and Price2 are optional depending on order type
-	if orderType == order.Limit.Lower() || orderType == order.StopLossLimit.Lower() || orderType == order.TakeProfitLimit.Lower() || price > 0 {
+	if orderType == order.Limit.Lower() || orderType == order.StopLimit.Lower() || orderType == order.TakeProfit.Lower() || price > 0 {
 		params.Set("price", strconv.FormatFloat(price, 'f', -1, 64))
 	}
-	if (orderType == order.StopLossLimit.Lower() || orderType == order.TakeProfitLimit.Lower()) || price2 > 0 {
+	if (orderType == order.StopLimit.Lower() || orderType == order.TakeProfit.Lower()) || price2 > 0 {
 		params.Set("price2", strconv.FormatFloat(price2, 'f', -1, 64))
 	}
 	if leverage > 0 { // Leverage is optional, 0 means no leverage or not applicable
@@ -1050,7 +1049,7 @@ func (k *Kraken) AddOrder(ctx context.Context, symbol currency.Pair, side, order
 
 	if args != nil {
 		if args.UserRef != 0 {
-			 params.Set("userref", strconv.FormatInt(int64(args.UserRef), 10))
+			params.Set("userref", strconv.FormatInt(int64(args.UserRef), 10))
 		}
 		if args.OrderFlags != "" {
 			params.Set("oflags", args.OrderFlags)
@@ -1091,6 +1090,7 @@ func (k *Kraken) AddOrder(ctx context.Context, symbol currency.Pair, side, order
 		}
 	}
 
+	requestPath := "/" + krakenAPIVersion + "/private/AddOrder"
 	var result AddOrderResponse
 	if err := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &result); err != nil {
 		return nil, err
@@ -1416,7 +1416,7 @@ func (k *Kraken) sendAuthenticatedHTTPRequestRaw(ctx context.Context, ep exchang
 		// Data for SHA256 hash: nonce + (form-encoded POST data without nonce)
 		originalPostDataWithoutNonce := ""
 		if params != nil {
-			 originalPostDataWithoutNonce = params.Encode() // params should not have nonce at this stage
+			originalPostDataWithoutNonce = params.Encode() // params should not have nonce at this stage
 		}
 		stringToHash := nonce + originalPostDataWithoutNonce
 
@@ -1448,15 +1448,14 @@ func (k *Kraken) sendAuthenticatedHTTPRequestRaw(ctx context.Context, ep exchang
 			Headers:       headers,
 			Body:          strings.NewReader(finalEncodedBody),
 			Result:        &rawResponse, // Point to our byte slice
-			NonceEnabled:  true, // Kraken uses nonce
+			NonceEnabled:  true,         // Kraken uses nonce
 			Verbose:       k.Verbose,
 			HTTPDebugging: k.HTTPDebugging,
 			HTTPRecording: k.HTTPRecording,
 			// IsRaw:         true, // Hypothetical field, not in current request.Item
-								 // If SendPayload uses Result type, *[]byte might signal raw.
+			// If SendPayload uses Result type, *[]byte might signal raw.
 		}, nil
 	}, request.AuthenticatedRequest)
-
 	if err != nil {
 		// This error could be a connection error, an HTTP status error,
 		// or a JSON unmarshalling error if SendPayload tries to parse a Kraken JSON error.
@@ -1491,7 +1490,7 @@ func (k *Kraken) GetFee(ctx context.Context, feeBuilder *exchange.FeeBuilder) (f
 		fee = getWithdrawalFee(feeBuilder.Pair.Base)
 	case exchange.InternationalBankDepositFee:
 		depositMethods, err := k.GetDepositMethods(ctx,
-			feeBuilder.FiatCurrency.String())
+			feeBuilder.FiatCurrency.String(), "")
 		if err != nil {
 			return 0, err
 		}
@@ -1620,7 +1619,7 @@ func (k *Kraken) WithdrawStatus(ctx context.Context, opts WithdrawStatusOptions)
 		// If opts.Cursor was true, the error here might be due to expecting an array
 		// but getting an object ({"withdrawals": ..., "next_cursor": ...}).
 		if opts.Cursor {
-			 return nil, fmt.Errorf("failed to get withdraw status (cursor response handling not fully implemented for direct array parsing): %w", err)
+			return nil, fmt.Errorf("failed to get withdraw status (cursor response handling not fully implemented for direct array parsing): %w", err)
 		}
 		return nil, err
 	}
@@ -1715,12 +1714,12 @@ func (k *Kraken) GetDepositStatus(ctx context.Context, opts DepositStatusOptions
 		// A more robust solution would try to unmarshal into []DepositStatusEntry as a fallback.
 		// For now, we return the error.
 		if !opts.Cursor && strings.Contains(err.Error(), "json: cannot unmarshal array into Go value of type kraken.DepositStatusPage") {
-			 // Attempt to parse as direct array if cursor was not requested and unmarshal failed for object
-			 var directArrayResult []DepositStatusEntry
-			 if errRetry := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &directArrayResult); errRetry == nil {
-				 return directArrayResult, "", nil
-			 }
-			 // Fall through to return original error if retry also fails or different error
+			// Attempt to parse as direct array if cursor was not requested and unmarshal failed for object
+			var directArrayResult []DepositStatusEntry
+			if errRetry := k.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, requestPath, params, &directArrayResult); errRetry == nil {
+				return directArrayResult, "", nil
+			}
+			// Fall through to return original error if retry also fails or different error
 		}
 		return nil, "", fmt.Errorf("failed to get deposit status: %w", err)
 	}

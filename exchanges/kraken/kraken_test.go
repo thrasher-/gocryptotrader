@@ -163,7 +163,7 @@ func TestGetCurrentServerTime_Success(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetCurrentServerTime(context.Background())
 	require.NoError(t, err, "GetCurrentServerTime should not return an error on success")
@@ -187,7 +187,7 @@ func TestGetCurrentServerTime_Error(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetCurrentServerTime(context.Background())
 	require.Error(t, err, "GetCurrentServerTime should return an error when API returns an error")
@@ -210,7 +210,7 @@ func TestGetSystemStatus_Success(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL) // Override with mock server URL
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL) // Override with mock server URL
 
 	resp, err := k.GetSystemStatus(context.Background())
 	require.NoError(t, err, "GetSystemStatus should not return an error on success")
@@ -235,7 +235,7 @@ func TestGetSystemStatus_Error(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL) // Override with mock server URL
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL) // Override with mock server URL
 
 	resp, err := k.GetSystemStatus(context.Background())
 	require.Error(t, err, "GetSystemStatus should return an error when API returns an error")
@@ -274,7 +274,7 @@ func TestGetAssets_Success(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssets(context.Background())
 	require.NoError(t, err, "GetAssets should not return an error on success")
@@ -311,7 +311,7 @@ func TestGetAssets_Error(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssets(context.Background())
 	require.Error(t, err, "GetAssets should return an error when API returns an error")
@@ -351,7 +351,7 @@ func TestGetAssetPairs_Success_SinglePair_DefaultInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssetPairs(context.Background(), []string{"XXBTZUSD"}, "")
 	require.NoError(t, err)
@@ -405,7 +405,7 @@ func TestGetAssetPairs_Success_MultiplePairs_FeesInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssetPairs(context.Background(), []string{"XXBTZUSD", "XETHZUSD"}, "fees")
 	require.NoError(t, err)
@@ -444,7 +444,7 @@ func TestGetAssetPairs_Success_NoPairs_DefaultInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssetPairs(context.Background(), []string{}, "")
 	require.NoError(t, err)
@@ -480,7 +480,7 @@ func TestGetAssetPairs_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAssetPairs(context.Background(), []string{"UNKNOWNPAIR"}, "")
 	require.Error(t, err, "GetAssetPairs should return an error when API returns an error")
@@ -521,7 +521,7 @@ func TestGetTicker_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetTicker(context.Background(), pair)
 	require.NoError(t, err, "GetTicker should not return an error on success")
@@ -561,7 +561,7 @@ func TestGetTicker_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetTicker(context.Background(), pair)
 	require.Error(t, err, "GetTicker should return an error when API returns an error")
@@ -607,7 +607,7 @@ func TestGetTickers_Success_MultiplePairs(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetTickers(context.Background(), pairsStr)
 	require.NoError(t, err)
@@ -646,7 +646,7 @@ func TestGetTickers_Success_AllPairs(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetTickers(context.Background(), "") // Empty string for all pairs
 	require.NoError(t, err)
@@ -674,7 +674,7 @@ func TestGetTickers_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Internal error"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetTickers(context.Background(), pairsStr)
 	require.Error(t, err, "GetTickers should return an error when API returns an error")
@@ -717,7 +717,7 @@ func TestGetOHLC_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetOHLC(context.Background(), pair, interval)
 	require.NoError(t, err, "GetOHLC should not return an error on success")
@@ -756,7 +756,7 @@ func TestGetOHLC_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Invalid arguments:interval"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetOHLC(context.Background(), pair, invalidInterval)
 	require.Error(t, err, "GetOHLC should return an error when API returns an error")
@@ -778,7 +778,7 @@ func TestGetOHLC_InvalidDataFormat_ShortArray(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "49500.0"]], "last": 1672531200}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetOHLC(context.Background(), pair, interval)
 	require.Error(t, err, "GetOHLC should return an error for malformed short array data")
@@ -799,7 +799,7 @@ func TestGetOHLC_InvalidDataFormat_BadCountType(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "0","0","0","0","0","0","notacount"]], "last": 1672531200}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetOHLC(context.Background(), pair, interval)
 	require.Error(t, err, "GetOHLC should return an error for malformed count type")
@@ -853,7 +853,7 @@ func TestGetDepth_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetDepth(context.Background(), pair)
 	require.NoError(t, err, "GetDepth should not return an error on success")
@@ -861,12 +861,12 @@ func TestGetDepth_Success(t *testing.T) {
 	require.Len(t, resp.Asks, 2, "Should have 2 asks")
 	require.Len(t, resp.Bids, 2, "Should have 2 bids")
 
-	assert.Equal(t, types.Number("50000.10000"), resp.Asks[0].Price, "Ask 0 Price")
-	assert.Equal(t, types.Number("1.234"), resp.Asks[0].Amount, "Ask 0 Amount")
+	assert.Equal(t, types.Number(50000.10000), resp.Asks[0].Price, "Ask 0 Price")
+	assert.Equal(t, types.Number(1.234), resp.Asks[0].Amount, "Ask 0 Amount")
 	assert.Equal(t, time.Unix(1672531200, 0).UTC(), resp.Asks[0].Timestamp.UTC(), "Ask 0 Timestamp")
 
-	assert.Equal(t, types.Number("49999.90000"), resp.Bids[0].Price, "Bid 0 Price")
-	assert.Equal(t, types.Number("2.345"), resp.Bids[0].Amount, "Bid 0 Amount")
+	assert.Equal(t, types.Number(49999.90000), resp.Bids[0].Price, "Bid 0 Price")
+	assert.Equal(t, types.Number(2.345), resp.Bids[0].Amount, "Bid 0 Amount")
 	assert.Equal(t, time.Unix(1672531202, 0).UTC(), resp.Bids[0].Timestamp.UTC(), "Bid 0 Timestamp")
 }
 
@@ -882,7 +882,7 @@ func TestGetDepth_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetDepth(context.Background(), pair)
 	require.Error(t, err, "GetDepth should return an error when API returns an error")
@@ -912,7 +912,7 @@ func TestGetDepth_MalformedData_IncorrectTupleLength(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": {"asks": [["50000.1", "1.234"]], "bids": []}}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetDepth(context.Background(), pair)
 	require.Error(t, err, "GetDepth should return an error for malformed data (incorrect tuple length)")
@@ -931,7 +931,7 @@ func TestGetDepth_MalformedData_NonNumericPrice(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": {"asks": [["not-a-price", "1.234", 1672531200]], "bids": []}}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetDepth(context.Background(), pair)
 	require.Error(t, err, "GetDepth should return an error for malformed data (non-numeric price)")
@@ -970,7 +970,7 @@ func TestGetTrades_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetTrades(context.Background(), pair)
 	require.NoError(t, err, "GetTrades should not return an error on success")
@@ -1006,7 +1006,7 @@ func TestGetTrades_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetTrades(context.Background(), pair)
 	require.Error(t, err, "GetTrades should return an error when API returns an error")
@@ -1026,7 +1026,7 @@ func TestGetTrades_InvalidDataFormat_ShortTradeArray(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [["50000.0", "0.1"]], "last": "1672531200000000000"}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetTrades(context.Background(), pair)
 	require.Error(t, err, "GetTrades should return an error for malformed short trade array data")
@@ -1045,7 +1045,7 @@ func TestGetTrades_InvalidDataFormat_BadPriceType(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[50000.0, "0.1", 1672531200.123456, "b", "l", "misc1", 12345]], "last": "1672531200000000000"}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetTrades(context.Background(), pair)
 	require.Error(t, err, "GetTrades should return an error for malformed price type")
@@ -1093,7 +1093,7 @@ func TestGetSpread_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetSpread(context.Background(), pair)
 	require.NoError(t, err, "GetSpread should not return an error on success")
@@ -1119,7 +1119,7 @@ func TestGetSpread_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EQuery:Unknown asset pair"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	resp, err := k.GetSpread(context.Background(), pair)
 	require.Error(t, err, "GetSpread should return an error when API returns an error")
@@ -1139,7 +1139,7 @@ func TestGetSpread_InvalidDataFormat_ShortSpreadArray(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, "49999.9"]], "last": 1672531200}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetSpread(context.Background(), pair)
 	require.Error(t, err, "GetSpread should return an error for malformed short spread array data")
@@ -1158,7 +1158,7 @@ func TestGetSpread_InvalidDataFormat_BadBidType(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":{"XXBTZUSD": [[1672531200, 49999.9, "50000.1"]], "last": 1672531200}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetSpread(context.Background(), pair)
 	require.Error(t, err, "GetSpread should return an error for malformed bid type")
@@ -1174,7 +1174,6 @@ func TestGetSpread_PairFormatError(t *testing.T) {
 	_, err = k.GetSpread(context.Background(), currency.Pair{})
 	require.Error(t, err, "GetSpread should return an error for invalid pair formatting")
 }
-
 
 func TestUpdateOrderbook(t *testing.T) {
 	t.Parallel()
@@ -1446,7 +1445,7 @@ func TestGetExtendedBalance_Success(t *testing.T) {
 	k := new(Kraken)
 	err := testexch.Setup(k)
 	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true // Ensure authenticated support is enabled
+	k.API.AuthenticatedSupport = true                         // Ensure authenticated support is enabled
 	k.SetCredentials("testapi", "testsecret", "", "", "", "") // Set dummy credentials
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1463,7 +1462,7 @@ func TestGetExtendedBalance_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetExtendedBalance(context.Background())
 	require.NoError(t, err, "GetExtendedBalance should not return an error on success")
@@ -1494,7 +1493,7 @@ func TestGetExtendedBalance_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetExtendedBalance(context.Background())
 	require.Error(t, err, "GetExtendedBalance should return an error when API returns an error")
@@ -1515,7 +1514,7 @@ func TestGetExtendedBalance_MalformedData_BalanceNotString(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result": {"ZUSD": {"balance": 1000.50, "hold_trade": "100.00"}}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetExtendedBalance(context.Background())
 	require.Error(t, err, "GetExtendedBalance should return an error for malformed data")
@@ -1545,7 +1544,7 @@ func TestGetAccountBalance_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAccountBalance(context.Background())
 	require.NoError(t, err, "GetAccountBalance should not return an error on success")
@@ -1569,7 +1568,7 @@ func TestGetAccountBalance_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetAccountBalance(context.Background())
 	require.Error(t, err, "GetAccountBalance should return an error when API returns an error")
@@ -1590,7 +1589,7 @@ func TestGetAccountBalance_MalformedData_BalanceNotString(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result": {"ZUSD": 1234.5678, "XXBT": "0.1234567890"}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetAccountBalance(context.Background())
 	require.Error(t, err, "GetAccountBalance should return an error for malformed data")
@@ -1633,7 +1632,7 @@ func TestGetOpenOrders_Success_NoOptions(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{})
 	require.NoError(t, err, "GetOpenOrders (no options) should not error")
@@ -1683,7 +1682,7 @@ func TestGetOpenOrders_Success_WithTradesAndUserRef(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{Trades: true, UserRef: userRef})
 	require.NoError(t, err, "GetOpenOrders (with options) should not error")
@@ -1709,7 +1708,7 @@ func TestGetOpenOrders_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Invalid order"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetOpenOrders(context.Background(), OrderInfoOptions{})
 	require.Error(t, err, "GetOpenOrders should return an error when API returns an error")
@@ -1730,7 +1729,7 @@ func TestGetOpenOrders_MalformedData_OpenTmNotInt(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result": {"open": {"ORDERID789": {"opentm": "not-a-timestamp"}}}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetOpenOrders(context.Background(), OrderInfoOptions{})
 	require.Error(t, err, "GetOpenOrders should return an error for malformed opentm type")
@@ -1771,7 +1770,7 @@ func TestClosedOrders_Success_MinimalOptions(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
 	require.NoError(t, err, "GetClosedOrders (minimal options) should not error")
@@ -1828,7 +1827,7 @@ func TestClosedOrders_Success_AllOptions(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetClosedOrders(context.Background(), opts)
 	require.NoError(t, err, "GetClosedOrders (all options) should not error")
@@ -1854,7 +1853,7 @@ func TestClosedOrders_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Invalid arguments"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
 	require.Error(t, err, "GetClosedOrders should return an error when API returns an error")
@@ -1875,7 +1874,7 @@ func TestClosedOrders_MalformedData_CloseTmNotInt(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result": {"closed": {"ORDERIDABC": {"closetm": "not-a-timestamp"}}, "count":1}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.GetClosedOrders(context.Background(), GetClosedOrdersOptions{})
 	require.Error(t, err, "GetClosedOrders should return an error for malformed closetm type")
@@ -1915,7 +1914,7 @@ func TestQueryOrdersInfo_Success_SingleTxID_NoOptions(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
 	require.NoError(t, err, "QueryOrdersInfo should not error")
@@ -1955,7 +1954,7 @@ func TestQueryOrdersInfo_Success_MultipleTxIDs_WithTrades(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{Trades: true}, txid1, txid2)
 	require.NoError(t, err)
@@ -1984,7 +1983,7 @@ func TestQueryOrdersInfo_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "UNKNOWNORDER")
 	require.Error(t, err, "QueryOrdersInfo should return an error")
@@ -2006,7 +2005,7 @@ func TestQueryOrdersInfo_MalformedData_BadTimestamp(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result": {"ORDERIDXYZ": {"opentm": "not-a-timestamp"}}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	_, err = k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, txid)
 	require.Error(t, err, "QueryOrdersInfo should return an error for malformed timestamp")
@@ -2031,98 +2030,12 @@ func TestQueryOrdersInfo_NoTxIDProvided_APIErr(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Unexpected test case"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.QueryOrdersInfo(context.Background(), OrderInfoOptions{}, "")
 	require.Error(t, err, "QueryOrdersInfo should return an error if txid is empty and API errors")
 	require.Nil(t, result, "Result should be nil on error")
 	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments:txid", "Error message should reflect API's complaint about txid")
-}
-
-// TestGetTradeVolume Tests
-func TestGetTradeVolume_Success_NoPairs_NoFeeInfo(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/0/private/TradeVolume" {
-			t.Fatalf("Expected path '/0/private/TradeVolume', got %s", r.URL.Path)
-		}
-		assert.Equal(t, "", r.URL.Query().Get("pair"), "Pair param should be empty")
-		assert.Equal(t, "", r.URL.Query().Get("fee-info"), "Fee-info param should be empty")
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": [],
-			"result": {
-				"currency": "ZUSD",
-				"volume": "100000.00"
-			}
-		}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.GetTradeVolume(context.Background(), false)
-	require.NoError(t, err, "GetTradeVolume (no options) should not error")
-	require.NotNil(t, result, "Response should not be nil")
-	assert.Equal(t, "ZUSD", result.Currency)
-	assert.Equal(t, 100000.00, result.Volume)
-	assert.Nil(t, result.Fees, "Fees should be nil when not requested")
-	assert.Nil(t, result.FeesMaker, "FeesMaker should be nil when not requested")
-}
-
-func TestGetTradeVolume_Success_OnePair_WithFeeInfo(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	pairToTest := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
-	formattedPair, err := k.FormatSymbol(pairToTest, asset.Spot)
-	require.NoError(t, err)
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
-		assert.Equal(t, formattedPair, r.URL.Query().Get("pair"))
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": [],
-			"result": {
-				"currency": "ZUSD",
-				"volume": "120000.00",
-				"fees": {
-					"XXBTZUSD": {"fee": "0.2400", "minfee": "0.1000", "maxfee": "0.2600", "nextfee": "0.2200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
-				},
-				"fees_maker": {
-					"XXBTZUSD": {"fee": "0.1400", "minfee": "0.0000", "maxfee": "0.1600", "nextfee": "0.1200", "nextvolume": "250000.00", "tiervolume": "100000.00"}
-				}
-			}
-		}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.GetTradeVolume(context.Background(), true, pairToTest)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	assert.Equal(t, "ZUSD", result.Currency)
-	assert.Equal(t, 120000.00, result.Volume)
-	require.NotNil(t, result.Fees)
-	require.NotNil(t, result.FeesMaker)
-
-	feeInfo, ok := result.Fees["XXBTZUSD"]
-	require.True(t, ok)
-	assert.Equal(t, 0.24, feeInfo.Fee)
-
-	feeMakerInfo, ok := result.FeesMaker["XXBTZUSD"]
-	require.True(t, ok)
-	assert.Equal(t, 0.14, feeMakerInfo.Fee)
 }
 
 func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
@@ -2138,7 +2051,6 @@ func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
 	formattedPair1, _ := k.FormatSymbol(pair1, asset.Spot)
 	formattedPair2, _ := k.FormatSymbol(pair2, asset.Spot)
 	expectedPairParam := formattedPair1 + "," + formattedPair2
-
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
@@ -2161,7 +2073,7 @@ func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	k.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := k.GetTradeVolume(context.Background(), true, pair1, pair2)
 	require.NoError(t, err)
@@ -2172,48 +2084,6 @@ func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
 	assert.Equal(t, 0.10, result.FeesMaker["XXBTZUSD"].Fee)
 	assert.Equal(t, 0.18, result.Fees["XETHZUSD"].Fee)
 	assert.Equal(t, 0.08, result.FeesMaker["XETHZUSD"].Fee)
-}
-
-func TestGetTradeVolume_APIReturnsError(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments"], "result":{}}`)
-	}))
-	defer mockServer.Close()
-	k.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := k.GetTradeVolume(context.Background(), false)
-	require.Error(t, err)
-	require.Nil(t, result)
-	assert.Contains(t, err.Error(), "EGeneral:Invalid arguments")
-}
-
-func TestGetTradeVolume_PairFormatError(t *testing.T) {
-	t.Parallel()
-	k := new(Kraken)
-	err := testexch.Setup(k)
-	require.NoError(t, err)
-	k.API.AuthenticatedSupport = true
-	k.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	// No mock server needed, client-side error
-	_, err = k.GetTradeVolume(context.Background(), true, currency.Pair{Base: currency.NewCode("@@@")})
-	require.Error(t, err, "GetTradeVolume should error on invalid pair format")
-}
-
-// TestGetDepositMethods API endpoint test
-func TestGetDepositMethods(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
-	_, err := k.GetDepositMethods(t.Context(), "USDT", "") // Added network param
-	assert.NoError(t, err, "GetDepositMethods should not error")
 }
 
 // TestGetTradeBalance API endpoint test
@@ -2568,14 +2438,14 @@ func TestGetCryptoDepositAddress(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, k)
 
-	_, err := k.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", false)
+	_, err := k.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", false, "", "")
 	if err != nil {
 		t.Error(err)
 	}
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders not set, skipping test")
 	}
-	_, err = k.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", true)
+	_, err = k.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", true, "", "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -2601,12 +2471,12 @@ func TestGetDepositAddress(t *testing.T) {
 func TestWithdrawStatus(t *testing.T) {
 	t.Parallel()
 	if sharedtestvalues.AreAPICredentialsSet(k) {
-		_, err := k.WithdrawStatus(t.Context(), currency.BTC, "")
+		_, err := k.WithdrawStatus(t.Context(), WithdrawStatusOptions{Asset: currency.BTC.String()})
 		if err != nil {
 			t.Error("WithdrawStatus() error", err)
 		}
 	} else {
-		_, err := k.WithdrawStatus(t.Context(), currency.BTC, "")
+		_, err := k.WithdrawStatus(t.Context(), WithdrawStatusOptions{Asset: currency.BTC.String()})
 		if err == nil {
 			t.Error("GetDepositAddress() error can not be nil")
 		}
@@ -2616,7 +2486,7 @@ func TestWithdrawStatus(t *testing.T) {
 // TestWithdrawCancel wrapper test
 func TestWithdrawCancel(t *testing.T) {
 	t.Parallel()
-	_, err := k.WithdrawCancel(t.Context(), currency.BTC, "")
+	_, err := k.WithdrawCancel(t.Context(), currency.BTC.String(), "", "", "")
 	if sharedtestvalues.AreAPICredentialsSet(k) && err == nil {
 		t.Error("WithdrawCancel() error cannot be nil")
 	} else if !sharedtestvalues.AreAPICredentialsSet(k) && err == nil {
@@ -3490,14 +3360,14 @@ func TestGetTradeVolume_Success_NoPairs_NoFeeInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetTradeVolume(context.Background(), false)
 	require.NoError(t, err, "GetTradeVolume (no options) should not error")
 	require.NotNil(t, result, "Response should not be nil")
 	assert.Equal(t, "ZUSD", result.Currency)
 	assert.Equal(t, 100000.00, result.Volume)
-	assert.Empty(t, result.Fees, "Fees should be empty when not requested")        // Changed from Nil to Empty
+	assert.Empty(t, result.Fees, "Fees should be empty when not requested")           // Changed from Nil to Empty
 	assert.Empty(t, result.FeesMaker, "FeesMaker should be empty when not requested") // Changed from Nil to Empty
 }
 
@@ -3533,7 +3403,7 @@ func TestGetTradeVolume_Success_OnePair_WithFeeInfo(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetTradeVolume(context.Background(), true, pairToTest)
 	require.NoError(t, err)
@@ -3557,55 +3427,6 @@ func TestGetTradeVolume_Success_OnePair_WithFeeInfo(t *testing.T) {
 	assert.Equal(t, 0.14, feeMakerInfo.Fee)
 }
 
-// TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo tests GetTradeVolume with multiple pairs and fee-info.
-func TestGetTradeVolume_Success_MultiplePairs_WithFeeInfo(t *testing.T) {
-	t.Parallel()
-	kInst := new(Kraken)
-	err := testexch.Setup(kInst)
-	require.NoError(t, err)
-	kInst.API.AuthenticatedSupport = true
-	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
-
-	pair1 := currency.NewPair(currency.XBT, currency.USD) // XXBTZUSD
-	pair2 := currency.NewPair(currency.ETH, currency.USD) // XETHZUSD
-	formattedPair1, _ := kInst.FormatSymbol(pair1, asset.Spot)
-	formattedPair2, _ := kInst.FormatSymbol(pair2, asset.Spot)
-	expectedPairParam := formattedPair1 + "," + formattedPair2
-
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "true", r.URL.Query().Get("fee-info"))
-		assert.Equal(t, expectedPairParam, r.URL.Query().Get("pair"))
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{
-			"error": [],
-			"result": {
-				"currency": "ZUSD",
-				"volume": "200000.00",
-				"fees": {
-					"XXBTZUSD": {"fee": "0.2000"},
-					"XETHZUSD": {"fee": "0.1800"}
-				},
-				"fees_maker": {
-					"XXBTZUSD": {"fee": "0.1000"},
-					"XETHZUSD": {"fee": "0.0800"}
-				}
-			}
-		}`)
-	}))
-	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
-
-	result, err := kInst.GetTradeVolume(context.Background(), true, pair1, pair2)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, result.Fees, 2)
-	require.Len(t, result.FeesMaker, 2)
-	assert.Equal(t, 0.20, result.Fees["XXBTZUSD"].Fee)
-	assert.Equal(t, 0.10, result.FeesMaker["XXBTZUSD"].Fee)
-	assert.Equal(t, 0.18, result.Fees["XETHZUSD"].Fee)
-	assert.Equal(t, 0.08, result.FeesMaker["XETHZUSD"].Fee)
-}
-
 // TestGetTradeVolume_APIReturnsError tests when the API returns an error.
 func TestGetTradeVolume_APIReturnsError(t *testing.T) {
 	t.Parallel()
@@ -3620,7 +3441,7 @@ func TestGetTradeVolume_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Invalid arguments"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetTradeVolume(context.Background(), false)
 	require.Error(t, err)
@@ -3675,7 +3496,7 @@ func TestRequestExportReport_Success_RequiredOptions(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"id":"REPORTID123"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RequestExportReport(context.Background(), opts)
 	require.NoError(t, err, "RequestExportReport should not error")
@@ -3720,7 +3541,7 @@ func TestRequestExportReport_Success_AllOptions(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"id":"REPORTID456"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RequestExportReport(context.Background(), opts)
 	require.NoError(t, err, "RequestExportReport with all options should not error")
@@ -3781,7 +3602,7 @@ func TestRequestExportReport_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EExport:Invalid arguments"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RequestExportReport(context.Background(), opts)
 	require.Error(t, err, "RequestExportReport should return an error when API returns an error")
@@ -3827,7 +3648,7 @@ func TestGetExportReportStatus_Success(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetExportReportStatus(context.Background(), opts)
 	require.NoError(t, err, "GetExportReportStatus should not error")
@@ -3878,7 +3699,7 @@ func TestGetExportReportStatus_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EExport:Status:Unknown report type"], "result":[]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetExportReportStatus(context.Background(), opts)
 	require.Error(t, err, "GetExportReportStatus should return an error")
@@ -3929,7 +3750,7 @@ func TestGetExportReportStatus_MalformedData_TimestampNotString(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetExportReportStatus(context.Background(), opts)
 	require.Error(t, err, "GetExportReportStatus should return an error for malformed timestamp data")
@@ -3964,7 +3785,7 @@ func TestRetrieveExportReport_Success_CSVData(t *testing.T) {
 		fmt.Fprint(w, mockCSVData)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
 	require.NoError(t, err, "RetrieveExportReport should not error on success")
@@ -4073,7 +3894,7 @@ func TestRetrieveExportReport_APIReturnsJSONError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EExport:Unknown report"]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
 	require.Error(t, err, "RetrieveExportReport should return an error")
@@ -4125,7 +3946,7 @@ func TestAmendOrder_Success_MinimalChange(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"txid":"ORDERID123", "amend_txid":"AMENDTXID456", "status":"ok", "descr":"Order amended to 0.5 XBTUSD @ limit 49500.0"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AmendOrder(context.Background(), opts)
 	require.NoError(t, err, "AmendOrder should not error")
@@ -4180,7 +4001,7 @@ func TestAmendOrder_Success_AllOptions(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"txid":"ORDERID123", "amend_txid":"AMENDTXID789", "status":"ok", "descr":"Validated only", "cancel_txid": "CANCELTXID111"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AmendOrder(context.Background(), opts)
 	require.NoError(t, err, "AmendOrder with all options should not error")
@@ -4233,7 +4054,7 @@ func TestAmendOrder_APIReturnsTopLevelError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AmendOrder(context.Background(), opts)
 	require.Error(t, err, "AmendOrder should return an error when API returns a top-level error")
@@ -4271,7 +4092,7 @@ func TestGetDepositMethods_Success_AssetOnly(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, "")
 	require.NoError(t, err, "GetDepositMethods should not error on success")
@@ -4327,7 +4148,7 @@ func TestGetDepositMethods_Success_AssetAndNetwork(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, networkToTest)
 	require.NoError(t, err, "GetDepositMethods should not error with asset and network")
@@ -4373,7 +4194,7 @@ func TestGetDepositMethods_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EFunding:Unknown asset"], "result":[]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetDepositMethods(context.Background(), assetToTest, "")
 	require.Error(t, err, "GetDepositMethods should return an error when API returns an error")
@@ -4405,7 +4226,6 @@ func TestGetCryptoDepositAddress_Success_ExistingAddress(t *testing.T) {
 		assert.Empty(t, r.Form.Get("aclass"), "aclass param should be absent")
 		assert.Empty(t, r.Form.Get("amount"), "amount param should be absent")
 
-
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{
 			"error": [],
@@ -4415,7 +4235,7 @@ func TestGetCryptoDepositAddress_Success_ExistingAddress(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, false, "", "")
 	require.NoError(t, err, "GetCryptoDepositAddress should not error")
@@ -4462,7 +4282,7 @@ func TestGetCryptoDepositAddress_Success_NewAddress(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, true, "", "")
 	require.NoError(t, err, "GetCryptoDepositAddress for new address should not error")
@@ -4507,7 +4327,7 @@ func TestGetCryptoDepositAddress_Success_WithOptionalParams(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": [{"address": "ADDR789", "new": true}]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetCryptoDepositAddress(context.Background(), assetType, method, true, aclass, amount)
 	require.NoError(t, err, "GetCryptoDepositAddress with optional params should not error")
@@ -4558,7 +4378,7 @@ func TestGetCryptoDepositAddress_Success_EmptyArrayResponse(t *testing.T) {
 		fmt.Fprint(w, `{"error":[], "result":[]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetCryptoDepositAddress(context.Background(), "XBT", "Bitcoin", false, "", "")
 	require.NoError(t, err, "Should not error on empty result array")
@@ -4580,7 +4400,7 @@ func TestGetCryptoDepositAddress_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EFunding:Invalid asset"], "result":[]}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetCryptoDepositAddress(context.Background(), "BADASSET", "Bitcoin", false, "", "")
 	require.Error(t, err, "Should return an error from API")
@@ -4627,7 +4447,7 @@ func TestGetWithdrawInfo_Success_RequiredParams(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetWithdrawInfo(context.Background(), assetType, key, amount, "")
 	require.NoError(t, err, "GetWithdrawInfo should not error")
@@ -4675,7 +4495,7 @@ func TestGetWithdrawInfo_Success_WithNetwork(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetWithdrawInfo(context.Background(), assetType, key, amount, network)
 	require.NoError(t, err, "GetWithdrawInfo with network should not error")
@@ -4748,7 +4568,7 @@ func TestGetWithdrawInfo_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EFunding:Unknown asset"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.GetWithdrawInfo(context.Background(), "BADASSET", "mykey", 0.5, "")
 	require.Error(t, err, "Should return an error from API")
@@ -4780,7 +4600,7 @@ func TestAmendOrder_APIReturnsResultErrors(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AmendOrder(context.Background(), opts)
 	// The function itself generates an error if result.Errors is populated
@@ -4790,13 +4610,13 @@ func TestAmendOrder_APIReturnsResultErrors(t *testing.T) {
 	assert.Equal(t, "error", result.Status)
 	assert.Len(t, result.Errors, 2, "Should contain 2 error messages")
 	assert.Contains(t, err.Error(), "EOrder:Insufficient margin") // Error generated by AmendOrder function
-	assert.Contains(t, err.Error(), "EOrder:Price too low")   // Error generated by AmendOrder function
+	assert.Contains(t, err.Error(), "EOrder:Price too low")       // Error generated by AmendOrder function
 	assert.Contains(t, result.Errors, "EOrder:Insufficient margin")
 	assert.Contains(t, result.Errors, "EOrder:Price too low")
 }
 
-// TestCancelAllOrders_Success tests successful cancellation of all orders.
-func TestCancelAllOrders_Success(t *testing.T) {
+// TestCancelAllOrdersAPI_Success tests successful cancellation of all orders.
+func TestCancelAllOrdersAPI_Success(t *testing.T) {
 	t.Parallel()
 	kInst := new(Kraken)
 	err := testexch.Setup(kInst)
@@ -4817,16 +4637,16 @@ func TestCancelAllOrders_Success(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"count":5}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
-	result, err := kInst.CancelAllOrders(context.Background())
+	result, err := kInst.CancelAllOrdersAPI(context.Background())
 	require.NoError(t, err, "CancelAllOrders should not error on success")
 	require.NotNil(t, result, "Result should not be nil")
 	assert.Equal(t, int64(5), result.Count)
 }
 
-// TestCancelAllOrders_APIReturnsError tests when the API returns an error for CancelAllOrders.
-func TestCancelAllOrders_APIReturnsError(t *testing.T) {
+// TestCancelAllOrdersAPI_APIReturnsError tests when the API returns an error for CancelAllOrders.
+func TestCancelAllOrdersAPI_APIReturnsError(t *testing.T) {
 	t.Parallel()
 	kInst := new(Kraken)
 	err := testexch.Setup(kInst)
@@ -4842,9 +4662,9 @@ func TestCancelAllOrders_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Feature disabled"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
-	result, err := kInst.CancelAllOrders(context.Background())
+	result, err := kInst.CancelAllOrdersAPI(context.Background())
 	require.Error(t, err, "CancelAllOrders should return an error when API returns an error")
 	require.Nil(t, result, "Result should be nil on API error")
 	assert.Contains(t, err.Error(), "EOrder:Feature disabled")
@@ -4873,7 +4693,7 @@ func TestCancelAllOrdersAfter_Success_SetTimeout(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"currentTime":"2023-10-27T10:00:00Z", "triggerTime":"2023-10-27T10:01:00Z"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
 	require.NoError(t, err, "CancelAllOrdersAfter should not error when setting timeout")
@@ -4905,7 +4725,7 @@ func TestCancelAllOrdersAfter_Success_DeactivateTimeout(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"currentTime":"2023-10-27T10:05:00Z", "triggerTime":"0"}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
 	require.NoError(t, err, "CancelAllOrdersAfter should not error when deactivating timeout")
@@ -4937,7 +4757,7 @@ func TestCancelAllOrdersAfter_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Internal error"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelAllOrdersAfter(context.Background(), timeoutSeconds)
 	require.Error(t, err, "CancelAllOrdersAfter should return an error when API returns an error")
@@ -4989,7 +4809,7 @@ func TestAddOrderBatch_Success_ValidBatch(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrderBatch(context.Background(), opts)
 	require.NoError(t, err, "AddOrderBatch should not error on success")
@@ -5036,7 +4856,7 @@ func TestAddOrderBatch_Success_OneOrderFailsInBatch(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrderBatch(context.Background(), opts)
 	require.NoError(t, err, "AddOrderBatch main call should not error if batch was processed")
@@ -5079,7 +4899,7 @@ func TestAddOrderBatch_BatchLevelError(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrderBatch(context.Background(), opts)
 	require.Error(t, err, "AddOrderBatch should return an error for batch-level errors")
@@ -5183,7 +5003,7 @@ func TestAddOrderBatch_AllOptionsSet(t *testing.T) {
 		}`) // No txid for validate only
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrderBatch(context.Background(), opts)
 	require.NoError(t, err, "AddOrderBatch with all options should not error")
@@ -5216,7 +5036,7 @@ func TestCancelOrderBatch_Success(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"count":2, "pending":false}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelOrderBatch(context.Background(), opts)
 	require.NoError(t, err, "CancelOrderBatch should not error on success")
@@ -5284,7 +5104,7 @@ func TestCancelOrderBatch_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Invalid arguments"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelOrderBatch(context.Background(), opts)
 	require.Error(t, err, "CancelOrderBatch should return an error when API returns an error")
@@ -5308,7 +5128,7 @@ func TestCancelOrderBatch_Success_PendingTrue(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":true}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelOrderBatch(context.Background(), opts)
 	require.NoError(t, err, "CancelOrderBatch should not error for pending=true response")
@@ -5329,7 +5149,7 @@ func TestAddOrder_Success_BasicLimitOrder(t *testing.T) {
 	kInst.API.AuthenticatedSupport = true
 	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
 
-	pair := currency.NewPairFromString("XBTUSD") // User input
+	pair := currency.NewPair(currency.XBT, currency.USD)     // User input
 	formattedPair, _ := kInst.FormatSymbol(pair, asset.Spot) // Expected format for API
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5360,7 +5180,7 @@ func TestAddOrder_Success_BasicLimitOrder(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrder(context.Background(), pair, "buy", "limit", 0.01, 45000.0, 0, 0, nil)
 	require.NoError(t, err, "AddOrder should not error on success")
@@ -5379,7 +5199,7 @@ func TestAddOrder_Success_AllOptionsAndNewParams(t *testing.T) {
 	kInst.API.AuthenticatedSupport = true
 	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
 
-	pair := currency.NewPairFromString("XBTUSD")
+	pair := currency.NewPair(currency.XBT, currency.USD)
 	formattedPair, _ := kInst.FormatSymbol(pair, asset.Spot)
 
 	args := &AddOrderOptions{
@@ -5436,7 +5256,7 @@ func TestAddOrder_Success_AllOptionsAndNewParams(t *testing.T) {
 		}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrder(context.Background(), pair, "sell", "stop-loss-limit", 0.02, 42000.0, 41900.0, 2.0, args)
 	require.NoError(t, err, "AddOrder with all options should not error")
@@ -5454,14 +5274,14 @@ func TestAddOrder_APIReturnsError(t *testing.T) {
 	kInst.API.AuthenticatedSupport = true
 	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
 
-	pair := currency.NewPairFromString("XBTUSD")
+	pair := currency.NewPair(currency.XBT, currency.USD)
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"error":["EOrder:Insufficient margin"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrder(context.Background(), pair, "buy", "market", 0.1, 0, 0, 0, nil)
 	require.Error(t, err, "AddOrder should return an error when API returns an error")
@@ -5478,7 +5298,7 @@ func TestAddOrder_ValidateOnly(t *testing.T) {
 	kInst.API.AuthenticatedSupport = true
 	kInst.SetCredentials("testapi", "testsecret", "", "", "", "")
 
-	pair := currency.NewPairFromString("XBTUSD")
+	pair := currency.NewPair(currency.XBT, currency.USD)
 	args := &AddOrderOptions{Validate: true}
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -5498,7 +5318,7 @@ func TestAddOrder_ValidateOnly(t *testing.T) {
 		}`) // No txid for validate only
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.AddOrder(context.Background(), pair, "buy", "limit", 0.01, 45000.0, 0, 0, args)
 	require.NoError(t, err, "AddOrder with validate=true should not error")
@@ -5545,7 +5365,7 @@ func TestCancelExistingOrder_Success(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":false}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelExistingOrder(context.Background(), txid)
 	require.NoError(t, err, "CancelExistingOrder should not error on success")
@@ -5579,7 +5399,7 @@ func TestCancelExistingOrder_Success_Pending(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"count":1, "pending":true}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelExistingOrder(context.Background(), txid)
 	require.NoError(t, err, "CancelExistingOrder should not error for pending result")
@@ -5613,7 +5433,7 @@ func TestCancelExistingOrder_OrderAlreadyClosedOrNotFound_CountZero(t *testing.T
 		fmt.Fprint(w, `{"error": [], "result": {"count":0}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelExistingOrder(context.Background(), txid)
 	require.NoError(t, err, "CancelExistingOrder should not error if order already processed (count 0)")
@@ -5650,7 +5470,7 @@ func TestCancelExistingOrder_APIReturnsError_UnknownOrder(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EOrder:Unknown order"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.CancelExistingOrder(context.Background(), txid)
 	require.Error(t, err, "CancelExistingOrder should return an error for unknown order")
@@ -5695,12 +5515,11 @@ func TestGetWebsocketToken_Success(t *testing.T) {
 		require.NoError(t, errBody) // Ensure form parsing doesn't error, even if empty
 		assert.NotEmpty(t, r.Form.Get("nonce"), "Nonce should be present")
 
-
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"error": [], "result":{"token":"%s", "expires":%d}}`, expectedToken, expectedExpires)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	token, err := kInst.GetWebsocketToken(context.Background())
 	require.NoError(t, err, "GetWebsocketToken should not error on success")
@@ -5724,7 +5543,7 @@ func TestGetWebsocketToken_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EGeneral:Permission denied"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	token, err := kInst.GetWebsocketToken(context.Background())
 	require.Error(t, err, "GetWebsocketToken should return an error when API returns an error")
@@ -5764,7 +5583,7 @@ func TestRetrieveExportReport_HTTPErrorNonJSON(t *testing.T) {
 		fmt.Fprint(w, "Service down")
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.RetrieveExportReport(context.Background(), reportID)
 	require.Error(t, err, "RetrieveExportReport should return an error for HTTP 503")
@@ -5798,7 +5617,7 @@ func TestDeleteExportReport_Success_Delete(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"delete":true}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.DeleteExportReport(context.Background(), opts)
 	require.NoError(t, err, "DeleteExportReport should not error for delete type")
@@ -5831,7 +5650,7 @@ func TestDeleteExportReport_Success_Cancel(t *testing.T) {
 		fmt.Fprint(w, `{"error": [], "result": {"cancel":true}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.DeleteExportReport(context.Background(), opts)
 	require.NoError(t, err, "DeleteExportReport should not error for cancel type")
@@ -5901,7 +5720,7 @@ func TestDeleteExportReport_InvalidTypeOption(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EExport:Invalid type"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.DeleteExportReport(context.Background(), opts)
 	require.Error(t, err, "DeleteExportReport should return an error for invalid type sent to API")
@@ -5925,14 +5744,10 @@ func TestDeleteExportReport_APIReturnsError(t *testing.T) {
 		fmt.Fprint(w, `{"error":["EExport:Unknown report"], "result":{}}`)
 	}))
 	defer mockServer.Close()
-	kInst.API.Endpoints.SetRunning(exchange.RestSpot, mockServer.URL)
+	kInst.API.Endpoints.SetRunning(exchange.RestSpot.String(), mockServer.URL)
 
 	result, err := kInst.DeleteExportReport(context.Background(), opts)
 	require.Error(t, err, "DeleteExportReport should return an error when API returns an error")
 	require.Nil(t, result, "Result should be nil on API error")
 	assert.Contains(t, err.Error(), "EExport:Unknown report")
 }
-
-[end of exchanges/kraken/kraken_test.go]
-
-[end of exchanges/kraken/kraken_test.go]
