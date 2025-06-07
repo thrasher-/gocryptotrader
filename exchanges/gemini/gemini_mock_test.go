@@ -12,8 +12,6 @@ import (
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 )
 
-const mockFile = "../../testdata/http_mock/gemini/gemini.json"
-
 var mockTests = true
 
 func TestMain(m *testing.M) {

@@ -12,8 +12,6 @@ import (
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 )
 
-const mockfile = "../../testdata/http_mock/bitstamp/bitstamp.json"
-
 var mockTests = true
 
 func TestMain(m *testing.M) {
