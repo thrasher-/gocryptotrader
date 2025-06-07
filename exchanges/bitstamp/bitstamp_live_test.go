@@ -24,7 +24,6 @@ func TestMain(m *testing.M) {
 		b.API.AuthenticatedSupport = true
 		b.SetCredentials(apiKey, apiSecret, customerID, "", "", "")
 	}
-	b.SkipAuthCheck = false
 	log.Printf(sharedtestvalues.LiveTesting, b.Name)
 	os.Exit(m.Run())
 }
