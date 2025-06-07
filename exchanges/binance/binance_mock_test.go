@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := testexch.MockHTTPInstance(b); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Binance MockHTTPInstance error: %s", err)
 	}
 
 	b.setupOrderbookManager()

@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		p.SetCredentials(apiKey, apiSecret, "", "", "", "")
 	}
 	if err := testexch.MockHTTPInstance(p); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Poloniex MockHTTPInstance error: %s", err)
 	}
 	os.Exit(m.Run())
 }

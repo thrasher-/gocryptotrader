@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		b.SetCredentials(apiKey, apiSecret, customerID, "", "", "")
 	}
 	if err := testexch.MockHTTPInstance(b); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Bitstamp MockHTTPInstance error: %s", err)
 	}
 	os.Exit(m.Run())
 }

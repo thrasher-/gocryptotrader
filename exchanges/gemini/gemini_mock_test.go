@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		g.SetCredentials(apiKey, apiSecret, "", "", "", "")
 	}
 	if err := testexch.MockHTTPInstance(g); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Gemini MockHTTPInstance error: %s", err)
 	}
 	os.Exit(m.Run())
 }
