@@ -1,6 +1,7 @@
 package coinbasepro
 
 import (
+	"log"
 	"net/http"
 	"os"
 	"testing"
@@ -28,7 +29,7 @@ import (
 )
 
 var (
-	c        = &CoinbasePro{}
+	c        *CoinbasePro
 	testPair = currency.NewPairWithDelimiter(currency.BTC.String(), currency.USD.String(), "-")
 )
 
@@ -41,6 +42,16 @@ const (
 )
 
 func TestMain(_ *testing.M) {
+	c = new(CoinbasePro)
+	if err := testexch.Setup(c); err != nil {
+		log.Fatalf("CoinbasePro Setup error: %s", err)
+	}
+
+	if apiKey != "" && apiSecret != "" && clientID != "" {
+		c.API.AuthenticatedSupport = true
+		c.SetCredentials(apiKey, apiSecret, clientID, "", "", "")
+	}
+
 	os.Exit(0) // Disable full test suite until PR #1381 is merged as more API endpoints have been deprecated over time
 }
 

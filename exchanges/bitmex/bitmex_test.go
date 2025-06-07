@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/key"
-	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
@@ -36,29 +35,20 @@ const (
 	canManipulateRealOrders = false
 )
 
-var b = &Bitmex{}
+var b *Bitmex
 
 func TestMain(m *testing.M) {
-	b.SetDefaults()
-	cfg := config.GetConfig()
-	err := cfg.LoadConfig("../../testdata/configtest.json", true)
-	if err != nil {
-		log.Fatal("Bitmex load config error", err)
-	}
-	bitmexConfig, err := cfg.GetExchangeConfig("Bitmex")
-	if err != nil {
-		log.Fatal("Bitmex Setup() init error")
+	b = new(Bitmex)
+	if err := testexch.Setup(b); err != nil {
+		log.Fatalf("Bitmex Setup error: %s", err)
 	}
 
-	bitmexConfig.API.AuthenticatedSupport = true
-	bitmexConfig.API.AuthenticatedWebsocketSupport = true
-	bitmexConfig.API.Credentials.Key = apiKey
-	bitmexConfig.API.Credentials.Secret = apiSecret
-	b.Websocket = sharedtestvalues.NewTestWebsocket()
-	err = b.Setup(bitmexConfig)
-	if err != nil {
-		log.Fatal("Bitmex setup error", err)
+	if apiKey != "" && apiSecret != "" {
+		b.API.AuthenticatedSupport = true
+		b.API.AuthenticatedWebsocketSupport = true
+		b.SetCredentials(apiKey, apiSecret, "", "", "", "")
 	}
+
 	os.Exit(m.Run())
 }
 
