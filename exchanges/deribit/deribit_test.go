@@ -65,12 +65,12 @@ func TestMain(m *testing.M) {
 	if useTestNet {
 		deribitWebsocketAddress = "wss://test.deribit.com/ws" + deribitAPIVersion
 		if err := d.Websocket.SetWebsocketURL(deribitWebsocketAddress, false, true); err != nil {
-			log.Fatal(err)
+			log.Fatalf("Deribit SetWebsocketURL error: %s", err)
 		}
 		for k, v := range d.API.Endpoints.GetURLMap() {
 			v = strings.Replace(v, "www.deribit.com", "test.deribit.com", 1)
 			if err := d.API.Endpoints.SetRunning(k, v); err != nil {
-				log.Fatal(err)
+				log.Fatalf("Deribit SetRunning error: %s", err)
 			}
 		}
 	}

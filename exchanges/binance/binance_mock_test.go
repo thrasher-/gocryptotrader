@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 
 	b.setupOrderbookManager()
 	if err := b.UpdateTradablePairs(context.Background(), true); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Binance UpdateTradablePairs error: %s", err)
 	}
 
 	os.Exit(m.Run())

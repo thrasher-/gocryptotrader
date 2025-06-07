@@ -45,7 +45,7 @@ var (
 func TestMain(m *testing.M) {
 	b = new(Bitfinex)
 	if err := testexch.Setup(b); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Bitfinex Setup error: %s", err)
 	}
 
 	if apiKey != "" {
