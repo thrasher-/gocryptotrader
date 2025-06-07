@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 
 	b = new(Binance)
 	if err := testexch.Setup(b); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Binance Setup error: %s", err)
 	}
 
 	if err := testexch.MockHTTPInstance(b); err != nil {

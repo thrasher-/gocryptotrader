@@ -52,9 +52,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	err := testexch.Setup(d)
-	if err != nil {
-		log.Fatal(err)
+	if err := testexch.Setup(d); err != nil {
+		log.Fatalf("Deribit Setup error: %s", err)
 	}
 
 	if apiKey != "" && apiSecret != "" {
