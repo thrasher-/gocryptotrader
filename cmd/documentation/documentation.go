@@ -354,10 +354,16 @@ func GetContributorList(ctx context.Context, repo string, verbose bool) ([]Contr
 	vals := url.Values{}
 	vals.Set("per_page", strconv.Itoa(defaultGithubAPIPerPageLimit))
 
+	headers := make(map[string]string)
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		headers["Authorization"] = "Bearer " + token
+		fmt.Println("Using GITHUB_TOKEN for authentication")
+	}
+
 	for page := 1; ; page++ {
 		vals.Set("page", strconv.Itoa(page))
 
-		contents, err := common.SendHTTPRequest(ctx, http.MethodGet, common.EncodeURLValues(repo+GithubAPIEndpoint, vals), nil, nil, verbose)
+		contents, err := common.SendHTTPRequest(ctx, http.MethodGet, common.EncodeURLValues(repo+GithubAPIEndpoint, vals), headers, nil, verbose)
 		if err != nil {
 			return nil, err
 		}
