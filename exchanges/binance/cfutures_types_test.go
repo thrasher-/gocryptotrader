@@ -3,6 +3,8 @@ package binance
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 )
 
@@ -38,33 +40,29 @@ func TestFuturesNewOrderRequest_Unmarshal(t *testing.T) {
 
 	var x FuturesOrderPlaceData
 
-	if err := json.Unmarshal([]byte(inp), &x); err != nil {
-		t.Error(err)
-	}
+	err := json.Unmarshal([]byte(inp), &x)
+	require.NoError(t, err, "Unmarshal must not error")
 
-	if x.OrderID != 18662274680 ||
-		x.Symbol != "ETHUSD_PERP" ||
-		x.Pair != "ETHUSD" ||
-		x.Status != "NEW" ||
-		x.ClientOrderID != "customID" ||
-		x.Price != 4096 ||
-		x.AvgPrice != 2 ||
-		x.OrigQty != 8 ||
-		x.ExecuteQty != 4 ||
-		x.CumQty != 32 ||
-		x.CumBase != 16 ||
-		x.TimeInForce != "GTC" ||
-		x.OrderType != cfuturesLimit ||
-		!x.ReduceOnly ||
-		!x.ClosePosition ||
-		x.StopPrice != 2048 ||
-		x.WorkingType != "CONTRACT_PRICE" ||
-		!x.PriceProtect ||
-		x.OrigType != cfuturesMarket ||
-		x.UpdateTime != 1635931801320 ||
-		x.ActivatePrice != 64 ||
-		x.PriceRate != 32 {
-		// If any of these values isn't set as expected, mark test as failed.
-		t.Errorf("unmarshaling failed: %v", x)
-	}
+	assert.Equal(t, int64(18662274680), x.OrderID, "OrderID should be 18662274680")
+	assert.Equal(t, "ETHUSD_PERP", x.Symbol, "Symbol should be ETHUSD_PERP")
+	assert.Equal(t, "ETHUSD", x.Pair, "Pair should be ETHUSD")
+	assert.Equal(t, "NEW", x.Status, "Status should be NEW")
+	assert.Equal(t, "customID", x.ClientOrderID, "ClientOrderID should be customID")
+	assert.Equal(t, float64(4096), x.Price, "Price should be 4096")
+	assert.Equal(t, float64(2), x.AvgPrice, "AvgPrice should be 2")
+	assert.Equal(t, float64(8), x.OrigQty, "OrigQty should be 8")
+	assert.Equal(t, float64(4), x.ExecuteQty, "ExecuteQty should be 4")
+	assert.Equal(t, float64(32), x.CumQty, "CumQty should be 32")
+	assert.Equal(t, float64(16), x.CumBase, "CumBase should be 16")
+	assert.Equal(t, "GTC", x.TimeInForce, "TimeInForce should be GTC")
+	assert.Equal(t, cfuturesLimit, x.OrderType, "OrderType should be cfuturesLimit")
+	assert.True(t, x.ReduceOnly, "ReduceOnly should be true")
+	assert.True(t, x.ClosePosition, "ClosePosition should be true")
+	assert.Equal(t, float64(2048), x.StopPrice, "StopPrice should be 2048")
+	assert.Equal(t, "CONTRACT_PRICE", x.WorkingType, "WorkingType should be CONTRACT_PRICE")
+	assert.True(t, x.PriceProtect, "PriceProtect should be true")
+	assert.Equal(t, cfuturesMarket, x.OrigType, "OrigType should be cfuturesMarket")
+	assert.Equal(t, int64(1635931801320), x.UpdateTime, "UpdateTime should be 1635931801320")
+	assert.Equal(t, float64(64), x.ActivatePrice, "ActivatePrice should be 64")
+	assert.Equal(t, float64(32), x.PriceRate, "PriceRate should be 32")
 }

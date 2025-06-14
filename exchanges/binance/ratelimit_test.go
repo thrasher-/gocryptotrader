@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
@@ -40,9 +41,7 @@ func TestRateLimit_Limit(t *testing.T) {
 			t.Parallel()
 
 			exp, got := tt.Expected, tt.Limit
-			if exp != got {
-				t.Fatalf("incorrect limit applied.\nexp: %v\ngot: %v", exp, got)
-			}
+			assert.Equalf(t, exp, got, "Limit should be %v, got %v", exp, got)
 
 			ctx := t.Context()
 			if !tt.Deadline.IsZero() {
@@ -52,7 +51,7 @@ func TestRateLimit_Limit(t *testing.T) {
 			}
 
 			err := rl.InitiateRateLimit(ctx, tt.Limit)
-			require.Truef(t, err == nil || errors.Is(err, context.DeadlineExceeded), "InitiateRateLimit must not error: %s", err)
+			assert.Truef(t, err == nil || errors.Is(err, context.DeadlineExceeded), "InitiateRateLimit should not error: %s", err)
 		})
 	}
 }
@@ -67,15 +66,13 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 	}
 
 	rl, err := request.New("rateLimitTest2", http.DefaultClient, request.WithLimiter(GetRateLimits()))
-	require.NoError(t, err)
+	require.NoError(t, err, "New request with limiter must not error")
 
 	for name, tt := range testTable {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
-			if err := rl.InitiateRateLimit(t.Context(), tt); err != nil {
-				t.Fatalf("error applying rate limit: %v", err)
-			}
+			err := rl.InitiateRateLimit(t.Context(), tt)
+			assert.NoErrorf(t, err, "InitiateRateLimit for %s should not error", name)
 		})
 	}
 }
