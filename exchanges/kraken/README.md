@@ -22,7 +22,43 @@ Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader 
 
 ### Current Features
 
-+ REST Support
+The GoCryptoTrader Kraken Spot REST API integration supports the following functionalities:
+
+#### Market Data
++ Get Server Time
++ Get Asset Info
++ Get Tradable Asset Pairs
++ Get Ticker Information
++ Get OHLC Data
++ Get Order Book
++ Get Recent Trades
++ Get Recent Spreads
+
+#### Account Data (Authenticated)
++ Get Account Balance
++ Get Trade Balance
++ Get Open Orders
++ Get Closed Orders
++ Query Orders Info
++ Get Trades History
++ Query Trades Info
++ Get Open Positions
++ Get Ledgers Info
++ Query Ledgers
++ Get Trade Volume
+
+#### Trading (Authenticated)
++ Add Order
++ Cancel Order
++ Get Websockets Token
+
+#### Funding (Authenticated)
++ Get Deposit Methods
++ Get Deposit Addresses
++ Get Withdrawal Information
++ Withdraw Funds
++ Get Status of Recent Withdrawals
++ Request Withdrawal Cancellation
 
 ### How to enable
 
@@ -111,6 +147,11 @@ if err != nil {
 ```
 
 ### Please click GoDocs chevron above to view current GoDoc information for this package
+
+## API Documentation
+
+For detailed information about the Kraken REST API, please refer to the official documentation:
+- [Spot REST API](https://docs.kraken.com/api/docs/guides/spot-rest-intro)
 
 ## Contribution
 
