@@ -39,10 +39,7 @@ func TestRateLimit_Limit(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			exp, got := tt.Expected, tt.Limit
-			if exp != got {
-				t.Fatalf("incorrect limit applied.\nexp: %v\ngot: %v", exp, got)
-			}
+			require.Equal(t, tt.Expected, tt.Limit, "Incorrect limit applied")
 
 			ctx := t.Context()
 			if !tt.Deadline.IsZero() {
@@ -72,10 +69,7 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 	for name, tt := range testTable {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-
-			if err := rl.InitiateRateLimit(t.Context(), tt); err != nil {
-				t.Fatalf("error applying rate limit: %v", err)
-			}
+			require.NoError(t, rl.InitiateRateLimit(t.Context(), tt), "InitiateRateLimit must not error")
 		})
 	}
 }
