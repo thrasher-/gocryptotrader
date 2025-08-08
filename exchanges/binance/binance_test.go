@@ -971,11 +971,12 @@ func TestGetBestPrice(t *testing.T) {
 func TestQueryOrder(t *testing.T) {
 	t.Parallel()
 	_, err := e.QueryOrder(t.Context(), currency.NewBTCUSDT(), "", 1337)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "QueryOrder should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "QueryOrder should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock QueryOrder should not error")
 	}
 }
@@ -994,11 +995,12 @@ func TestOpenOrders(t *testing.T) {
 func TestAllOrders(t *testing.T) {
 	t.Parallel()
 	_, err := e.AllOrders(t.Context(), currency.NewBTCUSDT(), "", "")
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "AllOrders should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "AllOrders should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock AllOrders should not error")
 	}
 }
@@ -1093,11 +1095,12 @@ func TestGetActiveOrders(t *testing.T) {
 	}
 
 	_, err = e.GetActiveOrders(t.Context(), &getOrdersRequest)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "GetActiveOrders should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "GetActiveOrders should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock GetActiveOrders should not error")
 	}
 }
@@ -1119,11 +1122,12 @@ func TestGetOrderHistory(t *testing.T) {
 	}
 
 	_, err = e.GetOrderHistory(t.Context(), &getOrdersRequest)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "GetOrderHistory should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "GetOrderHistory should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock GetOrderHistory should not error")
 	}
 }
@@ -1140,11 +1144,12 @@ func TestNewOrderTest(t *testing.T) {
 	}
 
 	err := e.NewOrderTest(t.Context(), req)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "NewOrderTest should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "NewOrderTest should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock NewOrderTest should not error")
 	}
 
@@ -1157,11 +1162,12 @@ func TestNewOrderTest(t *testing.T) {
 	}
 
 	err = e.NewOrderTest(t.Context(), req)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "NewOrderTest should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "NewOrderTest should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock NewOrderTest should not error")
 	}
 }
@@ -1331,11 +1337,12 @@ func TestSubmitOrder(t *testing.T) {
 	}
 
 	_, err := e.SubmitOrder(t.Context(), orderSubmission)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "SubmitOrder should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "SubmitOrder should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock SubmitOrder should not error")
 	}
 }
@@ -1352,11 +1359,12 @@ func TestCancelExchangeOrder(t *testing.T) {
 	}
 
 	err := e.CancelOrder(t.Context(), orderCancellation)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "CancelOrder should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "CancelOrder should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock CancelOrder should not error")
 	}
 }
@@ -1373,11 +1381,12 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 	}
 
 	_, err := e.CancelAllOrders(t.Context(), orderCancellation)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "CancelAllOrders should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "CancelAllOrders should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock CancelAllOrders should not error")
 	}
 }
@@ -1531,9 +1540,10 @@ func TestWithdraw(t *testing.T) {
 
 	_, err := e.WithdrawCryptocurrencyFunds(t.Context(),
 		&withdrawCryptoRequest)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "Withdraw should not error when credentials are set")
-	} else {
+	default:
 		assert.Error(t, err, "Withdraw should error when no keys are set")
 	}
 }
@@ -1542,9 +1552,10 @@ func TestDepositHistory(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, e, canManipulateRealOrders)
 	_, err := e.DepositHistory(t.Context(), currency.ETH, "", time.Time{}, time.Time{}, 0, 10000)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "DepositHistory should not error when credentials are set")
-	} else {
+	default:
 		assert.Error(t, err, "DepositHistory should error when no keys are set")
 	}
 }
@@ -1553,9 +1564,10 @@ func TestWithdrawHistory(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, e, canManipulateRealOrders)
 	_, err := e.GetWithdrawalsHistory(t.Context(), currency.ETH, asset.Spot)
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "GetWithdrawalsHistory should not error when credentials are set")
-	} else {
+	default:
 		assert.Error(t, err, "GetWithdrawalsHistory should error when no keys are set")
 	}
 }
@@ -1577,11 +1589,12 @@ func TestWithdrawInternationalBank(t *testing.T) {
 func TestGetDepositAddress(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetDepositAddress(t.Context(), currency.USDT, "", currency.BNB.String())
-	if sharedtestvalues.AreAPICredentialsSet(e) {
+	switch {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "GetDepositAddress should not error when credentials are set")
-	} else if !mockTests {
+	case !mockTests:
 		assert.Error(t, err, "GetDepositAddress should error when no keys are set")
-	} else {
+	default:
 		assert.NoError(t, err, "Mock GetDepositAddress should not error")
 	}
 }
@@ -1844,13 +1857,14 @@ func TestWsOCO(t *testing.T) {
 func TestGetWsAuthStreamKey(t *testing.T) {
 	t.Parallel()
 	key, err := e.GetWsAuthStreamKey(t.Context())
-	if mockTests {
+	switch {
+	case mockTests:
 		require.NoError(t, err, "GetWsAuthStreamKey must not error in mock mode")
 		assert.NotEmpty(t, key, "key should not be empty in mock mode")
-	} else if sharedtestvalues.AreAPICredentialsSet(e) {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		require.NoError(t, err, "GetWsAuthStreamKey must not error when credentials are set")
 		assert.NotEmpty(t, key, "key should not be empty when credentials are set")
-	} else {
+	default:
 		assert.Error(t, err, "GetWsAuthStreamKey should error when no credentials are set")
 		assert.Empty(t, key, "key should be empty when no credentials are set")
 	}
@@ -1859,11 +1873,12 @@ func TestGetWsAuthStreamKey(t *testing.T) {
 func TestMaintainWsAuthStreamKey(t *testing.T) {
 	t.Parallel()
 	err := e.MaintainWsAuthStreamKey(t.Context())
-	if mockTests {
+	switch {
+	case mockTests:
 		assert.NoError(t, err, "MaintainWsAuthStreamKey should not error in mock mode")
-	} else if sharedtestvalues.AreAPICredentialsSet(e) {
+	case sharedtestvalues.AreAPICredentialsSet(e):
 		assert.NoError(t, err, "MaintainWsAuthStreamKey should not error when credentials are set")
-	} else {
+	default:
 		assert.Error(t, err, "MaintainWsAuthStreamKey should error when no credentials are set")
 	}
 }
