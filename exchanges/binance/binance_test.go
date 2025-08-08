@@ -103,14 +103,14 @@ func TestUpdateTicker(t *testing.T) {
 
 	tradablePairs, err := e.FetchTradablePairs(t.Context(), asset.CoinMarginedFutures)
 	require.NoError(t, err, "FetchTradablePairs for coin margined futures must not error")
-	require.NotEmpty(t, tradablePairs, "tradable pairs for coin margined futures should not be empty")
+	require.NotEmpty(t, tradablePairs, "tradable pairs for coin margined futures must not be empty")
 
 	_, err = e.UpdateTicker(t.Context(), tradablePairs[0], asset.CoinMarginedFutures)
 	assert.NoError(t, err, "UpdateTicker for coin margined futures should not error")
 
 	usdtMarginedPairs, err := e.FetchTradablePairs(t.Context(), asset.USDTMarginedFutures)
 	require.NoError(t, err, "FetchTradablePairs for USDT margined futures must not error")
-	require.NotEmpty(t, usdtMarginedPairs, "tradable pairs for USDT margined futures should not be empty")
+	require.NotEmpty(t, usdtMarginedPairs, "tradable pairs for USDT margined futures must not be empty")
 
 	_, err = e.UpdateTicker(t.Context(), usdtMarginedPairs[0], asset.USDTMarginedFutures)
 	assert.NoError(t, err, "UpdateTicker for USDT margined futures should not error")
@@ -131,7 +131,7 @@ func TestUpdateTickers(t *testing.T) {
 func TestUpdateOrderbook(t *testing.T) {
 	t.Parallel()
 	cp, err := currency.NewPairFromString("BTCUSDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.UpdateOrderbook(t.Context(), cp, asset.Spot)
 	assert.NoError(t, err, "UpdateOrderbook for spot should not error")
@@ -143,7 +143,7 @@ func TestUpdateOrderbook(t *testing.T) {
 	assert.NoError(t, err, "UpdateOrderbook for USDT margined futures should not error")
 
 	cp2, err := currency.NewPairFromString("BTCUSD_PERP")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.UpdateOrderbook(t.Context(), cp2, asset.CoinMarginedFutures)
 	assert.NoError(t, err, "UpdateOrderbook for coin margined futures should not error")
@@ -283,7 +283,7 @@ func TestUTakerBuySellVol(t *testing.T) {
 func TestUCompositeIndexInfo(t *testing.T) {
 	t.Parallel()
 	cp, err := currency.NewPairFromString("DEFI-USDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.UCompositeIndexInfo(t.Context(), cp)
 	assert.NoError(t, err, "UCompositeIndexInfo should not error")
@@ -947,13 +947,13 @@ func TestGetPriceChangeStats(t *testing.T) {
 func TestGetTickers(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetTickers(t.Context())
-	require.NoError(t, err, "GetTickers should not error")
+	require.NoError(t, err, "GetTickers must not error")
 
 	resp, err := e.GetTickers(t.Context(),
 		currency.NewBTCUSDT(),
 		currency.NewPair(currency.ETH, currency.USDT))
-	require.NoError(t, err, "GetTickers should not error")
-	require.Len(t, resp, 2, "GetTickers should return 2 tickers")
+	require.NoError(t, err, "GetTickers must not error")
+	require.Len(t, resp, 2, "GetTickers must return 2 tickers")
 }
 
 func TestGetLatestSpotPrice(t *testing.T) {
@@ -1083,7 +1083,7 @@ func TestFormatWithdrawPermissions(t *testing.T) {
 func TestGetActiveOrders(t *testing.T) {
 	t.Parallel()
 	pair, err := currency.NewPairFromString("BTC_USDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	getOrdersRequest := order.MultiOrderRequest{
 		Type:      order.AnyType,
@@ -1405,7 +1405,7 @@ func TestWrapperGetActiveOrders(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	p, err := currency.NewPairFromString("EOS-USDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.GetActiveOrders(t.Context(), &order.MultiOrderRequest{
 		Type:      order.AnyType,
@@ -1416,7 +1416,7 @@ func TestWrapperGetActiveOrders(t *testing.T) {
 	assert.NoError(t, err, "GetActiveOrders for coin margined futures should not error")
 
 	p2, err := currency.NewPairFromString("BTCUSDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.GetActiveOrders(t.Context(), &order.MultiOrderRequest{
 		Type:      order.AnyType,
@@ -1431,7 +1431,7 @@ func TestWrapperGetOrderHistory(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	p, err := currency.NewPairFromString("EOSUSD_PERP")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.GetOrderHistory(t.Context(), &order.MultiOrderRequest{
 		Type:        order.AnyType,
@@ -1443,7 +1443,7 @@ func TestWrapperGetOrderHistory(t *testing.T) {
 	assert.NoError(t, err, "GetOrderHistory for coin margined futures should not error")
 
 	p2, err := currency.NewPairFromString("BTCUSDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	_, err = e.GetOrderHistory(t.Context(), &order.MultiOrderRequest{
 		Type:        order.AnyType,
@@ -1464,10 +1464,10 @@ func TestCancelOrder(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	p, err := currency.NewPairFromString("EOS-USDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	fPair, err := e.FormatExchangeCurrency(p, asset.CoinMarginedFutures)
-	require.NoError(t, err, "FormatExchangeCurrency should not error")
+	require.NoError(t, err, "FormatExchangeCurrency must not error")
 
 	err = e.CancelOrder(t.Context(), &order.Cancel{
 		AssetType: asset.CoinMarginedFutures,
@@ -1477,10 +1477,10 @@ func TestCancelOrder(t *testing.T) {
 	assert.NoError(t, err, "CancelOrder for coin margined futures should not error")
 
 	p2, err := currency.NewPairFromString("BTC-USDT")
-	require.NoError(t, err, "NewPairFromString should not error")
+	require.NoError(t, err, "NewPairFromString must not error")
 
 	fpair2, err := e.FormatExchangeCurrency(p2, asset.USDTMarginedFutures)
-	require.NoError(t, err, "FormatExchangeCurrency should not error")
+	require.NoError(t, err, "FormatExchangeCurrency must not error")
 
 	err = e.CancelOrder(t.Context(), &order.Cancel{
 		AssetType: asset.USDTMarginedFutures,
@@ -1495,7 +1495,7 @@ func TestGetOrderInfo(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	tradablePairs, err := e.FetchTradablePairs(t.Context(), asset.CoinMarginedFutures)
 	require.NoError(t, err, "FetchTradablePairs must not error")
-	require.NotEmpty(t, tradablePairs, "tradable pairs should not be empty")
+	require.NotEmpty(t, tradablePairs, "tradable pairs must not be empty")
 
 	_, err = e.GetOrderInfo(t.Context(), "123", tradablePairs[0], asset.CoinMarginedFutures)
 	assert.NoError(t, err, "GetOrderInfo should not error")
@@ -1596,7 +1596,7 @@ func BenchmarkWsHandleData(bb *testing.B) {
 	data, err := os.ReadFile("testdata/wsHandleData.json")
 	require.NoError(bb, err, "ReadFile must not error")
 	lines := bytes.Split(data, []byte("\n"))
-	require.Len(bb, lines, 8, "wsHandleData.json should contain 8 lines")
+	require.Len(bb, lines, 8, "wsHandleData.json must contain 8 lines")
 	go func() {
 		for {
 			<-e.Websocket.DataHandler
@@ -1851,7 +1851,7 @@ func TestGetWsAuthStreamKey(t *testing.T) {
 		require.NoError(t, err, "GetWsAuthStreamKey must not error when credentials are set")
 		assert.NotEmpty(t, key, "key should not be empty when credentials are set")
 	} else {
-		assert.Error(t, err, "GetWsAuthStreamKey must error when no credentials are set")
+		assert.Error(t, err, "GetWsAuthStreamKey should error when no credentials are set")
 		assert.Empty(t, key, "key should be empty when no credentials are set")
 	}
 }
