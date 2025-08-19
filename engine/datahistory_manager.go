@@ -1049,19 +1049,41 @@ func (m *DataHistoryManager) CheckCandleIssue(job *DataHistoryJob, multiplier in
 	}
 	if apiData != dbData {
 		var diff float64
-		if apiData < dbData {
-			diff = gctmath.PercentageChange(apiData, dbData)
+		
+		// Handle edge cases where one or both values are zero
+		if apiData == 0 && dbData == 0 {
+			// Both are zero, no difference
+			return "", false
+		} else if apiData == 0 || dbData == 0 {
+			// One value is zero, this is a significant difference
+			// Instead of using percentage change (which gives Inf), report absolute difference
+			diff = math.Abs(apiData - dbData)
+			issue = fmt.Sprintf("%s api: %v db: %v diff: absolute %v", candleField, apiData, dbData, diff)
+			// For zero comparisons, consider any non-zero difference as exceeding tolerance
+			if job.ReplaceOnIssue &&
+				job.IssueTolerancePercentage != 0 &&
+				job.SecondaryExchangeSource == "" {
+				replace = true
+			}
 		} else {
-			diff = gctmath.PercentageChange(dbData, apiData)
-		}
-		if diff > job.IssueTolerancePercentage {
-			issue = fmt.Sprintf("%s api: %v db: %v diff: %v %%", candleField, apiData, dbData, diff)
-		}
-		if job.ReplaceOnIssue &&
-			job.IssueTolerancePercentage != 0 &&
-			diff > job.IssueTolerancePercentage &&
-			job.SecondaryExchangeSource == "" {
-			replace = true
+			// Normal case: both values are non-zero
+			if apiData < dbData {
+				diff = gctmath.PercentageChange(apiData, dbData)
+			} else {
+				diff = gctmath.PercentageChange(dbData, apiData)
+			}
+			
+			// Check if difference exceeds tolerance
+			if diff > job.IssueTolerancePercentage {
+				issue = fmt.Sprintf("%s api: %v db: %v diff: %v %%", candleField, apiData, dbData, diff)
+			}
+			
+			if job.ReplaceOnIssue &&
+				job.IssueTolerancePercentage != 0 &&
+				diff > job.IssueTolerancePercentage &&
+				job.SecondaryExchangeSource == "" {
+				replace = true
+			}
 		}
 	}
 	return issue, replace

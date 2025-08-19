@@ -1071,7 +1071,7 @@ func TestCheckCandleIssue(t *testing.T) {
 	}
 	issue, replace = m.CheckCandleIssue(job, 0, 0, 0, "")
 	if issue != "" {
-		t.Errorf("expected 'nil job' received %v", issue)
+		t.Errorf("expected no issue when both values are equal, received %v", issue)
 	}
 	if replace {
 		t.Errorf("expected %v received %v", false, replace)
@@ -1120,6 +1120,44 @@ func TestCheckCandleIssue(t *testing.T) {
 	}
 	if replace {
 		t.Errorf("expected %v received %v", false, replace)
+	}
+
+	// Test edge cases with zero values - create a fresh manager
+	m2, _ := createDHM(t)
+	job = &DataHistoryJob{
+		IssueTolerancePercentage: 50.0,
+		ReplaceOnIssue:           false,
+		DecimalPlaceComparison:   0,
+	}
+
+	// Case: API=0, DB=1 (should report absolute difference)
+	issue, replace = m2.CheckCandleIssue(job, 0, 0, 1, "Volume")
+	t.Logf("Case API=0, DB=1: issue='%s', replace=%v", issue, replace)
+	expectedIssue := "Volume api: 0 db: 1 diff: absolute 1"
+	if issue != expectedIssue {
+		t.Errorf("expected issue '%s' but got '%s'", expectedIssue, issue)
+	}
+	if replace {
+		t.Errorf("expected %v received %v", false, replace)
+	}
+
+	// Case: API=1, DB=0 (should report absolute difference)
+	issue, replace = m2.CheckCandleIssue(job, 0, 1, 0, "Volume")
+	t.Logf("Case API=1, DB=0: issue='%s', replace=%v", issue, replace)
+	expectedIssue = "Volume api: 1 db: 0 diff: absolute 1"
+	if issue != expectedIssue {
+		t.Errorf("expected issue '%s' but got '%s'", expectedIssue, issue)
+	}
+	if replace {
+		t.Errorf("expected %v received %v", false, replace)
+	}
+
+	// Test replacement logic with zero values
+	job.ReplaceOnIssue = true
+	issue, replace = m2.CheckCandleIssue(job, 0, 0, 1, "Volume")
+	t.Logf("Case API=0, DB=1 with ReplaceOnIssue=true: issue='%s', replace=%v", issue, replace)
+	if !replace {
+		t.Errorf("expected replace=true when ReplaceOnIssue=true and values differ with zero")
 	}
 }
 
