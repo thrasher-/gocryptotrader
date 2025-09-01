@@ -110,7 +110,7 @@ func TestGetRPCEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errNilConfig, "GetRPCEndpoints must error on nil config")
 
 	m, err := (&Engine{Config: &config.Config{}}).GetRPCEndpoints()
-	require.NoError(t, err, "GetRPCEndpoints should not error on valid config")
+	require.NoError(t, err, "GetRPCEndpoints must not error on valid config")
 	assert.Len(t, m, 4, "should return 4 RPC endpoints")
 }
 
@@ -532,15 +532,12 @@ func TestGetCollatedExchangeAccountInfoByCoin(t *testing.T) {
 
 func TestGetExchangePriceByCurrencyPair(t *testing.T) {
 	t.Parallel()
-	stats.StatMutex.Lock()
-	stats.Items = stats.Items[:0]
-	stats.StatMutex.Unlock()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	require.NoError(t, err, "must create pair from string")
 
-	err = stats.Add("Bitfinex", p, asset.Spot, 1000, 10000)
+	err = stats.Add("bitfinex-test-price", p, asset.Spot, 1000, 10000)
 	require.NoError(t, err, "stats.Add must not error")
-	err = stats.Add(testExchange, p, asset.Spot, 1337, 10000)
+	err = stats.Add("bitstamp-test-price", p, asset.Spot, 1337, 10000)
 	require.NoError(t, err, "stats.Add must not error")
 
 	btcaud, err := currency.NewPairFromStrings("BTC", "AUD")
@@ -559,14 +556,14 @@ func TestGetExchangePriceByCurrencyPair(t *testing.T) {
 			pair:         p,
 			asset:        asset.Spot,
 			function:     GetExchangeHighestPriceByCurrencyPair,
-			expectedExch: testExchange,
+			expectedExch: "bitstamp-test-price",
 		},
 		{
 			name:         "Lowest Price",
 			pair:         p,
 			asset:        asset.Spot,
 			function:     GetExchangeLowestPriceByCurrencyPair,
-			expectedExch: "Bitfinex",
+			expectedExch: "bitfinex-test-price",
 		},
 		{
 			name:        "Highest Price - no stats",
@@ -707,7 +704,7 @@ func TestGetCryptocurrencyDepositAddressesByExchange(t *testing.T) {
 	_, err := e.GetCryptocurrencyDepositAddressesByExchange(exchName)
 	assert.NoError(t, err, "GetCryptocurrencyDepositAddressesByExchange should not error")
 	_, err = e.GetCryptocurrencyDepositAddressesByExchange("non-existent")
-	assert.ErrorIs(t, err, ErrExchangeNotFound, "GetCryptocurrencyDepositAddressesByExchange must error on non-existent exchange")
+	assert.ErrorIs(t, err, ErrExchangeNotFound, "GetCryptocurrencyDepositAddressesByExchange should error on non-existent exchange")
 
 	e.DepositAddressManager = SetupDepositAddressManager()
 	_, err = e.GetCryptocurrencyDepositAddressesByExchange(exchName)
@@ -883,7 +880,7 @@ func TestVerifyCert(t *testing.T) {
 			var err error
 			if !tc.createBypass {
 				cert, err = mockCert(tc.pemType, tc.notAfter)
-				require.NoError(t, err, "mockCert should not error")
+				require.NoError(t, err, "mockCert must not error")
 			}
 			err = verifyCert(cert)
 			assert.ErrorIs(t, err, tc.errorExpected, "verifyCert should return the expected error")

@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	// Items holds stat items
-	Items     []Item
-	StatMutex sync.Mutex
+	// items holds stat items
+	items     []Item
+	statMutex sync.Mutex
 )
 
 // Item holds various fields for storing currency pair stats
