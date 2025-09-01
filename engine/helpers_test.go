@@ -99,25 +99,23 @@ func CreateTestBot(tb testing.TB) *Engine {
 }
 
 func TestGetSubsystemsStatus(t *testing.T) {
+	t.Parallel()
 	m := (&Engine{}).GetSubsystemsStatus()
-	if len(m) != 15 {
-		t.Fatalf("subsystem count is wrong expecting: %d but received: %d", 15, len(m))
-	}
+	assert.Len(t, m, 15, "subsystem count should be 15")
 }
 
 func TestGetRPCEndpoints(t *testing.T) {
+	t.Parallel()
 	_, err := (&Engine{}).GetRPCEndpoints()
-	require.ErrorIs(t, err, errNilConfig)
+	require.ErrorIs(t, err, errNilConfig, "GetRPCEndpoints must error on nil config")
 
 	m, err := (&Engine{Config: &config.Config{}}).GetRPCEndpoints()
-	require.NoError(t, err)
-
-	if len(m) != 4 {
-		t.Fatalf("expected length: %d but received: %d", 4, len(m))
-	}
+	require.NoError(t, err, "GetRPCEndpoints should not error on valid config")
+	assert.Len(t, m, 4, "should return 4 RPC endpoints")
 }
 
-func TestSetSubsystem(t *testing.T) { //nolint // TO-DO: Fix race t.Parallel() usage
+func TestSetSubsystem(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		Subsystem    string
 		Engine       *Engine
@@ -230,37 +228,23 @@ func TestGetExchangeOTPs(t *testing.T) {
 	t.Parallel()
 	bot := CreateTestBot(t)
 	_, err := bot.GetExchangeOTPs()
-	if err == nil {
-		t.Fatal("Expected err with no exchange OTP secrets set")
-	}
+	assert.Error(t, err, "GetExchangeOTPs should error when no exchange OTP secrets set")
 
 	bnCfg, err := bot.Config.GetExchangeConfig("binance")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "GetExchangeConfig must not error for binance")
 	bCfg, err := bot.Config.GetExchangeConfig(testExchange)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "GetExchangeConfig must not error for testExchange")
 
 	bnCfg.API.Credentials.OTPSecret = "JBSWY3DPEHPK3PXP"
 	bCfg.API.Credentials.OTPSecret = "JBSWY3DPEHPK3PXP"
 	result, err := bot.GetExchangeOTPs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result) != 2 {
-		t.Fatal("Expected 2 OTP results")
-	}
+	assert.NoError(t, err, "GetExchangeOTPs should not error with valid secrets")
+	assert.Len(t, result, 2, "GetExchangeOTPs should return 2 OTP results")
 
 	bnCfg.API.Credentials.OTPSecret = "°"
 	result, err = bot.GetExchangeOTPs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result) != 1 {
-		t.Fatal("Expected 1 OTP code with invalid OTP Secret")
-	}
+	assert.NoError(t, err, "GetExchangeOTPs should not error with one invalid secret")
+	assert.Len(t, result, 1, "GetExchangeOTPs should return 1 OTP code with one invalid OTP Secret")
 
 	// Flush settings
 	bnCfg.API.Credentials.OTPSecret = ""
@@ -271,23 +255,15 @@ func TestGetExchangeoOTPByName(t *testing.T) {
 	t.Parallel()
 	bot := CreateTestBot(t)
 	_, err := bot.GetExchangeOTPByName(testExchange)
-	if err == nil {
-		t.Fatal("Expected err with no exchange OTP secrets set")
-	}
+	assert.Error(t, err, "GetExchangeOTPByName should error with no exchange OTP secrets set")
 
 	bCfg, err := bot.Config.GetExchangeConfig(testExchange)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "GetExchangeConfig must not error for testExchange")
 
 	bCfg.API.Credentials.OTPSecret = "JBSWY3DPEHPK3PXP"
 	result, err := bot.GetExchangeOTPByName(testExchange)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == "" {
-		t.Fatal("Expected valid OTP code")
-	}
+	assert.NoError(t, err, "GetExchangeOTPByName should not error with a valid secret")
+	assert.NotEmpty(t, result, "GetExchangeOTPByName should return a valid OTP code")
 
 	// Flush setting
 	bCfg.API.Credentials.OTPSecret = ""
@@ -296,21 +272,15 @@ func TestGetExchangeoOTPByName(t *testing.T) {
 func TestGetAuthAPISupportedExchanges(t *testing.T) {
 	t.Parallel()
 	e := CreateTestBot(t)
-	if result := e.GetAuthAPISupportedExchanges(); len(result) != 0 {
-		t.Fatal("Unexpected result", result)
-	}
+	assert.Empty(t, e.GetAuthAPISupportedExchanges(), "GetAuthAPISupportedExchanges should not return any exchanges initially")
 
 	exch, err := e.ExchangeManager.GetExchangeByName(testExchange)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "GetExchangeByName must not error")
 
 	b := exch.GetBase()
 	b.API.AuthenticatedWebsocketSupport = true
 	b.SetCredentials("test", "test", "", "", "", "")
-	if result := e.GetAuthAPISupportedExchanges(); len(result) != 1 {
-		t.Fatal("Unexpected result", result)
-	}
+	assert.Len(t, e.GetAuthAPISupportedExchanges(), 1, "GetAuthAPISupportedExchanges should return one exchange")
 }
 
 func TestIsOnline(t *testing.T) {
@@ -318,32 +288,15 @@ func TestIsOnline(t *testing.T) {
 	e := CreateTestBot(t)
 	var err error
 	e.connectionManager, err = setupConnectionManager(&e.Config.ConnectionMonitor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r := e.IsOnline(); r {
-		t.Fatal("Unexpected result")
-	}
+	require.NoError(t, err, "setupConnectionManager must not error")
+	assert.False(t, e.IsOnline(), "IsOnline should be false initially")
 
-	if err = e.connectionManager.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, e.connectionManager.Start(), "connectionManager.Start must not error")
+	t.Cleanup(func() {
+		assert.NoError(t, e.connectionManager.Stop(), "connectionManager.Stop should not error")
+	})
 
-	tick := time.NewTicker(time.Second * 5)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-			t.Fatal("Test timeout")
-		default:
-			if e.IsOnline() {
-				if err := e.connectionManager.Stop(); err != nil {
-					t.Fatal("unable to shutdown connection manager")
-				}
-				return
-			}
-		}
-	}
+	assert.Eventually(t, e.IsOnline, 5*time.Second, 100*time.Millisecond, "IsOnline should become true")
 }
 
 func TestGetSpecificAvailablePairs(t *testing.T) {
@@ -377,275 +330,93 @@ func TestGetSpecificAvailablePairs(t *testing.T) {
 
 	result := e.GetSpecificAvailablePairs(true, true, true, true, assetType)
 	btcUSD := currency.NewBTCUSD()
-	if !result.Contains(btcUSD, true) {
-		t.Error("Unexpected result")
-	}
+	assert.True(t, result.Contains(btcUSD, true), "result should contain BTC-USD")
 
 	btcUSDT := currency.NewPair(currency.BTC, c)
-	if !result.Contains(btcUSDT, false) {
-		t.Error("Unexpected result")
-	}
+	assert.True(t, result.Contains(btcUSDT, false), "result should contain BTC-USDT")
 
 	result = e.GetSpecificAvailablePairs(true, true, false, false, assetType)
 
-	if result.Contains(btcUSDT, false) {
-		t.Error("Unexpected result")
-	}
+	assert.False(t, result.Contains(btcUSDT, false), "result should not contain BTC-USDT")
 
 	ltcBTC := currency.NewPair(currency.LTC, currency.BTC)
 	result = e.GetSpecificAvailablePairs(true, false, false, true, assetType)
-	if result.Contains(ltcBTC, false) {
-		t.Error("Unexpected result")
-	}
+	assert.False(t, result.Contains(ltcBTC, false), "result should not contain LTC-BTC")
 }
 
 func TestIsRelatablePairs(t *testing.T) {
 	t.Parallel()
-	CreateTestBot(t)
-
-	btcusd := currency.NewBTCUSD()
-	xbtusd := currency.NewPair(currency.XBT, currency.USD)
-	xbtusdt := currency.NewPair(currency.XBT, currency.USDT)
-
-	// Test relational pairs with similar names
-	result := IsRelatablePairs(xbtusd, btcusd, false)
-	if !result {
-		t.Fatal("Unexpected result")
+	testCases := []struct {
+		name     string
+		p1       string
+		p2       string
+		usdt     bool
+		expected bool
+	}{
+		{"similar names", "XBT-USD", "BTC-USD", false, true},
+		{"similar names reversed", "BTC-USD", "XBT-USD", false, true},
+		{"similar names with tether disabled", "XBT-USD", "BTC-USDT", false, false},
+		{"similar names with tether enabled", "XBT-USDT", "BTC-USD", true, true},
+		{"different ordering and delimiter with tether", "AE-USDT", "USDT-AE", true, true},
+		{"different ordering and delimiter without tether", "AE-USDT", "USDT-AE", false, true},
+		{"similar names different fiat", "XBT-EUR", "BTC-AUD", false, true},
+		{"similar names different fiat and ordering", "USD-BTC", "BTC-EUR", false, true},
+		{"similar names different fiat with tether", "USD-BTC", "BTC-USDT", true, true},
+		{"similar crypto pairs", "LTC-BTC", "BTC-LTC", false, true},
+		{"different crypto pairs", "LTC-ETH", "BTC-ETH", false, false},
+		{"USDT-USD vs BTC-USD with tether", "USDT-USD", "BTC-USD", true, false},
+		{"similar crypto names 2", "XBT-LTC", "BTC-LTC", false, true},
+		{"similar crypto names different ordering", "LTC-XBT", "BTC-LTC", false, true},
+		{"non-relational fiat", "EUR-USD", "BTC-USD", false, false},
 	}
 
-	// Test relational pairs with similar names reversed
-	result = IsRelatablePairs(btcusd, xbtusd, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p1, err := currency.NewPairFromString(tc.p1)
+			require.NoError(t, err, "Must create pair from string")
+			p2, err := currency.NewPairFromString(tc.p2)
+			require.NoError(t, err, "Must create pair from string")
 
-	// Test relational pairs with similar names but with Tether support disabled
-	result = IsRelatablePairs(xbtusd, currency.NewBTCUSDT(), false)
-	if result {
-		t.Fatal("Unexpected result")
-	}
-
-	// Test relational pairs with similar names but with Tether support enabled
-	result = IsRelatablePairs(xbtusdt, btcusd, true)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	aeusdt, err := currency.NewPairFromStrings("AE", "USDT")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	usdtae, err := currency.NewPairDelimiter("USDT-AE", "-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relational pairs with different ordering, a delimiter and with
-	// Tether support enabled
-	result = IsRelatablePairs(aeusdt, usdtae, true)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	// Test relational pairs with different ordering, a delimiter and with
-	// Tether support disabled
-	result = IsRelatablePairs(aeusdt, usdtae, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	xbteur, err := currency.NewPairFromStrings("XBT", "EUR")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	btcaud, err := currency.NewPairFromStrings("BTC", "AUD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl pairs with similar names and different fiat currencies
-	result = IsRelatablePairs(xbteur, btcaud, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	usdbtc, err := currency.NewPairFromStrings("USD", "BTC")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	btceur, err := currency.NewPairFromStrings("BTC", "EUR")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl pairs with similar names, different fiat currencies and
-	// with different ordering
-	result = IsRelatablePairs(usdbtc, btceur, false)
-	if !result { // Is this really expected result???
-		t.Fatal("Unexpected result")
-	}
-
-	// Test relationl pairs with similar names, different fiat currencies and
-	// with Tether enabled
-	result = IsRelatablePairs(usdbtc, currency.NewBTCUSDT(), true)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	ltcbtc, err := currency.NewPairFromStrings("LTC", "BTC")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	btcltc, err := currency.NewPairFromStrings("BTC", "LTC")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl crypto pairs with similar names
-	result = IsRelatablePairs(ltcbtc, btcltc, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	ltceth, err := currency.NewPairFromStrings("LTC", "ETH")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	btceth, err := currency.NewPairFromStrings("BTC", "ETH")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl crypto pairs with similar different pairs
-	result = IsRelatablePairs(ltceth, btceth, false)
-	if result {
-		t.Fatal("Unexpected result")
-	}
-
-	// Test relationl crypto pairs with similar different pairs and with USDT
-	// enabled
-	usdtusd, err := currency.NewPairFromStrings("USDT", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	result = IsRelatablePairs(usdtusd, btcusd, true)
-	if result {
-		t.Fatal("Unexpected result")
-	}
-
-	xbtltc, err := currency.NewPairFromStrings("XBT", "LTC")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl crypto pairs with similar names
-	result = IsRelatablePairs(xbtltc, btcltc, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	ltcxbt, err := currency.NewPairFromStrings("LTC", "XBT")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test relationl crypto pairs with different ordering and similar names
-	result = IsRelatablePairs(ltcxbt, btcltc, false)
-	if !result {
-		t.Fatal("Unexpected result")
-	}
-
-	// Test edge case between two pairs when currency translations were causing
-	// non-relational pairs to be relatable
-	eurusd, err := currency.NewPairFromStrings("EUR", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	result = IsRelatablePairs(eurusd, btcusd, false)
-	if result {
-		t.Fatal("Unexpected result")
+			result := IsRelatablePairs(p1, p2, tc.usdt)
+			assert.Equal(t, tc.expected, result, "IsRelatablePairs result should be as expected")
+		})
 	}
 }
 
 func TestGetRelatableCryptocurrencies(t *testing.T) {
 	t.Parallel()
-	CreateTestBot(t)
 	btcltc, err := currency.NewPairFromStrings("BTC", "LTC")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	btcbtc, err := currency.NewPairFromStrings("BTC", "BTC")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	ltcltc, err := currency.NewPairFromStrings("LTC", "LTC")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	btceth, err := currency.NewPairFromStrings("BTC", "ETH")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	p := GetRelatableCryptocurrencies(btcltc)
-	if p.Contains(btcltc, true) {
-		t.Error("Unexpected result")
-	}
-	if p.Contains(btcbtc, true) {
-		t.Error("Unexpected result")
-	}
-	if p.Contains(ltcltc, true) {
-		t.Error("Unexpected result")
-	}
-	if !p.Contains(btceth, true) {
-		t.Error("Unexpected result")
-	}
-
-	p = GetRelatableCryptocurrencies(btcltc)
-	if p.Contains(btcltc, true) {
-		t.Error("Unexpected result")
-	}
-	if p.Contains(btcbtc, true) {
-		t.Error("Unexpected result")
-	}
-	if p.Contains(ltcltc, true) {
-		t.Error("Unexpected result")
-	}
-	if !p.Contains(btceth, true) {
-		t.Error("Unexpected result")
-	}
+	assert.False(t, p.Contains(btcltc, true), "result should not contain BTCLTC")
+	assert.False(t, p.Contains(btcbtc, true), "result should not contain BTCBTC")
+	assert.False(t, p.Contains(ltcltc, true), "result should not contain LTCLTC")
+	assert.True(t, p.Contains(btceth, true), "result should contain BTCETH")
 }
 
 func TestGetRelatableFiatCurrencies(t *testing.T) {
 	t.Parallel()
 	btcUSD, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	btcEUR, err := currency.NewPairFromStrings("BTC", "EUR")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	p := GetRelatableFiatCurrencies(btcUSD)
-	if !p.Contains(btcEUR, true) {
-		t.Error("Unexpected result")
-	}
+	assert.True(t, p.Contains(btcEUR, true), "result should contain BTCEUR")
 
-	if p.Contains(currency.NewPair(currency.DOGE, currency.XRP), true) {
-		t.Error("Unexpected result")
-	}
+	assert.False(t, p.Contains(currency.NewPair(currency.DOGE, currency.XRP), true), "result should not contain DOGEXRP")
 }
 
 func TestMapCurrenciesByExchange(t *testing.T) {
@@ -659,31 +430,20 @@ func TestMapCurrenciesByExchange(t *testing.T) {
 
 	result := e.MapCurrenciesByExchange(pairs, true, asset.Spot)
 	pairs, ok := result[testExchange]
-	if !ok {
-		t.Fatal("Unexpected result")
-	}
-
-	if len(pairs) != 2 {
-		t.Fatal("Unexpected result")
-	}
+	require.True(t, ok, "result must contain the test exchange")
+	assert.Len(t, pairs, 2, "pairs length should be 2")
 }
 
 func TestGetExchangeNamesByCurrency(t *testing.T) {
 	t.Parallel()
 	btsusd, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	btcjpy, err := currency.NewPairFromStrings("BTC", "JPY")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	blahjpy, err := currency.NewPairFromStrings("blah", "JPY")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	e := CreateTestBot(t)
 	bf := "Bitflyer"
@@ -706,28 +466,21 @@ func TestGetExchangeNamesByCurrency(t *testing.T) {
 	result := e.GetExchangeNamesByCurrency(btsusd,
 		true,
 		assetType)
-	if !slices.Contains(result, testExchange) {
-		t.Fatal("Unexpected result")
-	}
+	assert.Contains(t, result, testExchange, "result should contain test exchange")
 
 	result = e.GetExchangeNamesByCurrency(btcjpy,
 		true,
 		assetType)
-	if !slices.Contains(result, bf) {
-		t.Fatal("Unexpected result")
-	}
+	assert.Contains(t, result, bf, "result should contain bitflyer")
 
 	result = e.GetExchangeNamesByCurrency(blahjpy,
 		true,
 		assetType)
-	if len(result) > 0 {
-		t.Fatal("Unexpected result")
-	}
+	assert.Empty(t, result, "result should be empty")
 }
 
 func TestGetCollatedExchangeAccountInfoByCoin(t *testing.T) {
 	t.Parallel()
-	CreateTestBot(t)
 
 	var exchangeInfo []account.Holdings
 
@@ -767,96 +520,80 @@ func TestGetCollatedExchangeAccountInfoByCoin(t *testing.T) {
 	exchangeInfo = append(exchangeInfo, bitstampHoldings)
 
 	result := GetCollatedExchangeAccountInfoByCoin(exchangeInfo)
-	if len(result) == 0 {
-		t.Fatal("Unexpected result")
-	}
+	require.NotEmpty(t, result, "result must not be empty")
 
 	amount, ok := result[currency.BTC]
-	if !ok {
-		t.Fatal("Expected currency was not found in result map")
-	}
-
-	if amount.Total != 200 {
-		t.Fatal("Unexpected result")
-	}
+	require.True(t, ok, "currency must be found in result map")
+	assert.Equal(t, float64(200), amount.Total, "total should be 200")
 
 	_, ok = result[currency.ETH]
-	if ok {
-		t.Fatal("Unexpected result")
-	}
+	assert.False(t, ok, "currency should not be found in result map")
 }
 
-func TestGetExchangeHighestPriceByCurrencyPair(t *testing.T) {
+func TestGetExchangePriceByCurrencyPair(t *testing.T) {
 	t.Parallel()
-	CreateTestBot(t)
-
+	stats.StatMutex.Lock()
+	stats.Items = stats.Items[:0]
+	stats.StatMutex.Unlock()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "must create pair from string")
 
 	err = stats.Add("Bitfinex", p, asset.Spot, 1000, 10000)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err, "stats.Add must not error")
 	err = stats.Add(testExchange, p, asset.Spot, 1337, 10000)
-	if err != nil {
-		t.Error(err)
-	}
-	exchangeName, err := GetExchangeHighestPriceByCurrencyPair(p, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if exchangeName != testExchange {
-		t.Error("Unexpected result")
-	}
+	require.NoError(t, err, "stats.Add must not error")
 
 	btcaud, err := currency.NewPairFromStrings("BTC", "AUD")
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(t, err, "must create pair from string")
+
+	testCases := []struct {
+		name         string
+		pair         currency.Pair
+		asset        asset.Item
+		function     func(currency.Pair, asset.Item) (string, error)
+		expectedExch string
+		expectedErr  bool
+	}{
+		{
+			name:         "Highest Price",
+			pair:         p,
+			asset:        asset.Spot,
+			function:     GetExchangeHighestPriceByCurrencyPair,
+			expectedExch: testExchange,
+		},
+		{
+			name:         "Lowest Price",
+			pair:         p,
+			asset:        asset.Spot,
+			function:     GetExchangeLowestPriceByCurrencyPair,
+			expectedExch: "Bitfinex",
+		},
+		{
+			name:        "Highest Price - no stats",
+			pair:        btcaud,
+			asset:       asset.Spot,
+			function:    GetExchangeHighestPriceByCurrencyPair,
+			expectedErr: true,
+		},
+		{
+			name:        "Lowest Price - no stats",
+			pair:        btcaud,
+			asset:       asset.Spot,
+			function:    GetExchangeLowestPriceByCurrencyPair,
+			expectedErr: true,
+		},
 	}
 
-	_, err = GetExchangeHighestPriceByCurrencyPair(btcaud, asset.Spot)
-	if err == nil {
-		t.Error("Unexpected result")
-	}
-}
-
-func TestGetExchangeLowestPriceByCurrencyPair(t *testing.T) {
-	t.Parallel()
-	CreateTestBot(t)
-
-	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = stats.Add("Bitfinex", p, asset.Spot, 1000, 10000)
-	if err != nil {
-		t.Error(err)
-	}
-	err = stats.Add(testExchange, p, asset.Spot, 1337, 10000)
-	if err != nil {
-		t.Error(err)
-	}
-	exchangeName, err := GetExchangeLowestPriceByCurrencyPair(p, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if exchangeName != "Bitfinex" {
-		t.Error("Unexpected result")
-	}
-
-	btcaud, err := currency.NewPairFromStrings("BTC", "AUD")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = GetExchangeLowestPriceByCurrencyPair(btcaud, asset.Spot)
-	if err == nil {
-		t.Error("Unexpected result")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			exchangeName, err := tc.function(tc.pair, tc.asset)
+			if tc.expectedErr {
+				assert.Error(t, err, "function should error")
+			} else {
+				assert.NoError(t, err, "function should not error")
+				assert.Equal(t, tc.expectedExch, exchangeName, "should return correct exchange name")
+			}
+		})
 	}
 }
 
@@ -864,9 +601,7 @@ func TestGetCryptocurrenciesByExchange(t *testing.T) {
 	t.Parallel()
 	e := CreateTestBot(t)
 	_, err := e.GetCryptocurrenciesByExchange("Bitfinex", false, false, asset.Spot)
-	if err != nil {
-		t.Fatalf("Err %s", err)
-	}
+	assert.NoError(t, err, "GetCryptocurrenciesByExchange should not error")
 }
 
 type fakeDepositExchangeOpts struct {
@@ -972,20 +707,15 @@ func TestGetCryptocurrencyDepositAddressesByExchange(t *testing.T) {
 	_, err := e.GetCryptocurrencyDepositAddressesByExchange(exchName)
 	assert.NoError(t, err, "GetCryptocurrencyDepositAddressesByExchange should not error")
 	_, err = e.GetCryptocurrencyDepositAddressesByExchange("non-existent")
-	assert.ErrorIs(t, err, ErrExchangeNotFound)
+	assert.ErrorIs(t, err, ErrExchangeNotFound, "GetCryptocurrencyDepositAddressesByExchange must error on non-existent exchange")
 
 	e.DepositAddressManager = SetupDepositAddressManager()
 	_, err = e.GetCryptocurrencyDepositAddressesByExchange(exchName)
-	if err == nil {
-		t.Error("expected error")
-	}
-	if err = e.DepositAddressManager.Sync(e.GetAllExchangeCryptocurrencyDepositAddresses()); err != nil {
-		t.Fatal(err)
-	}
+	assert.Error(t, err, "GetCryptocurrencyDepositAddressesByExchange should error")
+	err = e.DepositAddressManager.Sync(e.GetAllExchangeCryptocurrencyDepositAddresses())
+	require.NoError(t, err, "Sync must not error")
 	_, err = e.GetCryptocurrencyDepositAddressesByExchange(exchName)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetCryptocurrencyDepositAddressesByExchange should not error")
 }
 
 func TestGetExchangeCryptocurrencyDepositAddress(t *testing.T) {
@@ -1010,50 +740,35 @@ func TestGetExchangeCryptocurrencyDepositAddress(t *testing.T) {
 func TestGetAllExchangeCryptocurrencyDepositAddresses(t *testing.T) {
 	t.Parallel()
 	e := createDepositEngine(&fakeDepositExchangeOpts{})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r) > 0 {
-		t.Error("should have no addresses returned for an unauthenticated exchange")
-	}
+	assert.Empty(t, e.GetAllExchangeCryptocurrencyDepositAddresses(), "should have no addresses returned for an unauthenticated exchange")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true, ThrowPairError: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r) > 0 {
-		t.Error("should have no cryptos returned for no enabled pairs")
-	}
+	assert.Empty(t, e.GetAllExchangeCryptocurrencyDepositAddresses(), "should have no cryptos returned for no enabled pairs")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true, SupportsMultiChain: true, ThrowTransferChainError: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r["fake"]) != 0 {
-		t.Error("should have returned no deposit addresses for a fake exchange with transfer error")
-	}
+	assert.Empty(t, e.GetAllExchangeCryptocurrencyDepositAddresses()["fake"], "should have returned no deposit addresses for a fake exchange with transfer error")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true, SupportsMultiChain: true, ThrowDepositAddressError: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r["fake"]["btc"]) != 0 {
-		t.Error("should have returned no deposit addresses for fake exchange with deposit error, with multichain support enabled")
-	}
+	assert.Empty(t, e.GetAllExchangeCryptocurrencyDepositAddresses()["fake"]["btc"], "should have returned no deposit addresses for fake exchange with deposit error, with multichain support enabled")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true, SupportsMultiChain: true, RequiresChainSet: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r["fake"]["btc"]) == 0 {
-		t.Error("should of returned a BTC address")
-	}
+	assert.NotEmpty(t, e.GetAllExchangeCryptocurrencyDepositAddresses()["fake"]["btc"], "should of returned a BTC address")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true, SupportsMultiChain: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r["fake"]["btc"]) == 0 {
-		t.Error("should of returned a BTC address")
-	}
+	assert.NotEmpty(t, e.GetAllExchangeCryptocurrencyDepositAddresses()["fake"]["btc"], "should of returned a BTC address")
+
 	e = createDepositEngine(&fakeDepositExchangeOpts{SupportsAuth: true})
-	if r := e.GetAllExchangeCryptocurrencyDepositAddresses(); len(r["fake"]["xrp"]) == 0 {
-		t.Error("should have returned a XRP address")
-	}
+	assert.NotEmpty(t, e.GetAllExchangeCryptocurrencyDepositAddresses()["fake"]["xrp"], "should have returned a XRP address")
 }
 
 func TestGetExchangeNames(t *testing.T) {
 	t.Parallel()
 	bot := CreateTestBot(t)
-	if e := bot.GetExchangeNames(true); len(e) == 0 {
-		t.Error("exchange names should be populated")
-	}
-	if err := bot.UnloadExchange(testExchange); err != nil {
-		t.Fatal(err)
-	}
-	if e := bot.GetExchangeNames(true); slices.Contains(e, testExchange) {
-		t.Error("Bitstamp should be missing")
-	}
-	if e := bot.GetExchangeNames(false); len(e) != 0 {
-		t.Errorf("Expected %v Received %v", len(e), 0)
-	}
+	assert.NotEmpty(t, bot.GetExchangeNames(true), "exchange names should be populated")
+
+	require.NoError(t, bot.UnloadExchange(testExchange), "UnloadExchange must not error")
+	assert.NotContains(t, bot.GetExchangeNames(true), testExchange, "Bitstamp should be missing")
+	assert.Empty(t, bot.GetExchangeNames(false), "should not have any inactive exchanges")
 
 	for i := range bot.Config.Exchanges {
 		exch, err := bot.ExchangeManager.NewExchangeByName(bot.Config.Exchanges[i].Name)
@@ -1065,9 +780,7 @@ func TestGetExchangeNames(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
-	if e := bot.GetExchangeNames(false); len(e) != len(bot.Config.Exchanges) {
-		t.Errorf("Expected %v Received %v", len(bot.Config.Exchanges), len(e))
-	}
+	assert.Len(t, bot.GetExchangeNames(false), len(bot.Config.Exchanges), "should have all exchanges loaded")
 }
 
 func mockCert(derType string, notAfter time.Time) ([]byte, error) {
@@ -1135,43 +848,46 @@ func mockCert(derType string, notAfter time.Time) ([]byte, error) {
 func TestVerifyCert(t *testing.T) {
 	t.Parallel()
 
-	tester := []struct {
-		PEMType       string
-		CreateBypass  bool
-		NotAfter      time.Time
-		ErrorExpected error
+	testCases := []struct {
+		name          string
+		pemType       string
+		createBypass  bool
+		notAfter      time.Time
+		errorExpected error
 	}{
 		{
-			ErrorExpected: nil,
+			name:          "valid cert",
+			errorExpected: nil,
 		},
 		{
-			CreateBypass:  true,
-			ErrorExpected: errCertDataIsNil,
+			name:          "nil cert data",
+			createBypass:  true,
+			errorExpected: errCertDataIsNil,
 		},
 		{
-			PEMType:       "MEOW",
-			ErrorExpected: errCertTypeInvalid,
+			name:          "invalid pem type",
+			pemType:       "MEOW",
+			errorExpected: errCertTypeInvalid,
 		},
 		{
-			NotAfter:      time.Now().Add(-time.Hour),
-			ErrorExpected: errCertExpired,
+			name:          "expired cert",
+			notAfter:      time.Now().Add(-time.Hour),
+			errorExpected: errCertExpired,
 		},
 	}
 
-	for x := range tester {
-		var cert []byte
-		var err error
-		if !tester[x].CreateBypass {
-			cert, err = mockCert(tester[x].PEMType, tester[x].NotAfter)
-			if err != nil {
-				t.Errorf("test %d unexpected error: %s", x, err)
-				continue
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var cert []byte
+			var err error
+			if !tc.createBypass {
+				cert, err = mockCert(tc.pemType, tc.notAfter)
+				require.NoError(t, err, "mockCert should not error")
 			}
-		}
-		err = verifyCert(cert)
-		if err != tester[x].ErrorExpected {
-			t.Fatalf("test %d expected %v, got %v", x, tester[x].ErrorExpected, err)
-		}
+			err = verifyCert(cert)
+			assert.ErrorIs(t, err, tc.errorExpected, "verifyCert should return the expected error")
+		})
 	}
 }
 
@@ -1179,61 +895,39 @@ func TestCheckAndGenCerts(t *testing.T) {
 	t.Parallel()
 
 	tempDir := filepath.Join(os.TempDir(), "gct-temp-tls")
-	cleanup := func() {
-		if err := os.RemoveAll(tempDir); err != nil {
-			t.Errorf("unable to remove temp dir %s, manual deletion required", tempDir)
-		}
-	}
+	t.Cleanup(func() {
+		assert.NoError(t, os.RemoveAll(tempDir), "cleanup should not error")
+	})
 
-	if err := genCert(tempDir); err != nil {
-		cleanup()
-		t.Fatal(err)
-	}
-
-	defer cleanup()
-	if err := CheckCerts(tempDir); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, genCert(tempDir), "genCert must not error")
+	require.NoError(t, CheckCerts(tempDir), "CheckCerts must not error on valid certs")
 
 	// Now delete cert.pem and test regeneration of cert/key files
 	certFile := filepath.Join(tempDir, "cert.pem")
-	if err := os.Remove(certFile); err != nil {
-		t.Fatal(err)
-	}
-	if err := CheckCerts(tempDir); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.Remove(certFile), "must be able to remove cert file")
+	require.NoError(t, CheckCerts(tempDir), "CheckCerts must not error when regenerating certs")
 
 	// Now call CheckCerts to test an expired cert
 	certData, err := mockCert("", time.Now().Add(-time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = file.Write(certFile, certData)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = CheckCerts(tempDir); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "mockCert must not error")
+	require.NoError(t, file.Write(certFile, certData), "must be able to write expired cert")
+	require.NoError(t, CheckCerts(tempDir), "CheckCerts must not error when regenerating expired cert")
 }
 
 func TestNewSupportedExchangeByName(t *testing.T) {
 	t.Parallel()
 
-	for x := range exchange.Exchanges {
-		exch, err := NewSupportedExchangeByName(exchange.Exchanges[x])
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if exch == nil {
-			t.Fatalf("received nil exchange")
-		}
+	for _, exchName := range exchange.Exchanges {
+		t.Run(exchName, func(t *testing.T) {
+			t.Parallel()
+			exch, err := NewSupportedExchangeByName(exchName)
+			require.NoError(t, err, "NewSupportedExchangeByName must not error for supported exchange")
+			require.NotNil(t, exch, "NewSupportedExchangeByName must not return a nil exchange")
+		})
 	}
 
 	_, err := NewSupportedExchangeByName("")
-	assert.ErrorIs(t, err, ErrExchangeNotFound)
+	assert.ErrorIs(t, err, ErrExchangeNotFound, "NewSupportedExchangeByName should error for empty exchange name")
 }
 
 func TestNewExchangeByNameWithDefaults(t *testing.T) {

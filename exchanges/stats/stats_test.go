@@ -176,7 +176,7 @@ func TestSwapByVolume(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-	items = items[:0]
+	Items = Items[:0]
 	p, err := currency.NewPairFromStrings("BTC", "USD")
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(items) < 1 {
+	if len(Items) < 1 {
 		t.Error("stats Add did not add exchange info.")
 	}
 
@@ -195,7 +195,7 @@ func TestAdd(t *testing.T) {
 		t.Fatal("error cannot be nil")
 	}
 
-	if len(items) != 1 {
+	if len(Items) != 1 {
 		t.Error("stats Add did not add exchange info.")
 	}
 
@@ -205,7 +205,7 @@ func TestAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if items[1].Pair.String() != "XBTUSD" {
+	if Items[1].Pair.String() != "XBTUSD" {
 		t.Fatal("stats Add did not add exchange info.")
 	}
 
@@ -219,7 +219,7 @@ func TestAdd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if items[2].Pair.String() != "ETHUSD" {
+	if Items[2].Pair.String() != "ETHUSD" {
 		t.Fatal("stats Add did not add exchange info.")
 	}
 }
@@ -230,12 +230,12 @@ func TestAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	Append("sillyexchange", p, asset.Spot, 1234, 45)
-	if len(items) < 2 {
+	if len(Items) < 2 {
 		t.Error("stats AppendResults did not add exchange values.")
 	}
 
 	Append("sillyexchange", p, asset.Spot, 1234, 45)
-	if len(items) == 3 {
+	if len(Items) == 3 {
 		t.Error("stats AppendResults added exchange values")
 	}
 }
