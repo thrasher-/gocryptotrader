@@ -1,6 +1,8 @@
 LDFLAGS = -ldflags "-w -s"
 GCTPKG = github.com/thrasher-corp/gocryptotrader
-LINTPKG = github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+# golangci-lint settings
+LINT_VERSION = v2.4.0
+LINTPKG = github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(LINT_VERSION)
 GOPATH ?= $(shell go env GOPATH)
 LINTBIN = $(GOPATH)/bin/golangci-lint
 GOFUMPTBIN = $(GOPATH)/bin/gofumpt
@@ -16,7 +18,16 @@ CONFIG_FLAG = $(if $(CONFIG),-config $(CONFIG),)
 all: check build
 
 lint:
-	go install $(LINTPKG)
+	@if [ ! -x "$(LINTBIN)" ]; then \
+		echo "golangci-lint not found; installing $(LINT_VERSION)"; \
+		if command -v curl >/dev/null 2>&1; then \
+			curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(GOPATH)/bin $(LINT_VERSION); \
+		else \
+			echo "curl not available; falling back to 'go install'"; \
+			go install $(LINTPKG); \
+		fi; \
+	fi
+	@"$(LINTBIN)" version
 	$(LINTBIN) run --verbose
 
 lint_docker:
