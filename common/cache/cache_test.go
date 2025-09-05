@@ -3,6 +3,7 @@ package cache
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common/convert"
 )
 
@@ -55,6 +56,17 @@ func TestClear(t *testing.T) {
 	lruCache.Clear()
 	if lruCache.Len() != 0 {
 		t.Fatal("expected cache to have 0 entries")
+	}
+}
+
+func TestClearRemovesAllEntries(t *testing.T) {
+	lruCache := New(5)
+	for x := range 5 {
+		lruCache.Add(x, x)
+	}
+	lruCache.Clear()
+	for x := range 5 {
+		require.Falsef(t, lruCache.Contains(x), "cache must not contain key %v after Clear()", x)
 	}
 }
 

@@ -56,7 +56,7 @@ func (l *LRU) getOldest() (key, value any) {
 			return v.key, v.value
 		}
 	}
-	return
+	return key, value
 }
 
 // GetNewest returns the newest entry
@@ -66,13 +66,13 @@ func (l *LRU) getNewest() (key, value any) {
 			return v.key, v.value
 		}
 	}
-	return
+	return key, value
 }
 
 // Contains check if key is in cache this does not update LRU
 func (l *LRU) Contains(key any) (f bool) {
 	_, f = l.items[key]
-	return
+	return f
 }
 
 // Remove removes key from the cache, if the key was removed.
@@ -87,7 +87,7 @@ func (l *LRU) Remove(key any) bool {
 // Clear is used to completely clear the cache.
 func (l *LRU) Clear() {
 	for x := range l.items {
-		delete(l.items, l.items[x])
+		delete(l.items, x)
 	}
 	l.l.Init()
 }
