@@ -52,10 +52,11 @@ func PercentageDifference(x, y float64) float64 {
 
 // PercentageDifferenceDecimal returns the difference between two decimal values as a percentage of their average
 func PercentageDifferenceDecimal(x, y decimal.Decimal) decimal.Decimal {
-	if x.IsZero() && y.IsZero() {
+	sum := x.Add(y)
+	if sum.IsZero() {
 		return decimal.Zero
 	}
-	return x.Sub(y).Abs().Div(x.Add(y).Div(two)).Mul(oneHundred)
+	return x.Sub(y).Abs().Div(sum.Div(two)).Mul(oneHundred)
 }
 
 // CalculateNetProfit returns net profit

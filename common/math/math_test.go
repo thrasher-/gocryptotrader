@@ -67,6 +67,14 @@ func TestPercentageDifferenceDecimal(t *testing.T) {
 	require.Equal(t, "0", PercentageDifferenceDecimal(decimal.Zero, decimal.Zero).String())
 }
 
+func TestPercentageDifferenceDecimalOppositeValues(t *testing.T) {
+	t.Parallel()
+	require.Equal(t,
+		"0",
+		PercentageDifferenceDecimal(decimal.NewFromInt(1), decimal.NewFromInt(-1)).String(),
+		"percentage difference must be zero for opposite values")
+}
+
 // 1585596	       751.8 ns/op	     792 B/op	      27 allocs/op
 func BenchmarkDecimalPercentageDifference(b *testing.B) {
 	d1, d2 := decimal.NewFromFloat(1.469), decimal.NewFromFloat(1.471)
