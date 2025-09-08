@@ -195,6 +195,30 @@ Run the following tool to check for Go modernise issues:
 
 Several other miscellaneous checks will be ran via [GitHub actions](/.github/workflows/misc.yml).
 
+To run the exact same miscellaneous grep/style/config checks locally (before opening a PR), use:
+
+```console
+    make misc_checks
+```
+
+This calls `scripts/misc_checks.sh`, which validates (among other things):
+
+- Misuse of `currency.NewPair(currency.BTC, currency.USD*)` instead of helper constructors
+- Test assertion formatting (`*f` variants when format verbs are used)
+- Correct wording rules (require -> must / assert -> should)
+- Prohibited patterns like `errors.Is(err, nil)` and `!errors.Is(err, target)`
+- Quoted/backticked `%s` where `%q` should be used
+- Invisible Unicode characters
+- Config JSON exchange ordering (see `make lint_configs` to auto-fix)
+- Modernisation suggestions (via `modernize -test ./...`)
+
+You can list or filter specific checks:
+
+```console
+    bash scripts/misc_checks.sh --list
+    bash scripts/misc_checks.sh --only configs_json
+```
+
 - All lint warnings and errors must be resolved before merging.
 - Use `//nolint:linter-name` sparingly and always explain the reason in a comment next to the code.
 - Examples of valid use:

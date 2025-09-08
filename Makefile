@@ -93,3 +93,7 @@ check-jq:
 .PHONY: sonic
 sonic:
 	go build $(LDFLAGS) -tags "sonic_on" 
+
+.PHONY: misc_checks
+misc_checks:
+	bash scripts/misc_checks.sh
