@@ -1,17 +1,18 @@
 package alert
 
 import (
-	"log"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestWait(t *testing.T) {
 	wait := Notice{}
 	var wg sync.WaitGroup
+	errCh := make(chan string, 100)
 
 	// standard alert
 	wg.Add(100)
@@ -20,7 +21,7 @@ func TestWait(t *testing.T) {
 			w := wait.Wait(nil)
 			wg.Done()
 			if <-w {
-				log.Fatal("incorrect routine wait response for alert expecting false")
+				errCh <- "Wait should return false for alert notification"
 			}
 			wg.Done()
 		}()
@@ -32,16 +33,18 @@ func TestWait(t *testing.T) {
 	wait.Alert()
 	wg.Wait()
 	isLeaky(t, &wait, nil)
+	assert.Empty(t, errCh, "Wait should not signal true when using Alert")
 
 	// use kick
 	ch := make(chan struct{})
+	errCh = make(chan string, 100)
 	wg.Add(100)
 	for range 100 {
 		go func() {
 			w := wait.Wait(ch)
 			wg.Done()
 			if !<-w {
-				log.Fatal("incorrect routine wait response for kick expecting true")
+				errCh <- "Wait should return true when kick channel closes"
 			}
 			wg.Done()
 		}()
@@ -53,9 +56,11 @@ func TestWait(t *testing.T) {
 	wg.Wait()
 	ch = make(chan struct{})
 	isLeaky(t, &wait, ch)
+	assert.Empty(t, errCh, "Wait should signal true when kicked")
 
 	// late receivers
 	wg.Add(100)
+	errCh = make(chan string, 100)
 	for x := range 100 {
 		go func(x int) {
 			bb := wait.Wait(ch)
@@ -65,7 +70,7 @@ func TestWait(t *testing.T) {
 			}
 			b := <-bb
 			if b {
-				log.Fatal("incorrect routine wait response since we call alert below; expecting false")
+				errCh <- "Wait should return false for late receivers"
 			}
 			wg.Done()
 		}(x)
@@ -76,6 +81,7 @@ func TestWait(t *testing.T) {
 	wait.Alert()
 	wg.Wait()
 	isLeaky(t, &wait, ch)
+	assert.Empty(t, errCh, "Wait should not signal true for late receivers")
 }
 
 // isLeaky tests to see if the wait functionality is returning an abnormal
@@ -88,7 +94,7 @@ func isLeaky(t *testing.T, a *Notice, ch chan struct{}) {
 	// routine to actually wait on the forAlert and kick channels
 	select {
 	case <-check:
-		t.Fatal("leaky waiter")
+		require.Fail(t, "Wait must not leak when idle")
 	default:
 	}
 }
@@ -122,23 +128,10 @@ func getSize() int {
 
 func TestSetPreAllocationCommsBuffer(t *testing.T) {
 	t.Parallel()
-	err := SetPreAllocationCommsBuffer(-1)
-	require.ErrorIs(t, err, errInvalidBufferSize)
-
-	if getSize() != 5 {
-		t.Fatal("unexpected amount")
-	}
-
-	err = SetPreAllocationCommsBuffer(7)
-	require.NoError(t, err)
-
-	if getSize() != 7 {
-		t.Fatal("unexpected amount")
-	}
-
+	require.ErrorIs(t, SetPreAllocationCommsBuffer(-1), errInvalidBufferSize, "SetPreAllocationCommsBuffer must return invalid buffer error")
+	assert.Equal(t, 5, getSize(), "SetPreAllocationCommsBuffer should not change buffer on error")
+	require.NoError(t, SetPreAllocationCommsBuffer(7), "SetPreAllocationCommsBuffer must accept positive size")
+	assert.Equal(t, 7, getSize(), "SetPreAllocationCommsBuffer should update buffer size")
 	SetDefaultPreAllocationCommsBuffer()
-
-	if getSize() != PreAllocCommsDefaultBuffer {
-		t.Fatal("unexpected amount")
-	}
+	assert.Equal(t, PreAllocCommsDefaultBuffer, getSize(), "SetDefaultPreAllocationCommsBuffer should restore default size")
 }

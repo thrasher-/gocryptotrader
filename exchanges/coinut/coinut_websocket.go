@@ -768,18 +768,16 @@ func (e *Exchange) wsSubmitOrder(ctx context.Context, o *WsSubmitOrderParameters
 	return ord, nil
 }
 
-func (e *Exchange) wsSubmitOrders(ctx context.Context, orders []WsSubmitOrderParameters) ([]order.Detail, []error) {
-	var errs []error
+func (e *Exchange) wsSubmitOrders(ctx context.Context, orders []WsSubmitOrderParameters) ([]order.Detail, error) {
 	if !e.Websocket.CanUseAuthenticatedEndpoints() {
-		errs = append(errs, fmt.Errorf("%v not authorised to submit orders",
-			e.Name))
-		return nil, errs
+		return nil, fmt.Errorf("%v not authorised to submit orders", e.Name)
 	}
+
 	orderRequest := WsSubmitOrdersRequest{}
 	for i := range orders {
 		curr, err := e.FormatExchangeCurrency(orders[i].Currency, asset.Spot)
 		if err != nil {
-			return nil, []error{err}
+			return nil, err
 		}
 
 		orderRequest.Orders = append(orderRequest.Orders,
@@ -796,21 +794,20 @@ func (e *Exchange) wsSubmitOrders(ctx context.Context, orders []WsSubmitOrderPar
 	orderRequest.Request = "new_orders"
 	resp, err := e.Websocket.Conn.SendMessageReturnResponse(ctx, request.Unset, orderRequest.Nonce, orderRequest)
 	if err != nil {
-		errs = append(errs, err)
-		return nil, errs
+		return nil, err
 	}
 	var incoming []wsOrderContainer
 	err = json.Unmarshal(resp, &incoming)
 	if err != nil {
-		errs = append(errs, err)
-		return nil, errs
+		return nil, err
 	}
 
 	ordersResponse := make([]order.Detail, 0, len(incoming))
+	var errs error
 	for i := range incoming {
 		o, err := e.parseOrderContainer(&incoming[i])
 		if err != nil {
-			errs = append(errs, err)
+			errs = common.AppendError(errs, err)
 			continue
 		}
 		ordersResponse = append(ordersResponse, *o)

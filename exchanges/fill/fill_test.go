@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestSetup tests the setup function of the Fills struct
@@ -13,13 +14,8 @@ func TestSetup(t *testing.T) {
 	channel := make(chan any)
 	fill.Setup(true, channel)
 
-	if fill.dataHandler == nil {
-		t.Error("expected dataHandler to be set")
-	}
-
-	if !fill.fillsFeedEnabled {
-		t.Error("expected fillsFeedEnabled to be true")
-	}
+	assert.NotNil(t, fill.dataHandler, "fill.dataHandler should be set")
+	assert.True(t, fill.fillsFeedEnabled, "fill.fillsFeedEnabled should be true after setup")
 }
 
 // TestUpdateDisabledFeed tests the Update function when fillsFeedEnabled is false
@@ -33,9 +29,8 @@ func TestUpdateDisabledFeed(t *testing.T) {
 
 	select {
 	case <-channel:
-		t.Errorf("Expected no data on channel, got data")
+		assert.Fail(t, "channel should remain empty when feed disabled")
 	default:
-		// nothing to do
 	}
 }
 
@@ -44,22 +39,15 @@ func TestUpdate(t *testing.T) {
 	channel := make(chan any, 1)
 	fill := &Fills{dataHandler: channel, fillsFeedEnabled: true}
 	receivedData := Data{Timestamp: time.Now(), Price: 15.2, Amount: 3.2}
-	if err := fill.Update(receivedData); err != nil {
-		t.Errorf("Update returned error %v", err)
-	}
+	require.NoError(t, fill.Update(receivedData), "Update must not return error when feed enabled")
 
 	select {
 	case data := <-channel:
 		dataSlice, ok := data.([]Data)
-		if !ok {
-			t.Errorf("expected []Data, got %T", data)
-		}
-
-		if len(dataSlice) != 1 || dataSlice[0] != receivedData {
-			t.Errorf("expected data to be sent through channel")
-		}
+		require.True(t, ok, "Update must place []Data on channel")
+		assert.Equal(t, []Data{receivedData}, dataSlice, "Update should send received data through channel")
 	default:
-		t.Errorf("No data sent to channel")
+		assert.Fail(t, "channel should receive data when feed enabled")
 	}
 }
 
@@ -67,13 +55,11 @@ func TestUpdate(t *testing.T) {
 func TestUpdateNoData(t *testing.T) {
 	channel := make(chan any, 1)
 	fill := &Fills{dataHandler: channel, fillsFeedEnabled: true}
-	if err := fill.Update(); err != nil {
-		t.Errorf("Update returned error %v", err)
-	}
+	require.NoError(t, fill.Update(), "Update must not return error when no data supplied")
 
 	select {
 	case <-channel:
-		t.Errorf("Expected no data on channel, got data")
+		assert.Fail(t, "channel should remain empty when no data provided")
 	default:
 		// pass, nothing to do
 	}
@@ -85,21 +71,14 @@ func TestUpdateMultipleData(t *testing.T) {
 	fill := &Fills{dataHandler: channel, fillsFeedEnabled: true}
 	receivedData := Data{Timestamp: time.Now(), Price: 15.2, Amount: 3.2}
 	receivedData2 := Data{Timestamp: time.Now(), Price: 18.2, Amount: 9.0}
-	if err := fill.Update(receivedData, receivedData2); err != nil {
-		t.Errorf("Update returned error %v", err)
-	}
+	require.NoError(t, fill.Update(receivedData, receivedData2), "Update must not return error with multiple data points")
 
 	select {
 	case data := <-channel:
 		dataSlice, ok := data.([]Data)
-		if !ok {
-			t.Errorf("expected []Data, got %T", data)
-		}
-
-		if len(dataSlice) != 2 || dataSlice[0] != receivedData || dataSlice[1] != receivedData2 {
-			t.Errorf("expected data to be sent through channel")
-		}
+		require.True(t, ok, "Update must place []Data on channel")
+		assert.Equal(t, []Data{receivedData, receivedData2}, dataSlice, "Update should send all provided data through channel")
 	default:
-		t.Errorf("No data sent to channel")
+		assert.Fail(t, "channel should receive data when feed enabled")
 	}
 }

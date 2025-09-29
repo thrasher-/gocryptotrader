@@ -171,9 +171,8 @@ func TestFQueryTopPositionsRatio(t *testing.T) {
 
 func TestFLiquidationOrders(t *testing.T) {
 	t.Parallel()
-	if _, err := e.FLiquidationOrders(t.Context(), currency.BTC, "filled", 0, 0, "", 0); err != nil {
-		t.Error(err)
-	}
+	_, err := e.FLiquidationOrders(t.Context(), currency.BTC, "filled", 0, 0, "", 0)
+	assert.NoError(t, err, "FLiquidationOrders should not error")
 }
 
 func TestFIndexKline(t *testing.T) {
@@ -1380,9 +1379,9 @@ func TestWSHandleAllTradesMsg(t *testing.T) {
 			i := 1 - len(e.Websocket.DataHandler)
 			require.Equalf(t, exp[i], v, "Trade [%d] must be correct", i)
 		case error:
-			t.Error(v)
+			require.Failf(t, "wsHandleData must not emit error", "received %v", v)
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T(%s)", v, v)
+			require.Failf(t, "wsHandleData must provide expected type", "received %T (%v)", v, v)
 		}
 	}
 	require.Empty(t, e.Websocket.DataHandler, "Must not see any errors going to datahandler")
@@ -1564,9 +1563,7 @@ func TestStringToOrderStatus(t *testing.T) {
 	}
 	for i := range testCases {
 		result, _ := stringToOrderStatus(testCases[i].Case)
-		if result != testCases[i].Result {
-			t.Errorf("Expected: %v, received: %v", testCases[i].Result, result)
-		}
+		assert.Equalf(t, testCases[i].Result, result, "stringToOrderStatus should map %s correctly", testCases[i].Case)
 	}
 }
 
@@ -1583,9 +1580,7 @@ func TestStringToOrderSide(t *testing.T) {
 	}
 	for i := range testCases {
 		result, _ := stringToOrderSide(testCases[i].Case)
-		if result != testCases[i].Result {
-			t.Errorf("Expected: %v, received: %v", testCases[i].Result, result)
-		}
+		assert.Equalf(t, testCases[i].Result, result, "stringToOrderSide should map %s correctly", testCases[i].Case)
 	}
 }
 
@@ -1602,9 +1597,7 @@ func TestStringToOrderType(t *testing.T) {
 	}
 	for i := range testCases {
 		result, _ := stringToOrderType(testCases[i].Case)
-		if result != testCases[i].Result {
-			t.Errorf("Expected: %v, received: %v", testCases[i].Result, result)
-		}
+		assert.Equalf(t, testCases[i].Result, result, "stringToOrderType should map %s correctly", testCases[i].Case)
 	}
 }
 
