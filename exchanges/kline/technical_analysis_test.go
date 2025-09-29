@@ -8,9 +8,8 @@ import (
 
 func TestGetOHLC(t *testing.T) {
 	t.Parallel()
-	if (&Item{Candles: []Candle{{Open: 1337}}}).GetOHLC() == nil {
-		t.Fatal("unexpected value")
-	}
+	o := (&Item{Candles: []Candle{{Open: 1337}}}).GetOHLC()
+	require.NotNil(t, o, "Item.GetOHLC must not return nil when candles exist")
 }
 
 func TestGetAverageTrueRange(t *testing.T) {

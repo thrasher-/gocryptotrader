@@ -29,15 +29,11 @@ var (
 func TestValidateData(t *testing.T) {
 	t.Parallel()
 	err := validateData(nil)
-	if err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, err, "validateData should return error when trades slice is nil")
 
 	var empty []order.TradeHistory
 	err = validateData(empty)
-	if err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, err, "validateData should return error when trades slice is empty")
 
 	tn := time.Now()
 	trade1 := []order.TradeHistory{
@@ -47,27 +43,21 @@ func TestValidateData(t *testing.T) {
 	}
 
 	err = validateData(trade1)
-	if err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, err, "validateData should return error when timestamps are unsorted")
 
 	trade2 := []order.TradeHistory{
 		{Timestamp: tn.Add(2 * time.Minute), TID: "2", Amount: 1, Price: 0},
 	}
 
 	err = validateData(trade2)
-	if err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, err, "validateData should return error when trade price is zero")
 
 	trade3 := []order.TradeHistory{
 		{TID: "2", Amount: 1, Price: 0},
 	}
 
 	err = validateData(trade3)
-	if err == nil {
-		t.Error("error cannot be nil")
-	}
+	assert.Error(t, err, "validateData should return error when timestamp is unset")
 
 	trade4 := []order.TradeHistory{
 		{Timestamp: tn.Add(2 * time.Minute), TID: "2", Amount: 1, Price: 1000},
@@ -78,9 +68,7 @@ func TestValidateData(t *testing.T) {
 	err = validateData(trade4)
 	assert.NoError(t, err)
 
-	if trade4[0].TID != "1" || trade4[1].TID != "2" || trade4[2].TID != "3" {
-		t.Error("trade history sorted incorrectly")
-	}
+	assert.Equal(t, []string{"1", "2", "3"}, []string{trade4[0].TID, trade4[1].TID, trade4[2].TID}, "validateData should sort trade history by timestamp")
 }
 
 func TestCreateKline(t *testing.T) {
@@ -107,31 +95,23 @@ func TestCreateKline(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidInterval)
 
 	c, err := CreateKline(trades, OneMin, pair, asset.Spot, "Binance")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "CreateKline must not return error for valid trades")
 
 	var amounts float64
 	for x := range c.Candles {
 		amounts += c.Candles[x].Volume
 	}
-	if amounts != float64(tradeTotal) {
-		t.Fatalf("received: '%v' but expected '%v'", amounts, float64(tradeTotal))
-	}
+	require.Equal(t, float64(tradeTotal), amounts, "CreateKline must aggregate trade volume")
 }
 
 func TestKlineWord(t *testing.T) {
 	t.Parallel()
-	if OneDay.Word() != "oneday" {
-		t.Fatalf("unexpected result: %v", OneDay.Word())
-	}
+	require.Equal(t, "oneday", OneDay.Word(), "Interval.Word must return expected identifier")
 }
 
 func TestKlineDuration(t *testing.T) {
 	t.Parallel()
-	if OneDay.Duration() != time.Hour*24 {
-		t.Fatalf("unexpected result: %v", OneDay.Duration())
-	}
+	require.Equal(t, time.Hour*24, OneDay.Duration(), "Interval.Duration must return expected duration")
 }
 
 func TestKlineShort(t *testing.T) {
@@ -356,14 +336,10 @@ func TestItem_SortCandlesByTimestamp(t *testing.T) {
 	}
 
 	tempKline.SortCandlesByTimestamp(false)
-	if tempKline.Candles[0].Time.After(tempKline.Candles[1].Time) {
-		t.Fatal("expected kline.Candles to be in descending order")
-	}
+	require.False(t, tempKline.Candles[0].Time.After(tempKline.Candles[1].Time), "SortCandlesByTimestamp must order candles descending when reverse is false")
 
 	tempKline.SortCandlesByTimestamp(true)
-	if tempKline.Candles[0].Time.Before(tempKline.Candles[1].Time) {
-		t.Fatal("expected kline.Candles to be in ascending order")
-	}
+	require.False(t, tempKline.Candles[0].Time.Before(tempKline.Candles[1].Time), "SortCandlesByTimestamp must order candles ascending when reverse is true")
 }
 
 func setupTest(t *testing.T) {
@@ -429,10 +405,7 @@ func TestStoreInDatabase(t *testing.T) {
 		})
 	}
 
-	err := os.RemoveAll(testhelpers.TempDir)
-	if err != nil {
-		t.Fatalf("Failed to remove temp db file: %v", err)
-	}
+	require.NoError(t, os.RemoveAll(testhelpers.TempDir), "RemoveAll must clean temporary directory")
 }
 
 func TestLoadFromDatabase(t *testing.T) {
@@ -481,10 +454,7 @@ func TestLoadFromDatabase(t *testing.T) {
 		})
 	}
 
-	err := os.RemoveAll(testhelpers.TempDir)
-	if err != nil {
-		t.Fatalf("Failed to remove temp db file: %v", err)
-	}
+	require.NoError(t, os.RemoveAll(testhelpers.TempDir), "RemoveAll must clean temporary directory")
 }
 
 // TODO: find a better way to handle this to remove duplication between candle test
@@ -550,21 +520,10 @@ func genOHCLVData() (out candle.Item, outItem Item, err error) {
 
 func TestLoadCSV(t *testing.T) {
 	v, err := LoadFromGCTScriptCSV(filepath.Join("..", "..", "testdata", "binance_BTCUSDT_24h_2019_01_01_2020_01_01.csv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if v[0].Time.UTC() != time.Unix(1546300800, 0).UTC() {
-		t.Fatalf("unexpected value received: %v", v[0].Time)
-	}
-
-	if v[269].Close != 8177.91 {
-		t.Fatalf("unexpected value received: %v", v[269].Close)
-	}
-
-	if v[364].Open != 7246 {
-		t.Fatalf("unexpected value received: %v", v[364].Open)
-	}
+	require.NoError(t, err, "LoadFromGCTScriptCSV must parse fixture without error")
+	assert.Equal(t, time.Unix(1546300800, 0).UTC(), v[0].Time.UTC(), "LoadFromGCTScriptCSV should parse first candle time")
+	assert.Equal(t, 8177.91, v[269].Close, "LoadFromGCTScriptCSV should parse close price")
+	assert.Equal(t, 7246.0, v[364].Open, "LoadFromGCTScriptCSV should parse open price")
 }
 
 func TestVerifyResultsHaveData(t *testing.T) {
@@ -575,9 +534,7 @@ func TestVerifyResultsHaveData(t *testing.T) {
 	dateRanges, err := CalculateCandleDateRanges(tt1, tt3, OneDay, 0)
 	assert.NoError(t, err)
 
-	if dateRanges.HasDataAtDate(tt1) {
-		t.Error("unexpected true value")
-	}
+	assert.False(t, dateRanges.HasDataAtDate(tt1), "HasDataAtDate should return false before candle data")
 	err = dateRanges.SetHasDataFromCandles([]Candle{
 		{
 			Time: tt1,
@@ -589,9 +546,7 @@ func TestVerifyResultsHaveData(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if !dateRanges.HasDataAtDate(tt1) {
-		t.Error("expected true")
-	}
+	assert.True(t, dateRanges.HasDataAtDate(tt1), "HasDataAtDate should return true after candle data set")
 	err = dateRanges.SetHasDataFromCandles([]Candle{
 		{
 			Time: tt1,
@@ -603,9 +558,7 @@ func TestVerifyResultsHaveData(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if dateRanges.HasDataAtDate(tt1) {
-		t.Error("expected false")
-	}
+	assert.False(t, dateRanges.HasDataAtDate(tt1), "HasDataAtDate should return false after data cleared")
 }
 
 func TestDataSummary(t *testing.T) {
@@ -617,21 +570,15 @@ func TestDataSummary(t *testing.T) {
 	assert.NoError(t, err)
 
 	result := dateRanges.DataSummary(false)
-	if len(result) != 1 {
-		t.Errorf("expected %v received %v", 1, len(result))
-	}
+	assert.Len(t, result, 1, "DataSummary should return expected range count when skipEmpty is false")
 	dateRanges, err = CalculateCandleDateRanges(tt1, tt3, OneDay, 0)
 	assert.NoError(t, err)
 
 	dateRanges.Ranges[0].Intervals[0].HasData = true
 	result = dateRanges.DataSummary(true)
-	if len(result) != 2 {
-		t.Errorf("expected %v received %v", 2, len(result))
-	}
+	assert.Len(t, result, 2, "DataSummary should include populated ranges when skipEmpty is true")
 	result = dateRanges.DataSummary(false)
-	if len(result) != 1 {
-		t.Errorf("expected %v received %v", 1, len(result))
-	}
+	assert.Len(t, result, 1, "DataSummary should filter to empty ranges when skipEmpty is false")
 }
 
 func TestHasDataAtDate(t *testing.T) {
@@ -642,9 +589,7 @@ func TestHasDataAtDate(t *testing.T) {
 	dateRanges, err := CalculateCandleDateRanges(tt1, tt3, OneDay, 0)
 	assert.NoError(t, err)
 
-	if dateRanges.HasDataAtDate(tt2) {
-		t.Error("unexpected true value")
-	}
+	assert.False(t, dateRanges.HasDataAtDate(tt2), "HasDataAtDate should return false before setting data")
 
 	err = dateRanges.SetHasDataFromCandles([]Candle{
 		{
@@ -658,41 +603,25 @@ func TestHasDataAtDate(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if !dateRanges.HasDataAtDate(tt2) {
-		t.Error("unexpected false value")
-	}
+	assert.True(t, dateRanges.HasDataAtDate(tt2), "HasDataAtDate should return true once data set")
 
-	if dateRanges.HasDataAtDate(tt2.Add(time.Hour * 24)) {
-		t.Error("should not have data")
-	}
+	assert.False(t, dateRanges.HasDataAtDate(tt2.Add(24*time.Hour)), "HasDataAtDate should return false for out of range date")
 }
 
 func TestIntervalsPerYear(t *testing.T) {
 	t.Parallel()
 	var i Interval
-	if i.IntervalsPerYear() != 0 {
-		t.Error("expected 0")
-	}
+	assert.Zero(t, i.IntervalsPerYear(), "IntervalsPerYear should return zero for unset interval")
 	i = OneYear
-	if i.IntervalsPerYear() != 1.0 {
-		t.Error("expected 1")
-	}
+	assert.Equal(t, 1.0, i.IntervalsPerYear(), "IntervalsPerYear should return one for OneYear interval")
 	i = OneDay
-	if i.IntervalsPerYear() != 365 {
-		t.Error("expected 365")
-	}
+	assert.Equal(t, 365.0, i.IntervalsPerYear(), "IntervalsPerYear should return 365 for OneDay interval")
 	i = OneHour
-	if i.IntervalsPerYear() != 8760 {
-		t.Error("expected 8670")
-	}
+	assert.Equal(t, 8760.0, i.IntervalsPerYear(), "IntervalsPerYear should return 8760 for OneHour interval")
 	i = TwoHour
-	if i.IntervalsPerYear() != 4380 {
-		t.Error("expected 4380")
-	}
+	assert.Equal(t, 4380.0, i.IntervalsPerYear(), "IntervalsPerYear should return 4380 for TwoHour interval")
 	i = TwoHour + FifteenSecond
-	if i.IntervalsPerYear() != 4370.893970893971 {
-		t.Error("expected 4370...")
-	}
+	assert.InDelta(t, 4370.893970893971, i.IntervalsPerYear(), 0.0000001, "IntervalsPerYear should return expected fractional result")
 }
 
 // The purpose of this benchmark is to highlight that requesting
@@ -778,16 +707,12 @@ func TestConvertToNewInterval(t *testing.T) {
 	newCandle, err := old.ConvertToNewInterval(newInterval)
 	require.NoError(t, err)
 
-	if len(newCandle.Candles) != 1 {
-		t.Error("expected one candle")
-	}
-	if newCandle.Candles[0].Open != 1337 &&
-		newCandle.Candles[0].High != 2000 &&
-		newCandle.Candles[0].Low != 1332 &&
-		newCandle.Candles[0].Close != 6969 &&
-		newCandle.Candles[0].Volume != (2520+6420+1337) {
-		t.Error("unexpected updoot")
-	}
+	require.Len(t, newCandle.Candles, 1, "ConvertToNewInterval must return single candle for three day aggregation")
+	assert.Equal(t, 1337.0, newCandle.Candles[0].Open, "ConvertToNewInterval should retain first open price")
+	assert.Equal(t, 2000.0, newCandle.Candles[0].High, "ConvertToNewInterval should retain highest price")
+	assert.Equal(t, 1332.0, newCandle.Candles[0].Low, "ConvertToNewInterval should retain lowest price")
+	assert.Equal(t, 6969.0, newCandle.Candles[0].Close, "ConvertToNewInterval should retain closing price")
+	assert.Equal(t, float64(2520+6420+1337), newCandle.Candles[0].Volume, "ConvertToNewInterval should accumulate volume")
 
 	old.Candles = append(old.Candles, Candle{
 		Time:   time.Now().AddDate(0, 0, 3),
@@ -800,9 +725,7 @@ func TestConvertToNewInterval(t *testing.T) {
 	newCandle, err = old.ConvertToNewInterval(newInterval)
 	assert.NoError(t, err)
 
-	if len(newCandle.Candles) != 1 {
-		t.Error("expected one candle")
-	}
+	assert.Len(t, newCandle.Candles, 1, "ConvertToNewInterval should collapse four day data to single candle")
 
 	_, err = old.ConvertToNewInterval(OneMonth)
 	assert.ErrorIs(t, err, ErrInsufficientCandleData)
@@ -868,9 +791,7 @@ func TestConvertToNewInterval(t *testing.T) {
 	newCandle, err = old.ConvertToNewInterval(newInterval)
 	require.NoError(t, err)
 
-	if len(newCandle.Candles) != 3 {
-		t.Errorf("received '%v' expected '%v'", len(newCandle.Candles), 3)
-	}
+	assert.Len(t, newCandle.Candles, 3, "ConvertToNewInterval should return three candles when padding inserted")
 }
 
 func TestAddPadding(t *testing.T) {
@@ -978,9 +899,7 @@ func TestAddPadding(t *testing.T) {
 	err = k.addPadding(tn, tn.AddDate(0, 0, 3), false)
 	require.NoError(t, err)
 
-	if len(k.Candles) != 3 {
-		t.Fatalf("received '%v' expected '%v'", len(k.Candles), 3)
-	}
+	require.Len(t, k.Candles, 3, "addPadding must retain existing candle count when range matches data")
 
 	k.Candles = append(k.Candles, Candle{
 		Time:   tn.AddDate(0, 0, 5),
@@ -994,9 +913,7 @@ func TestAddPadding(t *testing.T) {
 	err = k.addPadding(tn, tn.AddDate(0, 0, 6), false)
 	require.NoError(t, err)
 
-	if len(k.Candles) != 6 {
-		t.Fatalf("received '%v' expected '%v'", len(k.Candles), 6)
-	}
+	require.Len(t, k.Candles, 6, "addPadding must extend candle slice with placeholders")
 
 	// No candles test when there is zero activity for that period
 	k.Candles = nil
@@ -1004,9 +921,7 @@ func TestAddPadding(t *testing.T) {
 	err = k.addPadding(tn, tn.AddDate(0, 0, 6), false)
 	assert.NoError(t, err)
 
-	if len(k.Candles) != 6 {
-		t.Errorf("received '%v' expected '%v'", len(k.Candles), 6)
-	}
+	assert.Len(t, k.Candles, 6, "addPadding should populate empty range with placeholder candles")
 }
 
 func TestGetClosePriceAtTime(t *testing.T) {
@@ -1027,9 +942,7 @@ func TestGetClosePriceAtTime(t *testing.T) {
 	price, err := k.GetClosePriceAtTime(tt)
 	assert.NoError(t, err)
 
-	if price != 1337 {
-		t.Errorf("received '%v' expected '%v'", price, 1337)
-	}
+	assert.Equal(t, 1337.0, price, "GetClosePriceAtTime should return requested close price")
 	_, err = k.GetClosePriceAtTime(tt.Add(time.Minute))
 	assert.ErrorIs(t, err, ErrNotFoundAtTime)
 }
@@ -1037,14 +950,10 @@ func TestGetClosePriceAtTime(t *testing.T) {
 func TestDeployExchangeIntervals(t *testing.T) {
 	t.Parallel()
 	exchangeIntervals := DeployExchangeIntervals()
-	if exchangeIntervals.ExchangeSupported(OneWeek) {
-		t.Errorf("received '%v' expected '%v'", exchangeIntervals.ExchangeSupported(OneWeek), false)
-	}
+	assert.False(t, exchangeIntervals.ExchangeSupported(OneWeek), "DeployExchangeIntervals should not enable OneWeek by default")
 
 	exchangeIntervals = DeployExchangeIntervals(IntervalCapacity{Interval: OneWeek})
-	if !exchangeIntervals.ExchangeSupported(OneWeek) {
-		t.Errorf("received '%v' expected '%v'", exchangeIntervals.ExchangeSupported(OneWeek), true)
-	}
+	assert.True(t, exchangeIntervals.ExchangeSupported(OneWeek), "DeployExchangeIntervals should enable provided intervals")
 
 	_, err := exchangeIntervals.Construct(0)
 	assert.ErrorIs(t, err, ErrInvalidInterval)
@@ -1055,18 +964,14 @@ func TestDeployExchangeIntervals(t *testing.T) {
 	request, err := exchangeIntervals.Construct(OneWeek)
 	assert.NoError(t, err)
 
-	if request != OneWeek {
-		t.Errorf("received '%v' expected '%v'", request, OneWeek)
-	}
+	assert.Equal(t, OneWeek, request, "Construct should honour exact interval when supported")
 
 	exchangeIntervals = DeployExchangeIntervals(IntervalCapacity{Interval: OneWeek}, IntervalCapacity{Interval: OneDay})
 
 	request, err = exchangeIntervals.Construct(OneMonth)
 	assert.NoError(t, err)
 
-	if request != OneDay {
-		t.Errorf("received '%v' expected '%v'", request, OneDay)
-	}
+	assert.Equal(t, OneDay, request, "Construct should fallback to shortest interval")
 }
 
 func TestSetHasDataFromCandles(t *testing.T) {
@@ -1079,12 +984,8 @@ func TestSetHasDataFromCandles(t *testing.T) {
 	err = i.SetHasDataFromCandles(ohc)
 	assert.NoError(t, err)
 
-	if !i.Start.Equal(ohc[0].Time) {
-		t.Errorf("received '%v' expected '%v'", i.Start.Time, ohc[0].Time)
-	}
-	if !i.End.Equal(localEnd) {
-		t.Errorf("received '%v' expected '%v'", i.End.Time, ohc[len(ohc)-1].Time)
-	}
+	assert.True(t, i.Start.Equal(ohc[0].Time), "SetHasDataFromCandles should update start to earliest candle")
+	assert.True(t, i.End.Equal(localEnd), "SetHasDataFromCandles should update end to latest candle")
 
 	k := Item{
 		Interval: OneHour,
@@ -1096,15 +997,9 @@ func TestSetHasDataFromCandles(t *testing.T) {
 	err = i.SetHasDataFromCandles(k.Candles)
 	assert.NoError(t, err)
 
-	if !i.Start.Equal(k.Candles[0].Time) {
-		t.Errorf("received '%v' expected '%v'", i.Start.Time, k.Candles[0].Time)
-	}
-	if i.HasDataAtDate(k.Candles[0].Time) {
-		t.Errorf("received '%v' expected '%v'", false, true)
-	}
-	if !i.HasDataAtDate(k.Candles[len(k.Candles)-1].Time) {
-		t.Errorf("received '%v' expected '%v'", true, false)
-	}
+	assert.True(t, i.Start.Equal(k.Candles[0].Time), "SetHasDataFromCandles should align start after padding")
+	assert.False(t, i.HasDataAtDate(k.Candles[0].Time), "HasDataAtDate should return false until interval populated")
+	assert.True(t, i.HasDataAtDate(k.Candles[len(k.Candles)-1].Time), "HasDataAtDate should reflect populated end interval")
 }
 
 func TestGetIntervalResultLimit(t *testing.T) {
@@ -1132,17 +1027,13 @@ func TestGetIntervalResultLimit(t *testing.T) {
 	limit, err := e.GetIntervalResultLimit(OneDay)
 	assert.NoError(t, err)
 
-	if limit != 100000 {
-		t.Errorf("received '%v' expected '%v'", limit, 100000)
-	}
+	assert.Equal(t, uint64(100000), limit, "GetIntervalResultLimit should return per interval cap when available")
 
 	e.GlobalResultLimit = 1337
 	limit, err = e.GetIntervalResultLimit(OneMin)
 	assert.NoError(t, err)
 
-	if limit != 1337 {
-		t.Errorf("received '%v' expected '%v'", limit, 1337)
-	}
+	assert.Equal(t, uint64(1337), limit, "GetIntervalResultLimit should return global cap fallback")
 }
 
 func TestUnmarshalJSON(t *testing.T) {

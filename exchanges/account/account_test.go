@@ -26,36 +26,24 @@ func TestCollectBalances(t *testing.T) {
 		},
 		asset.Spot,
 	)
+	require.NoError(t, err, "CollectBalances must not return error for populated balances")
+	require.Len(t, accounts, 1, "CollectBalances must return one sub account")
 	subAccount := accounts[0]
+	require.Len(t, subAccount.Currencies, 1, "CollectBalances must populate currencies")
+	assert.Equal(t, "someAccountID", subAccount.ID, "CollectBalances should set subAccount.ID correctly")
+	assert.Equal(t, asset.Spot, subAccount.AssetType, "CollectBalances should set subAccount.AssetType to spot")
 	balance := subAccount.Currencies[0]
-	if subAccount.ID != "someAccountID" {
-		t.Error("subAccount ID not set correctly")
-	}
-	if subAccount.AssetType != asset.Spot {
-		t.Error("subAccount AssetType not set correctly")
-	}
-	if balance.Currency != currency.BTC || balance.Total != 40000 || balance.Hold != 1 {
-		t.Error("subAccount currency balance not set correctly")
-	}
-	if err != nil {
-		t.Error("err is not expected")
-	}
+	assert.Equal(t, currency.BTC, balance.Currency, "CollectBalances should set currency to BTC")
+	assert.Equal(t, 40000.0, balance.Total, "CollectBalances should set total balance")
+	assert.Equal(t, 1.0, balance.Hold, "CollectBalances should set hold balance")
 
 	accounts, err = CollectBalances(map[string][]Balance{}, asset.Spot)
-	if len(accounts) != 0 {
-		t.Error("accounts should be empty")
-	}
-	if err != nil {
-		t.Error("err is not expected")
-	}
+	require.NoError(t, err, "CollectBalances must not return error for empty balances map")
+	assert.Empty(t, accounts, "CollectBalances should return empty slice for empty balances map")
 
 	accounts, err = CollectBalances(nil, asset.Spot)
-	if len(accounts) != 0 {
-		t.Error("accounts should be empty")
-	}
-	if err == nil {
-		t.Errorf("expecting err %s", errAccountBalancesIsNil.Error())
-	}
+	assert.Empty(t, accounts, "CollectBalances should return empty slice for nil balances map")
+	assert.ErrorIs(t, err, errAccountBalancesIsNil, "CollectBalances should error when balances map nil")
 
 	_, err = CollectBalances(map[string][]Balance{}, asset.Empty)
 	require.ErrorIs(t, err, asset.ErrNotSupported)
@@ -253,17 +241,13 @@ func TestBalanceInternalWait(t *testing.T) {
 	waiter, _, err := bi.Wait(time.Nanosecond)
 	require.NoError(t, err)
 
-	if !<-waiter {
-		t.Fatal("should been alerted by timeout")
-	}
+	assert.True(t, <-waiter, "Wait should return true when timeout triggers")
 
 	waiter, _, err = bi.Wait(0)
 	require.NoError(t, err)
 
 	go bi.notice.Alert()
-	if <-waiter {
-		t.Fatal("should have been alerted by change notice")
-	}
+	assert.False(t, <-waiter, "Wait should return false when notice alert triggers")
 }
 
 func TestBalanceInternalLoad(t *testing.T) {
@@ -303,14 +287,10 @@ func TestBalanceInternalLoad(t *testing.T) {
 func TestGetFree(t *testing.T) {
 	t.Parallel()
 	var bi *ProtectedBalance
-	if bi.GetFree() != 0 {
-		t.Fatal("unexpected value")
-	}
+	assert.Zero(t, bi.GetFree(), "GetFree should return zero when ProtectedBalance nil")
 	bi = &ProtectedBalance{}
 	bi.free = 1
-	if bi.GetFree() != 1 {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, 1.0, bi.GetFree(), "GetFree should return stored free balance")
 }
 
 func TestSave(t *testing.T) {
