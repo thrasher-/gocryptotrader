@@ -124,8 +124,9 @@ func TestGetAccountByID(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, longResp != nil && len(longResp.Accounts) > 0, errExpectedNonEmpty)
 	shortResp, err := e.GetAccountByID(t.Context(), longResp.Accounts[0].UUID)
-	require.NoError(t, err)
-	assert.Equal(t, shortResp, longResp.Accounts[0])
+	assert.NoError(t, err)
+	require.NotNil(t, shortResp, "GetAccountByID must return account data")
+	assert.Equalf(t, longResp.Accounts[0], *shortResp, "GetAccountByID should return expected account for %s", longResp.Accounts[0].UUID)
 }
 
 func TestListAccounts(t *testing.T) {
@@ -550,14 +551,10 @@ func TestGetPortfolioByID(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	portID, err := e.GetAllPortfolios(t.Context(), "")
 	assert.NoError(t, err)
-	if len(portID) == 0 {
-		t.Fatal(errExpectedNonEmpty)
-	}
+	require.NotEmpty(t, portID, "GetAllPortfolios must return at least one portfolio")
 	resp, err := e.GetPortfolioByID(t.Context(), portID[0].UUID)
 	assert.NoError(t, err)
-	if resp.Portfolio != portID[0] {
-		t.Errorf(errExpectMismatch, resp.Portfolio, portID[0])
-	}
+	assert.Equalf(t, portID[0], resp.Portfolio, "GetPortfolioByID should return expected portfolio for %s", portID[0].UUID)
 }
 
 func TestGetAllPortfolios(t *testing.T) {
@@ -1076,27 +1073,19 @@ func TestGetFee(t *testing.T) {
 	}
 	resp, err := e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if resp != WorstCaseTakerFee {
-		t.Errorf(errExpectMismatch, resp, WorstCaseTakerFee)
-	}
+	assert.Equal(t, WorstCaseTakerFee, resp, "GetFee should return WorstCaseTakerFee for taker trade")
 	feeBuilder.IsMaker = true
 	resp, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if resp != WorstCaseMakerFee {
-		t.Errorf(errExpectMismatch, resp, WorstCaseMakerFee)
-	}
+	assert.Equal(t, WorstCaseMakerFee, resp, "GetFee should return WorstCaseMakerFee for maker trade")
 	feeBuilder.Pair = currency.NewPair(currency.USDT, currency.USD)
 	resp, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if resp != 0 {
-		t.Errorf(errExpectMismatch, resp, StablePairMakerFee)
-	}
+	assert.Equal(t, float64(StablePairMakerFee), resp, "GetFee should return stable pair maker fee for stable pair maker trade")
 	feeBuilder.IsMaker = false
 	resp, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if resp != WorstCaseStablePairTakerFee {
-		t.Errorf(errExpectMismatch, resp, WorstCaseStablePairTakerFee)
-	}
+	assert.Equal(t, WorstCaseStablePairTakerFee, resp, "GetFee should return stable pair taker fee for stable pair taker trade")
 	feeBuilder.FeeType = exchange.CryptocurrencyDepositFee
 	_, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.ErrorIs(t, err, errFeeTypeNotSupported)
@@ -1105,15 +1094,13 @@ func TestGetFee(t *testing.T) {
 	feeBuilder.FeeType = exchange.CryptocurrencyTradeFee
 	resp, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if !(resp <= WorstCaseTakerFee && resp >= BestCaseTakerFee) {
-		t.Errorf(errExpectedFeeRange, BestCaseTakerFee, WorstCaseTakerFee, resp)
-	}
+	assert.LessOrEqual(t, resp, WorstCaseTakerFee, "GetFee should return taker fee at or below worst case")
+	assert.GreaterOrEqual(t, resp, BestCaseTakerFee, "GetFee should return taker fee at or above best case")
 	feeBuilder.IsMaker = true
 	resp, err = e.GetFee(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if !(resp <= WorstCaseMakerFee && resp >= BestCaseMakerFee) {
-		t.Errorf(errExpectedFeeRange, BestCaseMakerFee, WorstCaseMakerFee, resp)
-	}
+	assert.LessOrEqual(t, resp, WorstCaseMakerFee, "GetFee should return maker fee at or below worst case")
+	assert.GreaterOrEqual(t, resp, BestCaseMakerFee, "GetFee should return maker fee at or above best case")
 }
 
 func TestFetchTradablePairs(t *testing.T) {
@@ -1298,9 +1285,8 @@ func TestWithdrawCryptocurrencyFunds(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	wallets, err := e.GetAllWallets(t.Context(), PaginationInp{})
 	assert.NoError(t, err)
-	if wallets == nil || len(wallets.Data) == 0 {
-		t.Fatal(errExpectedNonEmpty)
-	}
+	require.NotNil(t, wallets, "GetAllWallets must return wallet data")
+	require.NotEmpty(t, wallets.Data, "GetAllWallets must include wallets")
 	for i := range wallets.Data {
 		if wallets.Data[i].Currency.Name == testCrypto.String() && wallets.Data[i].Balance.Amount > testAmount*100 {
 			req.WalletID = wallets.Data[i].ID
@@ -1333,9 +1319,7 @@ func TestGetFeeByType(t *testing.T) {
 	feeBuilder.PurchasePrice = 1
 	resp, err := e.GetFeeByType(t.Context(), &feeBuilder)
 	assert.NoError(t, err)
-	if resp != WorstCaseTakerFee {
-		t.Errorf(errExpectMismatch, resp, WorstCaseTakerFee)
-	}
+	assert.Equal(t, WorstCaseTakerFee, resp, "GetFeeByType should return WorstCaseTakerFee")
 }
 
 func TestGetActiveOrders(t *testing.T) {
@@ -1483,13 +1467,9 @@ func TestGetOrderRespToOrderDetail(t *testing.T) {
 func TestFiatTransferTypeString(t *testing.T) {
 	t.Parallel()
 	var f FiatTransferType
-	if f.String() != "deposit" {
-		t.Errorf(errExpectMismatch, f.String(), "deposit")
-	}
+	assert.Equal(t, "deposit", f.String(), "FiatTransferType.String should return deposit for default value")
 	f = FiatWithdrawal
-	if f.String() != "withdrawal" {
-		t.Errorf(errExpectMismatch, f.String(), "withdrawal")
-	}
+	assert.Equal(t, "withdrawal", f.String(), "FiatTransferType.String should return withdrawal for FiatWithdrawal")
 }
 
 func TestGetCurrencyTradeURL(t *testing.T) {
@@ -1910,9 +1890,8 @@ func convertTestHelper(t *testing.T) (fromAccID, toAccID string) {
 	t.Helper()
 	accIDs, err := e.ListAccounts(t.Context(), 250, 0)
 	assert.NoError(t, err)
-	if accIDs == nil || len(accIDs.Accounts) == 0 {
-		t.Fatal(errExpectedNonEmpty)
-	}
+	require.NotNil(t, accIDs, "ListAccounts must return data")
+	require.NotEmpty(t, accIDs.Accounts, "ListAccounts must include accounts")
 	for x := range accIDs.Accounts {
 		if accIDs.Accounts[x].Currency == testStable {
 			fromAccID = accIDs.Accounts[x].UUID
@@ -1978,9 +1957,8 @@ func withdrawFiatFundsHelper(t *testing.T, fn withdrawFiatFunc) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	wallets, err := e.GetAllWallets(t.Context(), PaginationInp{})
 	assert.NoError(t, err)
-	if wallets == nil || len(wallets.Data) == 0 {
-		t.Fatal(errExpectedNonEmpty)
-	}
+	require.NotNil(t, wallets, "GetAllWallets must return wallet data")
+	require.NotEmpty(t, wallets.Data, "GetAllWallets must include wallets")
 	req.WalletID = ""
 	for i := range wallets.Data {
 		if wallets.Data[i].Currency.Name == testFiat.String() && wallets.Data[i].Balance.Amount > testAmount*100 {

@@ -322,6 +322,7 @@ func TestProcessOrderbook(t *testing.T) {
 	var m sync.Mutex
 
 	var catastrophicFailure bool
+	var processErr error
 
 	for range 500 {
 		m.Lock()
@@ -348,8 +349,8 @@ func TestProcessOrderbook(t *testing.T) {
 			m.Lock()
 			err = b.Process()
 			if err != nil {
-				t.Error(err)
 				catastrophicFailure = true
+				processErr = err
 				m.Unlock()
 				return
 			}
@@ -359,36 +360,14 @@ func TestProcessOrderbook(t *testing.T) {
 	}
 
 	wg.Wait()
-	if catastrophicFailure {
-		t.Fatal("Process() error", err)
-	}
+	require.Falsef(t, catastrophicFailure, "Process must not error for generated books: %v", processErr)
 
 	for _, test := range testArray {
-		wg.Add(1)
-		fatalErr := false
-		go func(q quick) {
-			result, err := Get(q.Name, q.P, asset.Spot)
-			if err != nil {
-				fatalErr = true
-				return
-			}
-
-			if result.Asks[0] != q.Asks[0] {
-				t.Error("TestProcessOrderbook failed bad values")
-			}
-
-			if result.Bids[0] != q.Bids[0] {
-				t.Error("TestProcessOrderbook failed bad values")
-			}
-
-			wg.Done()
-		}(test)
-
-		if fatalErr {
-			t.Fatal("TestProcessOrderbook failed to retrieve new orderbook")
-		}
+		result, err := Get(test.Name, test.P, asset.Spot)
+		require.NoError(t, err, "Get must return processed orderbook")
+		assert.Equalf(t, test.Asks[0], result.Asks[0], "Get should return matching ask for %s", test.Name)
+		assert.Equalf(t, test.Bids[0], result.Bids[0], "Get should return matching bid for %s", test.Name)
 	}
-	wg.Wait()
 }
 
 func levelsFixtureRandom() Levels {
@@ -526,9 +505,7 @@ func TestCheckAlignment(t *testing.T) {
 	t.Parallel()
 	itemWithFunding := Levels{{Amount: 1337, Price: 0, Period: 1337}}
 	err := checkAlignment(itemWithFunding, true, true, false, false, isDsc, "Bitfinex")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "checkAlignment should not error for funding alignment")
 	err = checkAlignment(itemWithFunding, false, true, false, false, isDsc, "Bitfinex")
 	require.ErrorIs(t, err, ErrPriceZero)
 

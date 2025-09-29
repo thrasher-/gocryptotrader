@@ -3043,9 +3043,9 @@ func TestProcessMarketSnapshot(t *testing.T) {
 				assert.Equal(t, 108210331.34015164, v.QuoteVolume, "volValue")
 			}
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Got unexpected data: %T %v", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit ticker data but received %T (%v)", v, v)
 		}
 	}
 }

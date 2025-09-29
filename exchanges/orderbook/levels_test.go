@@ -1,7 +1,6 @@
 package orderbook
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -53,14 +52,6 @@ var bid = Levels{
 	{Price: 1319, Amount: 1},
 	{Price: 1318, Amount: 1},
 	{Price: 1317, Amount: 1},
-}
-
-// Display displays depth content for tests
-func (l Levels) display() {
-	for x := range l {
-		fmt.Printf("Level: %+v %p \n", l[x], &l[x])
-	}
-	fmt.Println()
 }
 
 func TestLoad(t *testing.T) {
@@ -310,9 +301,7 @@ func TestUpdateByID(t *testing.T) {
 		{Price: 9, Amount: 1, ID: 9},
 		{Price: 11, Amount: 1, ID: 11},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "updateByID must not error for matching IDs")
 
 	Check(t, a, 6, 36, 6)
 
@@ -326,17 +315,16 @@ func TestUpdateByID(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	if got := a.retrieve(2); len(got) != 2 || got[1].Price == 0 {
-		t.Fatal("price should not be replaced with zero")
-	}
+	got := a.retrieve(2)
+	require.Len(t, got, 2, "retrieve must return two levels after truncation")
+	assert.NotEqual(t, 0.0, got[1].Price, "retrieve should preserve original price when updating by ID")
 
-	if got := a.retrieve(3); len(got) != 3 || got[1].Amount != 1337 {
-		t.Fatal("unexpected value for update")
-	}
+	got = a.retrieve(3)
+	require.Len(t, got, 3, "retrieve must return three levels when requesting 3 entries")
+	assert.Equal(t, 1337.0, got[1].Amount, "retrieve should include updated amount for ID 3")
 
-	if got := a.retrieve(1000); len(got) != 6 {
-		t.Fatal("unexpected value for update")
-	}
+	got = a.retrieve(1000)
+	require.Len(t, got, 6, "retrieve must return all available levels when more requested")
 }
 
 // 46043871	        25.9 ns/op	       0 B/op	       0 allocs/op (old)
@@ -375,25 +363,19 @@ func TestDeleteByID(t *testing.T) {
 
 	// Delete at head
 	err := a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 1}}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "deleteByID must not error when deleting head level")
 
 	Check(t, a, 5, 35, 5)
 
 	// Delete at tail
 	err = a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 11}}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "deleteByID must not error when deleting tail level")
 
 	Check(t, a, 4, 24, 4)
 
 	// Delete in middle
 	err = a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 5}}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "deleteByID must not error when deleting middle level")
 
 	Check(t, a, 3, 19, 3)
 
@@ -403,9 +385,7 @@ func TestDeleteByID(t *testing.T) {
 
 	// Error bypass
 	err = a.deleteByID(Levels{{Price: 11, Amount: 1, ID: 1337}}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "deleteByID must not error when bypass flag true")
 }
 
 // 26724331	        44.69 ns/op	       0 B/op	       0 allocs/op
@@ -443,10 +423,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(asksSnapshot)
 
 	// Update one instance with matching ID
-	err := a.updateInsertByID(Levels{{Price: 1, Amount: 2, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 1, Amount: 2, ID: 1}}), "updateInsertByID must not error for matching IDs")
 
 	Check(t, a, 7, 37, 6)
 
@@ -454,77 +431,62 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(asksSnapshot)
 
 	// Update all instances with matching ID in order
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 5, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when updating IDs in order")
 
 	Check(t, a, 12, 72, 6)
 
 	// Update all instances with matching ID in backwards
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 5, Amount: 2, ID: 5},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 1, Amount: 2, ID: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when updating IDs in reverse order")
 
 	Check(t, a, 12, 72, 6)
 
 	// Update all instances with matching ID all over the ship
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 5, Amount: 2, ID: 5},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when updating IDs arbitrarily")
 
 	Check(t, a, 12, 72, 6)
 
 	// Update all instances move one before ID in middle
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 2, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when moving ID before middle")
 
 	Check(t, a, 12, 66, 6)
 
 	// Update all instances move one before ID at head
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: .5, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when moving ID before head")
 
 	Check(t, a, 12, 63, 6)
 
@@ -532,17 +494,14 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(asksSnapshot)
 
 	// Update all instances move one after ID
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 8, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when moving ID after middle")
 
 	Check(t, a, 12, 78, 6)
 
@@ -550,22 +509,19 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(asksSnapshot)
 
 	// Update all instances move one after ID to tail
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 12, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when moving ID after tail")
 
 	Check(t, a, 12, 86, 6)
 
 	// Update all instances then pop new instance
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 12, Amount: 2, ID: 5},
@@ -573,10 +529,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 10, Amount: 2, ID: 10},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when inserting new ID")
 
 	Check(t, a, 14, 106, 7)
 
@@ -584,7 +537,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(asksSnapshot)
 
 	// Update all instances pop at head
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 0.5, Amount: 2, ID: 0},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
@@ -592,74 +545,47 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when inserting new head")
 
 	Check(t, a, 14, 87, 7)
 
 	// bookmark head and move to mid
-	err = a.updateInsertByID(Levels{{Price: 7.5, Amount: 2, ID: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 7.5, Amount: 2, ID: 0}}), "updateInsertByID must not error when moving bookmarked head to mid")
 
 	Check(t, a, 14, 101, 7)
 
 	// bookmark head and move to tail
-	err = a.updateInsertByID(Levels{{Price: 12.5, Amount: 2, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 12.5, Amount: 2, ID: 1}}), "updateInsertByID must not error when moving bookmarked head to tail")
 
 	Check(t, a, 14, 124, 7)
 
 	// move tail location to head
-	err = a.updateInsertByID(Levels{{Price: 2.5, Amount: 2, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 2.5, Amount: 2, ID: 1}}), "updateInsertByID must not error when moving tail location to head")
 
 	Check(t, a, 14, 104, 7)
 
 	// move tail location to mid
-	err = a.updateInsertByID(Levels{{Price: 8, Amount: 2, ID: 5}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 8, Amount: 2, ID: 5}}), "updateInsertByID must not error when moving tail location to mid")
 
 	Check(t, a, 14, 96, 7)
 
 	// insert at tail dont match
-	err = a.updateInsertByID(Levels{{Price: 30, Amount: 2, ID: 1234}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 30, Amount: 2, ID: 1234}}), "updateInsertByID must not error when inserting unmatched tail entry")
 
 	Check(t, a, 16, 156, 8)
 
 	// insert between last and 2nd last
-	err = a.updateInsertByID(Levels{{Price: 12, Amount: 2, ID: 12345}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 12, Amount: 2, ID: 12345}}), "updateInsertByID must not error when inserting between tail entries")
 
 	Check(t, a, 18, 180, 9)
 
 	// readjust at end
-	err = a.updateInsertByID(Levels{{Price: 29, Amount: 3, ID: 1234}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 29, Amount: 3, ID: 1234}}), "updateInsertByID must not error when readjusting tail entry")
 
 	Check(t, a, 19, 207, 9)
 
 	// readjust further and decrease price past tail
-	err = a.updateInsertByID(Levels{{Price: 31, Amount: 3, ID: 1234}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.updateInsertByID(Levels{{Price: 31, Amount: 3, ID: 1234}}), "updateInsertByID must not error when adjusting tail beyond original price")
 
 	Check(t, a, 19, 213, 9)
 
@@ -667,7 +593,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 	a.load(nil)
 
 	// insert with no liquidity and jumbled
-	err = a.updateInsertByID(Levels{
+	require.NoError(t, a.updateInsertByID(Levels{
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 7, Amount: 2, ID: 7},
@@ -675,10 +601,7 @@ func TestUpdateInsertByIDAsk(t *testing.T) {
 		{Price: 12, Amount: 2, ID: 5},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "updateInsertByID must not error when rebuilding from empty liquidity")
 
 	Check(t, a, 14, 87, 7)
 }
@@ -697,10 +620,7 @@ func BenchmarkUpdateInsertByID_asks(b *testing.B) {
 	asks.load(asksSnapshot)
 
 	for b.Loop() {
-		err := asks.updateInsertByID(asksSnapshot, askCompare)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, asks.updateInsertByID(asksSnapshot, askCompare), "updateInsertByID must not error in benchmark")
 	}
 }
 
@@ -717,10 +637,7 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	b.load(bidsSnapshot)
 
 	// Update one instance with matching ID
-	err := b.updateInsertByID(Levels{{Price: 1, Amount: 2, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 1, Amount: 2, ID: 1}}), "bid updateInsertByID must not error for matching IDs")
 
 	Check(t, b, 7, 37, 6)
 
@@ -728,77 +645,62 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	b.load(bidsSnapshot)
 
 	// Update all instances with matching ID in order
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 5, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when updating IDs in order")
 
 	Check(t, b, 12, 72, 6)
 
 	// Update all instances with matching ID in backwards
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 5, Amount: 2, ID: 5},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 1, Amount: 2, ID: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when reversing IDs")
 
 	Check(t, b, 12, 72, 6)
 
 	// Update all instances with matching ID all over the ship
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 5, Amount: 2, ID: 5},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when updating IDs out of order")
 
 	Check(t, b, 12, 72, 6)
 
 	// Update all instances move one before ID in middle
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 2, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when moving before middle")
 
 	Check(t, b, 12, 66, 6)
 
 	// Update all instances move one before ID at head
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: .5, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when moving before head")
 
 	Check(t, b, 12, 63, 6)
 
@@ -806,17 +708,14 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	b.load(bidsSnapshot)
 
 	// Update all instances move one after ID
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 8, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when moving after middle")
 
 	Check(t, b, 12, 78, 6)
 
@@ -824,22 +723,19 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	b.load(bidsSnapshot)
 
 	// Update all instances move one after ID to tail
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 12, Amount: 2, ID: 5},
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when moving after tail")
 
 	Check(t, b, 12, 86, 6)
 
 	// Update all instances then pop new instance
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
 		{Price: 12, Amount: 2, ID: 5},
@@ -847,10 +743,7 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
 		{Price: 10, Amount: 2, ID: 10},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when inserting new ID")
 
 	Check(t, b, 14, 106, 7)
 
@@ -858,7 +751,7 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	b.load(bidsSnapshot)
 
 	// Update all instances pop at tail
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 0.5, Amount: 2, ID: 0},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
@@ -866,79 +759,52 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when inserting new head")
 
 	Check(t, b, 14, 87, 7)
 
 	// bookmark head and move to mid
-	err = b.updateInsertByID(Levels{{Price: 9.5, Amount: 2, ID: 5}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 9.5, Amount: 2, ID: 5}}), "bid updateInsertByID must not error when moving bookmarked head to mid")
 
 	Check(t, b, 14, 82, 7)
 
 	// bookmark head and move to tail
-	err = b.updateInsertByID(Levels{{Price: 0.25, Amount: 2, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 0.25, Amount: 2, ID: 11}}), "bid updateInsertByID must not error when moving bookmarked head to tail")
 
 	Check(t, b, 14, 60.5, 7)
 
 	// move tail location to head
-	err = b.updateInsertByID(Levels{{Price: 10, Amount: 2, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 10, Amount: 2, ID: 11}}), "bid updateInsertByID must not error when moving tail to head")
 
 	Check(t, b, 14, 80, 7)
 
 	// move tail location to mid
-	err = b.updateInsertByID(Levels{{Price: 7.5, Amount: 2, ID: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 7.5, Amount: 2, ID: 0}}), "bid updateInsertByID must not error when moving tail to mid")
 
 	Check(t, b, 14, 94, 7)
 
 	// insert at head dont match
-	err = b.updateInsertByID(Levels{{Price: 30, Amount: 2, ID: 1234}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 30, Amount: 2, ID: 1234}}), "bid updateInsertByID must not error when inserting unmatched head entry")
 
 	Check(t, b, 16, 154, 8)
 
 	// insert between last and 2nd last
-	err = b.updateInsertByID(Levels{{Price: 1.5, Amount: 2, ID: 12345}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 1.5, Amount: 2, ID: 12345}}), "bid updateInsertByID must not error when inserting between tail entries")
 	Check(t, b, 18, 157, 9)
 
 	// readjust at end
-	err = b.updateInsertByID(Levels{{Price: 1, Amount: 3, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: 1, Amount: 3, ID: 1}}), "bid updateInsertByID must not error when readjusting head entry")
 	Check(t, b, 19, 158, 9)
 
 	// readjust further and decrease price past tail
-	err = b.updateInsertByID(Levels{{Price: .9, Amount: 3, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.updateInsertByID(Levels{{Price: .9, Amount: 3, ID: 1}}), "bid updateInsertByID must not error when adjusting price past tail")
 	Check(t, b, 19, 157.7, 9)
 
 	// purge
 	b.load(nil)
 
 	// insert with no liquidity and jumbled
-	err = b.updateInsertByID(Levels{
+	require.NoError(t, b.updateInsertByID(Levels{
 		{Price: 0.5, Amount: 2, ID: 0},
 		{Price: 1, Amount: 2, ID: 1},
 		{Price: 3, Amount: 2, ID: 3},
@@ -946,10 +812,7 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 		{Price: 7, Amount: 2, ID: 7},
 		{Price: 9, Amount: 2, ID: 9},
 		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}), "bid updateInsertByID must not error when rebuilding from empty liquidity")
 
 	Check(t, b, 14, 87, 7)
 }
@@ -969,10 +832,7 @@ func BenchmarkUpdateInsertByID_bids(b *testing.B) {
 	bids.load(bidsSnapshot)
 
 	for b.Loop() {
-		err := bids.updateInsertByID(bidsSnapshot, bidCompare)
-		if err != nil {
-			b.Fatal(err)
-		}
+		require.NoError(b, bids.updateInsertByID(bidsSnapshot, bidCompare), "updateInsertByID must not error in bid benchmark")
 	}
 }
 
@@ -1001,26 +861,17 @@ func TestInsertUpdatesBid(t *testing.T) {
 	Check(t, b, 6, 36, 6)
 
 	// Insert at head
-	err = b.insertUpdates(Levels{{Price: 12, Amount: 1, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.insertUpdates(Levels{{Price: 12, Amount: 1, ID: 11}}), "insertUpdates must not error when inserting at head for bids")
 
 	Check(t, b, 7, 48, 7)
 
 	// Insert at tail
-	err = b.insertUpdates(Levels{{Price: 0.5, Amount: 1, ID: 12}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.insertUpdates(Levels{{Price: 0.5, Amount: 1, ID: 12}}), "insertUpdates must not error when inserting at tail for bids")
 
 	Check(t, b, 8, 48.5, 8)
 
 	// Insert at mid
-	err = b.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}}), "insertUpdates must not error when inserting mid for bids")
 
 	Check(t, b, 9, 54, 9)
 
@@ -1028,10 +879,7 @@ func TestInsertUpdatesBid(t *testing.T) {
 	b.load(nil)
 
 	// Add one at head
-	err = b.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, b.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}}), "insertUpdates must not error when inserting into empty bids")
 
 	Check(t, b, 1, 5.5, 1)
 }
@@ -1061,26 +909,17 @@ func TestInsertUpdatesAsk(t *testing.T) {
 	Check(t, a, 6, 36, 6)
 
 	// Insert at tail
-	err = a.insertUpdates(Levels{{Price: 12, Amount: 1, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.insertUpdates(Levels{{Price: 12, Amount: 1, ID: 11}}), "insertUpdates must not error when inserting at tail for asks")
 
 	Check(t, a, 7, 48, 7)
 
 	// Insert at head
-	err = a.insertUpdates(Levels{{Price: 0.5, Amount: 1, ID: 12}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.insertUpdates(Levels{{Price: 0.5, Amount: 1, ID: 12}}), "insertUpdates must not error when inserting at head for asks")
 
 	Check(t, a, 8, 48.5, 8)
 
 	// Insert at mid
-	err = a.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}}), "insertUpdates must not error when inserting mid for asks")
 
 	Check(t, a, 9, 54, 9)
 
@@ -1088,10 +927,7 @@ func TestInsertUpdatesAsk(t *testing.T) {
 	a.load(nil)
 
 	// Add one at head
-	err = a.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, a.insertUpdates(Levels{{Price: 5.5, Amount: 1, ID: 13}}), "insertUpdates must not error when inserting into empty asks")
 
 	Check(t, a, 1, 5.5, 1)
 }
@@ -1109,24 +945,14 @@ func Check(t *testing.T, depth any, liquidity, value float64, expectedLen int) {
 	case isAsk:
 		l = a.Levels
 	default:
-		t.Fatal("value passed in is not of type bids or asks")
+		require.Failf(t, "Check must receive bidLevels or askLevels", "depth type %T must be bidLevels or askLevels", depth)
+		return
 	}
 
 	liquidityTotal, valueTotal := l.amount()
-	if liquidityTotal != liquidity {
-		l.display()
-		t.Fatalf("mismatched liquidity expecting %v but received %v", liquidity, liquidityTotal)
-	}
-
-	if valueTotal != value {
-		l.display()
-		t.Fatalf("mismatched total value expecting %v but received %v", value, valueTotal)
-	}
-
-	if len(l) != expectedLen {
-		l.display()
-		t.Fatalf("mismatched expected length count expecting %v but received %v", expectedLen, len(l))
-	}
+	assert.Equalf(t, liquidity, liquidityTotal, "Levels amount should equal expected liquidity for %T", depth)
+	assert.Equalf(t, value, valueTotal, "Levels amount should equal expected value for %T", depth)
+	assert.Lenf(t, l, expectedLen, "Levels length should match expected length for %T", depth)
 
 	if len(l) == 0 {
 		return
@@ -1138,11 +964,9 @@ func Check(t *testing.T, depth any, liquidity, value float64, expectedLen int) {
 		case price == 0:
 			price = l[x].Price
 		case isBid && price < l[x].Price:
-			l.display()
-			t.Fatal("Bid pricing out of order should be descending")
+			require.Failf(t, "bidLevels must be in descending order", "observed previous price %f before %f", price, l[x].Price)
 		case isAsk && price > l[x].Price:
-			l.display()
-			t.Fatal("Ask pricing out of order should be ascending")
+			require.Failf(t, "askLevels must be in ascending order", "observed previous price %f before %f", price, l[x].Price)
 		default:
 			price = l[x].Price
 		}
@@ -1162,13 +986,8 @@ func TestAmount(t *testing.T) {
 	a.load(askSnapshot)
 
 	liquidity, value := a.amount()
-	if liquidity != 6 {
-		t.Fatalf("incorrect liquidity calculation expected 6 but received %f", liquidity)
-	}
-
-	if value != 36 {
-		t.Fatalf("incorrect value calculation expected 36 but received %f", value)
-	}
+	assert.Equal(t, 6.0, liquidity, "amount should return expected liquidity for asks")
+	assert.Equal(t, 36.0, value, "amount should return expected value for asks")
 }
 
 func TestGetMovementByBaseAmount(t *testing.T) {
@@ -1240,30 +1059,16 @@ func TestGetMovementByBaseAmount(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			depth := NewDepth(id)
-			err := depth.LoadSnapshot(&Book{Bids: tt.BidLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoErrorf(t, depth.LoadSnapshot(&Book{Bids: tt.BidLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true}), "LoadSnapshot must not error for %s", tt.Name)
 			movement, err := depth.bidLevels.getMovementByBase(tt.BaseAmount, tt.ReferencePrice, false)
 			require.ErrorIs(t, err, tt.ExpectedError)
 
 			if movement == nil {
 				return
 			}
-			if movement.NominalPercentage != tt.ExpectedNominal {
-				t.Fatalf("nominal received: '%v' but expected: '%v'",
-					movement.NominalPercentage, tt.ExpectedNominal)
-			}
-
-			if movement.ImpactPercentage != tt.ExpectedImpact {
-				t.Fatalf("impact received: '%v' but expected: '%v'",
-					movement.ImpactPercentage, tt.ExpectedImpact)
-			}
-
-			if movement.SlippageCost != tt.ExpectedCost {
-				t.Fatalf("cost received: '%v' but expected: '%v'",
-					movement.SlippageCost, tt.ExpectedCost)
-			}
+			assert.Equalf(t, tt.ExpectedNominal, movement.NominalPercentage, "getMovementByBase nominal should match for %s", tt.Name)
+			assert.Equalf(t, tt.ExpectedImpact, movement.ImpactPercentage, "getMovementByBase impact should match for %s", tt.Name)
+			assert.Equalf(t, tt.ExpectedCost, movement.SlippageCost, "getMovementByBase cost should match for %s", tt.Name)
 		})
 	}
 }
@@ -1479,16 +1284,14 @@ func TestGetBaseAmountFromImpact(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			depth := NewDepth(id)
-			err := depth.LoadSnapshot(&Book{Bids: tt.BidLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoErrorf(t, depth.LoadSnapshot(&Book{Bids: tt.BidLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true}), "LoadSnapshot must not error for %s", tt.Name)
 			base, err := depth.bidLevels.hitBidsByImpactSlippage(tt.ImpactSlippage, tt.ReferencePrice)
 			require.ErrorIs(t, err, tt.ExpectedError)
 
-			if !base.IsEqual(tt.ExpectedShift) {
-				t.Fatalf("%s quote received: '%+v' but expected: '%+v'",
-					tt.Name, base, tt.ExpectedShift)
+			if base == nil || tt.ExpectedShift == nil {
+				assert.Equalf(t, tt.ExpectedShift, base, "hitBidsByImpactSlippage should match expected shift for %s", tt.Name)
+			} else {
+				assert.Truef(t, base.IsEqual(tt.ExpectedShift), "hitBidsByImpactSlippage should produce expected movement for %s", tt.Name)
 			}
 		})
 	}
@@ -1563,30 +1366,16 @@ func TestGetMovementByQuoteAmount(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			depth := NewDepth(id)
-			err := depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoErrorf(t, depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true}), "LoadSnapshot must not error for %s", tt.Name)
 			movement, err := depth.askLevels.getMovementByQuotation(tt.QuoteAmount, tt.ReferencePrice, false)
 			require.ErrorIs(t, err, tt.ExpectedError)
 
 			if movement == nil {
 				return
 			}
-			if movement.NominalPercentage != tt.ExpectedNominal {
-				t.Fatalf("nominal received: '%v' but expected: '%v'",
-					movement.NominalPercentage, tt.ExpectedNominal)
-			}
-
-			if movement.ImpactPercentage != tt.ExpectedImpact {
-				t.Fatalf("impact received: '%v' but expected: '%v'",
-					movement.ImpactPercentage, tt.ExpectedImpact)
-			}
-
-			if movement.SlippageCost != tt.ExpectedCost {
-				t.Fatalf("cost received: '%v' but expected: '%v'",
-					movement.SlippageCost, tt.ExpectedCost)
-			}
+			assert.Equalf(t, tt.ExpectedNominal, movement.NominalPercentage, "getMovementByQuoteAmount nominal should match for %s", tt.Name)
+			assert.Equalf(t, tt.ExpectedImpact, movement.ImpactPercentage, "getMovementByQuoteAmount impact should match for %s", tt.Name)
+			assert.Equalf(t, tt.ExpectedCost, movement.SlippageCost, "getMovementByQuoteAmount cost should match for %s", tt.Name)
 		})
 	}
 }
@@ -1693,8 +1482,7 @@ func TestGetQuoteAmountFromNominalSlippage(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			depth := NewDepth(id)
-			err := depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true})
-			assert.NoError(t, err, "LoadSnapshot should not error")
+			require.NoErrorf(t, depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true}), "LoadSnapshot must not error for %s", tt.Name)
 
 			quote, err := depth.askLevels.liftAsksByNominalSlippage(tt.NominalSlippage, tt.ReferencePrice)
 			if tt.ExpectedError != nil {
@@ -1781,8 +1569,7 @@ func TestGetQuoteAmountFromImpact(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
 			depth := NewDepth(id)
-			err := depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true})
-			assert.NoError(t, err, "LoadSnapshot should not error")
+			require.NoErrorf(t, depth.LoadSnapshot(&Book{Asks: tt.AskLiquidity, LastUpdated: time.Now(), LastPushed: time.Now(), RestSnapshot: true}), "LoadSnapshot must not error for %s", tt.Name)
 
 			quote, err := depth.askLevels.liftAsksByImpactSlippage(tt.ImpactSlippage, tt.ReferencePrice)
 			if tt.ExpectedError != nil {
@@ -1808,16 +1595,12 @@ func TestGetHeadPrice(t *testing.T) {
 	val, err := depth.bidLevels.getHeadPriceNoLock()
 	require.NoError(t, err)
 
-	if val != 1336 {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, 1336.0, val, "getHeadPriceNoLock should return expected bid head price")
 
 	val, err = depth.askLevels.getHeadPriceNoLock()
 	require.NoError(t, err)
 
-	if val != 1337 {
-		t.Fatal("unexpected value", val)
-	}
+	assert.Equal(t, 1337.0, val, "getHeadPriceNoLock should return expected ask head price")
 }
 
 func TestFinalizeFields(t *testing.T) {

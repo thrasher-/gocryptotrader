@@ -27,9 +27,7 @@ func TestCheckAndRegister(t *testing.T) {
 	err = tracker.checkAndRegister(newLovelyClient)
 	require.NoError(t, err)
 
-	if !tracker.contains(newLovelyClient) {
-		t.Fatalf("received: '%v' but expected: '%v'", false, true)
-	}
+	require.True(t, tracker.contains(newLovelyClient), "tracker.contains must return true after register")
 
 	err = tracker.checkAndRegister(newLovelyClient)
 	require.ErrorIs(t, err, errCannotReuseHTTPClient)
@@ -47,16 +45,12 @@ func TestDeRegister(t *testing.T) {
 	err = tracker.checkAndRegister(newLovelyClient)
 	require.NoError(t, err)
 
-	if !tracker.contains(newLovelyClient) {
-		t.Fatalf("received: '%v' but expected: '%v'", false, true)
-	}
+	require.True(t, tracker.contains(newLovelyClient), "tracker.contains must return true after register")
 
 	err = tracker.deRegister(newLovelyClient)
 	require.NoError(t, err)
 
-	if tracker.contains(newLovelyClient) {
-		t.Fatalf("received: '%v' but expected: '%v'", true, false)
-	}
+	require.False(t, tracker.contains(newLovelyClient), "tracker.contains must return false after deregister")
 }
 
 func TestNewProtectedClient(t *testing.T) {
@@ -68,9 +62,7 @@ func TestNewProtectedClient(t *testing.T) {
 	protec, err := newProtectedClient(newLovelyClient)
 	require.NoError(t, err)
 
-	if protec.protected != newLovelyClient {
-		t.Fatal("unexpected value")
-	}
+	require.Same(t, newLovelyClient, protec.protected, "newProtectedClient must wrap provided client")
 }
 
 func TestClientSetProxy(t *testing.T) {
@@ -79,9 +71,7 @@ func TestClientSetProxy(t *testing.T) {
 	require.ErrorIs(t, err, errNoProxyURLSupplied)
 
 	pp, err := url.Parse("lol.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "url.Parse must not error for test URL")
 	err = (&client{protected: new(http.Client)}).setProxy(pp)
 	require.ErrorIs(t, err, errTransportNotSet)
 
@@ -103,14 +93,10 @@ func TestRelease(t *testing.T) {
 	newLovelyClient, err := newProtectedClient(common.NewHTTPClientWithTimeout(0))
 	require.NoError(t, err)
 
-	if !tracker.contains(newLovelyClient.protected) {
-		t.Fatalf("received: '%v' but expected: '%v'", false, true)
-	}
+	require.True(t, tracker.contains(newLovelyClient.protected), "tracker.contains must return true after new protected client creation")
 
 	err = newLovelyClient.release()
 	require.NoError(t, err)
 
-	if tracker.contains(newLovelyClient.protected) {
-		t.Fatalf("received: '%v' but expected: '%v'", true, false)
-	}
+	require.False(t, tracker.contains(newLovelyClient.protected), "tracker.contains must return false after release")
 }

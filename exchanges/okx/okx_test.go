@@ -3962,9 +3962,9 @@ func TestOrderPushData(t *testing.T) {
 				assert.Equal(t, order.Filled, v.Status, "Status")
 			}
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Got unexpected data: %T %v", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit spot order detail but received %T (%v)", v, v)
 		}
 	}
 }
@@ -4109,9 +4109,9 @@ func TestWSProcessTrades(t *testing.T) {
 		case trade.Data:
 			trades[v.AssetType] = append(trades[v.AssetType], v)
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T (%s)", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit trade.Data but received %T (%v)", v, v)
 		}
 	}
 

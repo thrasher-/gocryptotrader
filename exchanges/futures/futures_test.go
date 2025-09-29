@@ -54,19 +54,13 @@ func TestUpsertPNLEntry(t *testing.T) {
 	results, err = upsertPNLEntry(results, result)
 	assert.NoError(t, err)
 
-	if len(results) != 1 {
-		t.Errorf("expected 1 received %v", len(results))
-	}
+	assert.Len(t, results, 1, "upsertPNLEntry should append first result")
 	result.Fee = decimal.NewFromInt(1337)
 	results, err = upsertPNLEntry(results, result)
 	assert.NoError(t, err)
 
-	if len(results) != 1 {
-		t.Errorf("expected 1 received %v", len(results))
-	}
-	if !results[0].Fee.Equal(result.Fee) {
-		t.Errorf("expected %v received %v", result.Fee, results[0].Fee)
-	}
+	assert.Len(t, results, 1, "upsertPNLEntry should update existing entry")
+	assert.Truef(t, results[0].Fee.Equal(result.Fee), "upsertPNLEntry should update fee to %v", result.Fee)
 }
 
 func TestTrackNewOrder(t *testing.T) {
@@ -111,18 +105,10 @@ func TestTrackNewOrder(t *testing.T) {
 	err = c.TrackNewOrder(od, false)
 	assert.NoError(t, err)
 
-	if !c.openingPrice.Equal(decimal.NewFromInt(1337)) {
-		t.Errorf("expected 1337, received %v", c.openingPrice)
-	}
-	if len(c.longPositions) != 1 {
-		t.Error("expected a long")
-	}
-	if c.latestDirection != order.Long {
-		t.Error("expected recognition that its long")
-	}
-	if c.exposure.InexactFloat64() != od.Amount {
-		t.Error("expected 1")
-	}
+	assert.True(t, c.openingPrice.Equal(decimal.NewFromInt(1337)), "TrackNewOrder should set openingPrice to 1337")
+	assert.Len(t, c.longPositions, 1, "TrackNewOrder should store one long position")
+	assert.Equal(t, order.Long, c.latestDirection, "TrackNewOrder should mark latestDirection long")
+	assert.Equal(t, od.Amount, c.exposure.InexactFloat64(), "TrackNewOrder should track exposure amount")
 
 	od.Date = od.Date.Add(1)
 	od.Amount = 0.4
@@ -131,15 +117,9 @@ func TestTrackNewOrder(t *testing.T) {
 	err = c.TrackNewOrder(od, false)
 	assert.NoError(t, err)
 
-	if len(c.shortPositions) != 1 {
-		t.Error("expected a short")
-	}
-	if c.latestDirection != order.Long {
-		t.Error("expected recognition that its long")
-	}
-	if c.exposure.InexactFloat64() != 0.6 {
-		t.Error("expected 0.6")
-	}
+	assert.Len(t, c.shortPositions, 1, "TrackNewOrder should store one short position")
+	assert.Equal(t, order.Long, c.latestDirection, "TrackNewOrder should maintain latestDirection long")
+	assert.Equal(t, 0.6, c.exposure.InexactFloat64(), "TrackNewOrder should reduce exposure to 0.6")
 
 	od.Date = od.Date.Add(1)
 	od.Amount = 0.8
@@ -149,12 +129,8 @@ func TestTrackNewOrder(t *testing.T) {
 	err = c.TrackNewOrder(od, false)
 	assert.NoError(t, err)
 
-	if c.latestDirection != order.Short {
-		t.Error("expected recognition that its short")
-	}
-	if !c.exposure.Equal(decimal.NewFromFloat(0.2)) {
-		t.Errorf("expected %v received %v", 0.2, c.exposure)
-	}
+	assert.Equal(t, order.Short, c.latestDirection, "TrackNewOrder should mark latestDirection short")
+	assert.Truef(t, c.exposure.Equal(decimal.NewFromFloat(0.2)), "TrackNewOrder should set exposure to 0.2, received %v", c.exposure)
 
 	od.Date = od.Date.Add(1)
 	od.OrderID = "5"
@@ -163,12 +139,8 @@ func TestTrackNewOrder(t *testing.T) {
 	err = c.TrackNewOrder(od, false)
 	assert.NoError(t, err)
 
-	if c.latestDirection != order.ClosePosition {
-		t.Errorf("expected recognition that its closed, received '%v'", c.latestDirection)
-	}
-	if c.status != order.Closed {
-		t.Errorf("expected recognition that its closed, received '%v'", c.status)
-	}
+	assert.Equal(t, order.ClosePosition, c.latestDirection, "TrackNewOrder should recognise closed position")
+	assert.Equal(t, order.Closed, c.status, "TrackNewOrder should mark status closed")
 
 	err = c.TrackNewOrder(od, false)
 	assert.NoError(t, err)
@@ -177,12 +149,8 @@ func TestTrackNewOrder(t *testing.T) {
 	err = c.TrackNewOrder(od, false)
 	assert.ErrorIs(t, err, ErrPositionClosed)
 
-	if c.latestDirection != order.ClosePosition {
-		t.Errorf("expected recognition that its closed, received '%v'", c.latestDirection)
-	}
-	if c.status != order.Closed {
-		t.Errorf("expected recognition that its closed, received '%v'", c.status)
-	}
+	assert.Equal(t, order.ClosePosition, c.latestDirection, "TrackNewOrder should remain closed after error")
+	assert.Equal(t, order.Closed, c.status, "TrackNewOrder should keep status closed after error")
 
 	err = c.TrackNewOrder(od, true)
 	assert.ErrorIs(t, err, errCannotTrackInvalidParams)
@@ -232,9 +200,7 @@ func TestSetupMultiPositionTracker(t *testing.T) {
 	resp, err := SetupMultiPositionTracker(setup)
 	assert.NoError(t, err)
 
-	if resp.exchange != testExchange {
-		t.Errorf("expected 'test' received %v", resp.exchange)
-	}
+	assert.Equal(t, testExchange, resp.exchange, "SetupMultiPositionTracker should set exchange")
 }
 
 func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
@@ -277,9 +243,7 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
-	}
+	assert.Len(t, resp.positions, 1, "TrackNewOrder should add first position")
 
 	err = resp.TrackNewOrder(&order.Detail{
 		Date:      tt,
@@ -292,9 +256,7 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
-	}
+	assert.Len(t, resp.positions, 1, "TrackNewOrder should not duplicate short position")
 
 	err = resp.TrackNewOrder(&order.Detail{
 		Date:      tt,
@@ -307,12 +269,8 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
-	}
-	if resp.positions[0].status != order.Closed {
-		t.Errorf("expected 'closed' received %v", resp.positions[0].status)
-	}
+	assert.Len(t, resp.positions, 1, "TrackNewOrder should close existing position")
+	assert.Equal(t, order.Closed, resp.positions[0].status, "TrackNewOrder should mark position closed")
 	resp.positions[0].status = order.Open
 	resp.positions = append(resp.positions, resp.positions...)
 	err = resp.TrackNewOrder(&order.Detail{
@@ -339,9 +297,7 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if len(resp.positions) != 2 {
-		t.Errorf("expected '2' received %v", len(resp.positions))
-	}
+	assert.Len(t, resp.positions, 2, "TrackNewOrder should append new position after close")
 
 	err = resp.TrackNewOrder(&order.Detail{
 		Date:      tt,
@@ -354,9 +310,7 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if len(resp.positions) != 2 {
-		t.Errorf("expected '2' received %v", len(resp.positions))
-	}
+	assert.Len(t, resp.positions, 2, "TrackNewOrder should ignore duplicate order ID when already tracked")
 
 	resp.positions[0].status = order.Closed
 	err = resp.TrackNewOrder(&order.Detail{
@@ -389,9 +343,7 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 func TestSetupPositionControllerReal(t *testing.T) {
 	t.Parallel()
 	pc := SetupPositionController()
-	if pc.multiPositionTrackers == nil {
-		t.Error("unexpected nil")
-	}
+	assert.NotNil(t, pc.multiPositionTrackers, "SetupPositionController should initialise tracker map")
 }
 
 func TestPositionControllerTestTrackNewOrder(t *testing.T) {
@@ -450,18 +402,14 @@ func TestGetLatestPNLSnapshot(t *testing.T) {
 	result, err := pt.GetLatestPNLSnapshot()
 	assert.NoError(t, err)
 
-	if result != pt.pnlHistory[0] {
-		t.Error("unexpected result")
-	}
+	assert.Equal(t, pt.pnlHistory[0], result, "GetLatestPNLSnapshot should return most recent entry")
 }
 
 func TestGetRealisedPNL(t *testing.T) {
 	t.Parallel()
 	p := PositionTracker{}
 	result := p.GetRealisedPNL()
-	if !result.IsZero() {
-		t.Error("expected zero")
-	}
+	assert.True(t, result.IsZero(), "GetRealisedPNL should return zero for empty tracker")
 }
 
 func TestGetStats(t *testing.T) {
@@ -469,9 +417,7 @@ func TestGetStats(t *testing.T) {
 
 	p := &PositionTracker{}
 	stats := p.GetStats()
-	if len(stats.Orders) != 0 {
-		t.Error("expected 0")
-	}
+	assert.Empty(t, stats.Orders, "GetStats should return empty orders for new tracker")
 
 	p.exchange = testExchange
 	p.fundingRateDetails = &fundingrate.HistoricalRates{
@@ -481,41 +427,29 @@ func TestGetStats(t *testing.T) {
 	}
 
 	stats = p.GetStats()
-	if stats.Exchange != p.exchange {
-		t.Errorf("expected '%v' received '%v'", p.exchange, stats.Exchange)
-	}
+	assert.Equal(t, p.exchange, stats.Exchange, "GetStats should include exchange")
 
 	p = nil
 	stats = p.GetStats()
-	if stats != nil {
-		t.Errorf("expected '%v' received '%v'", nil, stats)
-	}
+	assert.Nil(t, stats, "GetStats should return nil for nil tracker")
 }
 
 func TestGetPositions(t *testing.T) {
 	t.Parallel()
 	p := &MultiPositionTracker{}
 	positions := p.GetPositions()
-	if len(positions) > 0 {
-		t.Error("expected 0")
-	}
+	assert.Empty(t, positions, "GetPositions should return empty slice when uninitialised")
 
 	p.positions = append(p.positions, &PositionTracker{
 		exchange: testExchange,
 	})
 	positions = p.GetPositions()
-	if len(positions) != 1 {
-		t.Fatal("expected 1")
-	}
-	if positions[0].Exchange != testExchange {
-		t.Error("expected 'test'")
-	}
+	assert.Len(t, positions, 1, "GetPositions should return one entry after append")
+	assert.Equal(t, testExchange, positions[0].Exchange, "GetPositions should retain exchange name")
 
 	p = nil
 	positions = p.GetPositions()
-	if len(positions) > 0 {
-		t.Error("expected 0")
-	}
+	assert.Empty(t, positions, "GetPositions should return empty slice for nil tracker")
 }
 
 func TestGetPositionsForExchange(t *testing.T) {
@@ -529,9 +463,7 @@ func TestGetPositionsForExchange(t *testing.T) {
 	pos, err := c.GetPositionsForExchange(testExchange, asset.Futures, p)
 	assert.ErrorIs(t, err, ErrPositionNotFound)
 
-	if len(pos) != 0 {
-		t.Error("expected zero")
-	}
+	assert.Empty(t, pos, "GetPositionsForExchange should return empty slice when tracker missing")
 	c.multiPositionTrackers = make(map[key.ExchangeAssetPair]*MultiPositionTracker)
 	c.multiPositionTrackers[key.NewExchangeAssetPair(testExchange, asset.Futures, p)] = nil
 	_, err = c.GetPositionsForExchange(testExchange, asset.Futures, p)
@@ -550,10 +482,7 @@ func TestGetPositionsForExchange(t *testing.T) {
 
 	pos, err = c.GetPositionsForExchange(testExchange, asset.Futures, p)
 	assert.NoError(t, err)
-
-	if len(pos) != 0 {
-		t.Fatal("expected zero")
-	}
+	assert.Empty(t, pos, "GetPositionsForExchange should return empty slice when tracker has no positions")
 	c.multiPositionTrackers[key.NewExchangeAssetPair(testExchange, asset.Futures, p)] = &MultiPositionTracker{
 		exchange: testExchange,
 		positions: []*PositionTracker{
@@ -564,13 +493,8 @@ func TestGetPositionsForExchange(t *testing.T) {
 	}
 	pos, err = c.GetPositionsForExchange(testExchange, asset.Futures, p)
 	assert.NoError(t, err)
-
-	if len(pos) != 1 {
-		t.Fatal("expected 1")
-	}
-	if pos[0].Exchange != testExchange {
-		t.Error("expected test")
-	}
+	assert.Len(t, pos, 1, "GetPositionsForExchange should return single position when present")
+	assert.Equal(t, testExchange, pos[0].Exchange, "GetPositionsForExchange should preserve exchange name")
 	c = nil
 	_, err = c.GetPositionsForExchange(testExchange, asset.Futures, p)
 	assert.ErrorIs(t, err, common.ErrNilPointer)
@@ -604,9 +528,7 @@ func TestClearPositionsForExchange(t *testing.T) {
 	}
 	err = c.ClearPositionsForExchange(testExchange, asset.Futures, p)
 	require.NoError(t, err, "ClearPositionsForExchange must not error")
-	if len(c.multiPositionTrackers[key.NewExchangeAssetPair(testExchange, asset.Futures, p)].positions) != 0 {
-		t.Fatal("expected 0")
-	}
+	assert.Empty(t, c.multiPositionTrackers[key.NewExchangeAssetPair(testExchange, asset.Futures, p)].positions, "ClearPositionsForExchange should remove positions")
 	c = nil
 	_, err = c.GetPositionsForExchange(testExchange, asset.Futures, p)
 	assert.ErrorIs(t, err, common.ErrNilPointer)
@@ -615,18 +537,14 @@ func TestClearPositionsForExchange(t *testing.T) {
 func TestCalculateRealisedPNL(t *testing.T) {
 	t.Parallel()
 	result := calculateRealisedPNL(nil)
-	if !result.IsZero() {
-		t.Errorf("received '%v' expected '0'", result)
-	}
+	assert.True(t, result.IsZero(), "calculateRealisedPNL should return zero for nil results")
 	result = calculateRealisedPNL([]PNLResult{
 		{
 			IsOrder:               true,
 			RealisedPNLBeforeFees: decimal.NewFromInt(1337),
 		},
 	})
-	if !result.Equal(decimal.NewFromInt(1337)) {
-		t.Errorf("received '%v' expected '1337'", result)
-	}
+	assert.True(t, result.Equal(decimal.NewFromInt(1337)), "calculateRealisedPNL should equal 1337 when fees absent")
 
 	result = calculateRealisedPNL([]PNLResult{
 		{
@@ -640,27 +558,20 @@ func TestCalculateRealisedPNL(t *testing.T) {
 			Fee:                   decimal.NewFromInt(2),
 		},
 	})
-	if !result.Equal(decimal.NewFromInt(1337)) {
-		t.Errorf("received '%v' expected '1337'", result)
-	}
+	assert.True(t, result.Equal(decimal.NewFromInt(1337)), "calculateRealisedPNL should subtract fees to 1337 total")
 }
 
 func TestSetupPositionTracker(t *testing.T) {
 	t.Parallel()
 	p, err := SetupPositionTracker(nil)
 	assert.ErrorIs(t, err, errNilSetup)
-
-	if p != nil {
-		t.Error("expected nil")
-	}
+	assert.Nil(t, p, "SetupPositionTracker should return nil tracker for nil setup")
 	p, err = SetupPositionTracker(&PositionTrackerSetup{
 		Asset: asset.Spot,
 	})
 	assert.ErrorIs(t, err, common.ErrExchangeNameNotSet)
 
-	if p != nil {
-		t.Error("expected nil")
-	}
+	assert.Nil(t, p, "SetupPositionTracker should return nil tracker when exchange missing")
 
 	p, err = SetupPositionTracker(&PositionTrackerSetup{
 		Exchange: testExchange,
@@ -668,9 +579,7 @@ func TestSetupPositionTracker(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrNotFuturesAsset)
 
-	if p != nil {
-		t.Error("expected nil")
-	}
+	assert.Nil(t, p, "SetupPositionTracker should return nil tracker when asset not futures")
 
 	p, err = SetupPositionTracker(&PositionTrackerSetup{
 		Exchange: testExchange,
@@ -678,9 +587,7 @@ func TestSetupPositionTracker(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, order.ErrPairIsEmpty)
 
-	if p != nil {
-		t.Error("expected nil")
-	}
+	assert.Nil(t, p, "SetupPositionTracker should return nil tracker when pair missing")
 
 	cp := currency.NewBTCUSDT()
 	p, err = SetupPositionTracker(&PositionTrackerSetup{
@@ -690,12 +597,8 @@ func TestSetupPositionTracker(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	if p == nil { //nolint:staticcheck,nolintlint // SA5011 Ignore the nil warnings
-		t.Fatal("expected not nil")
-	}
-	if p.exchange != testExchange { //nolint:staticcheck,nolintlint // SA5011 Ignore the nil warnings
-		t.Error("expected test")
-	}
+	require.NotNil(t, p, "SetupPositionTracker must return tracker when setup valid")
+	assert.Equal(t, testExchange, p.exchange, "SetupPositionTracker should set exchange")
 
 	_, err = SetupPositionTracker(&PositionTrackerSetup{
 		Exchange:                  testExchange,
@@ -714,9 +617,7 @@ func TestSetupPositionTracker(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	if !p.useExchangePNLCalculation {
-		t.Error("expected true")
-	}
+	assert.True(t, p.useExchangePNLCalculation, "SetupPositionTracker should enable exchange PNL when configured")
 }
 
 func TestCalculatePNL(t *testing.T) {
@@ -745,9 +646,7 @@ func TestTrackPNLByTime(t *testing.T) {
 	err = p.TrackPNLByTime(time.Now(), 2)
 	assert.NoError(t, err)
 
-	if !p.latestPrice.Equal(decimal.NewFromInt(2)) {
-		t.Error("expected 2")
-	}
+	assert.True(t, p.latestPrice.Equal(decimal.NewFromInt(2)), "TrackPNLByTime should update latestPrice to 2")
 	p = nil
 	err = p.TrackPNLByTime(time.Now(), 2)
 	assert.ErrorIs(t, err, common.ErrNilPointer)
@@ -790,9 +689,7 @@ func TestUpdateOpenPositionUnrealisedPNL(t *testing.T) {
 	pnl, err := pc.UpdateOpenPositionUnrealisedPNL("hi", asset.Futures, currency.NewBTCUSDT(), 2, time.Now())
 	assert.NoError(t, err)
 
-	if !pnl.Equal(decimal.NewFromInt(1)) {
-		t.Errorf("received '%v' expected '%v", pnl, 1)
-	}
+	assert.True(t, pnl.Equal(decimal.NewFromInt(1)), "UpdateOpenPositionUnrealisedPNL should return 1 unrealised pnl")
 
 	var nilPC *PositionController
 	_, err = nilPC.UpdateOpenPositionUnrealisedPNL("hi", asset.Futures, currency.NewBTCUSDT(), 2, time.Now())
@@ -838,13 +735,8 @@ func TestSetCollateralCurrency(t *testing.T) {
 	err = pc.SetCollateralCurrency("hi", asset.Futures, p, currency.DOGE)
 	require.NoError(t, err)
 
-	if !pc.multiPositionTrackers[mapKey].collateralCurrency.Equal(currency.DOGE) {
-		t.Errorf("received '%v' expected '%v'", pc.multiPositionTrackers[mapKey].collateralCurrency, currency.DOGE)
-	}
-
-	if !pc.multiPositionTrackers[mapKey].positions[0].collateralCurrency.Equal(currency.DOGE) {
-		t.Errorf("received '%v' expected '%v'", pc.multiPositionTrackers[mapKey].positions[0].collateralCurrency, currency.DOGE)
-	}
+	assert.True(t, pc.multiPositionTrackers[mapKey].collateralCurrency.Equal(currency.DOGE), "SetCollateralCurrency should update tracker collateral")
+	assert.True(t, pc.multiPositionTrackers[mapKey].positions[0].collateralCurrency.Equal(currency.DOGE), "SetCollateralCurrency should update position collateral")
 
 	var nilPC *PositionController
 	err = nilPC.SetCollateralCurrency("hi", asset.Spot, currency.EMPTYPAIR, currency.Code{})
@@ -871,9 +763,7 @@ func TestMPTUpdateOpenPositionUnrealisedPNL(t *testing.T) {
 	result, err := pc.multiPositionTrackers[mapKey].UpdateOpenPositionUnrealisedPNL(1337, time.Now())
 	require.NoError(t, err)
 
-	if result.Equal(decimal.NewFromInt(1337)) {
-		t.Error("")
-	}
+	assert.False(t, result.Equal(decimal.NewFromInt(1337)), "UpdateOpenPositionUnrealisedPNL should adjust unrealised value")
 
 	pc.multiPositionTrackers[mapKey].positions[0].status = order.Closed
 	_, err = pc.multiPositionTrackers[mapKey].UpdateOpenPositionUnrealisedPNL(1337, time.Now())
@@ -930,12 +820,8 @@ func TestMPTLiquidate(t *testing.T) {
 	err = e.Liquidate(decimal.Zero, tt)
 	assert.NoError(t, err)
 
-	if e.positions[0].status != order.Liquidated {
-		t.Errorf("received '%v' expected '%v'", e.positions[0].status, order.Liquidated)
-	}
-	if !e.positions[0].exposure.IsZero() {
-		t.Errorf("received '%v' expected '%v'", e.positions[0].exposure, 0)
-	}
+	assert.Equal(t, order.Liquidated, e.positions[0].status, "Liquidate should mark multi position tracker status")
+	assert.True(t, e.positions[0].exposure.IsZero(), "Liquidate should zero multi position tracker exposure")
 
 	e = nil
 	err = e.Liquidate(decimal.Zero, tt)
@@ -976,12 +862,8 @@ func TestPositionLiquidate(t *testing.T) {
 	err = p.Liquidate(decimal.Zero, tt)
 	assert.NoError(t, err)
 
-	if p.status != order.Liquidated {
-		t.Errorf("received '%v' expected '%v'", p.status, order.Liquidated)
-	}
-	if !p.exposure.IsZero() {
-		t.Errorf("received '%v' expected '%v'", p.exposure, 0)
-	}
+	assert.Equal(t, order.Liquidated, p.status, "Liquidate should set position status")
+	assert.True(t, p.exposure.IsZero(), "Liquidate should zero exposure")
 
 	p = nil
 	err = p.Liquidate(decimal.Zero, tt)
@@ -1246,16 +1128,12 @@ func TestLastUpdated(t *testing.T) {
 	tm, err := p.LastUpdated()
 	assert.NoError(t, err)
 
-	if !tm.IsZero() {
-		t.Errorf("received '%v' expected '%v", tm, time.Time{})
-	}
+	assert.True(t, tm.IsZero(), "LastUpdated should be zero for new controller")
 	p.updated = time.Now()
 	tm, err = p.LastUpdated()
 	assert.NoError(t, err)
 
-	if !tm.Equal(p.updated) {
-		t.Errorf("received '%v' expected '%v", tm, p.updated)
-	}
+	assert.Equal(t, p.updated, tm, "LastUpdated should return stored timestamp")
 	p = nil
 	_, err = p.LastUpdated()
 	assert.ErrorIs(t, err, common.ErrNilPointer)
@@ -1264,15 +1142,9 @@ func TestLastUpdated(t *testing.T) {
 func TestGetCurrencyForRealisedPNL(t *testing.T) {
 	p := PNLCalculator{}
 	code, a, err := p.GetCurrencyForRealisedPNL(asset.Spot, currency.NewPair(currency.DOGE, currency.XRP))
-	if err != nil {
-		t.Error(err)
-	}
-	if !code.Equal(currency.DOGE) {
-		t.Errorf("received '%v' expected '%v", code, currency.DOGE)
-	}
-	if a != asset.Spot {
-		t.Errorf("received '%v' expected '%v", a, asset.Spot)
-	}
+	assert.NoError(t, err)
+	assert.True(t, code.Equal(currency.DOGE), "GetCurrencyForRealisedPNL should return base currency")
+	assert.Equal(t, asset.Spot, a, "GetCurrencyForRealisedPNL should return realised asset")
 }
 
 func TestCheckTrackerPrerequisitesLowerExchange(t *testing.T) {
@@ -1290,7 +1162,5 @@ func TestCheckTrackerPrerequisitesLowerExchange(t *testing.T) {
 	lowerExch, err := checkTrackerPrerequisitesLowerExchange(upperExch, asset.Futures, currency.NewBTCUSDT())
 	assert.NoError(t, err)
 
-	if lowerExch != "im uppercase" {
-		t.Error("expected lowercase")
-	}
+	assert.Equal(t, "im uppercase", lowerExch, "checkTrackerPrerequisitesLowerExchange should lowercase exchange")
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
 
@@ -70,9 +71,7 @@ func TestLinearBackoff(t *testing.T) {
 
 			for n, exp := range tt.Want.Delays {
 				got := tt.Args.Backoff(n)
-				if got != exp {
-					t.Errorf("incorrect backoff duration\nexp: %s\ngot: %s", exp, got)
-				}
+				assert.Equalf(t, exp, got, "Backoff should return expected duration for attempt %d", n)
 			}
 		})
 	}

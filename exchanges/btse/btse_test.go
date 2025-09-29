@@ -503,9 +503,9 @@ func TestWSTrades(t *testing.T) {
 			i := 1 - len(e.Websocket.DataHandler)
 			require.Equalf(t, exp[i], v, "Trade [%d] must be correct", i)
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T(%s)", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit expected data but received %T (%v)", v, v)
 		}
 	}
 }

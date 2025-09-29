@@ -23,8 +23,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const unexpected = "unexpected values"
-
 var (
 	testURL     string
 	serverLimit *RateLimiterWithWeight
@@ -105,79 +103,54 @@ func TestMain(m *testing.M) {
 func TestNewRateLimitWithWeight(t *testing.T) {
 	t.Parallel()
 	r := NewRateLimitWithWeight(time.Second*10, 5, 1)
-	if r.Limit() != 0.5 {
-		t.Fatal(unexpected)
-	}
+	require.Equal(t, rate.Limit(0.5), r.Limit(), "NewRateLimitWithWeight must compute expected limit")
 
 	// Ensures rate limiting factor is the same
 	r = NewRateLimitWithWeight(time.Second*2, 1, 1)
-	if r.Limit() != 0.5 {
-		t.Fatal(unexpected)
-	}
+	require.Equal(t, rate.Limit(0.5), r.Limit(), "NewRateLimitWithWeight must reuse base limit when halving duration")
 
 	// Test for open rate limit
 	r = NewRateLimitWithWeight(time.Second*2, 0, 1)
-	if r.Limit() != rate.Inf {
-		t.Fatal(unexpected)
-	}
+	require.Equal(t, rate.Inf, r.Limit(), "NewRateLimitWithWeight must return infinite limit when requests per interval is zero")
 
 	r = NewRateLimitWithWeight(0, 69, 1)
-	if r.Limit() != rate.Inf {
-		t.Fatal(unexpected)
-	}
+	require.Equal(t, rate.Inf, r.Limit(), "NewRateLimitWithWeight must return infinite limit when interval is zero")
 }
 
 func TestCheckRequest(t *testing.T) {
 	t.Parallel()
 
-	r, err := New("TestRequest",
-		new(http.Client))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r, err := New("TestRequest", new(http.Client))
+	require.NoError(t, err, "New must not error with default HTTP client")
 	ctx := t.Context()
 
 	var check *Item
 	_, err = check.validateRequest(ctx, &Requester{})
-	if err == nil {
-		t.Fatal(unexpected)
-	}
+	require.Error(t, err, "validateRequest must error when Item is nil")
 
 	_, err = check.validateRequest(ctx, nil)
-	if err == nil {
-		t.Fatal(unexpected)
-	}
+	require.Error(t, err, "validateRequest must error when requester is nil")
 
 	_, err = check.validateRequest(ctx, r)
-	if err == nil {
-		t.Fatal(unexpected)
-	}
+	require.Error(t, err, "validateRequest must error when Item is uninitialised")
 
 	check = &Item{}
 	_, err = check.validateRequest(ctx, r)
-	if err == nil {
-		t.Fatal(unexpected)
-	}
+	require.Error(t, err, "validateRequest must error when path unset")
 
 	check.Path = testURL
 	check.Method = " " // Forces method check; "" automatically converts to GET
 	_, err = check.validateRequest(ctx, r)
-	if err == nil {
-		t.Fatal(unexpected)
-	}
+	require.Error(t, err, "validateRequest must error when method is whitespace")
 
 	check.Method = http.MethodPost
 	_, err = check.validateRequest(ctx, r)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "validateRequest must succeed with valid method")
 
 	var passback http.Header
 	check.HeaderResponse = &passback
 	_, err = check.validateRequest(ctx, r)
-	if err == nil {
-		t.Fatal("expected error when underlying memory is not allocated")
-	}
+	require.Error(t, err, "validateRequest must error when header response backing store nil")
 	passback = http.Header{}
 
 	// Test setting headers
@@ -188,17 +161,9 @@ func TestCheckRequest(t *testing.T) {
 	// Test user agent set
 	r.userAgent = "r00t axxs"
 	req, err := check.validateRequest(ctx, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if req.Header.Get("Content-Type") != "Super awesome HTTP party experience" {
-		t.Fatal(unexpected)
-	}
-
-	if req.UserAgent() != "r00t axxs" {
-		t.Fatal(unexpected)
-	}
+	require.NoError(t, err, "validateRequest must succeed with populated headers")
+	require.Equal(t, "Super awesome HTTP party experience", req.Header.Get("Content-Type"), "Request headers must retain provided content type")
+	require.Equal(t, "r00t axxs", req.UserAgent(), "Request user agent must match requester configuration")
 }
 
 var globalshell = RateLimitDefinitions{
@@ -381,9 +346,7 @@ func TestDoRequest_RetryNonRecoverable(t *testing.T) {
 		return 0
 	}
 	r, err := New("test", new(http.Client), WithBackoff(backoff))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "New must not error with custom backoff")
 	err = r.SendPayload(t.Context(), Unset, func() (*Item, error) {
 		return &Item{
 			Method: http.MethodGet,
@@ -404,9 +367,7 @@ func TestDoRequest_NotRetryable(t *testing.T) {
 		return time.Duration(n) * time.Millisecond
 	}
 	r, err := New("test", new(http.Client), WithRetryPolicy(retry), WithBackoff(backoff))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "New must not error with retry policy")
 	err = r.SendPayload(t.Context(), Unset, func() (*Item, error) {
 		return &Item{
 			Method: http.MethodGet,
@@ -456,47 +417,26 @@ func TestSetProxy(t *testing.T) {
 	require.ErrorIs(t, err, ErrRequestSystemIsNil)
 
 	r, err = New("test", &http.Client{Transport: new(http.Transport)}, WithLimiter(globalshell))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "New must not error with transport client")
 	u, err := url.Parse("http://www.google.com")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.SetProxy(u)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "url.Parse must parse valid URL")
+	require.NoError(t, r.SetProxy(u), "SetProxy must configure proxy")
 	u, err = url.Parse("")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "url.Parse must succeed for empty string")
 	err = r.SetProxy(u)
-	if err == nil {
-		t.Fatal("error cannot be nil")
-	}
+	require.Error(t, err, "SetProxy must error when proxy URL empty")
 }
 
 func TestBasicLimiter(t *testing.T) {
 	r, err := New("test", new(http.Client), WithLimiter(NewBasicRateLimit(time.Second, 1, 1)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "New must not error with basic limiter")
 	i := Item{Path: "http://www.google.com", Method: http.MethodGet}
 	ctx := t.Context()
 
 	tn := time.Now()
-	err = r.SendPayload(ctx, Unset, func() (*Item, error) { return &i, nil }, UnauthenticatedRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.SendPayload(ctx, Unset, func() (*Item, error) { return &i, nil }, UnauthenticatedRequest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if time.Since(tn) < time.Second {
-		t.Error("rate limit issues")
-	}
+	require.NoError(t, r.SendPayload(ctx, Unset, func() (*Item, error) { return &i, nil }, UnauthenticatedRequest), "SendPayload must succeed for first request")
+	require.NoError(t, r.SendPayload(ctx, Unset, func() (*Item, error) { return &i, nil }, UnauthenticatedRequest), "SendPayload must succeed for second request")
+	assert.GreaterOrEqual(t, time.Since(tn), time.Second, "RateLimiter should enforce one second interval between requests")
 
 	ctx, cancel := context.WithDeadline(ctx, tn.Add(time.Nanosecond))
 	defer cancel()
@@ -564,10 +504,7 @@ func TestSetHTTPClientTimeout(t *testing.T) {
 	require.ErrorIs(t, err, ErrRequestSystemIsNil)
 
 	r = new(Requester)
-	err = r.SetHTTPClient(common.NewHTTPClientWithTimeout(2))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, r.SetHTTPClient(common.NewHTTPClientWithTimeout(2)), "SetHTTPClient must accept valid client")
 	err = r.SetHTTPClientTimeout(time.Second)
 	require.NoError(t, err)
 }
@@ -594,9 +531,7 @@ func TestGetHTTPClientUserAgent(t *testing.T) {
 	ua, err := r.GetHTTPClientUserAgent()
 	require.NoError(t, err)
 
-	if ua != "sillyness" {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, "sillyness", ua, "GetHTTPClientUserAgent should return configured value")
 }
 
 func TestIsVerbose(t *testing.T) {

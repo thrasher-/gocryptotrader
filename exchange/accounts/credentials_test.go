@@ -3,6 +3,7 @@ package accounts
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 )
@@ -10,18 +11,12 @@ import (
 func TestIsEmpty(t *testing.T) {
 	t.Parallel()
 	var c *Credentials
-	if !c.IsEmpty() {
-		t.Fatalf("expected: %v but received: %v", true, c.IsEmpty())
-	}
+	assert.True(t, c.IsEmpty(), "IsEmpty should return true for nil credentials")
 	c = new(Credentials)
-	if !c.IsEmpty() {
-		t.Fatalf("expected: %v but received: %v", true, c.IsEmpty())
-	}
+	assert.True(t, c.IsEmpty(), "IsEmpty should return true for empty credentials")
 
 	c.SubAccount = "woow"
-	if c.IsEmpty() {
-		t.Fatalf("expected: %v but received: %v", false, c.IsEmpty())
-	}
+	assert.False(t, c.IsEmpty(), "IsEmpty should return false when sub account set")
 }
 
 func TestParseCredentialsMetadata(t *testing.T) {
@@ -63,20 +58,16 @@ func TestParseCredentialsMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	store, ok := ctx.Value(ContextCredentialsFlag).(*ContextCredentialsStore)
-	if !ok {
-		t.Fatal("should have processed")
-	}
+	require.True(t, ok, "ParseCredentialsMetadata must populate ContextCredentialsStore")
 
 	afterCreds := store.Get()
 
-	if afterCreds.Key != "superkey" &&
-		afterCreds.Secret != "supersecret" &&
-		afterCreds.SubAccount != "supersub" &&
-		afterCreds.ClientID != "superclient" &&
-		afterCreds.PEMKey != "superpem" &&
-		afterCreds.OneTimePassword != "superOneTimePasssssss" {
-		t.Fatal("unexpected values")
-	}
+	assert.Equal(t, "superkey", afterCreds.Key, "ParseCredentialsMetadata should restore key")
+	assert.Equal(t, "supersecret", afterCreds.Secret, "ParseCredentialsMetadata should restore secret")
+	assert.Equal(t, "supersub", afterCreds.SubAccount, "ParseCredentialsMetadata should restore sub account")
+	assert.Equal(t, "superclient", afterCreds.ClientID, "ParseCredentialsMetadata should restore client id")
+	assert.Equal(t, "superpem", afterCreds.PEMKey, "ParseCredentialsMetadata should restore pem key")
+	assert.Equal(t, "superOneTimePasssssss", afterCreds.OneTimePassword, "ParseCredentialsMetadata should restore otp")
 
 	// subaccount override
 	subaccount := Credentials{
@@ -91,84 +82,49 @@ func TestParseCredentialsMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sa, ok := ctx.Value(ContextSubAccountFlag).(string)
-	if !ok {
-		t.Fatal("should have processed")
-	}
-
-	if sa != "supersub" {
-		t.Fatal("unexpected value")
-	}
+	require.True(t, ok, "ParseCredentialsMetadata must populate sub account flag")
+	assert.Equal(t, "supersub", sa, "ParseCredentialsMetadata should restore sub account override")
 }
 
 func TestGetInternal(t *testing.T) {
 	t.Parallel()
 	flag, store := (&Credentials{}).getInternal()
-	if flag != "" {
-		t.Fatal("unexpected value")
-	}
-	if store != nil {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, contextCredential(""), flag, "getInternal should return empty flag when credentials empty")
+	assert.Nil(t, store, "getInternal should return nil store when credentials empty")
 	flag, store = (&Credentials{Key: "wow"}).getInternal()
-	if flag != ContextCredentialsFlag {
-		t.Fatal("unexpected value")
-	}
-	if store == nil {
-		t.Fatal("unexpected value")
-	}
-	if store.Get().Key != "wow" {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, ContextCredentialsFlag, flag, "getInternal should return credentials flag when key present")
+	require.NotNil(t, store, "getInternal must return store when key present")
+	assert.Equal(t, "wow", store.Get().Key, "getInternal should set key in store")
 }
 
 func TestString(t *testing.T) {
 	t.Parallel()
 	creds := Credentials{}
-	if s := creds.String(); s != "Key:[...] SubAccount:[] ClientID:[]" {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, "Key:[...] SubAccount:[] ClientID:[]", creds.String(), "String should mask empty credentials")
 
 	creds.Key = "12345678910111234"
 	creds.SubAccount = "sub"
 	creds.ClientID = "client"
 
-	if s := creds.String(); s != "Key:[1234567891011123...] SubAccount:[sub] ClientID:[client]" {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, "Key:[1234567891011123...] SubAccount:[sub] ClientID:[client]", creds.String(), "String should mask credential values")
 }
 
 func TestCredentialsEqual(t *testing.T) {
 	t.Parallel()
 	var this, that *Credentials
-	if this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.False(t, this.Equal(that), "Equal should return false for nil credentials")
 	this = &Credentials{}
-	if this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.False(t, this.Equal(that), "Equal should return false when other nil")
 	that = &Credentials{Key: "1337"}
-	if this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.False(t, this.Equal(that), "Equal should return false when keys differ")
 	this.Key = "1337"
-	if !this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.True(t, this.Equal(that), "Equal should return true when only keys match")
 	this.ClientID = "1337"
-	if this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.False(t, this.Equal(that), "Equal should return false when client ids differ")
 	that.ClientID = "1337"
-	if !this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.True(t, this.Equal(that), "Equal should return true when keys and client ids match")
 	this.SubAccount = "someSub"
-	if this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.False(t, this.Equal(that), "Equal should return false when sub accounts differ")
 	that.SubAccount = "someSub"
-	if !this.Equal(that) {
-		t.Fatal("unexpected value")
-	}
+	assert.True(t, this.Equal(that), "Equal should return true when all credentials match")
 }

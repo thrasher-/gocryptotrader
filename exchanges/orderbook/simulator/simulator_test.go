@@ -3,6 +3,7 @@ package simulator
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/bitstamp"
@@ -25,15 +26,9 @@ func TestSimulate(t *testing.T) {
 	}
 	o, err := b.UpdateOrderbook(t.Context(),
 		currency.NewBTCUSD(), asset.Spot)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "UpdateOrderbook must not error")
 	_, err = o.SimulateOrder(10000000, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "SimulateOrder must not error for buy order")
 	_, err = o.SimulateOrder(2171, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "SimulateOrder must not error for sell order")
 }

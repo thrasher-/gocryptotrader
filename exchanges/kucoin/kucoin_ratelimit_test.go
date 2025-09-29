@@ -192,9 +192,8 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if err := rl.InitiateRateLimit(t.Context(), tt); err != nil {
-				t.Fatalf("error applying rate limit: %v", err)
-			}
+			err := rl.InitiateRateLimit(t.Context(), tt)
+			require.NoError(t, err, "InitiateRateLimit must not error")
 		})
 	}
 }

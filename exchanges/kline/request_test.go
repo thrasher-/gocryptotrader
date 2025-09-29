@@ -47,37 +47,14 @@ func TestCreateKlineRequest(t *testing.T) {
 	r, err := CreateKlineRequest("name", pair, pair2, asset.Spot, OneHour, OneMin, start, end, 1)
 	require.NoError(t, err)
 
-	if r.Exchange != "name" {
-		t.Fatalf("received: '%v' but expected: '%v'", r.Exchange, "name")
-	}
-
-	if !r.Pair.Equal(pair) {
-		t.Fatalf("received: '%v' but expected: '%v'", r.Pair, pair)
-	}
-
-	if r.Asset != asset.Spot {
-		t.Fatalf("received: '%v' but expected: '%v'", r.Asset, asset.Spot)
-	}
-
-	if r.ExchangeInterval != OneMin {
-		t.Fatalf("received: '%v' but expected: '%v'", r.ExchangeInterval, OneMin)
-	}
-
-	if r.ClientRequired != OneHour {
-		t.Fatalf("received: '%v' but expected: '%v'", r.ClientRequired, OneHour)
-	}
-
-	if r.Start != start {
-		t.Fatalf("received: '%v' but expected: '%v'", r.Start, start)
-	}
-
-	if r.End != end {
-		t.Fatalf("received: '%v' but expected: '%v'", r.End, end)
-	}
-
-	if r.RequestFormatted.String() != "BTCUSDT" {
-		t.Fatalf("received: '%v' but expected: '%v'", r.RequestFormatted.String(), "BTCUSDT")
-	}
+	require.Equal(t, "name", r.Exchange, "Request.Exchange must match expected value")
+	require.True(t, r.Pair.Equal(pair), "Request.Pair must equal expected pair")
+	require.Equal(t, asset.Spot, r.Asset, "Request.Asset must match expected asset type")
+	require.Equal(t, OneMin, r.ExchangeInterval, "Request.ExchangeInterval must match expected value")
+	require.Equal(t, OneHour, r.ClientRequired, "Request.ClientRequired must match expected interval")
+	require.Equal(t, start, r.Start, "Request.Start must match expected start time")
+	require.Equal(t, end, r.End, "Request.End must match expected end time")
+	require.Equal(t, "BTCUSDT", r.RequestFormatted.String(), "Request.RequestFormatted must return expected string")
 
 	// Check end date/time shift if the request time is mid candle and not
 	// aligned correctly.
@@ -86,9 +63,7 @@ func TestCreateKlineRequest(t *testing.T) {
 	r, err = CreateKlineRequest("name", pair, pair2, asset.Spot, OneHour, OneMin, start, end, 1)
 	require.NoError(t, err)
 
-	if !r.End.Equal(end.Add(OneHour.Duration() - (time.Second * 30))) {
-		t.Fatalf("received: '%v', but expected '%v'", r.End, end.Add(OneHour.Duration()-(time.Second*30)))
-	}
+	require.True(t, r.End.Equal(end.Add(OneHour.Duration()-(time.Second*30))), "Request.End must align to expected candle close")
 }
 
 func TestGetRanges(t *testing.T) {
@@ -108,9 +83,7 @@ func TestGetRanges(t *testing.T) {
 	holder, err := r.GetRanges(100)
 	require.NoError(t, err)
 
-	if len(holder.Ranges) != 15 {
-		t.Fatalf("received: '%v', but expected '%v'", len(holder.Ranges), 15)
-	}
+	require.Len(t, holder.Ranges, 15, "GetRanges must return expected range count")
 }
 
 var protecThyCandles sync.Mutex
@@ -190,9 +163,7 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	holder, err := r.ProcessResponse(getOneHour())
 	require.NoError(t, err)
 
-	if len(holder.Candles) != 24 {
-		t.Fatalf("received: '%v', but expected '%v'", len(holder.Candles), 24)
-	}
+	require.Len(t, holder.Candles, 24, "ProcessResponse must return expected candle count without conversion")
 
 	// with conversion
 	r, err = CreateKlineRequest("name", pair, pair, asset.Spot, OneHour, OneMin, start, end, 1)
@@ -201,9 +172,7 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	holder, err = r.ProcessResponse(getOneMinute())
 	require.NoError(t, err)
 
-	if len(holder.Candles) != 24 {
-		t.Fatalf("received: '%v', but expected '%v'", len(holder.Candles), 24)
-	}
+	require.Len(t, holder.Candles, 24, "ProcessResponse must return expected candle count with conversion")
 
 	// Potential partial candle
 	end = time.Now().UTC()
@@ -211,9 +180,7 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	r, err = CreateKlineRequest("name", pair, pair, asset.Spot, OneDay, OneDay, start, end, 1)
 	require.NoError(t, err)
 
-	if !r.PartialCandle {
-		t.Fatalf("received: '%v', but expected '%v'", r.PartialCandle, true)
-	}
+	require.True(t, r.PartialCandle, "Request.PartialCandle must be true when end is mid candle")
 
 	hasIncomplete := []Candle{
 		{Time: start, Close: 1},
@@ -227,9 +194,7 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	sweetItem, err := r.ProcessResponse(hasIncomplete)
 	require.NoError(t, err)
 
-	if sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues != PartialCandle {
-		t.Fatalf("received: '%v', but expected '%v'", "no issues", PartialCandle)
-	}
+	require.Equal(t, PartialCandle, sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "ProcessResponse must mark last candle as partial when incomplete data provided")
 
 	missingIncomplete := []Candle{
 		{Time: start, Close: 1},
@@ -242,9 +207,7 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	sweetItem, err = r.ProcessResponse(missingIncomplete)
 	require.NoError(t, err)
 
-	if sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues == PartialCandle {
-		t.Fatalf("received: '%v', but expected '%v'", sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "no issues")
-	}
+	require.NotEqual(t, PartialCandle, sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "ProcessResponse must not mark last candle partial when data complete")
 
 	// end date far into the dark depths of future reality
 	r, err = CreateKlineRequest("name", pair, pair, asset.Spot, OneDay, OneDay, start, end.AddDate(1, 0, 0), 1)
@@ -253,25 +216,17 @@ func TestRequest_ProcessResponse(t *testing.T) {
 	sweetItem, err = r.ProcessResponse(hasIncomplete)
 	require.NoError(t, err)
 
-	if sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues != PartialCandle {
-		t.Fatalf("received: '%v', but expected '%v'", "no issues", PartialCandle)
-	}
+	require.Equal(t, PartialCandle, sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "ProcessResponse must flag partial candle when end date extends beyond data")
 
 	sweetItem, err = r.ProcessResponse(missingIncomplete)
 	require.NoError(t, err)
 
-	if len(sweetItem.Candles) != 5 {
-		t.Fatalf("received: '%v', but expected '%v'", len(sweetItem.Candles), 5)
-	}
+	require.Len(t, sweetItem.Candles, 5, "ProcessResponse must retain expected candle count when data shorter than range")
 
-	if sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues == PartialCandle {
-		t.Fatalf("received: '%v', but expected '%v'", sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "no issues")
-	}
+	require.NotEqual(t, PartialCandle, sweetItem.Candles[len(sweetItem.Candles)-1].ValidationIssues, "ProcessResponse must not flag partial candle when data aligns with range")
 
 	laterEndDate := end.AddDate(1, 0, 0).UTC().Truncate(time.Duration(OneDay)).Add(-time.Duration(OneDay))
-	if sweetItem.Candles[len(sweetItem.Candles)-1].Time.Equal(laterEndDate) {
-		t.Fatalf("received: '%v', but expected '%v'", sweetItem.Candles[len(sweetItem.Candles)-1].Time, "should not equal")
-	}
+	require.False(t, sweetItem.Candles[len(sweetItem.Candles)-1].Time.Equal(laterEndDate), "ProcessResponse must adjust candle end time when truncated")
 }
 
 func TestExtendedRequest_ProcessResponse(t *testing.T) {
@@ -302,9 +257,7 @@ func TestExtendedRequest_ProcessResponse(t *testing.T) {
 	holder, err := rExt.ProcessResponse(ohc)
 	require.NoError(t, err)
 
-	if len(holder.Candles) != 24 {
-		t.Fatalf("received: '%v', but expected '%v'", len(holder.Candles), 24)
-	}
+	require.Len(t, holder.Candles, 24, "ExtendedRequest.ProcessResponse must return expected candle count without conversion")
 
 	// with conversion
 	ohc = getOneMinute()
@@ -319,39 +272,29 @@ func TestExtendedRequest_ProcessResponse(t *testing.T) {
 	holder, err = rExt.ProcessResponse(ohc)
 	require.NoError(t, err)
 
-	if len(holder.Candles) != 24 {
-		t.Fatalf("received: '%v', but expected '%v'", len(holder.Candles), 24)
-	}
+	require.Len(t, holder.Candles, 24, "ExtendedRequest.ProcessResponse must return expected candle count with conversion")
 }
 
 func TestExtendedRequest_Size(t *testing.T) {
 	t.Parallel()
 
 	var rExt *ExtendedRequest
-	if rExt.Size() != 0 {
-		t.Fatalf("received: '%v', but expected '%v'", rExt.Size(), 0)
-	}
+	require.Zero(t, rExt.Size(), "ExtendedRequest.Size must return zero for nil request")
 
 	rExt = &ExtendedRequest{RangeHolder: &IntervalRangeHolder{Limit: 100, Ranges: []IntervalRange{{}, {}}}}
-	if rExt.Size() != 200 {
-		t.Fatalf("received: '%v', but expected '%v'", rExt.Size(), 200)
-	}
+	require.Equal(t, uint64(200), rExt.Size(), "ExtendedRequest.Size must multiply ranges by limit")
 }
 
 func TestRequest_Size(t *testing.T) {
 	t.Parallel()
 
 	var r *Request
-	if r.Size() != 0 {
-		t.Fatalf("received: '%v', but expected '%v'", r.Size(), 0)
-	}
+	require.Zero(t, r.Size(), "Request.Size must return zero for nil request")
 
 	r = &Request{
 		Start:            time.Now().Add(-time.Hour * 2).Truncate(time.Hour),
 		End:              time.Now().Truncate(time.Hour),
 		ExchangeInterval: OneHour,
 	}
-	if r.Size() != 2 {
-		t.Fatalf("received: '%v', but expected '%v'", r.Size(), 2)
-	}
+	require.Equal(t, uint64(2), r.Size(), "Request.Size must return expected value for populated request")
 }

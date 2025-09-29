@@ -4,6 +4,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common/convert"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -11,9 +12,8 @@ import (
 )
 
 func TestNewCurrencyStates(t *testing.T) {
-	if NewCurrencyStates() == nil {
-		t.Fatal("unexpected value")
-	}
+	s := NewCurrencyStates()
+	require.NotNil(t, s, "NewCurrencyStates must not return nil")
 }
 
 func TestGetSnapshot(t *testing.T) {
@@ -30,11 +30,8 @@ func TestGetSnapshot(t *testing.T) {
 			}},
 		},
 	}).GetCurrencyStateSnapshot()
-	require.NoError(t, err)
-
-	if o == nil {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "GetCurrencyStateSnapshot must not error")
+	require.NotNil(t, o, "GetCurrencyStateSnapshot must return state")
 }
 
 func TestCanTradePair(t *testing.T) {
@@ -189,11 +186,10 @@ func TestStatesUpdateAll(t *testing.T) {
 	require.NoError(t, err)
 
 	c, err := s.Get(currency.BTC, asset.Spot)
-	require.NoError(t, err)
-
-	if c.CanDeposit() || c.CanTrade() || c.CanWithdraw() {
-		t.Fatal()
-	}
+	require.NoError(t, err, "States.Get must not error")
+	assert.False(t, c.CanDeposit(), "CanDeposit should be false after UpdateAll")
+	assert.False(t, c.CanTrade(), "CanTrade should be false after UpdateAll")
+	assert.False(t, c.CanWithdraw(), "CanWithdraw should be false after UpdateAll")
 }
 
 func TestStatesUpdate(t *testing.T) {
@@ -231,10 +227,10 @@ func TestStatesGet(t *testing.T) {
 }
 
 func TestCurrencyGetState(t *testing.T) {
-	o := (&Currency{}).GetState()
-	if *o.Deposit || *o.Trade || *o.Withdraw {
-		t.Fatal("unexpected values")
-	}
+	s := (&Currency{}).GetState()
+	assert.False(t, *s.Deposit, "Deposit should be false by default")
+	assert.False(t, *s.Trade, "Trade should be false by default")
+	assert.False(t, *s.Withdraw, "Withdraw should be false by default")
 }
 
 func TestAlerting(_ *testing.T) {

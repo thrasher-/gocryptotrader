@@ -42,10 +42,7 @@ func TestGetCredentials(t *testing.T) {
 	})
 	creds, err := b.GetCredentials(ctx)
 	require.NoError(t, err)
-
-	if creds.Secret != expectedBase64DecodedOutput {
-		t.Fatalf("received: %v but expected: %v", creds.Secret, expectedBase64DecodedOutput)
-	}
+	assert.Equal(t, expectedBase64DecodedOutput, creds.Secret, "GetCredentials should base64 decode secret")
 
 	ctx = context.WithValue(t.Context(), accounts.ContextCredentialsFlag, "pewpew")
 	_, err = b.GetCredentials(ctx)
@@ -64,15 +61,12 @@ func TestGetCredentials(t *testing.T) {
 	ctx = accounts.DeployCredentialsToContext(t.Context(), fullCred)
 	creds, err = b.GetCredentials(ctx)
 	require.NoError(t, err)
-
-	if creds.Key != "superkey" &&
-		creds.Secret != "supersecret" &&
-		creds.SubAccount != "supersub" &&
-		creds.ClientID != "superclient" &&
-		creds.PEMKey != "superpem" &&
-		creds.OneTimePassword != "superOneTimePasssssss" {
-		t.Fatal("unexpected values")
-	}
+	assert.Equal(t, "superkey", creds.Key, "GetCredentials should return key from context")
+	assert.Equal(t, "supersecret", creds.Secret, "GetCredentials should return secret from context")
+	assert.Equal(t, "supersub", creds.SubAccount, "GetCredentials should return sub account from context")
+	assert.Equal(t, "superclient", creds.ClientID, "GetCredentials should return client id from context")
+	assert.Equal(t, "superpem", creds.PEMKey, "GetCredentials should return pem key from context")
+	assert.Equal(t, "superOneTimePasssssss", creds.OneTimePassword, "GetCredentials should return otp from context")
 
 	lonelyCred := &accounts.Credentials{
 		Key:             "superkey",
@@ -94,35 +88,25 @@ func TestGetCredentials(t *testing.T) {
 	ctx = context.WithValue(t.Context(), accounts.ContextSubAccountFlag, "superaccount")
 	overridedSA, err := b.GetCredentials(ctx)
 	require.NoError(t, err)
-
-	if overridedSA.Key != "hello" &&
-		overridedSA.Secret != "sir" &&
-		overridedSA.ClientID != "1337" &&
-		overridedSA.SubAccount != "superaccount" {
-		t.Fatal("unexpected values")
-	}
+	assert.Equal(t, "hello", overridedSA.Key, "GetCredentials should fall back to API key")
+	assert.Equal(t, "sir", overridedSA.Secret, "GetCredentials should fall back to API secret")
+	assert.Equal(t, "1337", overridedSA.ClientID, "GetCredentials should fall back to API client id")
+	assert.Equal(t, "superaccount", overridedSA.SubAccount, "GetCredentials should override sub account from context")
 
 	notOverrided, err := b.GetCredentials(t.Context())
 	require.NoError(t, err)
-
-	if notOverrided.Key != "hello" &&
-		notOverrided.Secret != "sir" &&
-		notOverrided.ClientID != "1337" &&
-		notOverrided.SubAccount != "" {
-		t.Fatal("unexpected values")
-	}
+	assert.Equal(t, "hello", notOverrided.Key, "GetCredentials should retain API key")
+	assert.Equal(t, "sir", notOverrided.Secret, "GetCredentials should retain API secret")
+	assert.Equal(t, "1337", notOverrided.ClientID, "GetCredentials should retain API client id")
+	assert.Empty(t, notOverrided.SubAccount, "GetCredentials should keep default sub account when not overridden")
 }
 
 func TestAreCredentialsValid(t *testing.T) {
 	t.Parallel()
 	var b Base
-	if b.AreCredentialsValid(t.Context()) {
-		t.Fatal("should not be valid")
-	}
+	assert.False(t, b.AreCredentialsValid(t.Context()), "AreCredentialsValid should return false when no credentials provided")
 	ctx := accounts.DeployCredentialsToContext(t.Context(), &accounts.Credentials{Key: "hello"})
-	if !b.AreCredentialsValid(ctx) {
-		t.Fatal("should be valid")
-	}
+	assert.True(t, b.AreCredentialsValid(ctx), "AreCredentialsValid should return true when key provided")
 }
 
 func TestVerifyAPICredentials(t *testing.T) {
@@ -194,12 +178,14 @@ func TestVerifyAPICredentials(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			t.Parallel()
 			b := setupBase(&tc)
-			assert.ErrorIs(t, b.VerifyAPICredentials(&b.API.credentials), tc.Expected)
+			if tc.Expected != nil {
+				assert.ErrorIs(t, b.VerifyAPICredentials(&b.API.credentials), tc.Expected, "VerifyAPICredentials should return expected error")
+			} else {
+				assert.NoError(t, b.VerifyAPICredentials(&b.API.credentials), "VerifyAPICredentials should not return error")
+			}
 
 			if tc.CheckBase64DecodedOutput {
-				if b.API.credentials.Secret != expectedBase64DecodedOutput {
-					t.Errorf("Test %d: expected: %v: got %v", x+1, expectedBase64DecodedOutput, b.API.credentials.Secret)
-				}
+				assert.Equalf(t, expectedBase64DecodedOutput, b.API.credentials.Secret, "Test %d secret should be base64 decoded", x+1)
 			}
 		})
 	}
@@ -291,15 +277,15 @@ func TestCheckCredentials(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.ErrorIs(t, tc.base.CheckCredentials(&tc.base.API.credentials, false), tc.expectedErr)
+			if tc.expectedErr != nil {
+				assert.ErrorIsf(t, tc.base.CheckCredentials(&tc.base.API.credentials, false), tc.expectedErr, "%s should return expected error", tc.name)
+			} else {
+				assert.NoErrorf(t, tc.base.CheckCredentials(&tc.base.API.credentials, false), "%s should not return error", tc.name)
+			}
 
 			if tc.checkBase64Output {
-				if tc.base.API.credentials.SecretBase64Decoded != true {
-					t.Errorf("%s: expected secret to be base64 decoded", tc.name)
-				}
-				if tc.base.API.credentials.Secret != "hello world" {
-					t.Errorf("%s: expected %q but received %q", "hello world", tc.name, tc.base.API.credentials.Secret)
-				}
+				assert.Truef(t, tc.base.API.credentials.SecretBase64Decoded, "%s should mark secret as base64 decoded", tc.name)
+				assert.Equalf(t, "hello world", tc.base.API.credentials.Secret, "%s should decode base64 secret", tc.name)
 			}
 		})
 	}
@@ -309,33 +295,23 @@ func TestAPISetters(t *testing.T) {
 	t.Parallel()
 	api := API{}
 	api.SetKey(accounts.Key)
-	if api.credentials.Key != accounts.Key {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, accounts.Key, api.credentials.Key, "SetKey should set API key")
 
 	api = API{}
 	api.SetSecret(accounts.Secret)
-	if api.credentials.Secret != accounts.Secret {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, accounts.Secret, api.credentials.Secret, "SetSecret should set secret")
 
 	api = API{}
 	api.SetClientID(accounts.ClientID)
-	if api.credentials.ClientID != accounts.ClientID {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, accounts.ClientID, api.credentials.ClientID, "SetClientID should set client id")
 
 	api = API{}
 	api.SetPEMKey(accounts.PEMKey)
-	if api.credentials.PEMKey != accounts.PEMKey {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, accounts.PEMKey, api.credentials.PEMKey, "SetPEMKey should set pem key")
 
 	api = API{}
 	api.SetSubAccount(accounts.SubAccountSTR)
-	if api.credentials.SubAccount != accounts.SubAccountSTR {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, accounts.SubAccountSTR, api.credentials.SubAccount, "SetSubAccount should set sub account")
 }
 
 func TestSetCredentials(t *testing.T) {
@@ -351,38 +327,30 @@ func TestSetCredentials(t *testing.T) {
 	}
 
 	b.SetCredentials("RocketMan", "Digereedoo", "007", "", "", "")
-	if b.API.credentials.Key != "RocketMan" &&
-		b.API.credentials.Secret != "Digereedoo" &&
-		b.API.credentials.ClientID != "007" {
-		t.Error("invalid API credentials")
-	}
+	assert.Equal(t, "RocketMan", b.API.credentials.Key, "SetCredentials should set key")
+	assert.Equal(t, "Digereedoo", b.API.credentials.Secret, "SetCredentials should set secret")
+	assert.Equal(t, "007", b.API.credentials.ClientID, "SetCredentials should set client id")
 
 	// Invalid secret
 	b.API.CredentialsValidator.RequiresBase64DecodeSecret = true
 	b.API.AuthenticatedSupport = true
 	b.SetCredentials("RocketMan", "%%", "007", "", "", "")
-	if b.API.AuthenticatedSupport || b.API.AuthenticatedWebsocketSupport {
-		t.Error("invalid secret should disable authenticated API support")
-	}
+	assert.False(t, b.API.AuthenticatedSupport, "SetCredentials should disable REST auth when base64 decode fails")
+	assert.False(t, b.API.AuthenticatedWebsocketSupport, "SetCredentials should disable websocket auth when base64 decode fails")
 
 	// valid secret
 	b.API.CredentialsValidator.RequiresBase64DecodeSecret = true
 	b.API.AuthenticatedSupport = true
 	b.SetCredentials("RocketMan", "aGVsbG8gd29ybGQ=", "007", "", "", "")
-	if !b.API.AuthenticatedSupport && b.API.credentials.Secret != "hello world" {
-		t.Error("invalid secret should disable authenticated API support")
-	}
+	assert.True(t, b.API.AuthenticatedSupport, "SetCredentials should keep REST auth enabled for valid secret")
+	assert.Equal(t, "hello world", b.API.credentials.Secret, "SetCredentials should decode base64 secret")
 }
 
 func TestGetDefaultCredentials(t *testing.T) {
 	var b Base
-	if b.GetDefaultCredentials() != nil {
-		t.Fatal("unexpected return")
-	}
+	assert.Nil(t, b.GetDefaultCredentials(), "GetDefaultCredentials should return nil when not configured")
 	b.SetCredentials("test", "", "", "", "", "")
-	if b.GetDefaultCredentials() == nil {
-		t.Fatal("unexpected return")
-	}
+	assert.NotNil(t, b.GetDefaultCredentials(), "GetDefaultCredentials should return credentials when configured")
 }
 
 func TestSetAPICredentialDefaults(t *testing.T) {
@@ -398,13 +366,11 @@ func TestSetAPICredentialDefaults(t *testing.T) {
 	b.API.CredentialsValidator.RequiresPEM = true
 	b.SetAPICredentialDefaults()
 
-	if !b.Config.API.CredentialsValidator.RequiresKey ||
-		!b.Config.API.CredentialsValidator.RequiresSecret ||
-		!b.Config.API.CredentialsValidator.RequiresBase64DecodeSecret ||
-		!b.Config.API.CredentialsValidator.RequiresClientID ||
-		!b.Config.API.CredentialsValidator.RequiresPEM {
-		t.Error("incorrect values")
-	}
+	assert.True(t, b.Config.API.CredentialsValidator.RequiresKey, "SetAPICredentialDefaults should propagate requires key")
+	assert.True(t, b.Config.API.CredentialsValidator.RequiresSecret, "SetAPICredentialDefaults should propagate requires secret")
+	assert.True(t, b.Config.API.CredentialsValidator.RequiresBase64DecodeSecret, "SetAPICredentialDefaults should propagate base64 decode requirement")
+	assert.True(t, b.Config.API.CredentialsValidator.RequiresClientID, "SetAPICredentialDefaults should propagate client id requirement")
+	assert.True(t, b.Config.API.CredentialsValidator.RequiresPEM, "SetAPICredentialDefaults should propagate pem requirement")
 }
 
 func TestGetAuthenticatedAPISupport(t *testing.T) {
@@ -417,18 +383,10 @@ func TestGetAuthenticatedAPISupport(t *testing.T) {
 		},
 	}
 
-	if !base.IsRESTAuthenticationSupported() {
-		t.Fatal("Expected RestAuthentication to return true")
-	}
+	assert.True(t, base.IsRESTAuthenticationSupported(), "IsRESTAuthenticationSupported should return true when enabled")
 	base.API.AuthenticatedSupport = false
-	if base.IsRESTAuthenticationSupported() {
-		t.Fatal("Expected RestAuthentication to return false")
-	}
-	if base.IsWebsocketAuthenticationSupported() {
-		t.Fatal("Expected WebsocketAuthentication to return false")
-	}
+	assert.False(t, base.IsRESTAuthenticationSupported(), "IsRESTAuthenticationSupported should return false when disabled")
+	assert.False(t, base.IsWebsocketAuthenticationSupported(), "IsWebsocketAuthenticationSupported should return false when disabled")
 	base.API.AuthenticatedWebsocketSupport = true
-	if !base.IsWebsocketAuthenticationSupported() {
-		t.Fatal("Expected WebsocketAuthentication to return true")
-	}
+	assert.True(t, base.IsWebsocketAuthenticationSupported(), "IsWebsocketAuthenticationSupported should return true when enabled")
 }

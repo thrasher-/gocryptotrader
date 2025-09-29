@@ -559,9 +559,7 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 	}
 	resp, err := e.CancelAllOrders(t.Context(), &order.Cancel{AssetType: asset.Spot})
 	require.NoError(t, err, "CancelAllOrders must not error")
-	if len(resp.Status) > 0 {
-		t.Errorf("%v orders failed to cancel", len(resp.Status))
-	}
+	assert.Emptyf(t, resp.Status, "CancelAllOrders should cancel all orders, still pending: %d", len(resp.Status))
 }
 
 func TestModifyOrder(t *testing.T) {
@@ -809,9 +807,9 @@ func TestWsOrderUpdate(t *testing.T) {
 				assert.Equal(t, 0.00038692, v.ExecutedAmount, "ExecutedAmount")
 			}
 		case error:
-			t.Error(v)
+			assert.Failf(t, "DataHandler should not receive error", "%v", v)
 		default:
-			t.Errorf("Got unexpected data: %T %v", v, v)
+			assert.Failf(t, "DataHandler should only receive recognised types", "%T %v", v, v)
 		}
 	}
 }
@@ -916,19 +914,20 @@ func TestOrderbookZeroBidPrice(t *testing.T) {
 		{Price: 0, Amount: 69},
 	}
 	filterOrderbookZeroBidPrice(ob)
-	if ob.Bids[0].Price != 69 || ob.Bids[0].Amount != 1337 || len(ob.Bids) != 1 {
-		t.Error("invalid orderbook bid values")
-	}
+	require.Len(t, ob.Bids, 1, "filterOrderbookZeroBidPrice must remove zero price bids")
+	assert.Equal(t, float64(69), ob.Bids[0].Price, "Orderbook.Bids[0].Price should remain highest valid bid")
+	assert.Equal(t, float64(1337), ob.Bids[0].Amount, "Orderbook.Bids[0].Amount should remain unchanged")
 
 	ob.Bids = orderbook.Levels{
 		{Price: 59, Amount: 1337},
 		{Price: 42, Amount: 8595},
 	}
 	filterOrderbookZeroBidPrice(ob)
-	if ob.Bids[0].Price != 59 || ob.Bids[0].Amount != 1337 ||
-		ob.Bids[1].Price != 42 || ob.Bids[1].Amount != 8595 || len(ob.Bids) != 2 {
-		t.Error("invalid orderbook bid values")
-	}
+	require.Len(t, ob.Bids, 2, "filterOrderbookZeroBidPrice must retain non-zero bids")
+	assert.Equal(t, float64(59), ob.Bids[0].Price, "Orderbook.Bids[0].Price should remain first bid")
+	assert.Equal(t, float64(1337), ob.Bids[0].Amount, "Orderbook.Bids[0].Amount should remain first size")
+	assert.Equal(t, float64(42), ob.Bids[1].Price, "Orderbook.Bids[1].Price should remain second bid")
+	assert.Equal(t, float64(8595), ob.Bids[1].Amount, "Orderbook.Bids[1].Amount should remain second size")
 }
 
 func TestGetWithdrawalsHistory(t *testing.T) {

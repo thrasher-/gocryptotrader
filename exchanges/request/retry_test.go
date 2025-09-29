@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
 
@@ -52,19 +54,12 @@ func TestDefaultRetryPolicy(t *testing.T) {
 			retry, err := request.DefaultRetryPolicy(tt.Args.Response, tt.Args.Error)
 
 			if exp := tt.Want.Error; exp != nil {
-				if !reflect.DeepEqual(err, exp) {
-					t.Fatalf("unexpected error\nexp: %#v, got: %#v", exp, err)
-				}
+				require.Truef(t, reflect.DeepEqual(err, exp), "DefaultRetryPolicy must return expected error; got %v want %v", err, exp)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error\nexp: <nil>, got: %#v", err)
-			}
-
-			if tt.Want.Retry != retry {
-				t.Fatalf("incorrect retry flag\nexp: %v, got: %v", tt.Want.Retry, retry)
-			}
+			require.NoErrorf(t, err, "DefaultRetryPolicy must not return error for test %s", name)
+			assert.Equalf(t, tt.Want.Retry, retry, "DefaultRetryPolicy should set retry flag for test %s", name)
 		})
 	}
 }
@@ -115,10 +110,7 @@ func TestRetryAfter(t *testing.T) {
 			t.Parallel()
 
 			delay := request.RetryAfter(tt.Args.Response, tt.Args.Now)
-
-			if exp := tt.Want.Delay; delay != exp {
-				t.Fatalf("unexpected delay\nexp: %v, got: %v", exp, delay)
-			}
+			assert.Equalf(t, tt.Want.Delay, delay, "RetryAfter should return expected delay for test %s", name)
 		})
 	}
 }

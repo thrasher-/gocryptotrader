@@ -36,31 +36,16 @@ func TestStrings(t *testing.T) {
 func TestContains(t *testing.T) {
 	t.Parallel()
 	a := Items{Spot, Futures}
-	if a.Contains(666) {
-		t.Fatal("TestContains returned an unexpected result")
-	}
-
-	if !a.Contains(Spot) {
-		t.Fatal("TestContains returned an unexpected result")
-	}
-
-	if a.Contains(Binary) {
-		t.Fatal("TestContains returned an unexpected result")
-	}
-
-	// Every asset should be created and matched with func New so this should
-	// not be matched against list
-	if a.Contains(0) {
-		t.Error("TestContains returned an unexpected result")
-	}
+	assert.False(t, a.Contains(666), "Items.Contains should return false for unsupported asset")
+	assert.True(t, a.Contains(Spot), "Items.Contains should return true for spot")
+	assert.False(t, a.Contains(Binary), "Items.Contains should return false for binary when not in list")
+	assert.False(t, a.Contains(0), "Items.Contains should return false for empty asset")
 }
 
 func TestJoinToString(t *testing.T) {
 	t.Parallel()
 	a := Items{Spot, Futures}
-	if a.JoinToString(",") != "spot,futures" {
-		t.Fatal("TestJoinToString returned an unexpected result")
-	}
+	assert.Equal(t, "spot,futures", a.JoinToString(","), "Items.JoinToString should join assets with delimiter")
 }
 
 func TestIsValid(t *testing.T) {
@@ -133,10 +118,7 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 			returned, err := New(tt.Input)
 			require.ErrorIs(t, err, tt.Error)
-
-			if returned != tt.Expected {
-				t.Fatalf("received: '%v' but expected: '%v'", returned, tt.Expected)
-			}
+			assert.Equalf(t, tt.Expected, returned, "New should return expected asset for %s", tt.Input)
 		})
 	}
 }
@@ -144,13 +126,9 @@ func TestNew(t *testing.T) {
 func TestSupported(t *testing.T) {
 	t.Parallel()
 	s := Supported()
-	if len(supportedList) != len(s) {
-		t.Fatal("TestSupported mismatched lengths")
-	}
+	assert.Equal(t, len(supportedList), len(s), "Supported should return list matching supportedList length")
 	for i := range supportedList {
-		if s[i] != supportedList[i] {
-			t.Fatal("TestSupported returned an unexpected result")
-		}
+		assert.Equal(t, supportedList[i], s[i], "Supported should return assets in expected order")
 	}
 }
 
@@ -159,25 +137,19 @@ func TestUnmarshalMarshal(t *testing.T) {
 	data, err := json.Marshal(Item(0))
 	require.NoError(t, err)
 
-	if string(data) != `""` {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, `""`, string(data), "Marshal should encode empty asset as empty string")
 
 	data, err = json.Marshal(Spot)
 	require.NoError(t, err)
 
-	if string(data) != `"spot"` {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, `"spot"`, string(data), "Marshal should encode spot asset to string")
 
 	var spot Item
 
 	err = json.Unmarshal(data, &spot)
 	require.NoError(t, err)
 
-	if spot != Spot {
-		t.Fatal("unexpected value")
-	}
+	assert.Equal(t, Spot, spot, "Unmarshal should decode spot asset")
 
 	err = json.Unmarshal([]byte(`"confused"`), &spot)
 	require.ErrorIs(t, err, ErrNotSupported)
@@ -191,7 +163,5 @@ func TestUnmarshalMarshal(t *testing.T) {
 
 func TestUseDefault(t *testing.T) {
 	t.Parallel()
-	if UseDefault() != Spot {
-		t.Fatalf("received: '%v' but expected: '%v'", UseDefault(), Spot)
-	}
+	assert.Equal(t, Spot, UseDefault(), "UseDefault should return spot asset")
 }

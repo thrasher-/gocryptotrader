@@ -768,11 +768,10 @@ func TestWithdraw(t *testing.T) {
 
 	_, err := e.WithdrawCryptocurrencyFunds(t.Context(),
 		&withdrawCryptoRequest)
-	if !sharedtestvalues.AreAPICredentialsSet(e) && err == nil {
-		t.Error("Expecting an error when no keys are set")
-	}
-	if sharedtestvalues.AreAPICredentialsSet(e) && err != nil {
-		t.Errorf("Withdraw failed to be placed: %v", err)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		assert.Error(t, err, "WithdrawCryptocurrencyFunds should error without credentials")
+	} else {
+		assert.NoError(t, err, "WithdrawCryptocurrencyFunds should not error with credentials")
 	}
 }
 
@@ -788,11 +787,10 @@ func TestWithdrawFiat(t *testing.T) {
 	}
 
 	_, err := e.WithdrawFiatFunds(t.Context(), &withdrawFiatRequest)
-	if !sharedtestvalues.AreAPICredentialsSet(e) && err == nil {
-		t.Error("Expecting an error when no keys are set")
-	}
-	if sharedtestvalues.AreAPICredentialsSet(e) && err != nil {
-		t.Errorf("Withdraw failed to be placed: %v", err)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		assert.Error(t, err, "WithdrawFiatFunds should error without credentials")
+	} else {
+		assert.NoError(t, err, "WithdrawFiatFunds should not error with credentials")
 	}
 }
 
@@ -809,11 +807,10 @@ func TestWithdrawInternationalBank(t *testing.T) {
 
 	_, err := e.WithdrawFiatFundsToInternationalBank(t.Context(),
 		&withdrawFiatRequest)
-	if !sharedtestvalues.AreAPICredentialsSet(e) && err == nil {
-		t.Error("Expecting an error when no keys are set")
-	}
-	if sharedtestvalues.AreAPICredentialsSet(e) && err != nil {
-		t.Errorf("Withdraw failed to be placed: %v", err)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		assert.Error(t, err, "WithdrawFiatFundsToInternationalBank should error without credentials")
+	} else {
+		assert.NoError(t, err, "WithdrawFiatFundsToInternationalBank should not error with credentials")
 	}
 }
 
@@ -822,30 +819,22 @@ func TestGetCryptoDepositAddress(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", false)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err, "GetCryptoDepositAddress must not error when not generating new address")
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders not set, skipping test")
 	}
 	_, err = e.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", true)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err, "GetCryptoDepositAddress must not error when generating new address")
 }
 
 func TestGetDepositAddress(t *testing.T) {
 	t.Parallel()
 	if sharedtestvalues.AreAPICredentialsSet(e) {
 		_, err := e.GetDepositAddress(t.Context(), currency.USDT, "", "")
-		if err != nil {
-			t.Error("GetDepositAddress() error", err)
-		}
+		assert.NoError(t, err, "GetDepositAddress should not error with credentials")
 	} else {
 		_, err := e.GetDepositAddress(t.Context(), currency.BTC, "", "")
-		if err == nil {
-			t.Error("GetDepositAddress() error can not be nil")
-		}
+		assert.Error(t, err, "GetDepositAddress should error without credentials")
 	}
 }
 
@@ -853,24 +842,20 @@ func TestWithdrawStatus(t *testing.T) {
 	t.Parallel()
 	if sharedtestvalues.AreAPICredentialsSet(e) {
 		_, err := e.WithdrawStatus(t.Context(), currency.BTC, "")
-		if err != nil {
-			t.Error("WithdrawStatus() error", err)
-		}
+		assert.NoError(t, err, "WithdrawStatus should not error with credentials")
 	} else {
 		_, err := e.WithdrawStatus(t.Context(), currency.BTC, "")
-		if err == nil {
-			t.Error("GetDepositAddress() error can not be nil")
-		}
+		assert.Error(t, err, "WithdrawStatus should error without credentials")
 	}
 }
 
 func TestWithdrawCancel(t *testing.T) {
 	t.Parallel()
 	_, err := e.WithdrawCancel(t.Context(), currency.BTC, "")
-	if sharedtestvalues.AreAPICredentialsSet(e) && err == nil {
-		t.Error("WithdrawCancel() error cannot be nil")
-	} else if !sharedtestvalues.AreAPICredentialsSet(e) && err == nil {
-		t.Errorf("WithdrawCancel() error - expecting an error when no keys are set but received nil")
+	if sharedtestvalues.AreAPICredentialsSet(e) {
+		assert.Error(t, err, "WithdrawCancel should error with credentials due to lack of mock data")
+	} else {
+		assert.Error(t, err, "WithdrawCancel should error without credentials")
 	}
 }
 
@@ -1225,9 +1210,9 @@ func TestWSProcessTrades(t *testing.T) {
 			require.NoErrorf(t, json.Unmarshal([]byte(expJSON[i]), &exp), "Must not error unmarshalling json %d: %s", i, expJSON[i])
 			require.Equalf(t, exp, v, "Trade [%d] must be correct", i)
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T (%s)", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit trade.Data but received %T (%v)", v, v)
 		}
 	}
 }
@@ -1291,9 +1276,9 @@ func TestWsOpenOrders(t *testing.T) {
 				assert.Equal(t, 34.5, v.AverageExecutedPrice, "AverageExecutedPrice")
 			}
 		case error:
-			t.Error(v)
+			assert.NoError(t, v, "wsHandleData should not emit error")
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T (%s)", v, v)
+			assert.Failf(t, "unexpected type", "wsHandleData should emit order.Detail but received %T (%v)", v, v)
 		}
 	}
 }
@@ -1378,19 +1363,13 @@ const krakenAPIDocChecksum = 974947235
 func TestChecksumCalculation(t *testing.T) {
 	t.Parallel()
 	expected := "5005"
-	if v := trim("0.05005"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
+	assert.Equal(t, expected, trim("0.05005"), "trim should return expected checksum string")
 
 	expected = "500"
-	if v := trim("0.00000500"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
+	assert.Equal(t, expected, trim("0.00000500"), "trim should return expected checksum string")
 
 	err := validateCRC32(&testOb, krakenAPIDocChecksum)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "validateCRC32 should not error for valid orderbook")
 }
 
 func TestGetCharts(t *testing.T) {

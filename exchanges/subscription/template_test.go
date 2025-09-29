@@ -72,9 +72,7 @@ func TestExpandTemplates(t *testing.T) {
 		exp = append(exp, &Subscription{Channel: "batching", QualifiedChannel: "spot-" + b.Join() + "-batching", Asset: asset.Spot, Pairs: b})
 	}
 
-	if !equalLists(t, exp, got) {
-		t.FailNow() // If the first list isn't equal testing it again will duplicate test failures
-	}
+	require.True(t, equalLists(t, exp, got), "ExpandTemplates must produce expected subscriptions")
 
 	e.auth = true
 	got, err = l.ExpandTemplates(e)

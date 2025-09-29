@@ -731,14 +731,10 @@ func TestWsAuth(t *testing.T) {
 	select {
 	case resp := <-e.Websocket.DataHandler:
 		sub, ok := resp.(WebsocketSubscribeResp)
-		if !ok {
-			t.Fatal("unable to type assert WebsocketSubscribeResp")
-		}
-		if !sub.Success {
-			t.Error("Expected successful subscription")
-		}
+		require.True(t, ok, "WebsocketSubscribeResp must be returned for auth subscribe response")
+		assert.True(t, sub.Success, "Websocket auth subscription should succeed")
 	case <-timer.C:
-		t.Error("Have not received a response")
+		require.Fail(t, "Websocket auth must respond before timeout")
 	}
 	timer.Stop()
 }

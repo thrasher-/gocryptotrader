@@ -3,6 +3,8 @@ package stats
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
@@ -14,9 +16,7 @@ const (
 func TestLenByPrice(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  testExchange,
@@ -27,17 +27,13 @@ func TestLenByPrice(t *testing.T) {
 		},
 	}
 
-	if byPrice.Len(localItems) < 1 {
-		t.Error("stats LenByPrice() length not correct.")
-	}
+	assert.GreaterOrEqual(t, byPrice.Len(localItems), 1, "byPrice.Len should report item count")
 }
 
 func TestLessByPrice(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  "bitstamp",
@@ -55,20 +51,14 @@ func TestLessByPrice(t *testing.T) {
 		},
 	}
 
-	if !byPrice.Less(localItems, 1, 0) {
-		t.Error("stats LessByPrice() incorrect return.")
-	}
-	if byPrice.Less(localItems, 0, 1) {
-		t.Error("stats LessByPrice() incorrect return.")
-	}
+	assert.True(t, byPrice.Less(localItems, 1, 0), "byPrice.Less should order by price descending")
+	assert.False(t, byPrice.Less(localItems, 0, 1), "byPrice.Less should order by price descending")
 }
 
 func TestSwapByPrice(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  "bitstamp",
@@ -87,17 +77,14 @@ func TestSwapByPrice(t *testing.T) {
 	}
 
 	byPrice.Swap(localItems, 0, 1)
-	if localItems[0].Exchange != "bitfinex" || localItems[1].Exchange != "bitstamp" {
-		t.Error("stats SwapByPrice did not swap values.")
-	}
+	assert.Equal(t, "bitfinex", localItems[0].Exchange, "byPrice.Swap should swap first item")
+	assert.Equal(t, "bitstamp", localItems[1].Exchange, "byPrice.Swap should swap second item")
 }
 
 func TestLenByVolume(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  "bitstamp",
@@ -115,17 +102,13 @@ func TestLenByVolume(t *testing.T) {
 		},
 	}
 
-	if byVolume.Len(localItems) != 2 {
-		t.Error("stats lenByVolume did not swap values.")
-	}
+	assert.Equal(t, 2, byVolume.Len(localItems), "byVolume.Len should report item count")
 }
 
 func TestLessByVolume(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  "bitstamp",
@@ -142,17 +125,13 @@ func TestLessByVolume(t *testing.T) {
 			Volume:    20,
 		},
 	}
-	if !byVolume.Less(localItems, 0, 1) {
-		t.Error("localItems[0].Volume should be less than localItems[1].Volume")
-	}
+	assert.True(t, byVolume.Less(localItems, 0, 1), "byVolume.Less should compare by volume ascending")
 }
 
 func TestSwapByVolume(t *testing.T) {
 	t.Parallel()
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	localItems := []Item{
 		{
 			Exchange:  "bitstamp",
@@ -170,118 +149,86 @@ func TestSwapByVolume(t *testing.T) {
 		},
 	}
 	byVolume.Swap(localItems, 0, 1)
-	if localItems[0].Exchange != "bitfinex" || localItems[1].Exchange != "bitstamp" {
-		t.Error("stats SwapByVolume did not swap values.")
-	}
+	assert.Equal(t, "bitfinex", localItems[0].Exchange, "byVolume.Swap should swap first item")
+	assert.Equal(t, "bitstamp", localItems[1].Exchange, "byVolume.Swap should swap second item")
 }
 
 func TestAdd(t *testing.T) {
 	items = items[:0]
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = Add(testExchange, p, asset.Spot, 1200, 42)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(items) < 1 {
-		t.Error("stats Add did not add exchange info.")
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
+	require.NoError(t, Add(testExchange, p, asset.Spot, 1200, 42), "Add must not error for valid input")
+	assert.Len(t, items, 1, "Add should append first entry")
 
 	err = Add("", p, asset.Empty, 0, 0)
-	if err == nil {
-		t.Fatal("error cannot be nil")
-	}
-
-	if len(items) != 1 {
-		t.Error("stats Add did not add exchange info.")
-	}
+	assert.Error(t, err, "Add should error when asset type empty")
+	assert.Len(t, items, 1, "Add should not append invalid entry")
 
 	p.Base = currency.XBT
-	err = Add(testExchange, p, asset.Spot, 1201, 43)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if items[1].Pair.String() != "XBTUSD" {
-		t.Fatal("stats Add did not add exchange info.")
-	}
+	require.NoError(t, Add(testExchange, p, asset.Spot, 1201, 43), "Add must not error after base conversion")
+	require.GreaterOrEqual(t, len(items), 2, "Add must append converted pair")
+	assert.Condition(t, func() bool {
+		for _, it := range items {
+			if it.Pair.String() == "XBTUSD" {
+				return true
+			}
+		}
+		return false
+	}, "Add should normalise base currency to XBTUSD")
 
 	p, err = currency.NewPairFromStrings("ETH", "USDT")
-	if err != nil {
-		t.Fatal(err)
+	require.NoError(t, err, "NewPairFromStrings must not error")
+	require.NoError(t, Add(testExchange, p, asset.Spot, 300, 1000), "Add must support USD stable pairs")
+	require.GreaterOrEqual(t, len(items), 3, "Add must append ETH entry")
+	found := false
+	for _, it := range items {
+		if it.Pair.String() == "ETHUSD" {
+			found = true
+			break
+		}
 	}
-
-	err = Add(testExchange, p, asset.Spot, 300, 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if items[2].Pair.String() != "ETHUSD" {
-		t.Fatal("stats Add did not add exchange info.")
-	}
+	assert.True(t, found, "Add should normalise quote currency to ETHUSD")
 }
 
 func TestAppend(t *testing.T) {
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
+	originalLen := len(items)
 	Append("sillyexchange", p, asset.Spot, 1234, 45)
-	if len(items) < 2 {
-		t.Error("stats AppendResults did not add exchange values.")
-	}
+	assert.Equal(t, originalLen+1, len(items), "Append should add new exchange values")
 
 	Append("sillyexchange", p, asset.Spot, 1234, 45)
-	if len(items) == 3 {
-		t.Error("stats AppendResults added exchange values")
-	}
+	assert.Equal(t, originalLen+1, len(items), "Append should not duplicate existing entry")
 }
 
 func TestAlreadyExists(t *testing.T) {
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !AlreadyExists(testExchange, p, asset.Spot, 1200, 42) {
-		t.Error("stats AlreadyExists exchange does not exist.")
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
+	assert.True(t, AlreadyExists(testExchange, p, asset.Spot, 1200, 42), "AlreadyExists should detect stored exchange")
 	p.Base = currency.NewCode("dii")
-	if AlreadyExists("bla", p, asset.Spot, 1234, 123) {
-		t.Error("stats AlreadyExists found incorrect exchange.")
-	}
+	assert.False(t, AlreadyExists("bla", p, asset.Spot, 1234, 123), "AlreadyExists should reject unknown exchange")
 }
 
 func TestSortExchangesByVolume(t *testing.T) {
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	topVolume := SortExchangesByVolume(p, asset.Spot, true)
-	if topVolume[0].Exchange != "sillyexchange" {
-		t.Error("stats SortExchangesByVolume incorrectly sorted values.")
-	}
+	require.NotEmpty(t, topVolume, "SortExchangesByVolume must return results")
+	assert.Equal(t, "sillyexchange", topVolume[0].Exchange, "SortExchangesByVolume should order highest volumes first")
 
 	topVolume = SortExchangesByVolume(p, asset.Spot, false)
-	if topVolume[0].Exchange != testExchange {
-		t.Error("stats SortExchangesByVolume incorrectly sorted values.")
-	}
+	require.NotEmpty(t, topVolume, "SortExchangesByVolume must return results")
+	assert.Equal(t, testExchange, topVolume[0].Exchange, "SortExchangesByVolume should order lowest volumes first")
 }
 
 func TestSortExchangesByPrice(t *testing.T) {
 	p, err := currency.NewPairFromStrings("BTC", "USD")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "NewPairFromStrings must not error")
 	topPrice := SortExchangesByPrice(p, asset.Spot, true)
-	if topPrice[0].Exchange != "sillyexchange" {
-		t.Error("stats SortExchangesByPrice incorrectly sorted values.")
-	}
+	require.NotEmpty(t, topPrice, "SortExchangesByPrice must return results")
+	assert.Equal(t, "sillyexchange", topPrice[0].Exchange, "SortExchangesByPrice should order highest prices first")
 
 	topPrice = SortExchangesByPrice(p, asset.Spot, false)
-	if topPrice[0].Exchange != testExchange {
-		t.Error("stats SortExchangesByPrice incorrectly sorted values.")
-	}
+	require.NotEmpty(t, topPrice, "SortExchangesByPrice must return results")
+	assert.Equal(t, testExchange, topPrice[0].Exchange, "SortExchangesByPrice should order lowest prices first")
 }

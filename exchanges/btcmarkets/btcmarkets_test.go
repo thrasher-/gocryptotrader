@@ -50,9 +50,7 @@ func TestMain(m *testing.M) {
 func TestGetMarkets(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetMarkets(t.Context())
-	if err != nil {
-		t.Error("GetTicker() error", err)
-	}
+	assert.NoError(t, err, "GetMarkets should not error")
 }
 
 func TestGetTicker(t *testing.T) {
@@ -102,29 +100,22 @@ func TestGetCurrentServerTime(t *testing.T) {
 func TestWrapperGetServerTime(t *testing.T) {
 	t.Parallel()
 	st, err := e.GetServerTime(t.Context(), asset.Spot)
-	require.NoError(t, err)
-
-	if st.IsZero() {
-		t.Fatal("expected a time")
-	}
+	require.NoError(t, err, "GetServerTime must not error")
+	require.False(t, st.IsZero(), "GetServerTime must return non-zero time")
 }
 
 func TestGetAccountBalance(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err := e.GetAccountBalance(t.Context())
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetAccountBalance should not error")
 }
 
 func TestGetTradingFees(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err := e.GetTradingFees(t.Context())
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetTradingFees should not error")
 }
 
 func TestGetTradeHistory(t *testing.T) {
@@ -138,9 +129,7 @@ func TestGetTradeByID(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err := e.GetTradeByID(t.Context(), "4712043732")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetTradeByID should not error")
 }
 
 func TestSubmitOrder(t *testing.T) {
@@ -181,9 +170,7 @@ func TestSubmitOrder(t *testing.T) {
 		Pair:        currency.NewPair(currency.BTC, currency.AUD),
 		TimeInForce: order.PostOnly,
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "SubmitOrder should not error for valid limit order")
 }
 
 func TestNewOrder(t *testing.T) {
@@ -216,13 +203,9 @@ func TestFetchOrder(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.FetchOrder(t.Context(), "4477045999")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "FetchOrder should not error for known order ID")
 	_, err = e.FetchOrder(t.Context(), "696969")
-	if err == nil {
-		t.Error(err)
-	}
+	assert.Error(t, err, "FetchOrder should error for invalid order ID")
 }
 
 func TestRemoveOrder(t *testing.T) {
@@ -230,9 +213,7 @@ func TestRemoveOrder(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 
 	_, err := e.RemoveOrder(t.Context(), "")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "RemoveOrder should not error when ID empty")
 }
 
 func TestListWithdrawals(t *testing.T) {
@@ -240,9 +221,7 @@ func TestListWithdrawals(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.ListWithdrawals(t.Context(), -1, -1, -1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "ListWithdrawals should not error")
 }
 
 func TestGetWithdrawal(t *testing.T) {
@@ -250,9 +229,7 @@ func TestGetWithdrawal(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetWithdrawal(t.Context(), "4477381751")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetWithdrawal should not error")
 }
 
 func TestListDeposits(t *testing.T) {
@@ -260,9 +237,7 @@ func TestListDeposits(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.ListDeposits(t.Context(), -1, -1, -1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "ListDeposits should not error")
 }
 
 func TestGetDeposit(t *testing.T) {
@@ -270,9 +245,7 @@ func TestGetDeposit(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetDeposit(t.Context(), "4476769607")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetDeposit should not error")
 }
 
 func TestListTransfers(t *testing.T) {
@@ -280,9 +253,7 @@ func TestListTransfers(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.ListTransfers(t.Context(), -1, -1, -1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "ListTransfers should not error")
 }
 
 func TestGetTransfer(t *testing.T) {
@@ -290,13 +261,9 @@ func TestGetTransfer(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetTransfer(t.Context(), "4476769607")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetTransfer should not error for valid transfer ID")
 	_, err = e.GetTransfer(t.Context(), "6969696")
-	if err == nil {
-		t.Error("expected an error due to invalid transferID")
-	}
+	assert.Error(t, err, "GetTransfer should error due to invalid transfer ID")
 }
 
 func TestFetchDepositAddress(t *testing.T) {
@@ -304,21 +271,15 @@ func TestFetchDepositAddress(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.FetchDepositAddress(t.Context(), currency.XRP, -1, -1, -1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "FetchDepositAddress should not error for supported currency")
 	_, err = e.FetchDepositAddress(t.Context(), currency.NewCode("MOOCOW"), -1, -1, -1)
-	if err != nil {
-		t.Error("expected an error due to invalid assetID")
-	}
+	assert.Error(t, err, "FetchDepositAddress should error due to invalid asset ID")
 }
 
 func TestGetWithdrawalFees(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetWithdrawalFees(t.Context())
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetWithdrawalFees should not error")
 }
 
 func TestListAssets(t *testing.T) {
@@ -326,9 +287,7 @@ func TestListAssets(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.ListAssets(t.Context())
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "ListAssets should not error")
 }
 
 func TestGetTransactions(t *testing.T) {
@@ -336,9 +295,7 @@ func TestGetTransactions(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetTransactions(t.Context(), "", -1, -1, -1)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetTransactions should not error")
 }
 
 func TestCreateNewReport(t *testing.T) {
@@ -346,9 +303,7 @@ func TestCreateNewReport(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.CreateNewReport(t.Context(), "TransactionReport", "json")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "CreateNewReport should not error")
 }
 
 func TestGetReport(t *testing.T) {
@@ -356,9 +311,7 @@ func TestGetReport(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	_, err := e.GetReport(t.Context(), "1kv38epne5v7lek9f18m60idg6")
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetReport should not error")
 }
 
 func TestRequestWithdaw(t *testing.T) {
@@ -366,9 +319,7 @@ func TestRequestWithdaw(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 
 	_, err := e.RequestWithdraw(t.Context(), "BTC", 1, "sdjflajdslfjld", "", "", "", "")
-	if err == nil {
-		t.Error("expected an error due to invalid toAddress")
-	}
+	assert.Error(t, err, "RequestWithdraw should error due to invalid toAddress")
 }
 
 func TestBatchPlaceCancelOrders(t *testing.T) {
@@ -384,9 +335,7 @@ func TestBatchPlaceCancelOrders(t *testing.T) {
 		Side:      order.Bid.String(),
 	}
 	_, err := e.BatchPlaceCancelOrders(t.Context(), nil, append(temp, o))
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "BatchPlaceCancelOrders should not error")
 }
 
 func TestGetBatchTrades(t *testing.T) {
@@ -395,9 +344,7 @@ func TestGetBatchTrades(t *testing.T) {
 
 	temp := []string{"4477045999", "4477381751", "4476769607"}
 	_, err := e.GetBatchTrades(t.Context(), temp)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetBatchTrades should not error")
 }
 
 func TestCancelBatch(t *testing.T) {
@@ -406,9 +353,7 @@ func TestCancelBatch(t *testing.T) {
 
 	temp := []string{"4477045999", "4477381751", "4477381751"}
 	_, err := e.CancelBatch(t.Context(), temp)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "CancelBatch should not error")
 }
 
 func TestGetOrderHistory(t *testing.T) {
@@ -420,35 +365,27 @@ func TestGetOrderHistory(t *testing.T) {
 		AssetType: asset.Spot,
 		Type:      order.AnyType,
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetOrderHistory should not error")
 }
 
 func TestUpdateOrderbook(t *testing.T) {
 	t.Parallel()
 	cp := currency.NewPairWithDelimiter(currency.BTC.String(), currency.AUD.String(), "-")
 	_, err := e.UpdateOrderbook(t.Context(), cp, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "UpdateOrderbook should not error")
 }
 
 func TestUpdateTicker(t *testing.T) {
 	t.Parallel()
 	cp := currency.NewPairWithDelimiter(currency.BTC.String(), currency.AUD.String(), "-")
 	_, err := e.UpdateTicker(t.Context(), cp, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "UpdateTicker should not error")
 }
 
 func TestUpdateTickers(t *testing.T) {
 	t.Parallel()
 	err := e.UpdateTickers(t.Context(), asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "UpdateTickers should not error")
 }
 
 func TestGetActiveOrders(t *testing.T) {
@@ -457,9 +394,7 @@ func TestGetActiveOrders(t *testing.T) {
 
 	_, err := e.GetActiveOrders(t.Context(),
 		&order.MultiOrderRequest{AssetType: asset.Spot, Side: order.AnySide, Type: order.AnyType})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "GetActiveOrders must not error")
 }
 
 func TestWsTicker(t *testing.T) {
@@ -472,9 +407,7 @@ func TestWsTicker(t *testing.T) {
     "messageType": "tick"
   }`)
 	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for ticker payload")
 }
 
 func TestWSTrade(t *testing.T) {
@@ -520,9 +453,9 @@ func TestWSTrade(t *testing.T) {
 			i := 1 - len(e.Websocket.DataHandler)
 			require.Equalf(t, exp[i], v, "Trade[%d] must be correct", i)
 		case error:
-			t.Error(v)
+			assert.Failf(t, "wsHandleData should not emit error", "%v", v)
 		default:
-			t.Errorf("Unexpected type in DataHandler: %T(%s)", v, v)
+			assert.Failf(t, "wsHandleData should emit trade.Data", "%T(%v)", v, v)
 		}
 	}
 }
@@ -539,9 +472,7 @@ func TestWsFundChange(t *testing.T) {
   "messageType": "fundChange"
 }`)
 	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for fund change payload")
 }
 
 func TestWsOrderbookUpdate(t *testing.T) {
@@ -561,9 +492,7 @@ func TestWsOrderbookUpdate(t *testing.T) {
       "messageType": "orderbookUpdate"
   }`)
 	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for orderbook snapshot")
 
 	pressXToJSON = []byte(`  { "marketId": "LTC-AUD",
     "timestamp": "2020-01-08T19:47:24.054Z",
@@ -574,9 +503,7 @@ func TestWsOrderbookUpdate(t *testing.T) {
 	"checksum": "2513007604"
   }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for orderbook update")
 }
 
 func TestWsHeartbeats(t *testing.T) {
@@ -586,9 +513,7 @@ func TestWsHeartbeats(t *testing.T) {
   "message": "invalid channel names"
 }`)
 	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
-	}
+	assert.Error(t, err, "wsHandleData should error for invalid channel names")
 
 	pressXToJSON = []byte(`{ 
 "messageType": "error",
@@ -596,9 +521,7 @@ func TestWsHeartbeats(t *testing.T) {
 "message": "invalid marketIds"
 }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
-	}
+	assert.Error(t, err, "wsHandleData should error for invalid market IDs")
 
 	pressXToJSON = []byte(`{ 
 "messageType": "error",
@@ -606,9 +529,7 @@ func TestWsHeartbeats(t *testing.T) {
 "message": "authentication failed. invalid key"
 }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
-	}
+	assert.Error(t, err, "wsHandleData should error for invalid authentication")
 }
 
 func TestWsOrders(t *testing.T) {
@@ -625,9 +546,7 @@ func TestWsOrders(t *testing.T) {
     "messageType": "orderChange"
   }`)
 	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for order change payload")
 
 	pressXToJSON = []byte(` { 
 	"orderId": 79033,
@@ -648,9 +567,7 @@ func TestWsOrders(t *testing.T) {
     "messageType": "orderChange"
   }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for filled order payload")
 
 	pressXToJSON = []byte(` { 
 	"orderId": 79003,
@@ -665,9 +582,7 @@ func TestWsOrders(t *testing.T) {
     "messageType": "orderChange"
   }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for cancelled order payload")
 
 	pressXToJSON = []byte(`  { 
 	"orderId": 79003,
@@ -688,9 +603,7 @@ func TestWsOrders(t *testing.T) {
     "messageType": "orderChange"
   }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for partially matched order payload")
 
 	pressXToJSON = []byte(` { 
 	"orderId": 7903,
@@ -705,9 +618,7 @@ func TestWsOrders(t *testing.T) {
     "messageType": "orderChange"
   }`)
 	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "wsHandleData should not error for triggered order payload")
 }
 
 func TestGetHistoricCandles(t *testing.T) {
@@ -791,9 +702,7 @@ func TestTrim(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run("", func(t *testing.T) {
 			received := trim(tt.Value)
-			if received != tt.Expected {
-				t.Fatalf("received: %v but expected: %v", received, tt.Expected)
-			}
+			assert.Equalf(t, tt.Expected, received, "trim should format %f correctly", tt.Value)
 		})
 	}
 }
@@ -804,39 +713,24 @@ func TestFormatOrderType(t *testing.T) {
 	require.ErrorIs(t, err, order.ErrTypeIsInvalid)
 
 	r, err := e.formatOrderType(order.Limit)
-	require.NoError(t, err)
-
-	if r != limit {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderType must not error for limit orders")
+	require.Equal(t, limit, r, "formatOrderType must map limit order correctly")
 
 	r, err = e.formatOrderType(order.Market)
-	require.NoError(t, err)
-
-	if r != market {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderType must not error for market orders")
+	require.Equal(t, market, r, "formatOrderType must map market order correctly")
 
 	r, err = e.formatOrderType(order.StopLimit)
-	require.NoError(t, err)
-
-	if r != stopLimit {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderType must not error for stop limit orders")
+	require.Equal(t, stopLimit, r, "formatOrderType must map stop limit order correctly")
 
 	r, err = e.formatOrderType(order.Stop)
-	require.NoError(t, err)
-
-	if r != stop {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderType must not error for stop orders")
+	require.Equal(t, stop, r, "formatOrderType must map stop order correctly")
 
 	r, err = e.formatOrderType(order.TakeProfit)
-	require.NoError(t, err)
-
-	if r != takeProfit {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderType must not error for take profit orders")
+	require.Equal(t, takeProfit, r, "formatOrderType must map take profit order correctly")
 }
 
 func TestFormatOrderSide(t *testing.T) {
@@ -845,18 +739,12 @@ func TestFormatOrderSide(t *testing.T) {
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
 
 	f, err := e.formatOrderSide(order.Bid)
-	require.NoError(t, err)
-
-	if f != bidSide {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderSide must not error for bid side")
+	require.Equal(t, bidSide, f, "formatOrderSide must map bid side correctly")
 
 	f, err = e.formatOrderSide(order.Ask)
-	require.NoError(t, err)
-
-	if f != askSide {
-		t.Fatal("unexpected value")
-	}
+	require.NoError(t, err, "formatOrderSide must not error for ask side")
+	require.Equal(t, askSide, f, "formatOrderSide must map ask side correctly")
 }
 
 func TestGetTimeInForce(t *testing.T) {
@@ -903,11 +791,8 @@ func TestWrapperModifyOrder(t *testing.T) {
 		OrderID:       "8207123461",
 		ClientOrderID: "bruh3",
 	})
-	require.NoError(t, err)
-
-	if mo == nil {
-		t.Fatal("expected data return")
-	}
+	require.NoError(t, err, "ModifyOrder must not error for valid request")
+	require.NotNil(t, mo, "ModifyOrder must return updated order data")
 }
 
 func TestUpdateOrderExecutionLimits(t *testing.T) {
@@ -929,9 +814,7 @@ func TestGetWithdrawalsHistory(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err := e.GetWithdrawalsHistory(t.Context(), currency.BTC, asset.Spot)
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "GetWithdrawalsHistory should not error")
 }
 
 func TestCancelBatchOrders(t *testing.T) {
@@ -944,9 +827,7 @@ func TestCancelBatchOrders(t *testing.T) {
 			Pair:      currency.NewPair(currency.BTC, currency.AUD),
 		},
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, err, "CancelBatchOrders should not error")
 }
 
 func TestGetCurrencyTradeURL(t *testing.T) {

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
@@ -33,11 +35,8 @@ func TestAddTradesToBuffer(t *testing.T) {
 	wg.Add(1)
 	processor.setup(&wg)
 	wg.Wait()
-	err := database.DB.SetConfig(&dbConf)
-	if err != nil {
-		t.Error(err)
-	}
-	err = AddTradesToBuffer([]Data{
+	require.NoError(t, database.DB.SetConfig(&dbConf), "SetConfig must not error")
+	require.NoError(t, AddTradesToBuffer([]Data{
 		{
 			Timestamp:    time.Now(),
 			Exchange:     "test!",
@@ -47,15 +46,10 @@ func TestAddTradesToBuffer(t *testing.T) {
 			Amount:       1337,
 			Side:         order.Buy,
 		},
-	}...)
-	if err != nil {
-		t.Error(err)
-	}
-	if atomic.AddInt32(&processor.started, 0) == 0 {
-		t.Error("expected the processor to have started")
-	}
+	}...), "AddTradesToBuffer must not error for valid trade")
+	assert.NotZero(t, atomic.AddInt32(&processor.started, 0), "AddTradesToBuffer should start processor")
 
-	err = AddTradesToBuffer([]Data{
+	err := AddTradesToBuffer([]Data{
 		{
 			Timestamp:    time.Now(),
 			Exchange:     "test!",
@@ -66,14 +60,12 @@ func TestAddTradesToBuffer(t *testing.T) {
 			Side:         order.Buy,
 		},
 	}...)
-	if err == nil {
-		t.Error("expected error")
-	}
+	assert.Error(t, err, "AddTradesToBuffer should error for zero price and amount")
 	processor.mutex.Lock()
 	processor.buffer = nil
 	processor.mutex.Unlock()
 
-	err = AddTradesToBuffer([]Data{
+	require.NoError(t, AddTradesToBuffer([]Data{
 		{
 			Timestamp:    time.Now(),
 			Exchange:     "test!",
@@ -82,17 +74,10 @@ func TestAddTradesToBuffer(t *testing.T) {
 			Price:        -1,
 			Amount:       -1,
 		},
-	}...)
-	if err != nil {
-		t.Error(err)
-	}
+	}...), "AddTradesToBuffer must normalise negative values")
 	processor.mutex.Lock()
-	if processor.buffer[0].Amount != 1 {
-		t.Error("expected positive amount")
-	}
-	if processor.buffer[0].Side != order.Sell {
-		t.Error("expected unknown side")
-	}
+	assert.Equal(t, float64(1), processor.buffer[0].Amount, "AddTradesToBuffer should convert negative amount to positive")
+	assert.Equal(t, order.Sell, processor.buffer[0].Side, "AddTradesToBuffer should flip side when amount negative")
 	processor.mutex.Unlock()
 }
 
@@ -110,21 +95,11 @@ func TestSqlDataToTrade(t *testing.T) {
 		Amount:    1337,
 		Side:      "buy",
 	})
-	if err != nil {
-		t.Error(err)
-	}
-	if len(data) != 1 {
-		t.Fatal("unexpected scenario")
-	}
-	if data[0].Side != order.Buy {
-		t.Error("expected buy side")
-	}
-	if data[0].CurrencyPair.String() != "BTCUSD" {
-		t.Errorf("expected \"BTCUSD\", got %v", data[0].CurrencyPair)
-	}
-	if data[0].AssetType != asset.Spot {
-		t.Error("expected spot")
-	}
+	require.NoError(t, err, "SQLDataToTrade must not error")
+	require.Len(t, data, 1, "SQLDataToTrade must return single trade")
+	assert.Equal(t, order.Buy, data[0].Side, "SQLDataToTrade should map side to buy")
+	assert.Equal(t, "BTCUSD", data[0].CurrencyPair.String(), "SQLDataToTrade should map pair")
+	assert.Equal(t, asset.Spot, data[0].AssetType, "SQLDataToTrade should map asset type to spot")
 }
 
 func TestTradeToSQLData(t *testing.T) {
@@ -139,18 +114,10 @@ func TestTradeToSQLData(t *testing.T) {
 		Amount:       1337,
 		Side:         order.Buy,
 	})
-	if err != nil {
-		t.Error(err)
-	}
-	if len(sqlData) != 1 {
-		t.Fatal("unexpected result")
-	}
-	if sqlData[0].Base != cp.Base.String() {
-		t.Errorf("expected \"BTC\", got %v", sqlData[0].Base)
-	}
-	if sqlData[0].AssetType != asset.Spot.String() {
-		t.Error("expected spot")
-	}
+	require.NoError(t, err, "tradeToSQLData must not error")
+	require.Len(t, sqlData, 1, "tradeToSQLData must return single entry")
+	assert.Equal(t, cp.Base.String(), sqlData[0].Base, "tradeToSQLData should map base")
+	assert.Equal(t, asset.Spot.String(), sqlData[0].AssetType, "tradeToSQLData should map asset type")
 }
 
 func TestConvertTradesToCandles(t *testing.T) {
@@ -186,15 +153,9 @@ func TestConvertTradesToCandles(t *testing.T) {
 			Side:         order.Buy,
 		},
 	}...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(candles.Candles) != 2 {
-		t.Fatal("unexpected candle amount")
-	}
-	if candles.Interval != kline.FifteenSecond {
-		t.Error("expected fifteen seconds")
-	}
+	require.NoError(t, err, "ConvertTradesToCandles must not error")
+	require.Len(t, candles.Candles, 2, "ConvertTradesToCandles must produce two candles")
+	assert.Equal(t, kline.FifteenSecond, candles.Interval, "ConvertTradesToCandles should preserve interval")
 }
 
 func TestShutdown(t *testing.T) {
@@ -207,13 +168,9 @@ func TestShutdown(t *testing.T) {
 	wg.Add(1)
 	go p.Run(&wg)
 	wg.Wait()
-	if atomic.LoadInt32(&p.started) != 1 {
-		t.Error("expected it to start running")
-	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&p.started), "Run should set started flag")
 	time.Sleep(time.Millisecond * 20)
-	if atomic.LoadInt32(&p.started) != 0 {
-		t.Error("expected it to stop running")
-	}
+	assert.Equal(t, int32(0), atomic.LoadInt32(&p.started), "Run should reset started flag after shutdown")
 }
 
 func TestFilterTradesByTime(t *testing.T) {
@@ -225,27 +182,23 @@ func TestFilterTradesByTime(t *testing.T) {
 		},
 	}
 	trades = FilterTradesByTime(trades, time.Now().Add(-time.Minute), time.Now())
-	if len(trades) != 1 {
-		t.Error("failed to filter")
-	}
+	assert.Len(t, trades, 1, "FilterTradesByTime should keep trade within range")
 	trades = FilterTradesByTime(trades, time.Now().Add(-time.Millisecond), time.Now())
-	if len(trades) != 0 {
-		t.Error("failed to filter")
-	}
+	assert.Empty(t, trades, "FilterTradesByTime should remove trade outside range")
 }
 
 func TestSaveTradesToDatabase(t *testing.T) {
 	t.Parallel()
 	err := SaveTradesToDatabase(Data{})
-	if err != nil && err.Error() != "exchange name/uuid not set, cannot insert" {
-		t.Error(err)
+	if err != nil {
+		assert.Equal(t, "exchange name/uuid not set, cannot insert", err.Error(), "SaveTradesToDatabase should require exchange details")
 	}
 }
 
 func TestGetTradesInRange(t *testing.T) {
 	t.Parallel()
 	_, err := GetTradesInRange("", "", "", "", time.Time{}, time.Time{})
-	if err != nil && err.Error() != "invalid arguments received" {
-		t.Error(err)
+	if err != nil {
+		assert.Equal(t, "invalid arguments received", err.Error(), "GetTradesInRange should validate arguments")
 	}
 }
