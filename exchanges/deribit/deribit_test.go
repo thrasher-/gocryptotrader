@@ -2996,6 +2996,44 @@ func TestWsInvalidateBlockTradeSignature(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestGetPendingBlockTrades(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetPendingBlockTrades(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestApproveBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.ApproveBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.ApproveBlockTrade(t.Context(), time.Now(), "nonce-string", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+	err = e.ApproveBlockTrade(t.Context(), time.Time{}, "nonce-string", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		return
+	}
+	err = e.ApproveBlockTrade(t.Context(), time.Now(), "nonce-string", roleMaker)
+	assert.Error(t, err, "approve block trade should return error when no matching trade exists")
+}
+
+func TestRejectBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.RejectBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.RejectBlockTrade(t.Context(), time.Now(), "nonce-string", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+	err = e.RejectBlockTrade(t.Context(), time.Time{}, "nonce-string", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		return
+	}
+	err = e.RejectBlockTrade(t.Context(), time.Now(), "nonce-string", roleMaker)
+	assert.Error(t, err, "reject block trade should return error when no matching trade exists")
+}
+
 func TestExecuteBlockTrade(t *testing.T) {
 	t.Parallel()
 	_, err := e.ExecuteBlockTrade(t.Context(), time.Now(), "", "maker", currency.EMPTYCODE, []BlockTradeParam{})
@@ -3028,6 +3066,44 @@ func TestExecuteBlockTrade(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
+}
+
+func TestWSGetPendingBlockTrades(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSGetPendingBlockTrades(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSApproveBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.WSApproveBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.WSApproveBlockTrade(t.Context(), time.Now(), "nonce-string", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+	err = e.WSApproveBlockTrade(t.Context(), time.Time{}, "nonce-string", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		return
+	}
+	err = e.WSApproveBlockTrade(t.Context(), time.Now(), "nonce-string", roleMaker)
+	assert.Error(t, err, "ws approve block trade should return error when no matching trade exists")
+}
+
+func TestWSRejectBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.WSRejectBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.WSRejectBlockTrade(t.Context(), time.Now(), "nonce-string", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+	err = e.WSRejectBlockTrade(t.Context(), time.Time{}, "nonce-string", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	if !sharedtestvalues.AreAPICredentialsSet(e) {
+		return
+	}
+	err = e.WSRejectBlockTrade(t.Context(), time.Now(), "nonce-string", roleMaker)
+	assert.Error(t, err, "ws reject block trade should return error when no matching trade exists")
 }
 
 func TestWSExecuteBlockTrade(t *testing.T) {

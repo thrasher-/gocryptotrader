@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2074,6 +2075,68 @@ func (e *Exchange) UnsubscribeAll(ctx context.Context) (string, error) {
 func (e *Exchange) UnsubscribeAllPrivateChannels(ctx context.Context) (string, error) {
 	var resp string
 	return resp, e.SendWSRequest(ctx, nonMatchingEPL, "private/unsubscribe_all", nil, &resp, false)
+}
+
+// ------------------------------------------------------------------------------------------------
+
+// WSGetPendingBlockTrades retrieves block trades waiting for user action via websocket.
+func (e *Exchange) WSGetPendingBlockTrades(ctx context.Context) ([]PendingBlockTrade, error) {
+	var resp []PendingBlockTrade
+	return resp, e.SendWSRequest(ctx, nonMatchingEPL, getPendingBlockTrades, nil, &resp, true)
+}
+
+// WSApproveBlockTrade approves a pending block trade for the supplied nonce, timestamp and role via websocket.
+func (e *Exchange) WSApproveBlockTrade(ctx context.Context, timestampMS time.Time, nonce, role string) error {
+	if nonce == "" {
+		return errMissingNonce
+	}
+	if role != roleMaker && role != roleTaker {
+		return errInvalidTradeRole
+	}
+	if timestampMS.IsZero() {
+		return errZeroTimestamp
+	}
+	input := map[string]string{
+		"nonce":     nonce,
+		"role":      role,
+		"timestamp": strconv.FormatInt(timestampMS.UnixMilli(), 10),
+	}
+	var resp string
+	err := e.SendWSRequest(ctx, matchingEPL, approveBlockTrade, input, &resp, true)
+	if err != nil {
+		return err
+	}
+	if resp != "ok" {
+		return fmt.Errorf("server response: %s", resp)
+	}
+	return nil
+}
+
+// WSRejectBlockTrade rejects a pending block trade for the supplied nonce, timestamp and role via websocket.
+func (e *Exchange) WSRejectBlockTrade(ctx context.Context, timestampMS time.Time, nonce, role string) error {
+	if nonce == "" {
+		return errMissingNonce
+	}
+	if role != roleMaker && role != roleTaker {
+		return errInvalidTradeRole
+	}
+	if timestampMS.IsZero() {
+		return errZeroTimestamp
+	}
+	input := map[string]string{
+		"nonce":     nonce,
+		"role":      role,
+		"timestamp": strconv.FormatInt(timestampMS.UnixMilli(), 10),
+	}
+	var resp string
+	err := e.SendWSRequest(ctx, matchingEPL, rejectBlockTrade, input, &resp, true)
+	if err != nil {
+		return err
+	}
+	if resp != "ok" {
+		return fmt.Errorf("server response: %s", resp)
+	}
+	return nil
 }
 
 // ------------------------------------------------------------------------------------------------

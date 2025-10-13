@@ -930,6 +930,24 @@ type ComboParam struct {
 	Amount         float64 `json:"amount,string"`
 }
 
+// BlockTradeApprovalState represents a block trade approval status snapshot.
+type BlockTradeApprovalState struct {
+	Timestamp types.Time `json:"timestamp"`
+	Value     string     `json:"value"`
+}
+
+// PendingBlockTrade represents a block trade awaiting user action.
+type PendingBlockTrade struct {
+	AppName           string                   `json:"app_name"`
+	CounterpartyState *BlockTradeApprovalState `json:"counterparty_state"`
+	Nonce             string                   `json:"nonce"`
+	Role              string                   `json:"role"`
+	State             *BlockTradeApprovalState `json:"state"`
+	Timestamp         types.Time               `json:"timestamp"`
+	Trades            []BlockTradeParam        `json:"trades"`
+	UserID            int64                    `json:"user_id"`
+}
+
 // BlockTradeParam represents a block trade parameter.
 type BlockTradeParam struct {
 	Price          float64 `json:"price"`

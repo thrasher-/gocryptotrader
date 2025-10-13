@@ -164,11 +164,14 @@ const (
 	createCombos    = "private/create_combo"
 
 	// Block Trades Endpoints
+	approveBlockTrade              = "private/approve_block_trade"
 	executeBlockTrades             = "private/execute_block_trade"
 	getBlockTrades                 = "private/get_block_trade"
 	getLastBlockTradesByCurrency   = "private/get_last_block_trades_by_currency"
+	getPendingBlockTrades          = "private/get_pending_block_trades"
 	invalidateBlockTradesSignature = "private/invalidate_block_trade_signature"
 	movePositions                  = "private/move_positions"
+	rejectBlockTrade               = "private/reject_block_trade"
 	simulateBlockPosition          = "private/simulate_block_trade"
 	verifyBlockTrades              = "private/verify_block_trade"
 
@@ -2374,6 +2377,32 @@ func (e *Exchange) ExecuteBlockTrade(ctx context.Context, timestampMS time.Time,
 	return resp, e.SendHTTPAuthRequest(ctx, exchange.RestFutures, matchingEPL, http.MethodGet, executeBlockTrades, params, &resp)
 }
 
+// ApproveBlockTrade approves a pending block trade for the supplied nonce, timestamp and role.
+func (e *Exchange) ApproveBlockTrade(ctx context.Context, timestampMS time.Time, tradeNonce, role string) error {
+	if tradeNonce == "" {
+		return errMissingNonce
+	}
+	if role != roleMaker && role != roleTaker {
+		return errInvalidTradeRole
+	}
+	if timestampMS.IsZero() {
+		return errZeroTimestamp
+	}
+	params := url.Values{}
+	params.Set("nonce", tradeNonce)
+	params.Set("role", role)
+	params.Set("timestamp", strconv.FormatInt(timestampMS.UnixMilli(), 10))
+	var resp string
+	err := e.SendHTTPAuthRequest(ctx, exchange.RestFutures, matchingEPL, http.MethodGet, approveBlockTrade, params, &resp)
+	if err != nil {
+		return err
+	}
+	if resp != "ok" {
+		return fmt.Errorf("server response: %s", resp)
+	}
+	return nil
+}
+
 // VerifyBlockTrade verifies and creates block trade signature
 func (e *Exchange) VerifyBlockTrade(ctx context.Context, timestampMS time.Time, tradeNonce, role string, ccy currency.Code, trades []BlockTradeParam) (string, error) {
 	if tradeNonce == "" {
@@ -2439,6 +2468,12 @@ func (e *Exchange) InvalidateBlockTradeSignature(ctx context.Context, signature 
 	return nil
 }
 
+// GetPendingBlockTrades retrieves block trades that are waiting for user approval.
+func (e *Exchange) GetPendingBlockTrades(ctx context.Context) ([]PendingBlockTrade, error) {
+	var resp []PendingBlockTrade
+	return resp, e.SendHTTPAuthRequest(ctx, exchange.RestFutures, nonMatchingEPL, http.MethodGet, getPendingBlockTrades, nil, &resp)
+}
+
 // GetUserBlockTrade returns information about users block trade
 func (e *Exchange) GetUserBlockTrade(ctx context.Context, id string) ([]BlockTradeData, error) {
 	if id == "" {
@@ -2477,6 +2512,32 @@ func (e *Exchange) GetLastBlockTradesByCurrency(ctx context.Context, ccy currenc
 	}
 	var resp []BlockTradeData
 	return resp, e.SendHTTPAuthRequest(ctx, exchange.RestFutures, nonMatchingEPL, http.MethodGet, getLastBlockTradesByCurrency, params, &resp)
+}
+
+// RejectBlockTrade rejects a pending block trade for the supplied nonce, timestamp and role.
+func (e *Exchange) RejectBlockTrade(ctx context.Context, timestampMS time.Time, tradeNonce, role string) error {
+	if tradeNonce == "" {
+		return errMissingNonce
+	}
+	if role != roleMaker && role != roleTaker {
+		return errInvalidTradeRole
+	}
+	if timestampMS.IsZero() {
+		return errZeroTimestamp
+	}
+	params := url.Values{}
+	params.Set("nonce", tradeNonce)
+	params.Set("role", role)
+	params.Set("timestamp", strconv.FormatInt(timestampMS.UnixMilli(), 10))
+	var resp string
+	err := e.SendHTTPAuthRequest(ctx, exchange.RestFutures, matchingEPL, http.MethodGet, rejectBlockTrade, params, &resp)
+	if err != nil {
+		return err
+	}
+	if resp != "ok" {
+		return fmt.Errorf("server response: %s", resp)
+	}
+	return nil
 }
 
 // MovePositions moves positions from source subaccount to target subaccount

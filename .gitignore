@@ -3,6 +3,8 @@ config.json
 config.dat
 lib
 .DS_STORE
+.gocache/
+.gomodcache/
 
 # VS Code
 .vscode
