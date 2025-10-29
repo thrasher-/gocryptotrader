@@ -3004,7 +3004,7 @@ func TestWSHandleAuthenticatedData(t *testing.T) {
 	err = e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"topic": "unhandled"}`))
 	require.ErrorIs(t, err, errUnhandledStreamData, "wsHandleAuthenticatedData must error for unhandled stream data")
 
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
 	e.API.AuthenticatedSupport = true
 	e.API.AuthenticatedWebsocketSupport = true
@@ -3169,7 +3169,7 @@ func TestWSHandleAuthenticatedData(t *testing.T) {
 
 func TestWsTicker(t *testing.T) {
 	t.Parallel()
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	assetRouting := []asset.Item{
 		asset.Spot, asset.Options, asset.USDTMarginedFutures, asset.USDTMarginedFutures,
 		asset.USDCMarginedFutures, asset.USDCMarginedFutures, asset.CoinMarginedFutures, asset.CoinMarginedFutures,
@@ -3657,7 +3657,7 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 func TestGenerateSubscriptions(t *testing.T) {
 	t.Parallel()
 
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
 
 	e.Websocket.SetCanUseAuthenticatedEndpoints(true)
@@ -3672,11 +3672,11 @@ func TestGenerateSubscriptions(t *testing.T) {
 			pairs, err := e.GetEnabledPairs(a)
 			require.NoErrorf(t, err, "GetEnabledPairs %s must not error", a)
 			pairs = common.SortStrings(pairs).Format(currency.PairFormat{Uppercase: true, Delimiter: ""})
-			s := s.Clone() //nolint:govet // Intentional lexical scope shadow
+			s := s.Clone()
 			s.Asset = a
 			if isSymbolChannel(channelName(s)) {
 				for i, p := range pairs {
-					s := s.Clone() //nolint:govet // Intentional lexical scope shadow
+					s := s.Clone()
 					switch s.Channel {
 					case subscription.CandlesChannel:
 						s.QualifiedChannel = fmt.Sprintf("%s.%.f.%s", channelName(s), s.Interval.Duration().Minutes(), p)
@@ -3701,7 +3701,7 @@ func TestGenerateSubscriptions(t *testing.T) {
 func TestAuthSubscribe(t *testing.T) {
 	t.Parallel()
 
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
 	require.NoError(t, e.authSubscribe(t.Context(), &FixtureConnection{}, subscription.List{}))
 
@@ -3721,7 +3721,7 @@ func TestAuthSubscribe(t *testing.T) {
 func TestWebsocketAuthenticatePrivateConnection(t *testing.T) {
 	t.Parallel()
 
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e))
 
 	err := e.WebsocketAuthenticatePrivateConnection(t.Context(), &FixtureConnection{})
@@ -3740,7 +3740,7 @@ func TestWebsocketAuthenticatePrivateConnection(t *testing.T) {
 func TestWebsocketAuthenticateTradeConnection(t *testing.T) {
 	t.Parallel()
 
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e))
 
 	err := e.WebsocketAuthenticateTradeConnection(t.Context(), &FixtureConnection{})
