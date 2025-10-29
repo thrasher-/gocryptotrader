@@ -47,7 +47,7 @@ type websocketBalancesTest struct {
 
 func TestProcessSpotBalances(t *testing.T) {
 	t.Parallel()
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	e.SetDefaults()
 	e.Name = "ProcessSpotBalancesTest"
 
@@ -110,7 +110,7 @@ func TestProcessSpotBalances(t *testing.T) {
 
 func TestProcessBalancePushData(t *testing.T) {
 	t.Parallel()
-	e := new(Exchange) //nolint:govet // Intentional shadow
+	e := new(Exchange)
 	e.SetDefaults()
 	e.Name = "ProcessFuturesBalancesTest"
 
