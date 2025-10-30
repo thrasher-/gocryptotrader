@@ -116,6 +116,10 @@ func TestIsCryptoStablePair(t *testing.T) {
 		t.Error("TestIsCryptoStablePair. Expected true result")
 	}
 
+	if !NewBTCUSDC().IsCryptoStablePair() {
+		t.Error("TestIsCryptoStablePair. Expected true result for BTC/USDC alias")
+	}
+
 	if !NewPair(DAI, USDT).IsCryptoStablePair() {
 		t.Error("TestIsCryptoStablePair. Expected true result")
 	}
@@ -179,6 +183,16 @@ func TestPair(t *testing.T) {
 			actual, expected,
 		)
 	}
+}
+
+func TestNewBTCUSDC(t *testing.T) {
+	t.Parallel()
+
+	pair := NewBTCUSDC()
+	require.True(t, pair.Base.Equal(BTC), "base currency must be BTC")
+	require.True(t, pair.Quote.Equal(USDC), "quote currency must be USDC")
+	require.True(t, pair.IsCryptoStablePair(), "BTC/USDC alias must be recognised as crypto-stable")
+	require.Equal(t, "BTCUSDC", pair.String(), "string form must match expected")
 }
 
 func TestDisplay(t *testing.T) {

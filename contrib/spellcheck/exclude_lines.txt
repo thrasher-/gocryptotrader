@@ -13,3 +13,6 @@
 	currency.SHFT:     84,
 		TotalIn  float64 `json:"totalIn"`
 		TotalIn        int64  `json:"totalIn"`
+		return "Alo", nil
+	case "alo":
+			"tif":       "Alo",
