@@ -1,0 +1,12 @@
+package hyperliquid
+
+import (
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+)
+
+var defaultSubscriptions = subscription.List{
+	{Enabled: true, Asset: asset.All, Channel: subscription.TickerChannel},
+	{Enabled: true, Asset: asset.All, Channel: subscription.OrderbookChannel, Interval: kline.HundredMilliseconds},
+}
