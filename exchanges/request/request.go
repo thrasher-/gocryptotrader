@@ -251,7 +251,12 @@ func (r *Requester) doRequest(ctx context.Context, endpoint EndpointLimit, newRe
 		// response to caller.
 		var unmarshallError error
 		if p.Result != nil {
-			unmarshallError = json.Unmarshal(contents, p.Result)
+			switch result := p.Result.(type) {
+			case *[]byte:
+				*result = append((*result)[:0], contents...)
+			default:
+				unmarshallError = json.Unmarshal(contents, p.Result)
+			}
 		}
 
 		if p.HTTPRecording {

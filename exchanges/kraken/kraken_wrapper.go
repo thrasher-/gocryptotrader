@@ -279,7 +279,7 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 func (e *Exchange) fetchSpotPairInfo(ctx context.Context) (map[currency.Pair]*AssetPairs, error) {
 	pairs := make(map[currency.Pair]*AssetPairs)
 
-	pairInfo, err := e.GetAssetPairs(ctx, nil, "")
+	pairInfo, err := e.GetAssetPairs(ctx, &GetAssetPairsRequest{})
 	if err != nil {
 		return pairs, err
 	}
@@ -371,7 +371,7 @@ func (e *Exchange) UpdateTradablePairs(ctx context.Context) error {
 func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 	switch a {
 	case asset.Spot:
-		tickers, err := e.GetTickers(ctx, "")
+		tickers, err := e.GetTickers(ctx, &GetTickersRequest{})
 		if err != nil {
 			return err
 		}
@@ -464,7 +464,7 @@ func (e *Exchange) UpdateOrderbook(ctx context.Context, p currency.Pair, assetTy
 	}
 	switch assetType {
 	case asset.Spot:
-		orderbookNew, err := e.GetDepth(ctx, p)
+		orderbookNew, err := e.GetDepth(ctx, &GetDepthRequest{Pair: p})
 		if err != nil {
 			return book, err
 		}
@@ -561,7 +561,7 @@ func (e *Exchange) GetAccountFundingHistory(_ context.Context) ([]exchange.Fundi
 
 // GetWithdrawalsHistory returns previous withdrawals data
 func (e *Exchange) GetWithdrawalsHistory(ctx context.Context, c currency.Code, _ asset.Item) ([]exchange.WithdrawalHistory, error) {
-	withdrawals, err := e.WithdrawStatus(ctx, c, "")
+	withdrawals, err := e.WithdrawStatus(ctx, &WithdrawStatusRequest{Asset: c})
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +592,10 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, assetTy
 	var resp []trade.Data
 	switch assetType {
 	case asset.Spot:
-		tradeData, err := e.GetTrades(ctx, p, time.Time{}, 1000)
+		tradeData, err := e.GetTrades(ctx, &GetTradesRequest{
+			Pair:  p,
+			Count: 1000,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -963,7 +966,9 @@ func (e *Exchange) GetOrderInfo(ctx context.Context, orderID string, _ currency.
 // GetDepositAddress returns a deposit address for a specified currency
 func (e *Exchange) GetDepositAddress(ctx context.Context, cryptocurrency currency.Code, _, chain string) (*deposit.Address, error) {
 	if chain == "" {
-		methods, err := e.GetDepositMethods(ctx, cryptocurrency.String())
+		methods, err := e.GetDepositMethods(ctx, &GetDepositMethodsRequest{
+			Asset: cryptocurrency.String(),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -973,10 +978,17 @@ func (e *Exchange) GetDepositAddress(ctx context.Context, cryptocurrency currenc
 		chain = methods[0].Method
 	}
 
-	depositAddr, err := e.GetCryptoDepositAddress(ctx, chain, cryptocurrency.String(), false)
+	depositAddr, err := e.GetCryptoDepositAddress(ctx, &GetCryptoDepositAddressRequest{
+		Asset:  cryptocurrency.String(),
+		Method: chain,
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "no addresses returned") {
-			depositAddr, err = e.GetCryptoDepositAddress(ctx, chain, cryptocurrency.String(), true)
+			depositAddr, err = e.GetCryptoDepositAddress(ctx, &GetCryptoDepositAddressRequest{
+				Asset:     cryptocurrency.String(),
+				Method:    chain,
+				CreateNew: true,
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -996,10 +1008,11 @@ func (e *Exchange) WithdrawCryptocurrencyFunds(ctx context.Context, withdrawRequ
 	if err := withdrawRequest.Validate(); err != nil {
 		return nil, err
 	}
-	v, err := e.Withdraw(ctx,
-		withdrawRequest.Currency.String(),
-		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+	v, err := e.Withdraw(ctx, &WithdrawRequest{
+		Asset:  withdrawRequest.Currency.String(),
+		Key:    withdrawRequest.TradePassword,
+		Amount: withdrawRequest.Amount,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1014,10 +1027,11 @@ func (e *Exchange) WithdrawFiatFunds(ctx context.Context, withdrawRequest *withd
 	if err := withdrawRequest.Validate(); err != nil {
 		return nil, err
 	}
-	v, err := e.Withdraw(ctx,
-		withdrawRequest.Currency.String(),
-		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+	v, err := e.Withdraw(ctx, &WithdrawRequest{
+		Asset:  withdrawRequest.Currency.String(),
+		Key:    withdrawRequest.TradePassword,
+		Amount: withdrawRequest.Amount,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1032,10 +1046,11 @@ func (e *Exchange) WithdrawFiatFundsToInternationalBank(ctx context.Context, wit
 	if err := withdrawRequest.Validate(); err != nil {
 		return nil, err
 	}
-	v, err := e.Withdraw(ctx,
-		withdrawRequest.Currency.String(),
-		withdrawRequest.TradePassword,
-		withdrawRequest.Amount)
+	v, err := e.Withdraw(ctx, &WithdrawRequest{
+		Asset:  withdrawRequest.Currency.String(),
+		Key:    withdrawRequest.TradePassword,
+		Amount: withdrawRequest.Amount,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1201,7 +1216,7 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, getOrdersRequest *order.
 			return nil, err
 		}
 
-		resp, err := e.GetClosedOrders(ctx, req)
+		resp, err := e.GetClosedOrders(ctx, &req)
 		if err != nil {
 			return nil, err
 		}
@@ -1414,9 +1429,10 @@ func (e *Exchange) GetHistoricCandles(ctx context.Context, pair currency.Pair, a
 	timeSeries := make([]kline.Candle, 0, req.Size())
 	switch a {
 	case asset.Spot:
-		candles, err := e.GetOHLC(ctx,
-			req.RequestFormatted,
-			e.FormatExchangeKlineInterval(req.ExchangeInterval))
+		candles, err := e.GetOHLC(ctx, &GetOHLCRequest{
+			Pair:     req.RequestFormatted,
+			Interval: e.FormatExchangeKlineInterval(req.ExchangeInterval),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -1489,7 +1505,9 @@ func compatibleFillOrderType(fillType string) (order.Type, error) {
 
 // GetAvailableTransferChains returns the available transfer blockchains for the specific cryptocurrency
 func (e *Exchange) GetAvailableTransferChains(ctx context.Context, cryptocurrency currency.Code) ([]string, error) {
-	methods, err := e.GetDepositMethods(ctx, cryptocurrency.String())
+	methods, err := e.GetDepositMethods(ctx, &GetDepositMethodsRequest{
+		Asset: cryptocurrency.String(),
+	})
 	if err != nil {
 		return nil, err
 	}

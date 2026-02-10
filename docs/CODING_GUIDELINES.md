@@ -16,25 +16,37 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 
 - Implement API endpoints in the order they are presented in the API documentation to maintain alignment with the source.
 - Group related endpoints into files that follow the documented API structure.
-- Inline endpoint paths directly in the method implementation. Avoid defining them as constants elsewhere.
 - Export exchange types, functions and methods by default (e.g. `func (e *Exchange) GetOrderBook(...)`) so that GoCryptoTrader can be consumed as both a standalone library and interfaced via the engine package.
+
+### API Documentation Parity
+
+- Request parameters and response fields must match the current upstream API documentation before merge.
+- Every newly added endpoint must include:
+  - request parameter coverage in tests
+  - response decoding coverage in tests
+  - at least one validation and error-path test
+- When API docs and live payloads differ, prefer the live payload for decoding compatibility and document the reason in code comments.
 
 ### Type Usage
 
 - Use the most appropriate native Go types for struct fields:
   - If the API returns numbers as strings, use float64 with the `json:",string"` tag.
-  - For timestamps, use `time.Time` if Go's JSON unmarshalling supports the format directly.
 - If native Go types are not supported directly, use the following built-in types:
-  - `types.Time` for Unix timestamps that require custom unmarshalling.
+  - `types.Time` for Unix timestamps or custom timestamp formats that require custom unmarshalling.
   - `types.Number` for numerical float values where an exchange API may return either a `string` or `float64` value.
 - Always use full and descriptive field names for clarity and consistency. Avoid short API-provided aliases unless compatibility requires it.
 - Default to `uint64` for exchange API parameters and structs for integers where appropriate.
   - Avoid `int` (size varies by architecture) or `int64` (allows negatives where they don't make sense).
   - Aligns well with `strconv.FormatUint`.
+- Prefer typed time fields for API timestamps (`time.Time`, `types.Time`, or another typed timestamp helper) instead of raw `string` values when the format is parseable and stable.
+- Keep `string` only when the value is not a real timestamp or is too inconsistent to parse safely.
+- API responses must be strongly typed.
+  - Do not use `map[string]any`, `[]any`, or untyped interface payloads for final response models unless the upstream schema is truly dynamic.
+  - Prefer dedicated `XResponse` and nested typed structs for all known response fields.
 
 ### TestMain usage
 
-- TestMain must avoid API calls, so that individual unit tests can run quickly. Use sync.Once or similar patterns to bootstrap common data without burdening all unit tests with the same overhaed. See `UpdatePairsOnce` for an example of this.
+- TestMain must avoid API calls, so that individual unit tests can run quickly. Use sync.Once or similar patterns to bootstrap common data without burdening all unit tests with the same overhead. See `UpdatePairsOnce` for an example of this.
 
 ### Struct Naming
 
@@ -49,12 +61,24 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 ### Parameter Handling
 
 - Use pointer structs for passing request parameters.
+- REST endpoint methods should accept a single request struct (plus `context.Context`) containing all endpoint parameters.
+- Do not split endpoint inputs across scalar arguments and a request struct for the same endpoint.
+- Do not use variadic optional request patterns like `req ...*XRequest`.
+- Request pointers are expected to be initialized by the caller.
+  - Do not add `if req == nil` guards in endpoint handlers.
 - Use idiomatic Go types (e.g., `time.Time`) in the parameter definition and convert them within the method as needed when preparing the request.
 - Time related requests should default to UTC.
 
+### Struct Tag Usage
+
+- Only use JSON tags on structs that are actually JSON marshalled/unmarshalled.
+- Request structs used exclusively to build URL query/form parameters should not include JSON tags.
+- Keep JSON tags on websocket payload request structs and any request/response struct serialized by `encoding/json`.
+
 ### Path Construction
 
-- Path API endpoints must be inlined within the calling method.
+- Path API endpoints must be inlined within the calling method; avoid package-level or shared constants for path strings.
+- Use a local `path` variable only when the path must be mutated or includes dynamic path segments.
 - Use basic string concatenation instead of `fmt.Sprintf`:
 
 ```go
@@ -90,9 +114,21 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
     }
 ```
 
-- Prefer meaningful and specific error messages that identify the operation being performed.
-- Always include enough context in errors to aid in debugging and traceability.
+- Prefer meaningful, specific error messages with enough operation context to aid debugging and traceability.
 - Do not use panic; always return and propagate errors cleanly.
+- For reusable validation errors (missing required field, invalid enum), declare package-level sentinel errors and return them directly.
+- Avoid ad-hoc `errors.New(...)` strings for common validation paths when the error should be testable with `errors.Is`.
+
+### Return Style
+
+- For simple transport wrappers with no post-processing, prefer direct return style:
+
+```go
+    var result *XResponse
+    return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Method", params, &result)
+```
+
+- Avoid extra `if err := ...; err != nil` blocks when the method only forwards the call result.
 
 ## Testing Guidelines
 
@@ -120,11 +156,23 @@ Use `require` and `assert` appropriately:
 - Messages must contain **"should"** (e.g., "status code should be 200").
 - Use `assert.Equalf`, etc., when applicable.
 
+### Error Assertion Policy
+
+- Use `require.ErrorIs`/`assert.ErrorIs` for declared sentinel errors; new validation errors should be introduced as sentinel errors so tests can avoid string matching.
+- Use `ErrorContains` only for dynamic server-provided text or aggregated multi-error strings where exact matching is not stable.
+
 ### Test Coverage
 
 - Maintain original test inputs unless they are incorrect.
 - Full test coverage is preferable; mock external calls as needed.
+- New or refactored exchange endpoint handlers should target complete statement coverage for their request validation, parameter encoding, and response decoding paths.
 - All unit tests must pass before finalising changes.
+
+### Test Isolation
+
+- Keep tests isolated by behavior.
+- Prefer one behavior per `TestX` function name instead of combining multiple unrelated assertions into a single test function.
+- Table-driven tests are acceptable when all entries validate the same behavior category.
 
 ### Test deduplication
 
@@ -162,6 +210,17 @@ Use `require` and `assert` appropriately:
 }
 ```
 
+## Exchange Definition of Done
+
+Before merging exchange API work, ensure all items below are satisfied:
+
+- Exchange implementation rules in this document are satisfied, especially:
+  - `Endpoint Organisation` and `API Documentation Parity`
+  - `Type Usage`, `Parameter Handling`, and `Struct Tag Usage`
+  - `Path Construction` and `Error Handling`
+  - `Testing Guidelines` (coverage, isolation, and error assertions)
+- `go test ./...` and `golangci-lint run ./...` pass without unresolved warnings.
+
 ## Comments
 
 - API methods and public types must have comments for GoDoc.
@@ -197,6 +256,7 @@ Several other miscellaneous checks will be run via [GitHub actions](/.github/wor
 
 - All lint warnings and errors must be resolved before merging.
 - Use `//nolint:linter-name` sparingly and always explain the reason in a comment next to the code.
+- Exchange integrations should include policy checks in CI where practical (for example: path-inlining, sentinel validation errors, and typed response models).
 - Examples of valid use:
 
 ```go

@@ -33,7 +33,7 @@ func (e *Exchange) GetFuturesOrderbook(ctx context.Context, symbol currency.Pair
 	params := url.Values{}
 	params.Set("symbol", symbolValue)
 	var resp FuturesOrderbookData
-	return &resp, e.SendHTTPRequest(ctx, exchange.RestFutures, futuresOrderbook+"?"+params.Encode(), &resp)
+	return &resp, e.SendHTTPRequest(ctx, exchange.RestFutures, common.EncodeURLValues("/api/v3/orderbook", params), &resp)
 }
 
 // GetFuturesCharts returns candle data for kraken futures
@@ -49,7 +49,7 @@ func (e *Exchange) GetFuturesCharts(ctx context.Context, resolution, tickType st
 	if !from.IsZero() {
 		params.Set("from", strconv.FormatInt(from.Unix(), 10))
 	}
-	reqStr := futuresCandles + tickType + "/" + symbolValue + "/" + resolution
+	reqStr := "charts/v1/" + tickType + "/" + symbolValue + "/" + resolution
 	if len(params) > 0 {
 		reqStr += "?" + params.Encode()
 	}
@@ -71,25 +71,25 @@ func (e *Exchange) GetFuturesTrades(ctx context.Context, symbol currency.Pair, t
 		params.Set("before", strconv.FormatInt(from.Unix(), 10))
 	}
 	var resp FuturesPublicTrades
-	return &resp, e.SendHTTPRequest(ctx, exchange.RestFuturesSupplementary, futuresPublicTrades+"/"+symbolValue+"/executions?"+params.Encode(), &resp)
+	return &resp, e.SendHTTPRequest(ctx, exchange.RestFuturesSupplementary, common.EncodeURLValues("history/v2/market/"+symbolValue+"/executions", params), &resp)
 }
 
 // GetInstruments gets a list of futures markets and their data
 func (e *Exchange) GetInstruments(ctx context.Context) (FuturesInstrumentData, error) {
 	var resp FuturesInstrumentData
-	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, futuresInstruments, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, "/api/v3/instruments", &resp)
 }
 
 // GetFuturesTickers gets a list of futures tickers and their data
 func (e *Exchange) GetFuturesTickers(ctx context.Context) (FuturesTickersData, error) {
 	var resp FuturesTickersData
-	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, futuresTickers, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, "/api/v3/tickers", &resp)
 }
 
 // GetFuturesTickerBySymbol returns futures ticker data by symbol
 func (e *Exchange) GetFuturesTickerBySymbol(ctx context.Context, symbol string) (FuturesTickerData, error) {
 	var resp FuturesTickerData
-	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, futuresTickers+"/"+symbol, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, "/api/v3/tickers"+"/"+symbol, &resp)
 }
 
 // GetFuturesTradeHistory gets public trade history data for futures
@@ -104,7 +104,7 @@ func (e *Exchange) GetFuturesTradeHistory(ctx context.Context, symbol currency.P
 	if !lastTime.IsZero() {
 		params.Set("lastTime", lastTime.Format("2006-01-02T15:04:05.070Z"))
 	}
-	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, futuresTradeHistory+"?"+params.Encode(), &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, common.EncodeURLValues("/api/v3/history", params), &resp)
 }
 
 // FuturesBatchOrder places a batch order for futures
@@ -137,7 +137,7 @@ func (e *Exchange) FuturesBatchOrder(ctx context.Context, data []PlaceBatchOrder
 
 	params := url.Values{}
 	params.Set("json", string(jsonData))
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresBatchOrder, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/batchorder", params, &resp)
 }
 
 // FuturesEditOrder edits a futures order
@@ -153,7 +153,7 @@ func (e *Exchange) FuturesEditOrder(ctx context.Context, orderID, clientOrderID 
 	params.Set("size", strconv.FormatFloat(size, 'f', -1, 64))
 	params.Set("limitPrice", strconv.FormatFloat(limitPrice, 'f', -1, 64))
 	params.Set("stopPrice", strconv.FormatFloat(stopPrice, 'f', -1, 64))
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresEditOrder, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/editorder", params, &resp)
 }
 
 // FuturesSendOrder sends a futures order
@@ -203,7 +203,7 @@ func (e *Exchange) FuturesSendOrder(ctx context.Context, orderType order.Type, s
 	if stopPrice != 0 {
 		params.Set("stopPrice", strconv.FormatFloat(stopPrice, 'f', -1, 64))
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresSendOrder, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/sendorder", params, &resp)
 }
 
 // FuturesCancelOrder cancels an order
@@ -216,7 +216,7 @@ func (e *Exchange) FuturesCancelOrder(ctx context.Context, orderID, clientOrderI
 	if clientOrderID != "" {
 		params.Set("cliOrdId", clientOrderID)
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresCancelOrder, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/cancelorder", params, &resp)
 }
 
 // FuturesGetFills gets order fills for futures
@@ -226,7 +226,7 @@ func (e *Exchange) FuturesGetFills(ctx context.Context, lastFillTime time.Time) 
 	if !lastFillTime.IsZero() {
 		params.Set("lastFillTime", lastFillTime.UTC().Format("2006-01-02T15:04:05.999Z"))
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresOrderFills, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/fills", params, &resp)
 }
 
 // FuturesTransfer transfers funds between accounts
@@ -237,19 +237,19 @@ func (e *Exchange) FuturesTransfer(ctx context.Context, fromAccount, toAccount, 
 	req["toAccount"] = toAccount
 	req["unit"] = unit
 	req["amount"] = amount
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresTransfer, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/transfer", nil, &resp)
 }
 
 // FuturesGetOpenPositions gets futures platform's notifications
 func (e *Exchange) FuturesGetOpenPositions(ctx context.Context) (FuturesOpenPositions, error) {
 	var resp FuturesOpenPositions
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresOpenPositions, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/openpositions", nil, &resp)
 }
 
 // FuturesNotifications gets futures notifications
 func (e *Exchange) FuturesNotifications(ctx context.Context) (FuturesNotificationData, error) {
 	var resp FuturesNotificationData
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresNotifications, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/notifications", nil, &resp)
 }
 
 // FuturesCancelAllOrders cancels all futures orders for a given symbol or all symbols
@@ -263,7 +263,7 @@ func (e *Exchange) FuturesCancelAllOrders(ctx context.Context, symbol currency.P
 		}
 		params.Set("symbol", symbolValue)
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresCancelAllOrders, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/cancelallorders", params, &resp)
 }
 
 // FuturesCancelAllOrdersAfter cancels all futures orders for all symbols after a period of time (timeout measured in seconds)
@@ -271,13 +271,13 @@ func (e *Exchange) FuturesCancelAllOrdersAfter(ctx context.Context, timeout int6
 	var resp CancelOrdersAfterData
 	params := url.Values{}
 	params.Set("timeout", strconv.FormatInt(timeout, 10))
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresCancelOrdersAfter, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/cancelallordersafter", params, &resp)
 }
 
 // FuturesOpenOrders gets all futures open orders
 func (e *Exchange) FuturesOpenOrders(ctx context.Context) (FuturesOpenOrdersData, error) {
 	var resp FuturesOpenOrdersData
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresOpenOrders, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/openorders", nil, &resp)
 }
 
 // FuturesRecentOrders gets recent futures orders for a symbol or all symbols
@@ -291,7 +291,7 @@ func (e *Exchange) FuturesRecentOrders(ctx context.Context, symbol currency.Pair
 		}
 		params.Set("symbol", symbolValue)
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresRecentOrders, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/recentorders", params, &resp)
 }
 
 // FuturesWithdrawToSpotWallet withdraws currencies from futures wallet to spot wallet
@@ -300,7 +300,7 @@ func (e *Exchange) FuturesWithdrawToSpotWallet(ctx context.Context, ccy string, 
 	params := url.Values{}
 	params.Set("currency", ccy)
 	params.Set("amount", strconv.FormatFloat(amount, 'f', -1, 64))
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, futuresWithdraw, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/withdrawal", params, &resp)
 }
 
 // FuturesGetTransfers withdraws currencies from futures wallet to spot wallet
@@ -310,13 +310,13 @@ func (e *Exchange) FuturesGetTransfers(ctx context.Context, lastTransferTime tim
 	if !lastTransferTime.IsZero() {
 		params.Set("lastTransferTime", lastTransferTime.UTC().Format(time.RFC3339))
 	}
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresTransfers, params, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/transfers", params, &resp)
 }
 
 // GetFuturesAccountData gets account data for futures
 func (e *Exchange) GetFuturesAccountData(ctx context.Context) (FuturesAccountsData, error) {
 	var resp FuturesAccountsData
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, futuresAccountData, nil, &resp)
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodGet, "/api/v3/accounts", nil, &resp)
 }
 
 func (e *Exchange) signFuturesRequest(secret, endpoint, nonce, data string) (string, error) {

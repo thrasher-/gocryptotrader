@@ -312,7 +312,7 @@ func TestGetFuturesTradeHistory(t *testing.T) {
 
 func TestGetAssets(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetAssets(t.Context())
+	_, err := e.GetAssets(t.Context(), &GetAssetsRequest{})
 	assert.NoError(t, err, "GetAssets should not error")
 }
 
@@ -350,39 +350,54 @@ func TestLookupCurrency(t *testing.T) {
 func TestGetAssetPairs(t *testing.T) {
 	t.Parallel()
 	for _, v := range []string{"fees", "leverage", "margin", ""} {
-		_, err := e.GetAssetPairs(t.Context(), []string{}, v)
+		_, err := e.GetAssetPairs(t.Context(), &GetAssetPairsRequest{
+			Info: v,
+		})
 		require.NoErrorf(t, err, "GetAssetPairs %s must not error", v)
 	}
 }
 
 func TestGetTicker(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetTicker(t.Context(), spotTestPair)
+	_, err := e.GetTicker(t.Context(), &GetTickerRequest{
+		Pair: spotTestPair,
+	})
 	assert.NoError(t, err, "GetTicker should not error")
 }
 
 func TestGetTickers(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetTickers(t.Context(), "LTCUSD,ETCUSD")
+	_, err := e.GetTickers(t.Context(), &GetTickersRequest{
+		PairList: "LTCUSD,ETCUSD",
+	})
 	assert.NoError(t, err, "GetTickers should not error")
 }
 
 func TestGetOHLC(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetOHLC(t.Context(), currency.NewPairWithDelimiter("XXBT", "ZUSD", ""), "1440")
+	_, err := e.GetOHLC(t.Context(), &GetOHLCRequest{
+		Pair:     currency.NewPairWithDelimiter("XXBT", "ZUSD", ""),
+		Interval: "1440",
+	})
 	assert.NoError(t, err, "GetOHLC should not error")
 }
 
 func TestGetDepth(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetDepth(t.Context(), spotTestPair)
+	_, err := e.GetDepth(t.Context(), &GetDepthRequest{
+		Pair: spotTestPair,
+	})
 	assert.NoError(t, err, "GetDepth should not error")
 }
 
 func TestGetTrades(t *testing.T) {
 	t.Parallel()
 	testexch.UpdatePairsOnce(t, e)
-	r, err := e.GetTrades(t.Context(), spotTestPair, time.Now().Add(-time.Hour*4), 1000)
+	r, err := e.GetTrades(t.Context(), &GetTradesRequest{
+		Pair:  spotTestPair,
+		Since: time.Now().Add(-time.Hour * 4),
+		Count: 1000,
+	})
 	require.NoError(t, err, "GetTrades must not error")
 	require.NotNil(t, r, "GetTrades must return a valid response")
 }
@@ -390,7 +405,10 @@ func TestGetTrades(t *testing.T) {
 func TestGetSpread(t *testing.T) {
 	t.Parallel()
 	p := currency.NewPair(currency.BCH, currency.EUR) // XBTUSD not in spread data
-	r, err := e.GetSpread(t.Context(), p, time.Now().Add(-time.Hour*4))
+	r, err := e.GetSpread(t.Context(), &GetSpreadRequest{
+		Pair:  p,
+		Since: time.Now().Add(-time.Hour * 4),
+	})
 	require.NoError(t, err, "GetSpread must not error")
 	require.NotNil(t, r, "GetSpread must return a valid response")
 	require.NotZero(t, r.Last.Time(), "GetSpread must return a valid last updated time")
@@ -409,7 +427,9 @@ func TestGetBalance(t *testing.T) {
 func TestGetDepositMethods(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetDepositMethods(t.Context(), "USDT")
+	_, err := e.GetDepositMethods(t.Context(), &GetDepositMethodsRequest{
+		Asset: "USDT",
+	})
 	assert.NoError(t, err, "GetDepositMethods should not error")
 }
 
@@ -417,7 +437,7 @@ func TestGetTradeBalance(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	args := TradeBalanceOptions{Asset: "ZEUR"}
-	_, err := e.GetTradeBalance(t.Context(), args)
+	_, err := e.GetTradeBalance(t.Context(), &args)
 	assert.NoError(t, err)
 }
 
@@ -433,7 +453,7 @@ func TestGetClosedOrders(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	args := GetClosedOrdersOptions{Trades: true, Start: "OE4KV4-4FVQ5-V7XGPU"}
-	_, err := e.GetClosedOrders(t.Context(), args)
+	_, err := e.GetClosedOrders(t.Context(), &args)
 	assert.NoError(t, err)
 }
 
@@ -449,21 +469,27 @@ func TestGetTradesHistory(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	args := GetTradesHistoryOptions{Trades: true, Start: "TMZEDR-VBJN2-NGY6DX", End: "TVRXG2-R62VE-RWP3UW"}
-	_, err := e.GetTradesHistory(t.Context(), args)
+	_, err := e.GetTradesHistory(t.Context(), &args)
 	assert.NoError(t, err)
 }
 
 func TestQueryTrades(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.QueryTrades(t.Context(), true, "TMZEDR-VBJN2-NGY6DX", "TFLWIB-KTT7L-4TWR3L", "TDVRAH-2H6OS-SLSXRX")
+	_, err := e.QueryTrades(t.Context(), &QueryTradesRequest{
+		Trades:         true,
+		TransactionID:  "TMZEDR-VBJN2-NGY6DX",
+		TransactionIDs: []string{"TFLWIB-KTT7L-4TWR3L", "TDVRAH-2H6OS-SLSXRX"},
+	})
 	assert.NoError(t, err)
 }
 
 func TestOpenPositions(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.OpenPositions(t.Context(), false)
+	_, err := e.OpenPositions(t.Context(), &OpenPositionsRequest{
+		DoCalculations: false,
+	})
 	assert.NoError(t, err)
 }
 
@@ -473,21 +499,25 @@ func TestGetLedgers(t *testing.T) {
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
 	args := GetLedgersOptions{Start: "LRUHXI-IWECY-K4JYGO", End: "L5NIY7-JZQJD-3J4M2V", Ofs: 15}
-	_, err := e.GetLedgers(t.Context(), args)
+	_, err := e.GetLedgers(t.Context(), &args)
 	assert.ErrorContains(t, err, "EQuery:Unknown asset pair", "GetLedger should error on imaginary ledgers")
 }
 
 func TestQueryLedgers(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.QueryLedgers(t.Context(), "LVTSFS-NHZVM-EXNZ5M")
+	_, err := e.QueryLedgers(t.Context(), &QueryLedgersRequest{
+		ID: "LVTSFS-NHZVM-EXNZ5M",
+	})
 	assert.NoError(t, err)
 }
 
 func TestGetTradeVolume(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetTradeVolume(t.Context(), true, spotTestPair)
+	_, err := e.GetTradeVolume(t.Context(), &GetTradeVolumeRequest{
+		Pairs: []currency.Pair{spotTestPair},
+	})
 	assert.NoError(t, err, "GetTradeVolume should not error")
 }
 
@@ -821,14 +851,21 @@ func TestGetCryptoDepositAddress(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
-	_, err := e.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", false)
+	_, err := e.GetCryptoDepositAddress(t.Context(), &GetCryptoDepositAddressRequest{
+		Asset:  "XBT",
+		Method: "Bitcoin",
+	})
 	if err != nil {
 		t.Error(err)
 	}
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders not set, skipping test")
 	}
-	_, err = e.GetCryptoDepositAddress(t.Context(), "Bitcoin", "XBT", true)
+	_, err = e.GetCryptoDepositAddress(t.Context(), &GetCryptoDepositAddressRequest{
+		Asset:     "XBT",
+		Method:    "Bitcoin",
+		CreateNew: true,
+	})
 	if err != nil {
 		t.Error(err)
 	}
@@ -852,12 +889,16 @@ func TestGetDepositAddress(t *testing.T) {
 func TestWithdrawStatus(t *testing.T) {
 	t.Parallel()
 	if sharedtestvalues.AreAPICredentialsSet(e) {
-		_, err := e.WithdrawStatus(t.Context(), currency.BTC, "")
+		_, err := e.WithdrawStatus(t.Context(), &WithdrawStatusRequest{
+			Asset: currency.BTC,
+		})
 		if err != nil {
 			t.Error("WithdrawStatus() error", err)
 		}
 	} else {
-		_, err := e.WithdrawStatus(t.Context(), currency.BTC, "")
+		_, err := e.WithdrawStatus(t.Context(), &WithdrawStatusRequest{
+			Asset: currency.BTC,
+		})
 		if err == nil {
 			t.Error("GetDepositAddress() error can not be nil")
 		}

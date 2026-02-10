@@ -975,9 +975,6 @@ func fqChannelNameSub(s *subscription.Subscription) error {
 
 // wsAddOrder creates an order, returned order ID if success
 func (e *Exchange) wsAddOrder(ctx context.Context, req *WsAddOrderRequest) (string, error) {
-	if req == nil {
-		return "", common.ErrNilPointer
-	}
 	req.RequestID = e.MessageSequence()
 	req.Event = krakenWsAddOrder
 	req.Token = e.websocketAuthToken()
