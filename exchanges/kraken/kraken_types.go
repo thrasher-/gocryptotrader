@@ -15,60 +15,6 @@ import (
 )
 
 const (
-	krakenAPIVersion       = "0"
-	krakenServerTime       = "Time"
-	krakenAssets           = "Assets"
-	krakenAssetPairs       = "AssetPairs?"
-	krakenTicker           = "Ticker"
-	krakenOHLC             = "OHLC"
-	krakenDepth            = "Depth"
-	krakenTrades           = "Trades"
-	krakenSpread           = "Spread"
-	krakenBalance          = "BalanceEx"
-	krakenTradeBalance     = "TradeBalance"
-	krakenOpenOrders       = "OpenOrders"
-	krakenClosedOrders     = "ClosedOrders"
-	krakenQueryOrders      = "QueryOrders"
-	krakenTradeHistory     = "TradesHistory"
-	krakenQueryTrades      = "QueryTrades"
-	krakenOpenPositions    = "OpenPositions"
-	krakenLedgers          = "Ledgers"
-	krakenQueryLedgers     = "QueryLedgers"
-	krakenTradeVolume      = "TradeVolume"
-	krakenOrderCancel      = "CancelOrder"
-	krakenOrderPlace       = "AddOrder"
-	krakenWithdrawInfo     = "WithdrawInfo"
-	krakenWithdraw         = "Withdraw"
-	krakenDepositMethods   = "DepositMethods"
-	krakenDepositAddresses = "DepositAddresses"
-	krakenWithdrawStatus   = "WithdrawStatus"
-	krakenWithdrawCancel   = "WithdrawCancel"
-	krakenWebsocketToken   = "GetWebSocketsToken"
-
-	// Futures
-	futuresTickers      = "/api/v3/tickers"
-	futuresOrderbook    = "/api/v3/orderbook"
-	futuresInstruments  = "/api/v3/instruments"
-	futuresTradeHistory = "/api/v3/history"
-	futuresCandles      = "charts/v1/"
-	futuresPublicTrades = "history/v2/market/"
-
-	futuresSendOrder         = "/api/v3/sendorder"
-	futuresCancelOrder       = "/api/v3/cancelorder"
-	futuresOrderFills        = "/api/v3/fills"
-	futuresTransfer          = "/api/v3/transfer"
-	futuresOpenPositions     = "/api/v3/openpositions"
-	futuresBatchOrder        = "/api/v3/batchorder"
-	futuresNotifications     = "/api/v3/notifications"
-	futuresAccountData       = "/api/v3/accounts"
-	futuresCancelAllOrders   = "/api/v3/cancelallorders"
-	futuresCancelOrdersAfter = "/api/v3/cancelallordersafter"
-	futuresOpenOrders        = "/api/v3/openorders"
-	futuresRecentOrders      = "/api/v3/recentorders"
-	futuresWithdraw          = "/api/v3/withdrawal"
-	futuresTransfers         = "/api/v3/transfers"
-	futuresEditOrder         = "/api/v3/editorder"
-
 	// Rate limit consts
 	krakenRateInterval = time.Second
 	krakenRequestRate  = 1
@@ -78,8 +24,28 @@ const (
 )
 
 var (
-	assetTranslator     assetTranslatorStore
-	errBadChannelSuffix = errors.New("bad websocket channel suffix")
+	assetTranslator                 assetTranslatorStore
+	errBadChannelSuffix             = errors.New("bad websocket channel suffix")
+	errInvalidAssetPairInfo         = errors.New("parameter info can only be 'margin', 'leverage', 'fees' or 'info'")
+	errInvalidDataReturned          = errors.New("invalid data returned")
+	errTransactionIDRequired        = errors.New("transaction id is required")
+	errIDRequired                   = errors.New("id is required")
+	errNoAddressesReturned          = errors.New("no addresses returned")
+	errOrderIDRequired              = errors.New("order id is required")
+	errReportRequired               = errors.New("report is required")
+	errFormatRequired               = errors.New("format is required")
+	errTypeRequired                 = errors.New("type is required")
+	errTimeoutMustBeGreaterThanZero = errors.New("timeout must be greater than zero")
+	errOrdersRequired               = errors.New("orders are required")
+	errOrdersOrClientOrdersRequired = errors.New("orders or client orders are required")
+	errAssetRequired                = errors.New("asset is required")
+	errFromRequired                 = errors.New("from is required")
+	errToRequired                   = errors.New("to is required")
+	errAmountRequired               = errors.New("amount is required")
+	errUsernameRequired             = errors.New("username is required")
+	errEmailRequired                = errors.New("email is required")
+	errStrategyIDRequired           = errors.New("strategy id is required")
+	errSymbolRequired               = errors.New("symbol is required")
 )
 
 // GenericResponse stores general response data for functions that only return success
@@ -101,6 +67,18 @@ type Asset struct {
 	AclassBase      string `json:"aclass_base"`
 	Decimals        int    `json:"decimals"`
 	DisplayDecimals int    `json:"display_decimals"`
+}
+
+// GetAssetsRequest defines optional request params for the assets endpoint.
+type GetAssetsRequest struct {
+	Asset  string
+	Aclass string
+}
+
+// SystemStatusResponse holds exchange system status information
+type SystemStatusResponse struct {
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
 }
 
 // AssetPairs holds asset pair information
@@ -125,6 +103,14 @@ type AssetPairs struct {
 	OrderMinimum      float64     `json:"ordermin,string"`
 	TickSize          float64     `json:"tick_size,string"`
 	Status            string      `json:"status"`
+}
+
+// GetAssetPairsRequest defines optional request params for the asset pairs endpoint.
+type GetAssetPairsRequest struct {
+	AssetPairs     []string
+	Info           string
+	AssetClassBase string
+	CountryCode    string
 }
 
 // Ticker is a standard ticker type
@@ -158,6 +144,18 @@ type TickerResponse struct {
 	Open                       types.Number    `json:"o"`
 }
 
+// GetTickerRequest defines optional request params for the ticker endpoint.
+type GetTickerRequest struct {
+	Pair       currency.Pair
+	AssetClass string
+}
+
+// GetTickersRequest defines optional request params for the tickers endpoint.
+type GetTickersRequest struct {
+	PairList   string
+	AssetClass string
+}
+
 // OpenHighLowClose contains ticker event information
 type OpenHighLowClose struct {
 	Time                       time.Time
@@ -168,6 +166,71 @@ type OpenHighLowClose struct {
 	VolumeWeightedAveragePrice float64
 	Volume                     float64
 	Count                      float64
+}
+
+// OHLCResponse defines typed OHLC payload values.
+type OHLCResponse struct {
+	Data map[string][]OHLCResponseItem
+	Last types.Time
+}
+
+// OHLCResponseItem defines a typed OHLC entry.
+type OHLCResponseItem struct {
+	Time                       types.Time
+	Open                       types.Number
+	High                       types.Number
+	Low                        types.Number
+	Close                      types.Number
+	VolumeWeightedAveragePrice types.Number
+	Volume                     types.Number
+	Count                      float64
+}
+
+// UnmarshalJSON unmarshals OHLC entries encoded as arrays.
+func (r *OHLCResponseItem) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &[8]any{
+		&r.Time,
+		&r.Open,
+		&r.High,
+		&r.Low,
+		&r.Close,
+		&r.VolumeWeightedAveragePrice,
+		&r.Volume,
+		&r.Count,
+	})
+}
+
+// UnmarshalJSON unmarshals OHLC response payload variants.
+func (r *OHLCResponse) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	r.Data = make(map[string][]OHLCResponseItem)
+	for key, value := range raw {
+		if key == "last" {
+			if err := json.Unmarshal(value, &r.Last); err != nil {
+				return err
+			}
+			continue
+		}
+
+		var entries []OHLCResponseItem
+		if err := json.Unmarshal(value, &entries); err != nil {
+			return err
+		}
+		r.Data[key] = entries
+	}
+	return nil
+}
+
+// GetOHLCRequest defines optional request params for the OHLC endpoint.
+type GetOHLCRequest struct {
+	Pair       currency.Pair
+	Interval   string
+	Since      time.Time
+	AssetClass string
 }
 
 // RecentTradesResponse holds recent trade data
@@ -229,6 +292,13 @@ type Orderbook struct {
 	Asks []OrderbookBase
 }
 
+// GetDepthRequest defines optional request params for the order book endpoint.
+type GetDepthRequest struct {
+	Pair       currency.Pair
+	Count      uint64
+	AssetClass string
+}
+
 // SpreadItem holds the spread between trades
 type SpreadItem struct {
 	Time types.Time
@@ -245,6 +315,21 @@ func (s *SpreadItem) UnmarshalJSON(data []byte) error {
 type SpreadResponse struct {
 	Spreads map[string][]SpreadItem
 	Last    types.Time
+}
+
+// GetTradesRequest defines optional request params for recent trades endpoint.
+type GetTradesRequest struct {
+	Pair       currency.Pair
+	Since      time.Time
+	Count      uint64
+	AssetClass string
+}
+
+// GetSpreadRequest defines optional request params for spreads endpoint.
+type GetSpreadRequest struct {
+	Pair       currency.Pair
+	Since      time.Time
+	AssetClass string
 }
 
 // UnmarshalJSON unmarshals the spread response
@@ -277,10 +362,20 @@ type Balance struct {
 	Hold  float64 `json:"hold_trade,string"`
 }
 
+// GetAccountBalanceRequest defines optional request params for account balance endpoint.
+type GetAccountBalanceRequest struct {
+	RebaseMultiplier string
+}
+
+// GetExtendedBalanceRequest defines optional request params for extended balance endpoint.
+type GetExtendedBalanceRequest struct {
+	RebaseMultiplier string
+}
+
 // TradeBalanceOptions type
 type TradeBalanceOptions struct {
-	Aclass string
-	Asset  string
+	Asset            string
+	RebaseMultiplier string
 }
 
 // TradeBalanceInfo type
@@ -339,27 +434,38 @@ type ClosedOrders struct {
 
 // GetClosedOrdersOptions type
 type GetClosedOrdersOptions struct {
-	Trades    bool
-	UserRef   int32
-	Start     string
-	End       string
-	Ofs       int64
-	CloseTime string
+	Trades           bool
+	UserRef          int32
+	ClientOrderID    string
+	Start            string
+	End              string
+	Ofs              int64
+	CloseTime        string
+	ConsolidateTaker bool
+	WithoutCount     bool
+	RebaseMultiplier string
 }
 
 // OrderInfoOptions type
 type OrderInfoOptions struct {
-	Trades  bool
-	UserRef int32
+	Trades           bool
+	UserRef          int32
+	ClientOrderID    string
+	ConsolidateTaker bool
+	RebaseMultiplier string
 }
 
 // GetTradesHistoryOptions type
 type GetTradesHistoryOptions struct {
-	Type   string
-	Trades bool
-	Start  string
-	End    string
-	Ofs    int64
+	Type             string
+	Trades           bool
+	Start            string
+	End              string
+	Ofs              int64
+	WithoutCount     bool
+	ConsolidateTaker bool
+	Ledgers          bool
+	RebaseMultiplier string
 }
 
 // TradesHistory type
@@ -410,20 +516,38 @@ type Position struct {
 	Terms          string     `json:"terms"`
 }
 
+// OpenPositionsRequest defines request params for open positions endpoint.
+type OpenPositionsRequest struct {
+	TransactionIDList []string
+	DoCalculations    bool
+	Consolidation     string
+	RebaseMultiplier  string
+}
+
 // GetLedgersOptions type
 type GetLedgersOptions struct {
-	Aclass string
-	Asset  string
-	Type   string
-	Start  string
-	End    string
-	Ofs    int64
+	Aclass           string
+	Asset            string
+	Type             string
+	Start            string
+	End              string
+	Ofs              int64
+	WithoutCount     bool
+	RebaseMultiplier string
 }
 
 // Ledgers type
 type Ledgers struct {
 	Ledger map[string]LedgerInfo `json:"ledger"`
 	Count  int64                 `json:"count"`
+}
+
+// QueryLedgersRequest defines request params for query ledgers endpoint.
+type QueryLedgersRequest struct {
+	ID               string
+	IDs              []string
+	Trades           bool
+	RebaseMultiplier string
 }
 
 // LedgerInfo type
@@ -444,6 +568,20 @@ type TradeVolumeResponse struct {
 	Volume    float64                   `json:"volume,string"`
 	Fees      map[string]TradeVolumeFee `json:"fees"`
 	FeesMaker map[string]TradeVolumeFee `json:"fees_maker"`
+}
+
+// QueryTradesRequest defines request params for query trades endpoint.
+type QueryTradesRequest struct {
+	TransactionID    string
+	TransactionIDs   []string
+	Trades           bool
+	RebaseMultiplier string
+}
+
+// GetTradeVolumeRequest defines request params for trade volume endpoint.
+type GetTradeVolumeRequest struct {
+	Pairs            []currency.Pair
+	RebaseMultiplier string
 }
 
 // TradeVolumeFee type
@@ -469,6 +607,22 @@ type WithdrawInformation struct {
 	Fee    float64 `json:"fee,string"`
 }
 
+// GetDepositMethodsRequest defines optional request params for deposit methods endpoint.
+type GetDepositMethodsRequest struct {
+	Asset            string
+	AssetClass       string
+	RebaseMultiplier string
+}
+
+// GetCryptoDepositAddressRequest defines optional request params for deposit addresses endpoint.
+type GetCryptoDepositAddressRequest struct {
+	Asset      string
+	Method     string
+	CreateNew  bool
+	AssetClass string
+	Amount     string
+}
+
 // DepositMethods Used to check deposit fees
 type DepositMethods struct {
 	Method          string  `json:"method"`
@@ -485,21 +639,706 @@ type OrderDescription struct {
 
 // AddOrderOptions represents the AddOrder options
 type AddOrderOptions struct {
-	UserRef        int32
-	OrderFlags     string
-	StartTm        string
-	ExpireTm       string
-	CloseOrderType string
-	ClosePrice     float64
-	ClosePrice2    float64
-	Validate       bool
-	TimeInForce    string
+	UserRef         int32
+	ClientOrderID   string
+	OrderFlags      string
+	StartTm         string
+	ExpireTm        string
+	AssetClass      string
+	DisplayVolume   float64
+	Trigger         string
+	ReduceOnly      bool
+	SelfTradePolicy string
+	CloseOrderType  string
+	ClosePrice      float64
+	ClosePrice2     float64
+	Validate        bool
+	TimeInForce     string
+	Deadline        string
 }
 
 // CancelOrderResponse type
 type CancelOrderResponse struct {
 	Count   int64 `json:"count"`
-	Pending any   `json:"pending"`
+	Pending bool  `json:"pending"`
+}
+
+// GroupedOrderBookRequest defines request params for GroupedBook endpoint.
+type GroupedOrderBookRequest struct {
+	Pair     currency.Pair
+	Depth    uint64
+	Grouping uint64
+}
+
+// GroupedOrderBookResponse defines grouped L2 orderbook data.
+type GroupedOrderBookResponse struct {
+	Pair     string                  `json:"pair"`
+	Grouping uint64                  `json:"grouping"`
+	Bids     []GroupedOrderBookEntry `json:"bids"`
+	Asks     []GroupedOrderBookEntry `json:"asks"`
+}
+
+// GroupedOrderBookEntry defines a grouped price level.
+type GroupedOrderBookEntry struct {
+	Price    types.Number `json:"price"`
+	Quantity types.Number `json:"qty"`
+}
+
+// QueryLevel3OrderBookRequest defines request params for Level3 endpoint.
+type QueryLevel3OrderBookRequest struct {
+	Pair  currency.Pair
+	Depth uint64
+}
+
+// QueryLevel3OrderBookResponse defines level 3 orderbook data.
+type QueryLevel3OrderBookResponse struct {
+	Pair string                 `json:"pair"`
+	Bids []Level3OrderBookEntry `json:"bids"`
+	Asks []Level3OrderBookEntry `json:"asks"`
+}
+
+// Level3OrderBookEntry defines a single level 3 orderbook entry.
+type Level3OrderBookEntry struct {
+	Price     types.Number `json:"price"`
+	Quantity  types.Number `json:"qty"`
+	OrderID   string       `json:"order_id"`
+	Timestamp int64        `json:"timestamp"`
+}
+
+// GetCreditLinesRequest defines request params for credit lines endpoint.
+type GetCreditLinesRequest struct {
+	RebaseMultiplier string
+}
+
+// GetCreditLinesResponse defines credit line and monitoring values.
+type GetCreditLinesResponse struct {
+	AssetDetails  map[string]CreditLineAssetDetails `json:"asset_details"`
+	LimitsMonitor CreditLineLimitsMonitor           `json:"limits_monitor"`
+}
+
+// CreditLineAssetDetails defines balance and credit details for an asset.
+type CreditLineAssetDetails struct {
+	Balance         types.Number `json:"balance"`
+	CreditLimit     types.Number `json:"credit_limit"`
+	CreditUsed      types.Number `json:"credit_used"`
+	AvailableCredit types.Number `json:"available_credit"`
+}
+
+// CreditLineLimitsMonitor defines account-wide credit monitoring values.
+type CreditLineLimitsMonitor struct {
+	TotalCreditUSD          *types.Number `json:"total_credit_usd"`
+	TotalCreditUsedUSD      *types.Number `json:"total_credit_used_usd"`
+	TotalCollateralValueUSD *types.Number `json:"total_collateral_value_usd"`
+	EquityUSD               *types.Number `json:"equity_usd"`
+	OngoingBalance          *types.Number `json:"ongoing_balance"`
+	DebtToEquity            *types.Number `json:"debt_to_equity"`
+}
+
+// GetOrderAmendsRequest defines request params for order amends endpoint.
+type GetOrderAmendsRequest struct {
+	OrderID          string
+	RebaseMultiplier string
+}
+
+// GetOrderAmendsResponse defines order amend history data.
+type GetOrderAmendsResponse struct {
+	Count  uint64       `json:"count"`
+	Amends []OrderAmend `json:"amends"`
+}
+
+// OrderAmend defines a single order amendment event.
+type OrderAmend struct {
+	AmendID       string       `json:"amend_id"`
+	AmendType     string       `json:"amend_type"`
+	OrderQuantity types.Number `json:"order_qty"`
+	DisplayVolume types.Number `json:"display_qty"`
+	RemainingQty  types.Number `json:"remaining_qty"`
+	LimitPrice    types.Number `json:"limit_price"`
+	TriggerPrice  types.Number `json:"trigger_price"`
+	Reason        string       `json:"reason"`
+	PostOnly      bool         `json:"post_only"`
+	Timestamp     int64        `json:"timestamp"`
+}
+
+// RequestExportReportRequest defines request params for creating an export report.
+type RequestExportReportRequest struct {
+	Report      string
+	Format      string
+	Description string
+	Fields      string
+	StartTime   int64
+	EndTime     int64
+}
+
+// RequestExportReportResponse defines an export report identifier.
+type RequestExportReportResponse struct {
+	ID string `json:"id"`
+}
+
+// GetExportReportStatusRequest defines request params for export status endpoint.
+type GetExportReportStatusRequest struct {
+	Report string
+}
+
+// ExportReportStatusResponse defines export report status details.
+type ExportReportStatusResponse struct {
+	ID            string `json:"id"`
+	Description   string `json:"descr"`
+	Format        string `json:"format"`
+	Report        string `json:"report"`
+	Subtype       string `json:"subtype"`
+	Status        string `json:"status"`
+	Flags         string `json:"flags"`
+	Fields        string `json:"fields"`
+	CreatedTime   string `json:"createdtm"`
+	ExpiryTime    string `json:"expiretm"`
+	StartTime     string `json:"starttm"`
+	CompletedTime string `json:"completedtm"`
+	DataStartTime string `json:"datastarttm"`
+	DataEndTime   string `json:"dataendtm"`
+	AssetClass    string `json:"aclass"`
+	Asset         string `json:"asset"`
+}
+
+// RetrieveDataExportRequest defines request params for data export retrieval.
+type RetrieveDataExportRequest struct {
+	ID string
+}
+
+// DeleteExportReportRequest defines request params for removing an export report.
+type DeleteExportReportRequest struct {
+	ID   string
+	Type string
+}
+
+// DeleteExportReportResponse defines export removal flags.
+type DeleteExportReportResponse struct {
+	Delete bool `json:"delete"`
+	Cancel bool `json:"cancel"`
+}
+
+// AmendOrderRequest defines request params for amending an open order.
+type AmendOrderRequest struct {
+	TransactionID   string
+	ClientOrderID   string
+	OrderQuantity   string
+	DisplayQuantity string
+	LimitPrice      string
+	TriggerPrice    string
+	Pair            string
+	PostOnly        bool
+	Deadline        string
+}
+
+// AmendOrderResponse defines an order amend identifier.
+type AmendOrderResponse struct {
+	AmendID string `json:"amend_id"`
+}
+
+// CancelAllOrdersAfterRequest defines request params for timed cancel-all.
+type CancelAllOrdersAfterRequest struct {
+	Timeout uint64
+}
+
+// CancelAllOrdersAfterResponse defines cancel-all trigger timing.
+type CancelAllOrdersAfterResponse struct {
+	CurrentTime string `json:"currentTime"`
+	TriggerTime string `json:"triggerTime"`
+}
+
+// AddOrderBatchRequest defines request params for batch order placement.
+type AddOrderBatchRequest struct {
+	Orders     []AddOrderBatchOrderRequest
+	Pair       string
+	AssetClass string
+	Deadline   string
+	Validate   bool
+}
+
+// AddOrderBatchOrderRequest defines a single batch order request.
+type AddOrderBatchOrderRequest struct {
+	UserReference   int32  `json:"userref,omitempty"`
+	ClientOrderID   string `json:"cl_ord_id,omitempty"`
+	OrderType       string `json:"ordertype,omitempty"`
+	OrderSide       string `json:"type,omitempty"`
+	Volume          string `json:"volume,omitempty"`
+	DisplayVolume   string `json:"displayvol,omitempty"`
+	Price           string `json:"price,omitempty"`
+	SecondaryPrice  string `json:"price2,omitempty"`
+	Trigger         string `json:"trigger,omitempty"`
+	Leverage        string `json:"leverage,omitempty"`
+	ReduceOnly      bool   `json:"reduce_only,omitempty"`
+	SelfTradePolicy string `json:"stptype,omitempty"`
+	OrderFlags      string `json:"oflags,omitempty"`
+	TimeInForce     string `json:"timeinforce,omitempty"`
+	StartTime       string `json:"starttm,omitempty"`
+	ExpireTime      string `json:"expiretm,omitempty"`
+}
+
+// AddOrderBatchResponse defines batch placement results.
+type AddOrderBatchResponse struct {
+	Orders []AddOrderBatchOrderResponse `json:"orders"`
+}
+
+// AddOrderBatchOrderResponse defines a single placed order response.
+type AddOrderBatchOrderResponse struct {
+	Description AddOrderBatchOrderDescription `json:"descr"`
+	Error       string                        `json:"error"`
+	Transaction string                        `json:"txid"`
+}
+
+// AddOrderBatchOrderDescription defines order description details.
+type AddOrderBatchOrderDescription struct {
+	Order string `json:"order"`
+}
+
+// CancelOrderBatchRequest defines request params for batch cancellation.
+type CancelOrderBatchRequest struct {
+	Orders      []CancelOrderBatchOrderRequest
+	ClientOrder []CancelOrderBatchClientOrderIDItem
+}
+
+// CancelOrderBatchOrderRequest defines a transaction-id batch cancel item.
+type CancelOrderBatchOrderRequest struct {
+	TransactionID string `json:"txid"`
+}
+
+// CancelOrderBatchClientOrderIDItem defines a client-order-id batch cancel item.
+type CancelOrderBatchClientOrderIDItem struct {
+	ClientOrderID string `json:"cl_ord_id"`
+}
+
+// CancelOrderBatchResponse defines batch cancellation totals.
+type CancelOrderBatchResponse struct {
+	Count uint64 `json:"count"`
+}
+
+// EditOrderRequest defines request params for editing an open order.
+type EditOrderRequest struct {
+	UserReference  int32
+	TransactionID  string
+	Volume         string
+	DisplayVolume  string
+	Pair           string
+	AssetClass     string
+	Price          string
+	SecondaryPrice string
+	OrderFlags     string
+	Deadline       string
+	CancelResponse bool
+	Validate       bool
+}
+
+// EditOrderResponse defines edit order response data.
+type EditOrderResponse struct {
+	Description           AddOrderBatchOrderDescription `json:"descr"`
+	TransactionID         string                        `json:"txid"`
+	NewUserReference      string                        `json:"newuserref"`
+	OldUserReference      string                        `json:"olduserref"`
+	OrdersCancelled       uint64                        `json:"orders_cancelled"`
+	OriginalTransactionID string                        `json:"originaltxid"`
+	Status                string                        `json:"status"`
+	Volume                types.Number                  `json:"volume"`
+	Price                 types.Number                  `json:"price"`
+	SecondaryPrice        types.Number                  `json:"price2"`
+	ErrorMessage          string                        `json:"error_message"`
+}
+
+// GetRecentDepositsStatusRequest defines request params for recent deposits status endpoint.
+type GetRecentDepositsStatusRequest struct {
+	Asset            string
+	AssetClass       string
+	Method           string
+	Start            string
+	End              string
+	Cursor           string
+	Limit            uint64
+	RebaseMultiplier string
+}
+
+// RecentDepositsStatusResponse defines recent deposit status response payload.
+type RecentDepositsStatusResponse struct {
+	Deposits   []RecentDepositStatus `json:"-"`
+	NextCursor string                `json:"-"`
+}
+
+// UnmarshalJSON unmarshals deposit status payload variants.
+func (r *RecentDepositsStatusResponse) UnmarshalJSON(data []byte) error {
+	var depositList []RecentDepositStatus
+	if err := json.Unmarshal(data, &depositList); err == nil {
+		r.Deposits = depositList
+		return nil
+	}
+
+	var singleDeposit RecentDepositStatus
+	if err := json.Unmarshal(data, &singleDeposit); err == nil && (singleDeposit.ReferenceID != "" || singleDeposit.TransactionID != "") {
+		r.Deposits = []RecentDepositStatus{singleDeposit}
+		return nil
+	}
+
+	var paginated struct {
+		Deposit    json.RawMessage `json:"deposit"`
+		NextCursor string          `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(data, &paginated); err != nil {
+		return err
+	}
+
+	r.NextCursor = paginated.NextCursor
+	if len(paginated.Deposit) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(paginated.Deposit, &depositList); err == nil {
+		r.Deposits = depositList
+		return nil
+	}
+
+	if err := json.Unmarshal(paginated.Deposit, &singleDeposit); err != nil {
+		return err
+	}
+	r.Deposits = []RecentDepositStatus{singleDeposit}
+	return nil
+}
+
+// RecentDepositStatus defines an individual deposit status.
+type RecentDepositStatus struct {
+	Method           string       `json:"method"`
+	AssetClass       string       `json:"aclass"`
+	Asset            string       `json:"asset"`
+	ReferenceID      string       `json:"refid"`
+	TransactionID    string       `json:"txid"`
+	Information      string       `json:"info"`
+	Amount           types.Number `json:"amount"`
+	Fee              types.Number `json:"fee"`
+	Time             types.Time   `json:"time"`
+	Status           string       `json:"status"`
+	StatusProperties string       `json:"status-prop"`
+	Originators      []string     `json:"originators"`
+}
+
+// GetWithdrawalMethodsRequest defines request params for withdrawal methods.
+type GetWithdrawalMethodsRequest struct {
+	Asset            string
+	AssetClass       string
+	Network          string
+	RebaseMultiplier string
+}
+
+// WithdrawalMethodResponse defines a withdrawal method entry.
+type WithdrawalMethodResponse struct {
+	Asset   string       `json:"asset"`
+	Method  string       `json:"method"`
+	Network string       `json:"network"`
+	Minimum types.Number `json:"minimum"`
+}
+
+// GetWithdrawalAddressesRequest defines request params for withdrawal addresses.
+type GetWithdrawalAddressesRequest struct {
+	Asset      string
+	AssetClass string
+	Method     string
+	Key        string
+	Verified   *bool
+}
+
+// WithdrawalAddressResponse defines a withdrawal address entry.
+type WithdrawalAddressResponse struct {
+	Address  string `json:"address"`
+	Asset    string `json:"asset"`
+	Method   string `json:"method"`
+	Key      string `json:"key"`
+	Tag      string `json:"tag"`
+	Verified bool   `json:"verified"`
+}
+
+// WalletTransferRequest defines request params for wallet transfer.
+type WalletTransferRequest struct {
+	Asset  string
+	From   string
+	To     string
+	Amount string
+}
+
+// WalletTransferResponse defines a wallet transfer reference.
+type WalletTransferResponse struct {
+	ReferenceID string `json:"refid"`
+}
+
+// CreateSubaccountRequest defines request params for subaccount creation.
+type CreateSubaccountRequest struct {
+	Username string
+	Email    string
+}
+
+// CreateSubaccountResponse defines subaccount creation result.
+type CreateSubaccountResponse struct {
+	Created bool
+}
+
+// UnmarshalJSON unmarshals subaccount creation bool responses.
+func (r *CreateSubaccountResponse) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &r.Created)
+}
+
+// AccountTransferRequest defines request params for account transfer.
+type AccountTransferRequest struct {
+	Asset      string
+	AssetClass string
+	Amount     string
+	From       string
+	To         string
+}
+
+// AccountTransferResponse defines account transfer response payload.
+type AccountTransferResponse struct {
+	TransferID string `json:"transfer_id"`
+	Status     string `json:"status"`
+}
+
+// AllocateEarnFundsRequest defines request params for earn allocation.
+type AllocateEarnFundsRequest struct {
+	Amount     string
+	StrategyID string
+}
+
+// AllocateEarnFundsResponse defines earn allocation response payload.
+type AllocateEarnFundsResponse struct {
+	Success *bool
+}
+
+// UnmarshalJSON unmarshals nullable allocation result values.
+func (r *AllocateEarnFundsResponse) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		r.Success = nil
+		return nil
+	}
+	var success bool
+	if err := json.Unmarshal(data, &success); err != nil {
+		return err
+	}
+	r.Success = &success
+	return nil
+}
+
+// DeallocateEarnFundsRequest defines request params for earn deallocation.
+type DeallocateEarnFundsRequest struct {
+	Amount     string
+	StrategyID string
+}
+
+// DeallocateEarnFundsResponse defines earn deallocation response payload.
+type DeallocateEarnFundsResponse struct {
+	Success *bool
+}
+
+// UnmarshalJSON unmarshals nullable deallocation result values.
+func (r *DeallocateEarnFundsResponse) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		r.Success = nil
+		return nil
+	}
+	var success bool
+	if err := json.Unmarshal(data, &success); err != nil {
+		return err
+	}
+	r.Success = &success
+	return nil
+}
+
+// EarnOperationStatusRequest defines request params for earn operation status endpoints.
+type EarnOperationStatusRequest struct {
+	StrategyID string
+}
+
+// EarnOperationStatusResponse defines earn operation status payload.
+type EarnOperationStatusResponse struct {
+	Pending bool `json:"pending"`
+}
+
+// ListEarnStrategiesRequest defines request params for earn strategies endpoint.
+type ListEarnStrategiesRequest struct {
+	Ascending *bool
+	Asset     string
+	Cursor    string
+	Limit     uint64
+	LockType  []string
+}
+
+// ListEarnStrategiesResponse defines earn strategies response payload.
+type ListEarnStrategiesResponse struct {
+	Items      []EarnStrategy `json:"items"`
+	NextCursor string         `json:"next_cursor"`
+}
+
+// EarnStrategy defines a single earn strategy.
+type EarnStrategy struct {
+	ID                        string                   `json:"id"`
+	Asset                     string                   `json:"asset"`
+	LockType                  EarnStrategyLockType     `json:"lock_type"`
+	APREstimate               *EarnStrategyAPR         `json:"apr_estimate"`
+	UserCap                   *types.Number            `json:"user_cap"`
+	UserMinimumAllocation     *types.Number            `json:"user_min_allocation"`
+	AllocationFee             types.Number             `json:"allocation_fee"`
+	DeallocationFee           types.Number             `json:"deallocation_fee"`
+	AutoCompound              EarnStrategyAutoCompound `json:"auto_compound"`
+	YieldSource               EarnStrategyYieldSource  `json:"yield_source"`
+	CanAllocate               bool                     `json:"can_allocate"`
+	CanDeallocate             bool                     `json:"can_deallocate"`
+	AllocationRestrictionInfo []string                 `json:"allocation_restriction_info"`
+}
+
+// EarnStrategyAPR defines APR range metadata for a strategy.
+type EarnStrategyAPR struct {
+	Low  string `json:"low"`
+	High string `json:"high"`
+}
+
+// EarnStrategyLockType defines strategy locking model metadata.
+type EarnStrategyLockType struct {
+	Type                    string `json:"type"`
+	BondingPeriod           uint64 `json:"bonding_period"`
+	BondingPeriodVariable   bool   `json:"bonding_period_variable"`
+	BondingRewards          bool   `json:"bonding_rewards"`
+	ExitQueuePeriod         uint64 `json:"exit_queue_period"`
+	PayoutFrequency         uint64 `json:"payout_frequency"`
+	UnbondingPeriod         uint64 `json:"unbonding_period"`
+	UnbondingPeriodVariable bool   `json:"unbonding_period_variable"`
+	UnbondingRewards        bool   `json:"unbonding_rewards"`
+}
+
+// EarnStrategyAutoCompound defines auto-compounding behavior.
+type EarnStrategyAutoCompound struct {
+	Type    string `json:"type"`
+	Default bool   `json:"default"`
+}
+
+// EarnStrategyYieldSource defines strategy yield source metadata.
+type EarnStrategyYieldSource struct {
+	Type string `json:"type"`
+}
+
+// ListEarnAllocationsRequest defines request params for earn allocations endpoint.
+type ListEarnAllocationsRequest struct {
+	Ascending           *bool
+	ConvertedAsset      string
+	HideZeroAllocations *bool
+}
+
+// ListEarnAllocationsResponse defines earn allocations response payload.
+type ListEarnAllocationsResponse struct {
+	ConvertedAsset string           `json:"converted_asset"`
+	TotalAllocated types.Number     `json:"total_allocated"`
+	TotalRewarded  types.Number     `json:"total_rewarded"`
+	Items          []EarnAllocation `json:"items"`
+}
+
+// EarnAllocation defines allocation data for a strategy.
+type EarnAllocation struct {
+	StrategyID      string                `json:"strategy_id"`
+	NativeAsset     string                `json:"native_asset"`
+	AmountAllocated EarnAllocationAmount  `json:"amount_allocated"`
+	TotalRewarded   EarnAllocationReward  `json:"total_rewarded"`
+	Payout          *EarnAllocationPayout `json:"payout"`
+}
+
+// EarnAllocationAmount defines allocation amounts by state.
+type EarnAllocationAmount struct {
+	Bonding   *EarnAllocationAmountState `json:"bonding"`
+	ExitQueue *EarnAllocationAmountState `json:"exit_queue"`
+	Pending   *EarnAllocationAmountState `json:"pending"`
+	Total     EarnAllocationAmountState  `json:"total"`
+	Unbonding *EarnAllocationAmountState `json:"unbonding"`
+}
+
+// EarnAllocationAmountState defines allocation state amounts and details.
+type EarnAllocationAmountState struct {
+	Native          types.Number           `json:"native"`
+	Converted       types.Number           `json:"converted"`
+	AllocationCount uint64                 `json:"allocation_count,omitempty"`
+	Allocations     []EarnAllocationDetail `json:"allocations,omitempty"`
+}
+
+// EarnAllocationDetail defines a granular allocation event.
+type EarnAllocationDetail struct {
+	Native    types.Number `json:"native"`
+	Converted types.Number `json:"converted"`
+	CreatedAt time.Time    `json:"created_at"`
+	Expires   time.Time    `json:"expires"`
+}
+
+// EarnAllocationPayout defines payout period reward details.
+type EarnAllocationPayout struct {
+	AccumulatedReward EarnAllocationReward `json:"accumulated_reward"`
+	EstimatedReward   EarnAllocationReward `json:"estimated_reward"`
+	PeriodStart       time.Time            `json:"period_start"`
+	PeriodEnd         time.Time            `json:"period_end"`
+}
+
+// EarnAllocationReward defines native and converted reward values.
+type EarnAllocationReward struct {
+	Native    types.Number `json:"native"`
+	Converted types.Number `json:"converted"`
+}
+
+// GetPreTradeDataRequest defines request params for pre-trade transparency endpoint.
+type GetPreTradeDataRequest struct {
+	Symbol string
+}
+
+// GetPreTradeDataResponse defines pre-trade transparency response payload.
+type GetPreTradeDataResponse struct {
+	Symbol        string              `json:"symbol"`
+	Description   string              `json:"description"`
+	BaseAsset     string              `json:"base_asset"`
+	BaseNotation  string              `json:"base_notation"`
+	QuoteAsset    string              `json:"quote_asset"`
+	QuoteNotation string              `json:"quote_notation"`
+	Venue         string              `json:"venue"`
+	System        string              `json:"system"`
+	Bids          []PreTradeBookLevel `json:"bids"`
+	Asks          []PreTradeBookLevel `json:"asks"`
+}
+
+// PreTradeBookLevel defines a pre-trade transparency orderbook level.
+type PreTradeBookLevel struct {
+	Side                 string       `json:"side"`
+	Price                types.Number `json:"price"`
+	Quantity             types.Number `json:"qty"`
+	Count                uint64       `json:"count"`
+	PublicationTimestamp time.Time    `json:"publication_ts"`
+}
+
+// GetPostTradeDataRequest defines request params for post-trade transparency endpoint.
+type GetPostTradeDataRequest struct {
+	Symbol        string
+	FromTimestamp time.Time
+	ToTimestamp   time.Time
+	Count         uint64
+}
+
+// GetPostTradeDataResponse defines post-trade transparency response payload.
+type GetPostTradeDataResponse struct {
+	LastTimestamp time.Time       `json:"last_ts"`
+	Count         uint64          `json:"count"`
+	Trades        []PostTradeData `json:"trades"`
+}
+
+// PostTradeData defines a post-trade transparency trade record.
+type PostTradeData struct {
+	TradeID              string       `json:"trade_id"`
+	Price                types.Number `json:"price"`
+	Quantity             types.Number `json:"quantity"`
+	Symbol               string       `json:"symbol"`
+	Description          string       `json:"description"`
+	BaseAsset            string       `json:"base_asset"`
+	BaseNotation         string       `json:"base_notation"`
+	QuoteAsset           string       `json:"quote_asset"`
+	QuoteNotation        string       `json:"quote_notation"`
+	TradeVenue           string       `json:"trade_venue"`
+	TradeTimestamp       time.Time    `json:"trade_ts"`
+	PublicationVenue     string       `json:"publication_venue"`
+	PublicationTimestamp time.Time    `json:"publication_ts"`
 }
 
 // DepositFees the large list of predefined deposit fees
@@ -559,6 +1398,34 @@ type WithdrawStatusResponse struct {
 	Fee    float64    `json:"fee,string"`
 	Time   types.Time `json:"time"`
 	Status string     `json:"status"`
+}
+
+// WithdrawStatusRequest defines optional request params for withdrawal status endpoint.
+type WithdrawStatusRequest struct {
+	Asset            currency.Code
+	Method           string
+	AssetClass       string
+	Start            string
+	End              string
+	Cursor           string
+	Limit            uint64
+	RebaseMultiplier string
+}
+
+// WithdrawRequest defines optional request params for withdraw funds endpoint.
+type WithdrawRequest struct {
+	Asset            string
+	Key              string
+	Amount           float64
+	AssetClass       string
+	Address          string
+	MaxFee           string
+	RebaseMultiplier string
+}
+
+// WithdrawResponse defines response params for withdraw funds endpoint.
+type WithdrawResponse struct {
+	ReferenceID string `json:"refid"`
 }
 
 // WebsocketSubRequest contains request data for Subscribe/Unsubscribe to channels
