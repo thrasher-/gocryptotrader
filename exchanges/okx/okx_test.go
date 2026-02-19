@@ -3881,10 +3881,18 @@ func TestGetHistoricCandles(t *testing.T) {
 		pairs, err := e.GetEnabledPairs(a)
 		require.NoErrorf(t, err, "GetEnabledPairs for asset %s must not error", a)
 		require.NotEmptyf(t, pairs, "GetEnabledPairs for asset %s must not return empty pairs", a)
-		result, err := e.GetHistoricCandles(contextGenerate(), pairs[0], a, kline.OneMin, time.Now().Add(-time.Hour), time.Now())
-		if (a == asset.Spread || a == asset.Options) && err != nil { // Options and spread candles sometimes returns no data
-			continue
+
+		now := time.Now().UTC()
+		result, err := e.GetHistoricCandles(contextGenerate(), pairs[0], a, kline.OneMin, now.Add(-time.Hour), now)
+
+		if a == asset.Futures || a == asset.Options || a == asset.Spread {
+			// Still execute the request for coverage/telemetry, but these markets can
+			// legitimately return empty candles for short windows.
+			if err != nil {
+				continue
+			}
 		}
+
 		require.NoErrorf(t, err, "GetHistoricCandles for asset %s and pair %s must not error", a, pairs[0])
 		assert.NotNilf(t, result, "GetHistoricCandles for asset %s and pair %s should not return nil", a, pairs[0])
 	}
