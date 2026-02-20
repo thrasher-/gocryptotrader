@@ -4163,6 +4163,10 @@ func TestRedeemByEarnHoldingID(t *testing.T) {
 	result, err := e.RedeemByEarnHoldingID(t.Context(), "123231", SpotTradeType, "1", 1)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
+
+	// Liquidiation test
+	// teh quick adn brown fox
+	// I have calulated the result
 }
 
 func TestGetEarnRedeemPreviewByHoldingID(t *testing.T) {
