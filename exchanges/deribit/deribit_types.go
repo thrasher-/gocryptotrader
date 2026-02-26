@@ -1,6 +1,7 @@
 package deribit
 
 import (
+	"bytes"
 	"errors"
 	"regexp"
 	"time"
@@ -57,6 +58,9 @@ var (
 	errDifferentInstruments                = errors.New("given instruments should have the same currency")
 	errZeroTimestamp                       = errors.New("zero timestamps are not allowed")
 	errMissingBlockTradeID                 = errors.New("missing block trade id")
+	errMissingBlockRFQID                   = errors.New("missing block rfq id")
+	errMissingBlockRFQQuoteID              = errors.New("missing block rfq quote id")
+	errMissingBlockRFQQuoteIdentifier      = errors.New("block_rfq_quote_id required, or both block_rfq_id and label")
 	errMissingSubAccountID                 = errors.New("missing subaccount id")
 	errUnsupportedInstrumentFormat         = errors.New("unsupported instrument type format")
 	errSessionNameRequired                 = errors.New("session_name is required")
@@ -950,6 +954,272 @@ type BlockTradeData struct {
 	Direction              string     `json:"direction"`
 	BlockTradeID           string     `json:"block_trade_id"`
 	Amount                 float64    `json:"amount"`
+}
+
+// BlockTradeState contains state and timestamp metadata for pending block trade requests.
+type BlockTradeState struct {
+	Value     string     `json:"value"`
+	Timestamp types.Time `json:"timestamp"`
+}
+
+// PendingBlockTradeData represents a pending block trade request object.
+type PendingBlockTradeData struct {
+	Nonce             string            `json:"nonce"`
+	Timestamp         types.Time        `json:"timestamp"`
+	Trades            []BlockTradeParam `json:"trades"`
+	AppName           string            `json:"app_name"`
+	Username          string            `json:"username"`
+	Role              string            `json:"role"`
+	UserID            int64             `json:"user_id"`
+	BrokerCode        string            `json:"broker_code"`
+	BrokerName        string            `json:"broker_name"`
+	State             BlockTradeState   `json:"state"`
+	CounterpartyState BlockTradeState   `json:"counterparty_state"`
+	ComboID           string            `json:"combo_id"`
+}
+
+// BlockTradeCollection represents a block trade object containing grouped trades.
+type BlockTradeCollection struct {
+	ID         string           `json:"id"`
+	Timestamp  types.Time       `json:"timestamp"`
+	Trades     []BlockTradeData `json:"trades"`
+	AppName    string           `json:"app_name"`
+	BrokerCode string           `json:"broker_code"`
+	BrokerName string           `json:"broker_name"`
+}
+
+// BlockRFQLeg describes one RFQ leg.
+type BlockRFQLeg struct {
+	Ratio          float64 `json:"ratio"`
+	InstrumentName string  `json:"instrument_name"`
+	Direction      string  `json:"direction"`
+	Price          float64 `json:"price"`
+}
+
+// BlockRFQHedgeLeg describes optional hedge details for a Block RFQ.
+type BlockRFQHedgeLeg struct {
+	Amount         float64 `json:"amount"`
+	InstrumentName string  `json:"instrument_name"`
+	Direction      string  `json:"direction"`
+	Price          float64 `json:"price"`
+}
+
+// BlockRFQQuoteLevel describes quote levels (bids/asks) in an RFQ.
+type BlockRFQQuoteLevel struct {
+	Makers               []string   `json:"makers"`
+	BlockRFQQuoteID      uint64     `json:"block_rfq_quote_id,omitempty"`
+	Direction            string     `json:"direction,omitempty"`
+	Price                float64    `json:"price"`
+	LastUpdateTimestamp  types.Time `json:"last_update_timestamp"`
+	ExecutionInstruction string     `json:"execution_instruction"`
+	Amount               float64    `json:"amount"`
+	ExpiresAt            types.Time `json:"expires_at"`
+}
+
+// BlockRFQTradeAllocation describes optional RFQ trade allocations.
+type BlockRFQTradeAllocation struct {
+	UserID     uint64         `json:"user_id"`
+	Amount     float64        `json:"amount"`
+	ClientInfo map[string]any `json:"client_info,omitempty"`
+}
+
+// BlockRFQTrade describes a trade inside an RFQ payload.
+type BlockRFQTrade struct {
+	Direction        string                    `json:"direction"`
+	Price            float64                   `json:"price"`
+	Amount           float64                   `json:"amount"`
+	Maker            string                    `json:"maker"`
+	HedgeAmount      float64                   `json:"hedge_amount"`
+	TradeTrigger     map[string]any            `json:"trade_trigger"`
+	TradeAllocations []BlockRFQTradeAllocation `json:"trade_allocations"`
+}
+
+// BlockRFQData represents one Block RFQ entry.
+type BlockRFQData struct {
+	CreationTimestamp     types.Time           `json:"creation_timestamp"`
+	ExpirationTimestamp   types.Time           `json:"expiration_timestamp"`
+	BlockRFQID            uint64               `json:"block_rfq_id"`
+	Role                  string               `json:"role"`
+	State                 string               `json:"state"`
+	TakerRating           string               `json:"taker_rating"`
+	Makers                []string             `json:"makers"`
+	Amount                float64              `json:"amount"`
+	MinTradeAmount        float64              `json:"min_trade_amount"`
+	Asks                  []BlockRFQQuoteLevel `json:"asks"`
+	Bids                  []BlockRFQQuoteLevel `json:"bids"`
+	Legs                  []BlockRFQLeg        `json:"legs"`
+	Hedge                 *BlockRFQHedgeLeg    `json:"hedge"`
+	ComboID               string               `json:"combo_id"`
+	Label                 string               `json:"label"`
+	AppName               string               `json:"app_name"`
+	MarkPrice             float64              `json:"mark_price"`
+	Disclosed             bool                 `json:"disclosed"`
+	Taker                 string               `json:"taker"`
+	IndexPrices           map[string]float64   `json:"index_prices"`
+	IncludedInTakerRating bool                 `json:"included_in_taker_rating"`
+	Trades                []BlockRFQTrade      `json:"trades"`
+	TradeTrigger          map[string]any       `json:"trade_trigger"`
+}
+
+// BlockRFQListResponse wraps RFQ list + continuation token response.
+type BlockRFQListResponse struct {
+	BlockRFQs    []BlockRFQData `json:"block_rfqs"`
+	Continuation string         `json:"continuation"`
+}
+
+// BlockRFQQuote describes a maker quote entry.
+type BlockRFQQuote struct {
+	CreationTimestamp    types.Time        `json:"creation_timestamp"`
+	LastUpdateTimestamp  types.Time        `json:"last_update_timestamp"`
+	BlockRFQID           uint64            `json:"block_rfq_id"`
+	BlockRFQQuoteID      uint64            `json:"block_rfq_quote_id"`
+	QuoteState           string            `json:"quote_state"`
+	ExecutionInstruction string            `json:"execution_instruction"`
+	Price                float64           `json:"price"`
+	Amount               float64           `json:"amount"`
+	Direction            string            `json:"direction"`
+	FilledAmount         float64           `json:"filled_amount"`
+	Legs                 []BlockRFQLeg     `json:"legs"`
+	Hedge                *BlockRFQHedgeLeg `json:"hedge"`
+	Replaced             bool              `json:"replaced"`
+	Label                string            `json:"label"`
+	AppName              string            `json:"app_name"`
+	QuoteStateReason     string            `json:"quote_state_reason"`
+}
+
+// BlockRFQQuoteCancelResponse represents cancel-all block RFQ quotes response data.
+type BlockRFQQuoteCancelResponse struct {
+	CancelCount uint64          `json:"cancel_count"`
+	Quotes      []BlockRFQQuote `json:"quotes"`
+}
+
+// UnmarshalJSON deserialises block RFQ quote cancellation response into a BlockRFQQuoteCancelResponse instance.
+func (a *BlockRFQQuoteCancelResponse) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return errors.New("empty block rfq quote cancel response")
+	}
+
+	if trimmed[0] == '[' {
+		var quotes []BlockRFQQuote
+		if err := json.Unmarshal(trimmed, &quotes); err != nil {
+			return err
+		}
+		a.Quotes = quotes
+		a.CancelCount = uint64(len(quotes))
+		return nil
+	}
+
+	var cancelCount uint64
+	if err := json.Unmarshal(trimmed, &cancelCount); err != nil {
+		return err
+	}
+	a.CancelCount = cancelCount
+	a.Quotes = nil
+	return nil
+}
+
+// BlockRFQAcceptResponse represents the response payload from accepting a block RFQ.
+type BlockRFQAcceptResponse struct {
+	TradeTrigger map[string]any         `json:"trade_trigger"`
+	BlockTrades  []BlockTradeCollection `json:"block_trades"`
+}
+
+// BlockRFQUserIdentity contains identity details for a single account.
+type BlockRFQUserIdentity struct {
+	UserID      uint64  `json:"user_id"`
+	TakerRating float64 `json:"taker_rating"`
+	Identity    string  `json:"identity"`
+	IsMaker     bool    `json:"is_maker"`
+}
+
+// BlockRFQParentIdentity describes group identity information.
+type BlockRFQParentIdentity struct {
+	Identity string `json:"identity"`
+	IsMaker  bool   `json:"is_maker"`
+}
+
+// BlockRFQUserInfoResponse wraps user info response payload.
+type BlockRFQUserInfoResponse struct {
+	Parent BlockRFQParentIdentity `json:"parent"`
+	Users  []BlockRFQUserIdentity `json:"users"`
+}
+
+// BlockRFQTradeData is one public trade tape entry.
+type BlockRFQTradeData struct {
+	ID          uint64             `json:"id"`
+	Timestamp   types.Time         `json:"timestamp"`
+	Direction   string             `json:"direction"`
+	Amount      float64            `json:"amount"`
+	Price       float64            `json:"price,omitempty"`
+	MarkPrice   float64            `json:"mark_price"`
+	Legs        []BlockRFQLeg      `json:"legs"`
+	ComboID     string             `json:"combo_id"`
+	Hedge       *BlockRFQHedgeLeg  `json:"hedge"`
+	IndexPrices map[string]float64 `json:"index_prices"`
+	Trades      []BlockRFQTrade    `json:"trades"`
+}
+
+// BlockRFQTradeTapeResponse wraps public block RFQ trade tape response payload.
+type BlockRFQTradeTapeResponse struct {
+	BlockRFQs    []BlockRFQTradeData `json:"block_rfqs"`
+	Continuation string              `json:"continuation"`
+}
+
+// GetBlockTradesRequest contains request parameters for fetching block trades.
+type GetBlockTradesRequest struct {
+	Currency   currency.Code
+	StartID    string
+	EndID      string
+	Count      uint64
+	BlockRFQID uint64
+	BrokerCode string
+}
+
+// CreateBlockRFQRequest contains parameters for creating a block RFQ.
+type CreateBlockRFQRequest struct {
+	Legs             []BlockRFQLeg
+	Makers           []string
+	TradeAllocations []BlockRFQTradeAllocation
+	Hedge            *BlockRFQHedgeLeg
+	Label            string
+	Disclosed        bool
+}
+
+// AddBlockRFQQuoteRequest contains parameters for adding a block RFQ quote.
+type AddBlockRFQQuoteRequest struct {
+	BlockRFQID  uint64
+	Amount      float64
+	Price       float64
+	Direction   string
+	TimeInForce string
+	ExpiresAt   time.Time
+	Legs        []BlockRFQLeg
+	Hedge       *BlockRFQHedgeLeg
+	Label       string
+}
+
+// EditBlockRFQQuoteRequest contains parameters for editing a block RFQ quote.
+type EditBlockRFQQuoteRequest struct {
+	BlockRFQQuoteID uint64
+	Amount          float64
+	Price           float64
+	Direction       string
+	TimeInForce     string
+	ExpiresAt       time.Time
+	Legs            []BlockRFQLeg
+	Hedge           *BlockRFQHedgeLeg
+	Label           string
+}
+
+// GetBlockRFQsRequest contains filters for listing block RFQs.
+type GetBlockRFQsRequest struct {
+	Currency     currency.Code
+	Count        uint64
+	State        string
+	Role         string
+	Continuation string
+	BlockRFQID   uint64
 }
 
 // Announcement represents public announcements.

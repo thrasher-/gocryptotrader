@@ -3033,6 +3033,401 @@ func TestWSRetrieveUserBlockTrade(t *testing.T) {
 	assert.NotNil(t, result)
 }
 
+func TestGetBlockTradeRequests(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockTradeRequests(t.Context(), "")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockTradeRequests(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockTradeRequests(t.Context(), "")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestApproveBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.ApproveBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.ApproveBlockTrade(t.Context(), time.Time{}, "nonce", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	err = e.ApproveBlockTrade(t.Context(), time.Now(), "nonce", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	err = e.ApproveBlockTrade(t.Context(), time.Now(), "nonce", roleMaker)
+	assert.NoError(t, err)
+}
+
+func TestWSApproveBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.WSApproveBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.WSApproveBlockTrade(t.Context(), time.Time{}, "nonce", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	err = e.WSApproveBlockTrade(t.Context(), time.Now(), "nonce", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	err = e.WSApproveBlockTrade(t.Context(), time.Now(), "nonce", roleMaker)
+	assert.NoError(t, err)
+}
+
+func TestRejectBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.RejectBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.RejectBlockTrade(t.Context(), time.Time{}, "nonce", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	err = e.RejectBlockTrade(t.Context(), time.Now(), "nonce", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	err = e.RejectBlockTrade(t.Context(), time.Now(), "nonce", roleMaker)
+	assert.NoError(t, err)
+}
+
+func TestWSRejectBlockTrade(t *testing.T) {
+	t.Parallel()
+	err := e.WSRejectBlockTrade(t.Context(), time.Now(), "", roleMaker)
+	require.ErrorIs(t, err, errMissingNonce)
+	err = e.WSRejectBlockTrade(t.Context(), time.Time{}, "nonce", roleMaker)
+	require.ErrorIs(t, err, errZeroTimestamp)
+	err = e.WSRejectBlockTrade(t.Context(), time.Now(), "nonce", "")
+	require.ErrorIs(t, err, errInvalidTradeRole)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	err = e.WSRejectBlockTrade(t.Context(), time.Now(), "nonce", roleMaker)
+	assert.NoError(t, err)
+}
+
+func TestGetBlockTrades(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockTrades(t.Context(), &GetBlockTradesRequest{Count: 5})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockTrades(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockTrades(t.Context(), &GetBlockTradesRequest{Count: 5})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func blockRFQTestLegs() []BlockRFQLeg {
+	return []BlockRFQLeg{
+		{
+			Ratio:          1,
+			InstrumentName: btcPerpInstrument,
+			Direction:      order.Buy.Lower(),
+			Price:          0.777 * 25000,
+		},
+	}
+}
+
+func TestBlockRFQQuoteCancelResponseUnmarshalCount(t *testing.T) {
+	t.Parallel()
+	var response BlockRFQQuoteCancelResponse
+	err := json.Unmarshal([]byte(`7`), &response)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), response.CancelCount)
+	require.Empty(t, response.Quotes)
+}
+
+func TestBlockRFQQuoteCancelResponseUnmarshalQuotes(t *testing.T) {
+	t.Parallel()
+	var response BlockRFQQuoteCancelResponse
+	err := json.Unmarshal([]byte(`[{"block_rfq_quote_id": 42, "block_rfq_id": 21}]`), &response)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), response.CancelCount)
+	require.Len(t, response.Quotes, 1)
+	require.Equal(t, uint64(42), response.Quotes[0].BlockRFQQuoteID)
+	require.Equal(t, uint64(21), response.Quotes[0].BlockRFQID)
+}
+
+func TestCreateBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.CreateBlockRFQ(t.Context(), nil)
+	require.ErrorIs(t, err, errNoArgumentPassed)
+	_, err = e.CreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: []BlockRFQLeg{{Ratio: 1, Direction: order.Buy.Lower(), Price: 100}}})
+	require.ErrorIs(t, err, errInvalidInstrumentName)
+	_, err = e.CreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: blockRFQTestLegs(), TradeAllocations: []BlockRFQTradeAllocation{{UserID: 0, Amount: 1}}})
+	require.ErrorIs(t, err, errUserIDRequired)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	result, err := e.CreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: blockRFQTestLegs(), Label: "gct-block-rfq-test"})
+	if err == nil {
+		assert.NotNil(t, result)
+	}
+}
+
+func TestWSCreateBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSCreateBlockRFQ(t.Context(), nil)
+	require.ErrorIs(t, err, errNoArgumentPassed)
+	_, err = e.WSCreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: []BlockRFQLeg{{Ratio: 1, Direction: order.Buy.Lower(), Price: 100}}})
+	require.ErrorIs(t, err, errInvalidInstrumentName)
+	_, err = e.WSCreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: blockRFQTestLegs(), TradeAllocations: []BlockRFQTradeAllocation{{UserID: 0, Amount: 1}}})
+	require.ErrorIs(t, err, errUserIDRequired)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	result, err := e.WSCreateBlockRFQ(t.Context(), &CreateBlockRFQRequest{Legs: blockRFQTestLegs(), Label: "gct-block-rfq-test"})
+	if err == nil {
+		assert.NotNil(t, result)
+	}
+}
+
+func TestAddBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.AddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 0, Amount: 1, Price: 10, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+	_, err = e.AddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1, Amount: 1, Price: 10, Direction: "sideways"})
+	require.ErrorIs(t, err, errInvalidOrderSideOrDirection)
+	_, err = e.AddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1, Amount: 1, Price: -1, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errInvalidPrice)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.AddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1 << 62, Amount: 1, Price: 10, Direction: order.Buy.Lower(), Label: "gct-block-rfq-quote"})
+	assert.NoError(t, err)
+}
+
+func TestWSAddBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSAddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 0, Amount: 1, Price: 10, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+	_, err = e.WSAddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1, Amount: 1, Price: 10, Direction: "sideways"})
+	require.ErrorIs(t, err, errInvalidOrderSideOrDirection)
+	_, err = e.WSAddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1, Amount: 1, Price: -1, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errInvalidPrice)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSAddBlockRFQQuote(t.Context(), &AddBlockRFQQuoteRequest{BlockRFQID: 1 << 62, Amount: 1, Price: 10, Direction: order.Buy.Lower(), Label: "gct-block-rfq-quote"})
+	assert.NoError(t, err)
+}
+
+func TestEditBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.EditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 0, Amount: 1, Price: 10, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errMissingBlockRFQQuoteID)
+	_, err = e.EditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1, Amount: 1, Price: 10, Direction: "sideways"})
+	require.ErrorIs(t, err, errInvalidOrderSideOrDirection)
+	_, err = e.EditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1, Amount: 1, Price: -1, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errInvalidPrice)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.EditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1 << 62, Amount: 1, Price: 10, Direction: order.Buy.Lower(), Label: "gct-block-rfq-quote"})
+	assert.NoError(t, err)
+}
+
+func TestWSEditBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSEditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 0, Amount: 1, Price: 10, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errMissingBlockRFQQuoteID)
+	_, err = e.WSEditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1, Amount: 1, Price: 10, Direction: "sideways"})
+	require.ErrorIs(t, err, errInvalidOrderSideOrDirection)
+	_, err = e.WSEditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1, Amount: 1, Price: -1, Direction: order.Buy.Lower()})
+	require.ErrorIs(t, err, errInvalidPrice)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSEditBlockRFQQuote(t.Context(), &EditBlockRFQQuoteRequest{BlockRFQQuoteID: 1 << 62, Amount: 1, Price: 10, Direction: order.Buy.Lower(), Label: "gct-block-rfq-quote"})
+	assert.NoError(t, err)
+}
+
+func TestCancelBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.CancelBlockRFQQuote(t.Context(), 0, 0, "")
+	require.ErrorIs(t, err, errMissingBlockRFQQuoteIdentifier)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.CancelBlockRFQQuote(t.Context(), 1<<62, 0, "")
+	assert.NoError(t, err)
+}
+
+func TestWSCancelBlockRFQQuote(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSCancelBlockRFQQuote(t.Context(), 0, 0, "")
+	require.ErrorIs(t, err, errMissingBlockRFQQuoteIdentifier)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSCancelBlockRFQQuote(t.Context(), 1<<62, 0, "")
+	assert.NoError(t, err)
+}
+
+func TestCancelAllBlockRFQQuotes(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	result, err := e.CancelAllBlockRFQQuotes(t.Context(), 0, false)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSCancelAllBlockRFQQuotes(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	result, err := e.WSCancelAllBlockRFQQuotes(t.Context(), 0, false)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestCancelBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.CancelBlockRFQ(t.Context(), 0)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.CancelBlockRFQ(t.Context(), 1<<62)
+	assert.NoError(t, err)
+}
+
+func TestWSCancelBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSCancelBlockRFQ(t.Context(), 0)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSCancelBlockRFQ(t.Context(), 1<<62)
+	assert.NoError(t, err)
+}
+
+func TestCancelBlockRFQTrigger(t *testing.T) {
+	t.Parallel()
+	_, err := e.CancelBlockRFQTrigger(t.Context(), 0)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.CancelBlockRFQTrigger(t.Context(), 1<<62)
+	assert.NoError(t, err)
+}
+
+func TestWSCancelBlockRFQTrigger(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSCancelBlockRFQTrigger(t.Context(), 0)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSCancelBlockRFQTrigger(t.Context(), 1<<62)
+	assert.NoError(t, err)
+}
+
+func TestAcceptBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.AcceptBlockRFQ(t.Context(), 0, 0, nil)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+	_, err = e.AcceptBlockRFQ(t.Context(), 1, -1, nil)
+	require.ErrorIs(t, err, errInvalidAmount)
+	_, err = e.AcceptBlockRFQ(t.Context(), 1, 1, []BlockRFQTradeAllocation{{UserID: 0, Amount: 1}})
+	require.ErrorIs(t, err, errUserIDRequired)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.AcceptBlockRFQ(t.Context(), 1<<62, 1, nil)
+	assert.NoError(t, err)
+}
+
+func TestWSAcceptBlockRFQ(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSAcceptBlockRFQ(t.Context(), 0, 0, nil)
+	require.ErrorIs(t, err, errMissingBlockRFQID)
+	_, err = e.WSAcceptBlockRFQ(t.Context(), 1, -1, nil)
+	require.ErrorIs(t, err, errInvalidAmount)
+	_, err = e.WSAcceptBlockRFQ(t.Context(), 1, 1, []BlockRFQTradeAllocation{{UserID: 0, Amount: 1}})
+	require.ErrorIs(t, err, errUserIDRequired)
+
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	_, err = e.WSAcceptBlockRFQ(t.Context(), 1<<62, 1, nil)
+	assert.NoError(t, err)
+}
+
+func TestGetBlockRFQs(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockRFQs(t.Context(), &GetBlockRFQsRequest{Count: 10})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockRFQs(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockRFQs(t.Context(), &GetBlockRFQsRequest{Count: 10})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestGetBlockRFQQuotes(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockRFQQuotes(t.Context(), 0, 0, "")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockRFQQuotes(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockRFQQuotes(t.Context(), 0, 0, "")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestGetBlockRFQMakers(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockRFQMakers(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockRFQMakers(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockRFQMakers(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestGetBlockRFQUserInfo(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetBlockRFQUserInfo(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockRFQUserInfo(t *testing.T) {
+	t.Parallel()
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.WSRetrieveBlockRFQUserInfo(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestGetBlockRFQTrades(t *testing.T) {
+	t.Parallel()
+	_, err := e.GetBlockRFQTrades(t.Context(), currency.EMPTYCODE, "", 5)
+	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
+
+	result, err := e.GetBlockRFQTrades(t.Context(), currency.BTC, "", 10)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestWSRetrieveBlockRFQTrades(t *testing.T) {
+	t.Parallel()
+	_, err := e.WSRetrieveBlockRFQTrades(t.Context(), currency.EMPTYCODE, "", 5)
+	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
+
+	result, err := e.WSRetrieveBlockRFQTrades(t.Context(), currency.BTC, "", 10)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
 func TestGetLastBlockTradesbyCurrency(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetLastBlockTradesByCurrency(t.Context(), currency.EMPTYCODE, "", "", 5)
