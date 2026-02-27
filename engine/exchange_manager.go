@@ -145,51 +145,55 @@ func (m *ExchangeManager) Shutdown(shutdownTimeout time.Duration) error {
 		shutdownTimeout = 0
 	}
 
-	var lockout sync.Mutex
+	type shutdownResult struct {
+		name string
+		key  string
+		err  error
+	}
+
 	timer := time.NewTimer(shutdownTimeout)
+	defer timer.Stop()
+
 	var wg sync.WaitGroup
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	lockout.Lock()
+	results := make(chan shutdownResult, len(m.exchanges))
 	for _, exch := range m.exchanges {
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, mtx *sync.Mutex, exch exchange.IBotExchange) {
-			err := exch.Shutdown()
-			if err != nil {
-				log.Errorf(log.ExchangeSys, "%s failed to shutdown %v.\n", exch.GetName(), err)
-			} else {
-				mtx.Lock()
-				delete(m.exchanges, strings.ToLower(exch.GetName()))
-				mtx.Unlock()
-			}
-			wg.Done()
-		}(&wg, &lockout, exch)
+		go func(exch exchange.IBotExchange) {
+			defer wg.Done()
+			results <- shutdownResult{name: exch.GetName(), key: strings.ToLower(exch.GetName()), err: exch.Shutdown()}
+		}(exch)
 	}
-	lockout.Unlock()
 
-	ch := make(chan struct{})
-	go func(wg *sync.WaitGroup, finish chan<- struct{}) {
+	done := make(chan struct{})
+	go func() {
 		wg.Wait()
-		finish <- struct{}{}
-	}(&wg, ch)
+		close(done)
+	}()
 
 	select {
 	case <-timer.C:
 		// Possible deadlock in a number of operating exchanges.
-		lockout.Lock()
 		for name := range m.exchanges {
 			log.Warnf(log.ExchangeSys, "%s has failed to shutdown within %s, please review.\n", name, shutdownTimeout)
 		}
-		lockout.Unlock()
-	case <-ch:
+	case <-done:
+		close(results)
+		for res := range results {
+			if res.err != nil {
+				log.Errorf(log.ExchangeSys, "%s failed to shutdown %v.\n", res.name, res.err)
+				continue
+			}
+			delete(m.exchanges, res.key)
+		}
+
 		// Every exchange has finished their shutdown call.
-		lockout.Lock()
 		for name := range m.exchanges {
 			log.Errorf(log.ExchangeSys, "%s has failed to shutdown due to error, please review.\n", name)
 		}
-		lockout.Unlock()
 	}
 	return nil
 }
