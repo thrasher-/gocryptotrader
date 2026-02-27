@@ -160,11 +160,16 @@ func (m *ExchangeManager) Shutdown(shutdownTimeout time.Duration) error {
 	defer m.mtx.Unlock()
 
 	results := make(chan shutdownResult, len(m.exchanges))
+	abort := make(chan struct{})
 	for _, exch := range m.exchanges {
 		wg.Add(1)
 		go func(exch exchange.IBotExchange) {
 			defer wg.Done()
-			results <- shutdownResult{name: exch.GetName(), key: strings.ToLower(exch.GetName()), err: exch.Shutdown()}
+			result := shutdownResult{name: exch.GetName(), key: strings.ToLower(exch.GetName()), err: exch.Shutdown()}
+			select {
+			case results <- result:
+			case <-abort:
+			}
 		}(exch)
 	}
 
@@ -174,8 +179,30 @@ func (m *ExchangeManager) Shutdown(shutdownTimeout time.Duration) error {
 		close(done)
 	}()
 
+	applyResult := func(res shutdownResult) {
+		if res.err != nil {
+			log.Errorf(log.ExchangeSys, "%s failed to shutdown %v.\n", res.name, res.err)
+			return
+		}
+		delete(m.exchanges, res.key)
+	}
+
 	select {
 	case <-timer.C:
+		close(abort)
+
+		// Drain any completed results without blocking, so successful shutdowns are
+		// still reflected in m.exchanges before warnings are emitted.
+		drained := true
+		for drained {
+			select {
+			case res := <-results:
+				applyResult(res)
+			default:
+				drained = false
+			}
+		}
+
 		// Possible deadlock in a number of operating exchanges.
 		for name := range m.exchanges {
 			log.Warnf(log.ExchangeSys, "%s has failed to shutdown within %s, please review.\n", name, shutdownTimeout)
@@ -183,11 +210,7 @@ func (m *ExchangeManager) Shutdown(shutdownTimeout time.Duration) error {
 	case <-done:
 		close(results)
 		for res := range results {
-			if res.err != nil {
-				log.Errorf(log.ExchangeSys, "%s failed to shutdown %v.\n", res.name, res.err)
-				continue
-			}
-			delete(m.exchanges, res.key)
+			applyResult(res)
 		}
 
 		// Every exchange has finished their shutdown call.
