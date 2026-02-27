@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/database"
 	"github.com/thrasher-corp/gocryptotrader/database/drivers"
@@ -207,13 +208,10 @@ func TestShutdown(t *testing.T) {
 	wg.Add(1)
 	go p.Run(&wg)
 	wg.Wait()
-	if atomic.LoadInt32(&p.started) != 1 {
-		t.Error("expected it to start running")
-	}
-	time.Sleep(time.Millisecond * 20)
-	if atomic.LoadInt32(&p.started) != 0 {
-		t.Error("expected it to stop running")
-	}
+	require.Equal(t, int32(1), atomic.LoadInt32(&p.started), "expected it to start running")
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&p.started) == 0
+	}, time.Second, time.Millisecond, "expected it to stop running")
 }
 
 func TestFilterTradesByTime(t *testing.T) {
