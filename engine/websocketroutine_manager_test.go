@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -41,7 +42,7 @@ func TestWebsocketRoutineManagerSetup(t *testing.T) {
 
 func TestWebsocketRoutineManagerStart(t *testing.T) {
 	var m *WebsocketRoutineManager
-	err := m.Start()
+	err := m.Start(context.Background())
 	assert.ErrorIs(t, err, ErrNilSubsystem)
 
 	cfg := &currency.Config{CurrencyPairFormat: &currency.PairFormat{
@@ -51,11 +52,14 @@ func TestWebsocketRoutineManagerStart(t *testing.T) {
 	m, err = setupWebsocketRoutineManager(NewExchangeManager(), &OrderManager{}, &SyncManager{}, cfg, true)
 	assert.NoError(t, err)
 
-	err = m.Start()
+	err = m.Start(context.Background())
 	assert.NoError(t, err)
 
-	err = m.Start()
+	err = m.Start(context.Background())
 	assert.ErrorIs(t, err, ErrSubSystemAlreadyStarted)
+
+	err = m.Stop()
+	assert.NoError(t, err)
 }
 
 func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
@@ -71,7 +75,7 @@ func TestWebsocketRoutineManagerIsRunning(t *testing.T) {
 		t.Error("expected false")
 	}
 
-	err = m.Start()
+	err = m.Start(context.Background())
 	assert.NoError(t, err)
 
 	for atomic.LoadInt32(&m.state) == startingState {
@@ -93,7 +97,7 @@ func TestWebsocketRoutineManagerStop(t *testing.T) {
 	err = m.Stop()
 	assert.ErrorIs(t, err, ErrSubSystemNotStarted)
 
-	err = m.Start()
+	err = m.Start(context.Background())
 	assert.NoError(t, err)
 
 	err = m.Stop()
@@ -124,7 +128,7 @@ func TestWebsocketRoutineManagerHandleData(t *testing.T) {
 	m, err := setupWebsocketRoutineManager(em, om, &SyncManager{}, cfg, true)
 	assert.NoError(t, err)
 
-	err = m.Start()
+	err = m.Start(context.Background())
 	assert.NoError(t, err)
 
 	orderID := "1337"

@@ -51,6 +51,7 @@ type Engine struct {
 	Settings                Settings
 	uptime                  time.Time
 	GRPCShutdownSignal      chan struct{}
+	runtimeCancel           context.CancelFunc
 	ServicesWG              sync.WaitGroup
 }
 
@@ -295,6 +296,12 @@ func (bot *Engine) Start() error {
 	newEngineMutex.Lock()
 	defer newEngineMutex.Unlock()
 
+	if bot.runtimeCancel != nil {
+		bot.runtimeCancel()
+	}
+	runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
+	bot.runtimeCancel = runtimeCancel
+
 	if bot.Config.Profiler.Enabled {
 		if err := StartPPROF(context.TODO(), &bot.Config.Profiler); err != nil {
 			gctlog.Errorf(gctlog.Global, "Failed to start pprof: %v", err)
@@ -405,7 +412,7 @@ func (bot *Engine) Start() error {
 	}
 
 	if bot.Settings.EnableGRPC {
-		go StartRPCServer(bot)
+		go StartRPCServer(runtimeCtx, bot)
 	}
 
 	if bot.Settings.EnablePortfolioManager {
@@ -517,7 +524,7 @@ func (bot *Engine) Start() error {
 			gctlog.Errorf(gctlog.Global, "Unable to initialise websocket routine manager. Err: %s", err)
 		} else {
 			bot.WebsocketRoutineManager = w
-			if err = bot.WebsocketRoutineManager.Start(); err != nil {
+			if err = bot.WebsocketRoutineManager.Start(runtimeCtx); err != nil {
 				gctlog.Errorf(gctlog.Global, "failed to start websocket routine manager. Err: %s", err)
 			}
 		}
@@ -563,6 +570,11 @@ func (bot *Engine) Stop() {
 	defer newEngineMutex.Unlock()
 
 	gctlog.Debugln(gctlog.Global, "Engine shutting down..")
+
+	if bot.runtimeCancel != nil {
+		bot.runtimeCancel()
+		bot.runtimeCancel = nil
+	}
 
 	if len(bot.portfolioManager.GetAddresses()) != 0 {
 		bot.Config.Portfolio = bot.portfolioManager.GetPortfolio()
@@ -618,8 +630,8 @@ func (bot *Engine) Stop() {
 			gctlog.Errorf(gctlog.DispatchMgr, "Dispatch system unable to stop. Error: %v", err)
 		}
 	}
-	if bot.WebsocketRoutineManager.IsRunning() {
-		if err := bot.WebsocketRoutineManager.Stop(); err != nil {
+	if bot.WebsocketRoutineManager != nil {
+		if err := bot.WebsocketRoutineManager.Stop(); err != nil && !errors.Is(err, ErrSubSystemNotStarted) {
 			gctlog.Errorf(gctlog.Global, "websocket routine manager unable to stop. Error: %v", err)
 		}
 	}

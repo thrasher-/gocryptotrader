@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -218,19 +219,27 @@ func main() {
 	btCfg.Report.GenerateReport = generateReport
 
 	runManager := backtest.NewTaskManager()
+	rpcCtx, cancelRPC := context.WithCancel(context.Background())
+	defer cancelRPC()
 
-	go func(c *config.BacktesterConfig) {
+	go func(ctx context.Context, c *config.BacktesterConfig) {
 		log.Infoln(log.GRPCSys, "Starting RPC server")
-		var s *backtest.GRPCServer
-		s, err = backtest.SetupRPCServer(c, runManager)
-		err = backtest.StartRPCServer(s)
-		if err != nil {
-			fmt.Printf("Could not start RPC server. Error: %v\n", err)
+		s, setupErr := backtest.SetupRPCServer(c, runManager)
+		if setupErr != nil {
+			fmt.Printf("Could not setup RPC server. Error: %v\n", setupErr)
 			os.Exit(1)
 		}
-		log.Infoln(log.GRPCSys, "Ready to receive commands")
-	}(btCfg)
+		startErr := backtest.StartRPCServer(ctx, s)
+		if startErr != nil && ctx.Err() == nil {
+			fmt.Printf("Could not start RPC server. Error: %v\n", startErr)
+			os.Exit(1)
+		}
+		if startErr == nil {
+			log.Infoln(log.GRPCSys, "Ready to receive commands")
+		}
+	}(rpcCtx, btCfg)
 	interrupt := <-signaler.WaitForInterrupt()
+	cancelRPC()
 	log.Infof(log.Global, "Captured %v, shutdown requested\n", interrupt)
 	if btCfg.StopAllTasksOnClose {
 		log.Infoln(log.Global, "Stopping all running tasks on close")

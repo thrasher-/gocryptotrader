@@ -3716,7 +3716,9 @@ func TestStartRPCRESTProxy(t *testing.T) {
 	fakeTime := time.Now().Add(-time.Hour)
 	e.uptime = fakeTime
 
-	StartRPCServer(e)
+	rpcCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	StartRPCServer(rpcCtx, e)
 
 	// Give the proxy time to start
 	time.Sleep(time.Millisecond * 500)
