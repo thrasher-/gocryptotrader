@@ -102,6 +102,23 @@ func AreAPICredentialsSet(exch exchange.IBotExchange) bool {
 	return exch.VerifyAPICredentials(exch.GetDefaultCredentials()) == nil
 }
 
+// ConfigureAuthForTesting enables authenticated test support when credentials
+// are provided, and returns whether credentials were configured.
+func ConfigureAuthForTesting(exch exchange.IBotExchange, apiKey, apiSecret, clientID, subaccount, pemKey, oneTimePassword string, enableWebsocketAuth bool) bool {
+	if apiKey == "" || apiSecret == "" {
+		return false
+	}
+
+	base := exch.GetBase()
+	base.API.AuthenticatedSupport = true
+	base.API.AuthenticatedWebsocketSupport = enableWebsocketAuth
+	if enableWebsocketAuth {
+		base.Websocket.SetCanUseAuthenticatedEndpoints(true)
+	}
+	base.SetCredentials(apiKey, apiSecret, clientID, subaccount, pemKey, oneTimePassword)
+	return true
+}
+
 // EmptyStringPotentialPattern is a regular expression pattern for a potential
 // empty string into float64
 var EmptyStringPotentialPattern = `.*float64.*json:"[^"]*,string".*`

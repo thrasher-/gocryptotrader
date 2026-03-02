@@ -48,12 +48,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("Bitfinex Setup error: %s", err)
 	}
 
-	if apiKey != "" && apiSecret != "" {
-		e.Websocket.SetCanUseAuthenticatedEndpoints(true)
-		e.API.AuthenticatedSupport = true
-		e.API.AuthenticatedWebsocketSupport = true
-		e.SetCredentials(apiKey, apiSecret, "", "", "", "")
-	}
+	sharedtestvalues.ConfigureAuthForTesting(e, apiKey, apiSecret, "", "", "", "", true)
 
 	os.Exit(m.Run())
 }
