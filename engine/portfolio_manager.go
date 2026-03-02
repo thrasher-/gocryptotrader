@@ -31,6 +31,8 @@ type portfolioManager struct {
 	shutdown              chan struct{}
 	base                  *portfolio.Base
 	m                     sync.Mutex
+	runtimeCtx            context.Context //nolint:containedctx // runtime-scoped cancellation context for exchange-facing calls
+	runtimeMu             sync.RWMutex
 }
 
 // setupPortfolioManager creates a new portfolio manager
@@ -57,6 +59,29 @@ func setupPortfolioManager(e *ExchangeManager, portfolioManagerDelay time.Durati
 // IsRunning safely checks whether the subsystem is running
 func (m *portfolioManager) IsRunning() bool {
 	return m != nil && atomic.LoadInt32(&m.started) == 1
+}
+
+// SetRuntimeContext sets the runtime context used for exchange-facing calls.
+func (m *portfolioManager) SetRuntimeContext(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.runtimeMu.Lock()
+	m.runtimeCtx = ctx
+	m.runtimeMu.Unlock()
+}
+
+func (m *portfolioManager) runtimeContext() context.Context {
+	if m == nil {
+		return context.Background()
+	}
+	m.runtimeMu.RLock()
+	ctx := m.runtimeCtx
+	m.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 // Start runs the subsystem
@@ -130,7 +155,7 @@ func (m *portfolioManager) processPortfolio() {
 
 	data := m.base.GetPortfolioAddressesGroupedByCoin()
 	for key, value := range data {
-		if err := m.base.UpdatePortfolio(context.TODO(), value, key); err != nil {
+		if err := m.base.UpdatePortfolio(m.runtimeContext(), value, key); err != nil {
 			log.Errorf(log.PortfolioMgr, "Portfolio manager: UpdatePortfolio error: %s for currency %s", err, key)
 			continue
 		}
@@ -165,7 +190,7 @@ func (m *portfolioManager) updateExchangeBalances() error {
 		}
 
 		for _, a := range assetTypes {
-			if _, err := e.UpdateAccountBalances(context.TODO(), a); err != nil {
+			if _, err := e.UpdateAccountBalances(m.runtimeContext(), a); err != nil {
 				errs = common.AppendError(errs, fmt.Errorf("error updating %s %s account balances: %w", e.GetName(), a, err))
 			}
 		}

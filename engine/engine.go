@@ -51,7 +51,9 @@ type Engine struct {
 	Settings                Settings
 	uptime                  time.Time
 	GRPCShutdownSignal      chan struct{}
+	runtimeCtx              context.Context //nolint:containedctx // runtime-scoped cancellation context for startup + subsystem propagation
 	runtimeCancel           context.CancelFunc
+	runtimeMu               sync.RWMutex
 	ServicesWG              sync.WaitGroup
 }
 
@@ -296,14 +298,22 @@ func (bot *Engine) Start() error {
 	newEngineMutex.Lock()
 	defer newEngineMutex.Unlock()
 
-	if bot.runtimeCancel != nil {
-		bot.runtimeCancel()
+	runtimeCtx := bot.EnsureRuntimeContext()
+	startSuccessful := false
+	defer func() {
+		if startSuccessful {
+			return
+		}
+		bot.cancelRuntimeContext()
+		bot.clearRuntimeContext()
+	}()
+
+	if err := runtimeCtx.Err(); err != nil {
+		return err
 	}
-	runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
-	bot.runtimeCancel = runtimeCancel
 
 	if bot.Config.Profiler.Enabled {
-		if err := StartPPROF(context.TODO(), &bot.Config.Profiler); err != nil {
+		if err := StartPPROF(runtimeCtx, &bot.Config.Profiler); err != nil {
 			gctlog.Errorf(gctlog.Global, "Failed to start pprof: %v", err)
 		}
 	}
@@ -421,6 +431,7 @@ func (bot *Engine) Start() error {
 				gctlog.Errorf(gctlog.Global, "portfolio manager unable to setup: %s", err)
 			} else {
 				bot.portfolioManager = p
+				bot.portfolioManager.SetRuntimeContext(runtimeCtx)
 				if err := bot.portfolioManager.Start(&bot.ServicesWG); err != nil {
 					gctlog.Errorf(gctlog.Global, "portfolio manager unable to start: %s", err)
 				}
@@ -434,6 +445,7 @@ func (bot *Engine) Start() error {
 				gctlog.Errorf(gctlog.Global, "database history manager unable to setup: %s", err)
 			} else {
 				bot.dataHistoryManager = d
+				bot.dataHistoryManager.SetRuntimeContext(runtimeCtx)
 				if err := bot.dataHistoryManager.Start(); err != nil {
 					gctlog.Errorf(gctlog.Global, "database history manager unable to start: %s", err)
 				}
@@ -465,6 +477,7 @@ func (bot *Engine) Start() error {
 			gctlog.Errorf(gctlog.Global, "Order manager unable to setup: %s", err)
 		} else {
 			bot.OrderManager = o
+			bot.OrderManager.SetRuntimeContext(runtimeCtx)
 			if err = bot.OrderManager.Start(); err != nil {
 				gctlog.Errorf(gctlog.Global, "Order manager unable to start: %s", err)
 			}
@@ -500,6 +513,7 @@ func (bot *Engine) Start() error {
 			gctlog.Errorf(gctlog.Global, "Unable to initialise exchange currency pair syncer. Err: %s", err)
 		} else {
 			bot.currencyPairSyncer = s
+			bot.currencyPairSyncer.SetRuntimeContext(runtimeCtx)
 			go func() {
 				if err := bot.currencyPairSyncer.Start(); err != nil {
 					gctlog.Errorf(gctlog.Global, "failed to start exchange currency pair manager. Err: %s", err)
@@ -552,6 +566,7 @@ func (bot *Engine) Start() error {
 				err)
 		} else {
 			bot.currencyStateManager = c
+			bot.currencyStateManager.SetRuntimeContext(runtimeCtx)
 			if err := bot.currencyStateManager.Start(); err != nil {
 				gctlog.Errorf(gctlog.Global,
 					"%s unable to start: %s",
@@ -561,7 +576,75 @@ func (bot *Engine) Start() error {
 		}
 	}
 
+	startSuccessful = true
 	return nil
+}
+
+func (bot *Engine) getRuntimeContext() context.Context {
+	if bot == nil {
+		return context.Background()
+	}
+	bot.runtimeMu.RLock()
+	ctx := bot.runtimeCtx
+	bot.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func (bot *Engine) getRuntimeCancel() context.CancelFunc {
+	if bot == nil {
+		return nil
+	}
+	bot.runtimeMu.RLock()
+	cancel := bot.runtimeCancel
+	bot.runtimeMu.RUnlock()
+	return cancel
+}
+
+func (bot *Engine) cancelRuntimeContext() {
+	if cancel := bot.getRuntimeCancel(); cancel != nil {
+		cancel()
+	}
+}
+
+func (bot *Engine) clearRuntimeContext() {
+	if bot == nil {
+		return
+	}
+	bot.runtimeMu.Lock()
+	bot.runtimeCtx = nil
+	bot.runtimeCancel = nil
+	bot.runtimeMu.Unlock()
+}
+
+// EnsureRuntimeContext ensures a cancellable runtime context exists and returns it.
+func (bot *Engine) EnsureRuntimeContext() context.Context {
+	if bot == nil {
+		return context.Background()
+	}
+
+	bot.runtimeMu.Lock()
+	defer bot.runtimeMu.Unlock()
+
+	if bot.runtimeCancel != nil {
+		if bot.runtimeCtx != nil {
+			return bot.runtimeCtx
+		}
+		return context.Background()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	bot.runtimeCtx = ctx
+	bot.runtimeCancel = cancel
+	return ctx
+}
+
+// RequestShutdown cancels runtime-scoped work (startup, RPC, websockets, and
+// context-aware exchange calls) without forcing immediate full subsystem stop.
+func (bot *Engine) RequestShutdown() {
+	bot.cancelRuntimeContext()
 }
 
 // Stop correctly shuts down engine saving configuration files
@@ -571,56 +654,54 @@ func (bot *Engine) Stop() {
 
 	gctlog.Debugln(gctlog.Global, "Engine shutting down..")
 
-	if bot.runtimeCancel != nil {
-		bot.runtimeCancel()
-		bot.runtimeCancel = nil
-	}
+	bot.cancelRuntimeContext()
+	bot.clearRuntimeContext()
 
-	if len(bot.portfolioManager.GetAddresses()) != 0 {
+	if bot.portfolioManager != nil && len(bot.portfolioManager.GetAddresses()) != 0 {
 		bot.Config.Portfolio = bot.portfolioManager.GetPortfolio()
 	}
 
-	if bot.gctScriptManager.IsRunning() {
+	if bot.gctScriptManager != nil && bot.gctScriptManager.IsRunning() {
 		if err := bot.gctScriptManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "GCTScript manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.OrderManager.IsRunning() {
+	if bot.OrderManager != nil && bot.OrderManager.IsRunning() {
 		if err := bot.OrderManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "Order manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.eventManager.IsRunning() {
+	if bot.eventManager != nil && bot.eventManager.IsRunning() {
 		if err := bot.eventManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "event manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.ntpManager.IsRunning() {
+	if bot.ntpManager != nil && bot.ntpManager.IsRunning() {
 		if err := bot.ntpManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "NTP manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.CommunicationsManager.IsRunning() {
+	if bot.CommunicationsManager != nil && bot.CommunicationsManager.IsRunning() {
 		if err := bot.CommunicationsManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "Communication manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.portfolioManager.IsRunning() {
+	if bot.portfolioManager != nil && bot.portfolioManager.IsRunning() {
 		if err := bot.portfolioManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "Fund manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.connectionManager.IsRunning() {
+	if bot.connectionManager != nil && bot.connectionManager.IsRunning() {
 		if err := bot.connectionManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "Connection manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.dataHistoryManager.IsRunning() {
+	if bot.dataHistoryManager != nil && bot.dataHistoryManager.IsRunning() {
 		if err := bot.dataHistoryManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.DataHistory, "data history manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.DatabaseManager.IsRunning() {
+	if bot.DatabaseManager != nil && bot.DatabaseManager.IsRunning() {
 		if err := bot.DatabaseManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global, "Database manager unable to stop. Error: %v", err)
 		}
@@ -635,7 +716,7 @@ func (bot *Engine) Stop() {
 			gctlog.Errorf(gctlog.Global, "websocket routine manager unable to stop. Error: %v", err)
 		}
 	}
-	if bot.currencyStateManager.IsRunning() {
+	if bot.currencyStateManager != nil && bot.currencyStateManager.IsRunning() {
 		if err := bot.currencyStateManager.Stop(); err != nil {
 			gctlog.Errorf(gctlog.Global,
 				"currency state manager unable to stop. Error: %v",
@@ -779,6 +860,8 @@ func (bot *Engine) LoadExchange(name string) error {
 		return err
 	}
 
+	ctx := bot.getRuntimeContext()
+
 	b := exch.GetBase()
 	if b.API.AuthenticatedSupport || b.API.AuthenticatedWebsocketSupport {
 		enabledAssets := b.CurrencyPairs.GetAssetTypes(true)
@@ -798,7 +881,7 @@ func (bot *Engine) LoadExchange(name string) error {
 			}
 		}
 
-		if err := exch.ValidateAPICredentials(context.TODO(), preferredAsset); err != nil {
+		if err := exch.ValidateAPICredentials(ctx, preferredAsset); err != nil {
 			gctlog.Warnf(gctlog.ExchangeSys, "%s: Error validating credentials: %v for %s", b.Name, err, preferredAsset)
 			b.API.AuthenticatedSupport = false
 			b.API.AuthenticatedWebsocketSupport = false
@@ -808,7 +891,7 @@ func (bot *Engine) LoadExchange(name string) error {
 		}
 	}
 
-	return exchange.Bootstrap(context.TODO(), exch)
+	return exchange.Bootstrap(ctx, exch)
 }
 
 func (bot *Engine) dryRunParamInteraction(param string) {
@@ -944,5 +1027,6 @@ func (bot *Engine) SetDefaultWebsocketDataHandler() error {
 func (bot *Engine) waitForGPRCShutdown() {
 	<-bot.GRPCShutdownSignal
 	gctlog.Warnln(gctlog.Global, "Captured gRPC shutdown request.")
+	bot.RequestShutdown()
 	bot.Settings.Shutdown <- struct{}{}
 }

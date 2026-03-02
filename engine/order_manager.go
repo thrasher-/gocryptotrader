@@ -68,6 +68,29 @@ func (m *OrderManager) IsRunning() bool {
 	return m != nil && atomic.LoadInt32(&m.started) == 1
 }
 
+// SetRuntimeContext sets the runtime context used for exchange-facing calls.
+func (m *OrderManager) SetRuntimeContext(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.runtimeMu.Lock()
+	m.runtimeCtx = ctx
+	m.runtimeMu.Unlock()
+}
+
+func (m *OrderManager) runtimeContext() context.Context {
+	if m == nil {
+		return context.Background()
+	}
+	m.runtimeMu.RLock()
+	ctx := m.runtimeCtx
+	m.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 // Start runs the subsystem
 func (m *OrderManager) Start() error {
 	if m == nil {
@@ -108,7 +131,13 @@ func (m *OrderManager) gracefulShutdown() {
 		log.Errorf(log.OrderMgr, "Order manager cannot get exchanges: %v", err)
 		return
 	}
-	m.CancelAllOrders(context.TODO(), exchanges)
+	ctx := m.runtimeContext()
+	if err := ctx.Err(); err != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), orderManagerGracefulStopTimeout)
+		defer cancel()
+	}
+	m.CancelAllOrders(ctx, exchanges)
 }
 
 // run will periodically process orders
@@ -672,7 +701,7 @@ func (m *OrderManager) processOrders() {
 			orders := m.orderStore.getActiveOrders(filter)
 			order.FilterOrdersByPairs(&orders, pairs)
 			var result []order.Detail
-			result, err = exchanges[x].GetActiveOrders(context.TODO(), &order.MultiOrderRequest{
+			result, err = exchanges[x].GetActiveOrders(m.runtimeContext(), &order.MultiOrderRequest{
 				Side:      order.AnySide,
 				Type:      order.AnyType,
 				Pairs:     pairs,
@@ -720,7 +749,7 @@ func (m *OrderManager) processOrders() {
 				if sd.IsZero() {
 					sd = time.Now().Add(-m.futuresPositionSeekDuration)
 				}
-				positions, err = exchanges[x].GetFuturesPositionOrders(context.TODO(), &futures.PositionsRequest{
+				positions, err = exchanges[x].GetFuturesPositionOrders(m.runtimeContext(), &futures.PositionsRequest{
 					Asset:                     enabledAssets[y],
 					Pairs:                     pairs,
 					StartDate:                 sd,
@@ -800,7 +829,7 @@ func (m *OrderManager) processFuturesPositions(exch exchange.IBotExchange, posit
 	if !isPerp {
 		return nil
 	}
-	frp, err := exch.GetHistoricalFundingRates(context.TODO(), &fundingrate.HistoricalRatesRequest{
+	frp, err := exch.GetHistoricalFundingRates(m.runtimeContext(), &fundingrate.HistoricalRatesRequest{
 		Asset:                position.Asset,
 		Pair:                 position.Pair,
 		StartDate:            position.Orders[0].Date,
@@ -835,7 +864,7 @@ func (m *OrderManager) FetchAndUpdateExchangeOrder(exch exchange.IBotExchange, o
 	if ord == nil {
 		return errors.New("order manager: Order is nil")
 	}
-	fetchedOrder, err := exch.GetOrderInfo(context.TODO(), ord.OrderID, ord.Pair, assetType)
+	fetchedOrder, err := exch.GetOrderInfo(m.runtimeContext(), ord.OrderID, ord.Pair, assetType)
 	if err != nil {
 		ord.Status = order.UnknownStatus
 		return err

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -140,6 +142,8 @@ type DataHistoryManager struct {
 	tradeLoader                func(string, string, string, string, time.Time, time.Time) ([]trade.Data, error)
 	tradeSaver                 func(...trade.Data) error
 	candleSaver                func(*kline.Item, bool) (uint64, error)
+	runtimeCtx                 context.Context //nolint:containedctx // runtime-scoped cancellation context for exchange-facing calls
+	runtimeMu                  sync.RWMutex
 }
 
 // DataHistoryJob used to gather candle/trade history and save

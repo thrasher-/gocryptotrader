@@ -98,6 +98,29 @@ func (m *DataHistoryManager) IsRunning() bool {
 	return atomic.LoadInt32(&m.started) == 1
 }
 
+// SetRuntimeContext sets the runtime context used for exchange-facing calls.
+func (m *DataHistoryManager) SetRuntimeContext(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.runtimeMu.Lock()
+	m.runtimeCtx = ctx
+	m.runtimeMu.Unlock()
+}
+
+func (m *DataHistoryManager) runtimeContext() context.Context {
+	if m == nil {
+		return context.Background()
+	}
+	m.runtimeMu.RLock()
+	ctx := m.runtimeCtx
+	m.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 // Stop stops the subsystem
 func (m *DataHistoryManager) Stop() error {
 	if m == nil {
@@ -710,7 +733,7 @@ func (m *DataHistoryManager) processCandleData(job *DataHistoryJob, exch exchang
 		Status:            dataHistoryStatusComplete,
 		Date:              time.Now(),
 	}
-	candles, err := exch.GetHistoricCandlesExtended(context.TODO(),
+	candles, err := exch.GetHistoricCandlesExtended(m.runtimeContext(),
 		job.Pair,
 		job.Asset,
 		job.Interval,
@@ -763,7 +786,7 @@ func (m *DataHistoryManager) processTradeData(job *DataHistoryJob, exch exchange
 		Status:            dataHistoryStatusComplete,
 		Date:              time.Now(),
 	}
-	trades, err := exch.GetHistoricTrades(context.TODO(),
+	trades, err := exch.GetHistoricTrades(m.runtimeContext(),
 		job.Pair,
 		job.Asset,
 		startRange,
@@ -919,7 +942,7 @@ func (m *DataHistoryManager) validateCandles(job *DataHistoryJob, exch exchange.
 		Date:              time.Now(),
 	}
 
-	apiCandles, err := exch.GetHistoricCandlesExtended(context.TODO(),
+	apiCandles, err := exch.GetHistoricCandlesExtended(m.runtimeContext(),
 		job.Pair,
 		job.Asset,
 		job.Interval,

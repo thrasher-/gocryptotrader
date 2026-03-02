@@ -33,7 +33,9 @@ type CurrencyStateManager struct {
 	shutdown chan struct{}
 	wg       sync.WaitGroup
 	iExchangeManager
-	sleep time.Duration
+	sleep      time.Duration
+	runtimeCtx context.Context //nolint:containedctx // runtime-scoped cancellation context for exchange-facing calls
+	runtimeMu  sync.RWMutex
 }
 
 // SetupCurrencyStateManager applies configuration parameters before running
@@ -96,6 +98,29 @@ func (c *CurrencyStateManager) IsRunning() bool {
 	return atomic.LoadInt32(&c.started) == 1
 }
 
+// SetRuntimeContext sets the runtime context used for exchange-facing calls.
+func (c *CurrencyStateManager) SetRuntimeContext(ctx context.Context) {
+	if c == nil {
+		return
+	}
+	c.runtimeMu.Lock()
+	c.runtimeCtx = ctx
+	c.runtimeMu.Unlock()
+}
+
+func (c *CurrencyStateManager) runtimeContext() context.Context {
+	if c == nil {
+		return context.Background()
+	}
+	c.runtimeMu.RLock()
+	ctx := c.runtimeCtx
+	c.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 func (c *CurrencyStateManager) monitor() {
 	defer c.wg.Done()
 	timer := time.NewTimer(0) // Prime firing of channel for initial sync.
@@ -126,7 +151,7 @@ func (c *CurrencyStateManager) monitor() {
 func (c *CurrencyStateManager) update(exch exchange.IBotExchange, wg *sync.WaitGroup, enabledAssets asset.Items) {
 	defer wg.Done()
 	for y := range enabledAssets {
-		err := exch.UpdateCurrencyStates(context.TODO(), enabledAssets[y])
+		err := exch.UpdateCurrencyStates(c.runtimeContext(), enabledAssets[y])
 		if err != nil {
 			if errors.Is(err, common.ErrNotYetImplemented) {
 				// Deploy default values for outbound gRPC aspects.

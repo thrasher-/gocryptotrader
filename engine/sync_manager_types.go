@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -47,4 +48,6 @@ type SyncManager struct {
 	remoteConfig    *config.RemoteControlConfig
 	config          config.SyncManagerConfig
 	exchangeManager iExchangeManager
+	runtimeCtx      context.Context //nolint:containedctx // runtime-scoped cancellation context for exchange-facing calls
+	runtimeMu       sync.RWMutex
 }

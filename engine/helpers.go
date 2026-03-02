@@ -125,6 +125,11 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 		return errNilConfig
 	}
 
+	runtimeCtx := context.Background()
+	if enable {
+		runtimeCtx = bot.EnsureRuntimeContext()
+	}
+
 	var err error
 	switch strings.ToLower(subSystemName) {
 	case CommunicationsManagerName:
@@ -158,6 +163,7 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 					return err
 				}
 			}
+			bot.OrderManager.SetRuntimeContext(runtimeCtx)
 			return bot.OrderManager.Start()
 		}
 		return bot.OrderManager.Stop()
@@ -169,6 +175,7 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 					return err
 				}
 			}
+			bot.portfolioManager.SetRuntimeContext(runtimeCtx)
 			return bot.portfolioManager.Start(&bot.ServicesWG)
 		}
 		return bot.portfolioManager.Stop()
@@ -227,6 +234,7 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 					return err
 				}
 			}
+			bot.currencyPairSyncer.SetRuntimeContext(runtimeCtx)
 			return bot.currencyPairSyncer.Start()
 		}
 		return bot.currencyPairSyncer.Stop()
@@ -245,6 +253,7 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 					return err
 				}
 			}
+			bot.dataHistoryManager.SetRuntimeContext(runtimeCtx)
 			return bot.dataHistoryManager.Start()
 		}
 		return bot.dataHistoryManager.Stop()
@@ -269,6 +278,7 @@ func (bot *Engine) SetSubsystem(subSystemName string, enable bool) error {
 					return err
 				}
 			}
+			bot.currencyStateManager.SetRuntimeContext(runtimeCtx)
 			return bot.currencyStateManager.Start()
 		}
 		return bot.currencyStateManager.Stop()

@@ -108,6 +108,29 @@ func (m *SyncManager) IsRunning() bool {
 	return m != nil && atomic.LoadInt32(&m.started) == 1
 }
 
+// SetRuntimeContext sets the runtime context used for exchange-facing calls.
+func (m *SyncManager) SetRuntimeContext(ctx context.Context) {
+	if m == nil {
+		return
+	}
+	m.runtimeMu.Lock()
+	m.runtimeCtx = ctx
+	m.runtimeMu.Unlock()
+}
+
+func (m *SyncManager) runtimeContext() context.Context {
+	if m == nil {
+		return context.Background()
+	}
+	m.runtimeMu.RLock()
+	ctx := m.runtimeCtx
+	m.runtimeMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
 // Start runs the subsystem
 func (m *SyncManager) Start() error {
 	if m == nil {
@@ -572,7 +595,7 @@ func (m *SyncManager) syncTicker(c *currencyPairSyncAgent, e exchange.IBotExchan
 				if m.config.Verbose {
 					log.Debugf(log.SyncMgr, "Initialising %s REST ticker batching", exchangeName)
 				}
-				err = e.UpdateTickers(context.TODO(), c.Key.Asset)
+				err = e.UpdateTickers(m.runtimeContext(), c.Key.Asset)
 				if err == nil {
 					result, err = e.GetCachedTicker(c.Pair, c.Key.Asset)
 				}
@@ -588,7 +611,7 @@ func (m *SyncManager) syncTicker(c *currencyPairSyncAgent, e exchange.IBotExchan
 				result, err = e.GetCachedTicker(c.Pair, c.Key.Asset)
 			}
 		} else {
-			result, err = e.UpdateTicker(context.TODO(),
+			result, err = e.UpdateTicker(m.runtimeContext(),
 				c.Pair,
 				c.Key.Asset)
 		}
@@ -633,7 +656,7 @@ func (m *SyncManager) syncOrderbook(c *currencyPairSyncAgent, e exchange.IBotExc
 	}
 
 	if s.IsUsingREST && time.Since(s.LastUpdated) > m.config.TimeoutREST {
-		result, err := e.UpdateOrderbook(context.TODO(),
+		result, err := e.UpdateOrderbook(m.runtimeContext(),
 			c.Pair,
 			c.Key.Asset)
 		m.PrintOrderbookSummary(result, "REST", err)
