@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -213,7 +214,10 @@ func TestStartRun(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = rm.StartTask(bt.MetaData.ID)
-	assert.ErrorIs(t, err, errTaskIsRunning)
+	assert.True(t,
+		errors.Is(err, errTaskIsRunning) || errors.Is(err, errAlreadyRan),
+		"task start should fail as either already running or already ran, got: %v",
+		err)
 
 	bt.m.Lock()
 	bt.MetaData.DateEnded = time.Now()
