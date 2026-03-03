@@ -26,6 +26,7 @@ import (
 
 // Exchange implements exchange.IBotExchange and contains additional specific api methods for interacting with Binance
 type Exchange struct {
+	authSubscriptionID int64
 	exchange.Base
 	obm *orderbookManager
 }
@@ -41,18 +42,17 @@ const (
 	testnetFutures = "https://testnet.binancefuture.com"  //nolint:unused // Can be used for testing via setting useTestNet to true
 
 	// Public endpoints
-	exchangeInfo      = "/api/v3/exchangeInfo"
-	orderBookDepth    = "/api/v3/depth"
-	recentTrades      = "/api/v3/trades"
-	aggregatedTrades  = "/api/v3/aggTrades"
-	candleStick       = "/api/v3/klines"
-	averagePrice      = "/api/v3/avgPrice"
-	priceChange       = "/api/v3/ticker/24hr"
-	symbolPrice       = "/api/v3/ticker/price"
-	bestPrice         = "/api/v3/ticker/bookTicker"
-	userAccountStream = "/api/v3/userDataStream"
-	perpExchangeInfo  = "/fapi/v1/exchangeInfo"
-	historicalTrades  = "/api/v3/historicalTrades"
+	exchangeInfo     = "/api/v3/exchangeInfo"
+	orderBookDepth   = "/api/v3/depth"
+	recentTrades     = "/api/v3/trades"
+	aggregatedTrades = "/api/v3/aggTrades"
+	candleStick      = "/api/v3/klines"
+	averagePrice     = "/api/v3/avgPrice"
+	priceChange      = "/api/v3/ticker/24hr"
+	symbolPrice      = "/api/v3/ticker/price"
+	bestPrice        = "/api/v3/ticker/bookTicker"
+	perpExchangeInfo = "/fapi/v1/exchangeInfo"
+	historicalTrades = "/api/v3/historicalTrades"
 
 	// Margin endpoints
 	marginInterestHistory = "/sapi/v1/margin/interestHistory"
@@ -1019,78 +1019,6 @@ func (e *Exchange) GetDepositAddressForCurrency(ctx context.Context, coin, chain
 	var d DepositAddress
 	return &d,
 		e.SendAuthHTTPRequest(ctx, exchange.RestSpotSupplementary, http.MethodGet, depositAddress, params, spotDefaultRate, &d)
-}
-
-// GetWsAuthStreamKey will retrieve a key to use for authorised WS streaming
-func (e *Exchange) GetWsAuthStreamKey(ctx context.Context) (string, error) {
-	endpointPath, err := e.API.Endpoints.GetURL(exchange.RestSpotSupplementary)
-	if err != nil {
-		return "", err
-	}
-
-	creds, err := e.GetCredentials(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	var resp UserAccountStream
-	headers := make(map[string]string)
-	headers["X-MBX-APIKEY"] = creds.Key
-	item := &request.Item{
-		Method:                 http.MethodPost,
-		Path:                   endpointPath + userAccountStream,
-		Headers:                headers,
-		Result:                 &resp,
-		Verbose:                e.Verbose,
-		HTTPDebugging:          e.HTTPDebugging,
-		HTTPRecording:          e.HTTPRecording,
-		HTTPMockDataSliceLimit: e.HTTPMockDataSliceLimit,
-	}
-
-	err = e.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
-		return item, nil
-	}, request.AuthenticatedRequest)
-	if err != nil {
-		return "", err
-	}
-	return resp.ListenKey, nil
-}
-
-// MaintainWsAuthStreamKey will keep the key alive
-func (e *Exchange) MaintainWsAuthStreamKey(ctx context.Context) error {
-	endpointPath, err := e.API.Endpoints.GetURL(exchange.RestSpotSupplementary)
-	if err != nil {
-		return err
-	}
-	if listenKey == "" {
-		listenKey, err = e.GetWsAuthStreamKey(ctx)
-		return err
-	}
-
-	creds, err := e.GetCredentials(ctx)
-	if err != nil {
-		return err
-	}
-
-	path := endpointPath + userAccountStream
-	params := url.Values{}
-	params.Set("listenKey", listenKey)
-	path = common.EncodeURLValues(path, params)
-	headers := make(map[string]string)
-	headers["X-MBX-APIKEY"] = creds.Key
-	item := &request.Item{
-		Method:                 http.MethodPut,
-		Path:                   path,
-		Headers:                headers,
-		Verbose:                e.Verbose,
-		HTTPDebugging:          e.HTTPDebugging,
-		HTTPRecording:          e.HTTPRecording,
-		HTTPMockDataSliceLimit: e.HTTPMockDataSliceLimit,
-	}
-
-	return e.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
-		return item, nil
-	}, request.AuthenticatedRequest)
 }
 
 // FetchExchangeLimits fetches order execution limits filtered by asset

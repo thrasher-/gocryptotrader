@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/collateral"
@@ -26,6 +28,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/margin"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
@@ -2242,30 +2245,50 @@ func TestWsOCO(t *testing.T) {
 	}
 }
 
-func TestGetWsAuthStreamKey(t *testing.T) {
-	authKey, err := e.GetWsAuthStreamKey(t.Context())
-	switch {
-	case mockTests && err != nil,
-		!mockTests && sharedtestvalues.AreAPICredentialsSet(e) && err != nil:
-		t.Fatal(err)
-	case !mockTests && !sharedtestvalues.AreAPICredentialsSet(e) && err == nil:
-		t.Fatal("Expected error")
+func setupBinanceAuthenticatedWSAPITestConnection(t *testing.T) {
+	t.Helper()
+	if mockTests {
+		t.Skip("WebSocket API user data stream is not supported in mock tests")
 	}
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 
-	if authKey == "" && (sharedtestvalues.AreAPICredentialsSet(e) || mockTests) {
-		t.Error("Expected key")
-	}
+	require.NotNil(t, e.Websocket.AuthConn)
+
+	dialer := gws.Dialer{HandshakeTimeout: e.Config.HTTPTimeout, Proxy: http.ProxyFromEnvironment}
+	err := e.Websocket.AuthConn.Dial(t.Context(), &dialer, http.Header{}, nil)
+	require.NoError(t, err)
+
+	e.Websocket.AuthConn.SetupPingHandler(request.Unset, websocket.PingHandler{
+		UseGorillaHandler: true,
+		MessageType:       gws.PongMessage,
+		Delay:             pingDelay,
+	})
+
+	e.Websocket.Wg.Add(1)
+	go e.wsReadAuthData(t.Context())
+
+	t.Cleanup(func() {
+		require.NoError(t, e.Websocket.AuthConn.Shutdown())
+	})
 }
 
-func TestMaintainWsAuthStreamKey(t *testing.T) {
-	err := e.MaintainWsAuthStreamKey(t.Context())
-	switch {
-	case mockTests && err != nil,
-		!mockTests && sharedtestvalues.AreAPICredentialsSet(e) && err != nil:
-		t.Fatal(err)
-	case !mockTests && !sharedtestvalues.AreAPICredentialsSet(e) && err == nil:
-		t.Fatal("Expected error")
-	}
+func TestSubscribeUserDataStreamSignature(t *testing.T) {
+	setupBinanceAuthenticatedWSAPITestConnection(t)
+
+	subscriptionID, err := e.SubscribeUserDataStreamSignature(t.Context())
+	require.NoError(t, err)
+	require.NotZero(t, subscriptionID)
+}
+
+func TestUnsubscribeUserDataStream(t *testing.T) {
+	setupBinanceAuthenticatedWSAPITestConnection(t)
+
+	subscriptionID, err := e.SubscribeUserDataStreamSignature(t.Context())
+	require.NoError(t, err)
+	require.NotZero(t, subscriptionID)
+
+	err = e.UnsubscribeUserDataStream(t.Context(), subscriptionID)
+	require.NoError(t, err)
 }
 
 func TestExecutionTypeToOrderStatus(t *testing.T) {

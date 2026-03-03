@@ -2,17 +2,21 @@ package binance
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 
 	"github.com/buger/jsonparser"
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
@@ -27,15 +31,16 @@ import (
 )
 
 const (
-	binanceDefaultWebsocketURL = "wss://stream.binance.com:9443/stream"
-	pingDelay                  = time.Minute * 9
+	binanceDefaultWebsocketURL    = "wss://stream.binance.com:9443/stream"
+	binanceDefaultWebsocketAPIURL = "wss://ws-api.binance.com:443/ws-api/v3"
+	pingDelay                     = time.Minute * 9
+	userDataStreamRenewInterval   = time.Minute * 55
+	userDataStreamRequestTimeout  = time.Minute
 
 	wsSubscribeMethod         = "SUBSCRIBE"
 	wsUnsubscribeMethod       = "UNSUBSCRIBE"
 	wsListSubscriptionsMethod = "LIST_SUBSCRIPTIONS"
 )
-
-var listenKey string
 
 var (
 	// maxWSUpdateBuffer defines max websocket updates to apply when an
@@ -49,7 +54,63 @@ var (
 	maxWSOrderbookWorkers = 10
 )
 
-// WsConnect initiates a websocket connection
+func (e *Exchange) setAuthSubscriptionID(id int64) {
+	atomic.StoreInt64(&e.authSubscriptionID, id)
+}
+
+func (e *Exchange) getAuthSubscriptionID() int64 {
+	return atomic.LoadInt64(&e.authSubscriptionID)
+}
+
+func (e *Exchange) unsubscribeActiveUserDataStream() {
+	subscriptionID := e.getAuthSubscriptionID()
+	if subscriptionID <= 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), userDataStreamRequestTimeout)
+	defer cancel()
+	if err := e.UnsubscribeUserDataStream(ctx, subscriptionID); err != nil {
+		log.Warnf(log.ExchangeSys, "%s failed to unsubscribe userDataStream subscription %d: %v", e.Name, subscriptionID, err)
+	}
+	e.setAuthSubscriptionID(0)
+}
+
+func (e *Exchange) keepUserDataStreamSubscriptionAlive() {
+	renewTicker := time.NewTicker(userDataStreamRenewInterval)
+	defer renewTicker.Stop()
+
+	for {
+		select {
+		case <-e.Websocket.ShutdownC:
+			e.unsubscribeActiveUserDataStream()
+			return
+		case <-renewTicker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), userDataStreamRequestTimeout)
+			newSubscriptionID, err := e.SubscribeUserDataStreamSignature(ctx)
+			cancel()
+			if err != nil {
+				if errSend := e.Websocket.DataHandler.Send(context.Background(), err); errSend != nil {
+					log.Errorf(log.ExchangeSys, "%s failed to publish userDataStream subscription renewal error: %v", e.Name, errSend)
+				}
+				continue
+			}
+
+			oldSubscriptionID := e.getAuthSubscriptionID()
+			e.setAuthSubscriptionID(newSubscriptionID)
+			if oldSubscriptionID > 0 && oldSubscriptionID != newSubscriptionID {
+				ctx, cancel := context.WithTimeout(context.Background(), userDataStreamRequestTimeout)
+				err = e.UnsubscribeUserDataStream(ctx, oldSubscriptionID)
+				cancel()
+				if err != nil {
+					log.Warnf(log.ExchangeSys, "%s failed to unsubscribe old userDataStream subscription %d: %v", e.Name, oldSubscriptionID, err)
+				}
+			}
+		}
+	}
+}
+
+// WsConnect initiates websocket connections for public and authenticated data.
 func (e *Exchange) WsConnect() error {
 	ctx := context.TODO()
 	if !e.Websocket.IsEnabled() || !e.IsEnabled() {
@@ -59,35 +120,11 @@ func (e *Exchange) WsConnect() error {
 	var dialer gws.Dialer
 	dialer.HandshakeTimeout = e.Config.HTTPTimeout
 	dialer.Proxy = http.ProxyFromEnvironment
-	var err error
-	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		listenKey, err = e.GetWsAuthStreamKey(ctx)
-		if err != nil {
-			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys,
-				"%v unable to connect to authenticated Websocket. Error: %s",
-				e.Name,
-				err)
-		} else {
-			// cleans on failed connection
-			clean := strings.Split(e.Websocket.GetWebsocketURL(), "?streams=")
-			authPayload := clean[0] + "?streams=" + listenKey
-			err = e.Websocket.SetWebsocketURL(authPayload, false, false)
-			if err != nil {
-				return err
-			}
-		}
-	}
 
-	err = e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, nil)
-	if err != nil {
+	if err := e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
 		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s",
 			e.Name,
 			err)
-	}
-
-	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		go e.KeepAuthKeyAlive(ctx)
 	}
 
 	e.Websocket.Conn.SetupPingHandler(request.Unset, websocket.PingHandler{
@@ -98,6 +135,37 @@ func (e *Exchange) WsConnect() error {
 
 	e.Websocket.Wg.Add(1)
 	go e.wsReadData(ctx)
+
+	e.setAuthSubscriptionID(0)
+	if e.Websocket.CanUseAuthenticatedEndpoints() {
+		if e.Websocket.AuthConn == nil {
+			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
+			log.Warnf(log.ExchangeSys, "%v authenticated websocket API connection is not configured", e.Name)
+		} else {
+			if err := e.Websocket.AuthConn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
+				e.Websocket.SetCanUseAuthenticatedEndpoints(false)
+				log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated websocket API. Error: %s", e.Name, err)
+			} else {
+				e.Websocket.AuthConn.SetupPingHandler(request.Unset, websocket.PingHandler{
+					UseGorillaHandler: true,
+					MessageType:       gws.PongMessage,
+					Delay:             pingDelay,
+				})
+				e.Websocket.Wg.Add(1)
+				go e.wsReadAuthData(ctx)
+
+				subID, err := e.SubscribeUserDataStreamSignature(ctx)
+				if err != nil {
+					e.Websocket.SetCanUseAuthenticatedEndpoints(false)
+					_ = e.Websocket.AuthConn.Shutdown()
+					log.Errorf(log.ExchangeSys, "%v unable to subscribe to authenticated websocket user data stream. Error: %s", e.Name, err)
+				} else {
+					e.setAuthSubscriptionID(subID)
+					e.Websocket.Wg.Go(e.keepUserDataStreamSubscriptionAlive)
+				}
+			}
+		}
+	}
 
 	e.setupOrderbookManager(ctx)
 	return nil
@@ -128,21 +196,96 @@ func (e *Exchange) setupOrderbookManager(ctx context.Context) {
 	}
 }
 
-// KeepAuthKeyAlive will continuously send messages to
-// keep the WS auth key active
-func (e *Exchange) KeepAuthKeyAlive(ctx context.Context) {
-	e.Websocket.Wg.Add(1)
+func (e *Exchange) sendWSAPIRequest(ctx context.Context, method string, params map[string]any) ([]byte, error) {
+	if e.Websocket.AuthConn == nil {
+		return nil, errors.New("authenticated websocket API connection is not configured")
+	}
+
+	responseID := e.MessageID()
+	payload := map[string]any{
+		"id":     responseID,
+		"method": method,
+	}
+	if len(params) > 0 {
+		payload["params"] = params
+	}
+
+	respRaw, err := e.Websocket.AuthConn.SendMessageReturnResponse(ctx, request.Unset, responseID, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	status, err := jsonparser.GetInt(respRaw, "status")
+	if err == nil && status != 200 {
+		code, _ := jsonparser.GetInt(respRaw, "error", "code")
+		msg, _ := jsonparser.GetUnsafeString(respRaw, "error", "msg")
+		if msg == "" {
+			msg = string(respRaw)
+		}
+		return nil, fmt.Errorf("%s failed, status %d code %d: %s", method, status, code, msg)
+	}
+	return respRaw, nil
+}
+
+// SubscribeUserDataStreamSignature subscribes an account to user data events
+// using Binance WebSocket API signed request flow.
+func (e *Exchange) SubscribeUserDataStreamSignature(ctx context.Context) (int64, error) {
+	creds, err := e.GetCredentials(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if creds.Key == "" || creds.Secret == "" {
+		return 0, errors.New("missing API credentials for user data stream subscription")
+	}
+
+	timestamp := time.Now().UnixMilli()
+	sigParams := url.Values{}
+	sigParams.Set("apiKey", creds.Key)
+	sigParams.Set("timestamp", strconv.FormatInt(timestamp, 10))
+	hmacSigned, err := crypto.GetHMAC(crypto.HashSHA256, []byte(sigParams.Encode()), []byte(creds.Secret))
+	if err != nil {
+		return 0, err
+	}
+	signature := hex.EncodeToString(hmacSigned)
+
+	respRaw, err := e.sendWSAPIRequest(ctx, "userDataStream.subscribe.signature", map[string]any{
+		"apiKey":    creds.Key,
+		"timestamp": timestamp,
+		"signature": signature,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	subscriptionID, err := jsonparser.GetInt(respRaw, "result", "subscriptionId")
+	if err != nil {
+		return 0, err
+	}
+	return subscriptionID, nil
+}
+
+// UnsubscribeUserDataStream unsubscribes a user data subscription.
+func (e *Exchange) UnsubscribeUserDataStream(ctx context.Context, subscriptionID int64) error {
+	params := map[string]any{}
+	if subscriptionID > 0 {
+		params["subscriptionId"] = subscriptionID
+	}
+	_, err := e.sendWSAPIRequest(ctx, "userDataStream.unsubscribe", params)
+	return err
+}
+
+// wsReadAuthData receives and passes on authenticated websocket API messages.
+func (e *Exchange) wsReadAuthData(ctx context.Context) {
 	defer e.Websocket.Wg.Done()
+
 	for {
-		select {
-		case <-e.Websocket.ShutdownC:
+		resp := e.Websocket.AuthConn.ReadMessage()
+		if resp.Raw == nil {
 			return
-		case <-time.After(time.Minute * 30):
-			if err := e.MaintainWsAuthStreamKey(ctx); err != nil {
-				if errSend := e.Websocket.DataHandler.Send(ctx, err); errSend != nil {
-					log.Errorf(log.WebsocketMgr, "%s %s: %s %s", e.Name, e.Websocket.Conn.GetURL(), errSend, err)
-				}
-				log.Warnf(log.ExchangeSys, "%s %s: Unable to renew auth websocket token, may experience shutdown", e.Name, e.Websocket.Conn.GetURL())
+		}
+		if err := e.wsHandleData(ctx, resp.Raw); err != nil {
+			if errSend := e.Websocket.DataHandler.Send(ctx, err); errSend != nil {
+				log.Errorf(log.WebsocketMgr, "%s %s: %s %s", e.Name, e.Websocket.AuthConn.GetURL(), errSend, err)
 			}
 		}
 	}
@@ -170,6 +313,14 @@ func (e *Exchange) wsHandleData(ctx context.Context, respRaw []byte) error {
 		if e.Websocket.Match.IncomingWithData(id, respRaw) {
 			return nil
 		}
+		// Ignore unmatched websocket API response IDs (can be stale/late responses).
+		return nil
+	} else if idInt, err := jsonparser.GetInt(respRaw, "id"); err == nil {
+		if e.Websocket.Match.IncomingWithData(strconv.FormatInt(idInt, 10), respRaw) {
+			return nil
+		}
+		// Ignore unmatched websocket API response IDs (can be stale/late responses).
+		return nil
 	}
 
 	if resultString, err := jsonparser.GetUnsafeString(respRaw, "result"); err == nil {
@@ -179,7 +330,14 @@ func (e *Exchange) wsHandleData(ctx context.Context, respRaw []byte) error {
 	}
 	jsonData, _, _, err := jsonparser.Get(respRaw, "data")
 	if err != nil {
-		return fmt.Errorf("%s %s %s", e.Name, websocket.UnhandledMessage, string(respRaw))
+		jsonData, _, _, err = jsonparser.Get(respRaw, "event")
+		if err != nil {
+			if _, innerErr := jsonparser.GetUnsafeString(respRaw, "e"); innerErr == nil {
+				jsonData = respRaw
+			} else {
+				return fmt.Errorf("%s %s %s", e.Name, websocket.UnhandledMessage, string(respRaw))
+			}
+		}
 	}
 	var event string
 	event, err = jsonparser.GetUnsafeString(jsonData, "e")
