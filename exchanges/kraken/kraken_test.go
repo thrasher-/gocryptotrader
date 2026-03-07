@@ -1,6 +1,7 @@
 package kraken
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	ws "github.com/thrasher-corp/gocryptotrader/exchange/websocket"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/fundingrate"
@@ -62,6 +64,20 @@ func TestMain(m *testing.M) {
 func TestUpdateTradablePairs(t *testing.T) {
 	t.Parallel()
 	testexch.UpdatePairsOnce(t, e)
+}
+
+func TestWsConnectDisabled(t *testing.T) {
+	t.Parallel()
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup instance must not error")
+	ex.SetEnabled(false)
+
+	err := ex.WsConnect()
+	require.ErrorIs(t, err, ws.ErrWebsocketNotEnabled)
+
+	err = ex.wsConnect(t.Context())
+	require.ErrorIs(t, err, ws.ErrWebsocketNotEnabled)
 }
 
 func TestGetCurrentServerTime(t *testing.T) {
@@ -152,10 +168,14 @@ func TestUpdateTickers(t *testing.T) {
 }
 
 func TestUpdateOrderbook(t *testing.T) {
-	t.Parallel()
-	_, err := e.UpdateOrderbook(t.Context(), spotTestPair, asset.Spot)
+	// Intentionally not parallel: this test intermittently fails when sharing the package-level exchange state.
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup instance must not error")
+	testexch.UpdatePairsOnce(t, ex)
+
+	_, err := ex.UpdateOrderbook(t.Context(), spotTestPair, asset.Spot)
 	assert.NoError(t, err, "UpdateOrderbook spot asset should not error")
-	_, err = e.UpdateOrderbook(t.Context(), futuresTestPair, asset.Futures)
+	_, err = ex.UpdateOrderbook(t.Context(), futuresTestPair, asset.Futures)
 	assert.NoError(t, err, "UpdateOrderbook futures asset should not error")
 }
 
@@ -1004,7 +1024,9 @@ func TestWsResubscribe(t *testing.T) {
 	err = subs[0].SetState(subscription.UnsubscribingState)
 	require.NoError(t, err)
 
-	err = e.Websocket.ResubscribeToChannel(t.Context(), e.Websocket.Conn, subs[0])
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second*30)
+	defer cancel()
+	err = e.Websocket.ResubscribeToChannel(ctx, e.Websocket.Conn, subs[0])
 	require.NoError(t, err, "Resubscribe must not error")
 	require.Equal(t, subscription.SubscribedState, subs[0].State(), "subscription must be subscribed again")
 }
@@ -1215,7 +1237,8 @@ func TestWsCancelAllOrders(t *testing.T) {
 }
 
 func TestWsHandleData(t *testing.T) {
-	t.Parallel()
+	// Intentionally not parallel: this test drives checksum-sensitive orderbook fixtures
+	// against the global orderbook cache keyed by exchange/pair/asset.
 	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
 	for _, l := range []int{10, 100} {

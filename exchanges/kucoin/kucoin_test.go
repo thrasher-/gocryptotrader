@@ -2086,6 +2086,23 @@ func TestUpdateOrderbook(t *testing.T) {
 	}
 }
 
+func TestMergeRoundedOrderbookLevels(t *testing.T) {
+	t.Parallel()
+
+	levels := []orderbook.Level{
+		{Price: 1e18, Amount: 0.00001405},
+		{Price: 1e18, Amount: 0.00064},
+		{Price: 9.99, Amount: 1},
+	}
+
+	merged := mergeRoundedOrderbookLevels(levels)
+	require.Len(t, merged, 2)
+	assert.Equal(t, 1e18, merged[0].Price)
+	assert.InDelta(t, 0.00065405, merged[0].Amount, 1e-12)
+	assert.Equal(t, 9.99, merged[1].Price)
+	assert.Equal(t, 1.0, merged[1].Amount)
+}
+
 func TestUpdateTickers(t *testing.T) {
 	t.Parallel()
 	for _, a := range e.GetAssetTypes(true) {
@@ -3017,6 +3034,27 @@ func TestProcessOrderbook(t *testing.T) {
 	assert.NotNil(t, result)
 }
 
+func TestProcessFuturesOrderbookSnapshot(t *testing.T) {
+	t.Parallel()
+
+	ku := testInstance(t)
+	payload := []byte(`{"sequence":1672332328701,"asks":[[23149,13703],[23149,1460]],"bids":[[23148,22801],[23148,4766]],"ts":1677280435684,"timestamp":1677280435684}`)
+
+	err := ku.processFuturesOrderbookSnapshot(payload, futuresTradablePair.String())
+	require.NoError(t, err)
+
+	book, err := ku.Websocket.Orderbook.GetOrderbook(futuresTradablePair, asset.Futures)
+	require.NoError(t, err)
+	require.Len(t, book.Asks, 1, "rounded futures asks must merge")
+	require.Len(t, book.Bids, 1, "rounded futures bids must merge")
+	assert.Equal(t, int64(1672332328701), book.LastUpdateID)
+	assert.InDelta(t, 15163, book.Asks[0].Amount, 1e-12)
+	assert.InDelta(t, 27567, book.Bids[0].Amount, 1e-12)
+
+	err = ku.processFuturesOrderbookSnapshot(payload, "NOT_A_REAL_SYMBOL")
+	require.Error(t, err)
+}
+
 func TestProcessMarketSnapshot(t *testing.T) {
 	t.Parallel()
 	ku := testInstance(t)
@@ -3173,6 +3211,31 @@ func TestSeedLocalCache(t *testing.T) {
 	t.Parallel()
 	err := e.SeedLocalCache(t.Context(), marginTradablePair, asset.Margin)
 	assert.NoError(t, err)
+}
+
+func TestSeedLocalCacheWithBookMergesRoundedDuplicates(t *testing.T) {
+	t.Parallel()
+
+	err := e.SeedLocalCacheWithBook(marginTradablePair, &Orderbook{
+		Sequence: 123,
+		Time:     time.Now(),
+		Bids: []orderbook.Level{
+			{Price: 1e18, Amount: 0.0001},
+			{Price: 1e18, Amount: 0.0002},
+		},
+		Asks: []orderbook.Level{
+			{Price: 2e18, Amount: 0.0003},
+			{Price: 2e18, Amount: 0.0004},
+		},
+	}, asset.Margin)
+	require.NoError(t, err)
+
+	book, err := e.Websocket.Orderbook.GetOrderbook(marginTradablePair, asset.Margin)
+	require.NoError(t, err)
+	require.Len(t, book.Bids, 1)
+	require.Len(t, book.Asks, 1)
+	assert.InDelta(t, 0.0003, book.Bids[0].Amount, 1e-12)
+	assert.InDelta(t, 0.0007, book.Asks[0].Amount, 1e-12)
 }
 
 func TestGetFuturesContractDetails(t *testing.T) {

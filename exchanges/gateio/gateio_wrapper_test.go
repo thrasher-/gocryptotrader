@@ -144,6 +144,11 @@ func TestFetchOrderbook(t *testing.T) {
 			assert.Equal(t, tc.a, got.Asset, "Asset should be correct")
 			assert.LessOrEqual(t, len(got.Asks), 1, "Asks count should not exceed limit, but may be empty especially for options")
 			assert.LessOrEqual(t, len(got.Bids), 1, "Bids count should not exceed limit, but may be empty especially for options")
+			if tc.a == asset.Options && got.LastUpdated.IsZero() && got.LastUpdateID == 0 && got.LastPushed.IsZero() {
+				assert.Empty(t, got.Asks, "Empty options orderbooks may not include update metadata")
+				assert.Empty(t, got.Bids, "Empty options orderbooks may not include update metadata")
+				return
+			}
 			assert.NotZero(t, got.LastUpdated, "Last updated timestamp should be set")
 			assert.NotZero(t, got.LastUpdateID, "Last update ID should be set")
 			assert.NotZero(t, got.LastPushed, "Last pushed timestamp should be set")

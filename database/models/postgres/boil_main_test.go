@@ -55,6 +55,13 @@ func TestMain(m *testing.M) {
 	// Set DebugMode so we can see generated sql statements
 	boil.DebugMode = *flagDebugMode
 
+	// TODO(#1818): Remove this generated-harness skip once the ORM migration is complete.
+	// Ref: https://github.com/thrasher-corp/gocryptotrader/issues/1818
+	if viper.GetString("psql.user") == "" || viper.GetString("psql.host") == "" || viper.GetString("psql.dbname") == "" {
+		fmt.Println("Skipping postgres model tests: missing required psql config (psql.user/psql.host/psql.dbname).")
+		os.Exit(0)
+	}
+
 	if err = dbMain.setup(); err != nil {
 		fmt.Println("Unable to execute setup:", err)
 		os.Exit(-4)

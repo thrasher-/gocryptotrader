@@ -269,7 +269,7 @@ func TestProcessOrderbookUpdateWithSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	conn := &FixtureConnection{}
-	err = e.Websocket.AddSubscriptions(conn, subs...)
+	err = e.Websocket.AddSubscriptions(nil, subs...)
 	require.NoError(t, err)
 
 	e.wsOBResubMgr.lookup[key.PairAsset{Base: currency.BTC.Item, Quote: currency.USDT.Item, Asset: asset.Spot}] = true

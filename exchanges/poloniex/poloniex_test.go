@@ -677,6 +677,115 @@ func TestUpdateAccountBalances(t *testing.T) {
 	assert.NotNil(t, result)
 }
 
+func TestMapSubAccountBalances(t *testing.T) {
+	t.Parallel()
+
+	result := mapSubAccountBalances([]*SubAccountBalances{
+		{
+			AccountID:   "spot-account",
+			AccountType: "SPOT",
+			Balances: []*SubAccountBalance{{
+				Currency:     currency.BTC,
+				Available:    types.Number(3),
+				Hold:         types.Number(2),
+				MaxAvailable: types.Number(999),
+			}},
+		},
+		{
+			AccountID:   "futures-account",
+			AccountType: "FUTURES",
+			Balances: []*SubAccountBalance{{
+				Currency:         currency.USDT,
+				AccountEquity:    types.Number(10),
+				FrozenFunds:      types.Number(4),
+				AvailableBalance: types.Number(6),
+			}},
+		},
+	})
+
+	require.Len(t, result, 2)
+
+	var spotSub, futuresSub *accounts.SubAccount
+	for i := range result {
+		switch {
+		case result[i].AssetType == asset.Spot && result[i].ID == "spot-account":
+			spotSub = result[i]
+		case result[i].AssetType == asset.Futures && result[i].ID == "futures-account":
+			futuresSub = result[i]
+		}
+	}
+
+	require.NotNil(t, spotSub)
+	require.NotNil(t, futuresSub)
+
+	spotBal, ok := spotSub.Balances[currency.BTC]
+	require.True(t, ok)
+	assert.Equal(t, 5.0, spotBal.Total)
+	assert.Equal(t, 2.0, spotBal.Hold)
+	assert.Equal(t, 3.0, spotBal.Free)
+
+	futuresBal, ok := futuresSub.Balances[currency.USDT]
+	require.True(t, ok)
+	assert.Equal(t, 10.0, futuresBal.Total)
+	assert.Equal(t, 4.0, futuresBal.Hold)
+	assert.Equal(t, 6.0, futuresBal.Free)
+}
+
+func TestProcessBalance(t *testing.T) {
+	t.Parallel()
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup instance must not error")
+	ex.API.AuthenticatedSupport = true
+	ex.API.AuthenticatedWebsocketSupport = true
+	ex.SetCredentials("key", "secret", "", "", "", "")
+	ex.Websocket.SetCanUseAuthenticatedEndpoints(true)
+
+	resp := &SubscriptionResponse{
+		Data: json.RawMessage(`[
+			{"accountId":"spot-account","accountType":"SPOT","available":"3","currency":"BTC","hold":"2","ts":1657312008443},
+			{"accountId":"futures-account","accountType":"FUTURES","available":"6","currency":"USDT","hold":"4","ts":1657312008443}
+		]`),
+	}
+
+	err := ex.processBalance(t.Context(), resp)
+	require.NoError(t, err)
+
+	select {
+	case msg := <-ex.Websocket.DataHandler.C:
+		got, ok := msg.Data.(accounts.SubAccounts)
+		require.True(t, ok, "expected accounts.SubAccounts")
+		require.Len(t, got, 2)
+
+		var spotSub, futuresSub *accounts.SubAccount
+		for i := range got {
+			switch {
+			case got[i].AssetType == asset.Spot && got[i].ID == "spot-account":
+				spotSub = got[i]
+			case got[i].AssetType == asset.Futures && got[i].ID == "futures-account":
+				futuresSub = got[i]
+			}
+		}
+
+		require.NotNil(t, spotSub)
+		require.NotNil(t, futuresSub)
+
+		spotBal, ok := spotSub.Balances[currency.BTC]
+		require.True(t, ok)
+		assert.Equal(t, 5.0, spotBal.Total)
+		assert.Equal(t, 2.0, spotBal.Hold)
+		assert.Equal(t, 3.0, spotBal.Free)
+
+		futuresBal, ok := futuresSub.Balances[currency.USDT]
+		require.True(t, ok)
+		assert.Equal(t, 10.0, futuresBal.Total)
+		assert.Equal(t, 4.0, futuresBal.Hold)
+		assert.Equal(t, 6.0, futuresBal.Free)
+	case <-time.After(time.Second):
+		t.Fatal("expected websocket balance payload")
+	}
+}
+
 func TestWithdrawFiat(t *testing.T) {
 	t.Parallel()
 	var withdrawFiatRequest withdraw.Request

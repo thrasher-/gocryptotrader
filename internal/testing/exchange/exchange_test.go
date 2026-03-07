@@ -1,7 +1,9 @@
 package exchange
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	gws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
@@ -34,4 +36,20 @@ func TestMockHTTPInstance(t *testing.T) {
 func TestMockWsInstance(t *testing.T) {
 	b := MockWsInstance[binance.Exchange](t, mockws.CurryWsMockUpgrader(t, func(_ testing.TB, _ []byte, _ *gws.Conn) error { return nil }))
 	require.NotNil(t, b, "MockWsInstance must not be nil")
+}
+
+func TestSetupWsWithCustomTimeout(t *testing.T) {
+	b := MockWsInstance[binance.Exchange](t, mockws.CurryWsMockUpgrader(t, func(_ testing.TB, _ []byte, _ *gws.Conn) error { return nil }))
+	require.NotNil(t, b, "MockWsInstance must not be nil")
+
+	require.NoError(t, b.GetBase().Websocket.Shutdown(), "Shutdown must not error")
+	SetupWs(t, b, 5*time.Second)
+	assert.True(t, b.GetBase().Websocket.IsConnected(), "SetupWs should reconnect websocket using bounded timeout")
+}
+
+func TestConnectWithinTimeoutUsesLiveParentContext(t *testing.T) {
+	t.Parallel()
+	connectWithinTimeout(t, 50*time.Millisecond, func(ctx context.Context) error {
+		return ctx.Err()
+	})
 }

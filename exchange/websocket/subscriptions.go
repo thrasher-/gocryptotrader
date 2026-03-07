@@ -24,8 +24,41 @@ var (
 	errConnectionNotFound        = errors.New("connection not found")
 )
 
+func safeConnectionURL(conn Connection) (url string, ok bool) {
+	if conn == nil {
+		return "", false
+	}
+
+	ok = true
+	defer func() {
+		if recover() != nil {
+			url = ""
+			ok = false
+		}
+	}()
+	url = conn.GetURL()
+	return url, ok
+}
+
+func connectionLabel(conn Connection) string {
+	if conn == nil {
+		return "<nil>"
+	}
+
+	if url, ok := safeConnectionURL(conn); ok && url != "" {
+		return url
+	}
+	return fmt.Sprintf("%T", conn)
+}
+
 // UnsubscribeChannels unsubscribes from a list of websocket channel
 func (m *Manager) UnsubscribeChannels(ctx context.Context, conn Connection, channels subscription.List) error {
+	m.m.Lock()
+	defer m.m.Unlock()
+	return m.unsubscribeChannels(ctx, conn, channels)
+}
+
+func (m *Manager) unsubscribeChannels(ctx context.Context, conn Connection, channels subscription.List) error {
 	if len(channels) == 0 {
 		return nil // No channels to unsubscribe from is not an error
 	}
@@ -36,7 +69,7 @@ func (m *Manager) UnsubscribeChannels(ctx context.Context, conn Connection, chan
 		}
 		ws, ok := m.connections[conn]
 		if !ok {
-			return fmt.Errorf("%w: %q", errConnectionNotFound, conn.GetURL())
+			return fmt.Errorf("%w: %q", errConnectionNotFound, connectionLabel(conn))
 		}
 		return m.unsubscribe(ws.subscriptions, channels, func(channels subscription.List) error {
 			return ws.setup.Unsubscriber(ctx, conn, channels)
@@ -68,19 +101,27 @@ func (m *Manager) unsubscribe(store *subscription.Store, channels subscription.L
 // Sets state to Resubscribing, and exchanges which want to maintain a lock on it can respect this state and not RemoveSubscription
 // Errors if subscription is already subscribing
 func (m *Manager) ResubscribeToChannel(ctx context.Context, conn Connection, s *subscription.Subscription) error {
+	m.m.Lock()
+	defer m.m.Unlock()
 	l := subscription.List{s}
 	if err := s.SetState(subscription.ResubscribingState); err != nil {
 		return fmt.Errorf("%w: %s", err, s)
 	}
-	if err := m.UnsubscribeChannels(ctx, conn, l); err != nil {
+	if err := m.unsubscribeChannels(ctx, conn, l); err != nil {
 		return err
 	}
-	return m.SubscribeToChannels(ctx, conn, l)
+	return m.subscribeToChannels(ctx, conn, l)
 }
 
 // SubscribeToChannels subscribes to websocket channels using the exchange specific Subscriber method
 // Errors are returned for duplicates or exceeding max Subscriptions
 func (m *Manager) SubscribeToChannels(ctx context.Context, conn Connection, subs subscription.List) error {
+	m.m.Lock()
+	defer m.m.Unlock()
+	return m.subscribeToChannels(ctx, conn, subs)
+}
+
+func (m *Manager) subscribeToChannels(ctx context.Context, conn Connection, subs subscription.List) error {
 	if slices.Contains(subs, nil) {
 		return fmt.Errorf("%w: List parameter contains an nil element", common.ErrNilPointer)
 	}
@@ -108,8 +149,22 @@ func (m *Manager) AddSubscriptions(conn Connection, subs ...*subscription.Subscr
 	if m == nil {
 		return fmt.Errorf("%w: AddSubscriptions called on nil Websocket", common.ErrNilPointer)
 	}
+	m.subOpsMu.Lock()
+	defer m.subOpsMu.Unlock()
+
 	var subscriptionStore **subscription.Store
-	if ws, ok := m.connections[conn]; ok && conn != nil {
+	if m.useMultiConnectionManagement && conn != nil {
+		ws, ok := m.connections[conn]
+		if ok {
+			subscriptionStore = &ws.subscriptions
+		} else if len(m.connections) == 0 {
+			subscriptionStore = &m.subscriptions
+		} else if _, ok := safeConnectionURL(conn); !ok {
+			subscriptionStore = &m.subscriptions
+		} else {
+			return fmt.Errorf("%w: %q", errConnectionNotFound, connectionLabel(conn))
+		}
+	} else if ws, ok := m.connections[conn]; ok && conn != nil {
 		subscriptionStore = &ws.subscriptions
 	} else {
 		subscriptionStore = &m.subscriptions
@@ -137,9 +192,22 @@ func (m *Manager) AddSuccessfulSubscriptions(conn Connection, subs ...*subscript
 	if m == nil {
 		return fmt.Errorf("%w: AddSuccessfulSubscriptions called on nil Websocket", common.ErrNilPointer)
 	}
+	m.subOpsMu.Lock()
+	defer m.subOpsMu.Unlock()
 
 	var subscriptionStore **subscription.Store
-	if ws, ok := m.connections[conn]; ok && conn != nil {
+	if m.useMultiConnectionManagement && conn != nil {
+		ws, ok := m.connections[conn]
+		if ok {
+			subscriptionStore = &ws.subscriptions
+		} else if len(m.connections) == 0 {
+			subscriptionStore = &m.subscriptions
+		} else if _, ok := safeConnectionURL(conn); !ok {
+			subscriptionStore = &m.subscriptions
+		} else {
+			return fmt.Errorf("%w: %q", errConnectionNotFound, connectionLabel(conn))
+		}
+	} else if ws, ok := m.connections[conn]; ok && conn != nil {
 		subscriptionStore = &ws.subscriptions
 	} else {
 		subscriptionStore = &m.subscriptions
@@ -166,9 +234,22 @@ func (m *Manager) RemoveSubscriptions(conn Connection, subs ...*subscription.Sub
 	if m == nil {
 		return fmt.Errorf("%w: RemoveSubscriptions called on nil Websocket", common.ErrNilPointer)
 	}
+	m.subOpsMu.Lock()
+	defer m.subOpsMu.Unlock()
 
 	var subscriptionStore *subscription.Store
-	if ws, ok := m.connections[conn]; ok && conn != nil {
+	if m.useMultiConnectionManagement && conn != nil {
+		ws, ok := m.connections[conn]
+		if ok {
+			subscriptionStore = ws.subscriptions
+		} else if len(m.connections) == 0 {
+			subscriptionStore = m.subscriptions
+		} else if _, ok := safeConnectionURL(conn); !ok {
+			subscriptionStore = m.subscriptions
+		} else {
+			return fmt.Errorf("%w: %q", errConnectionNotFound, connectionLabel(conn))
+		}
+	} else if ws, ok := m.connections[conn]; ok && conn != nil {
 		subscriptionStore = ws.subscriptions
 	} else {
 		subscriptionStore = m.subscriptions
@@ -193,6 +274,8 @@ func (m *Manager) RemoveSubscriptions(conn Connection, subs ...*subscription.Sub
 // GetSubscription returns a subscription at the key provided
 // returns nil if no subscription is at that key or the key is nil
 // Keys can implement subscription.MatchableKey in order to provide custom matching logic
+// Note: This is safe for concurrent use because connectionManager is only modified during Setup
+// (under lock) and subscription.Store has its own internal mutex.
 func (m *Manager) GetSubscription(key any) *subscription.Subscription {
 	if m == nil || key == nil {
 		return nil
@@ -213,6 +296,8 @@ func (m *Manager) GetSubscription(key any) *subscription.Subscription {
 }
 
 // GetSubscriptions returns a new slice of the subscriptions
+// Note: This is safe for concurrent use because connectionManager is only modified during Setup
+// (under lock) and subscription.Store has its own internal mutex.
 func (m *Manager) GetSubscriptions() subscription.List {
 	if m == nil {
 		return nil
@@ -288,11 +373,12 @@ func (m *Manager) FlushChannels(ctx context.Context) error {
 		return fmt.Errorf("%s %w", m.exchangeName, ErrNotConnected)
 	}
 
+	m.m.Lock()
+	defer m.m.Unlock()
+
 	// If the exchange does not support subscribing and or unsubscribing the full connection needs to be flushed to
 	// maintain consistency.
 	if !m.features.Subscribe || !m.features.Unsubscribe {
-		m.m.Lock()
-		defer m.m.Unlock()
 		if err := m.shutdown(); err != nil {
 			return err
 		}
@@ -334,7 +420,7 @@ func (m *Manager) FlushChannels(ctx context.Context) error {
 func (m *Manager) updateChannelSubscriptions(ctx context.Context, store *subscription.Store, incoming subscription.List) error {
 	subs, unsubs := store.Diff(incoming)
 	if len(unsubs) != 0 {
-		if err := m.UnsubscribeChannels(ctx, nil, unsubs); err != nil {
+		if err := m.unsubscribeChannels(ctx, nil, unsubs); err != nil {
 			return err
 		}
 
@@ -343,7 +429,7 @@ func (m *Manager) updateChannelSubscriptions(ctx context.Context, store *subscri
 		}
 	}
 	if len(subs) != 0 {
-		if err := m.SubscribeToChannels(ctx, nil, subs); err != nil {
+		if err := m.subscribeToChannels(ctx, nil, subs); err != nil {
 			return err
 		}
 
@@ -419,7 +505,9 @@ func (m *Manager) scaleConnectionsToSubscriptions(ctx context.Context, ws *webso
 			clean = append(clean, conn)
 			continue
 		}
+		m.subOpsMu.Lock()
 		delete(m.connections, conn)
+		m.subOpsMu.Unlock()
 		if err := conn.Shutdown(); err != nil {
 			log.Warnf(log.WebsocketMgr, "%v websocket: failed to shutdown connection: %v", m.exchangeName, err)
 		}
@@ -440,7 +528,7 @@ func (m *Manager) unsubscribeFromConnection(ctx context.Context, conn Connection
 		return subs, nil
 	}
 
-	if err := m.UnsubscribeChannels(ctx, conn, remove); err != nil {
+	if err := m.unsubscribeChannels(ctx, conn, remove); err != nil {
 		return nil, err
 	}
 
@@ -475,7 +563,7 @@ func (m *Manager) subscribeToConnection(ctx context.Context, conn Connection, su
 	}
 
 	toSubscribe := subs[:availableCap]
-	if err := m.SubscribeToChannels(ctx, conn, toSubscribe); err != nil {
+	if err := m.subscribeToChannels(ctx, conn, toSubscribe); err != nil {
 		return nil, err
 	}
 

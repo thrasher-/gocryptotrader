@@ -982,6 +982,83 @@ func TestAddPadding(t *testing.T) {
 	}
 }
 
+func TestIntervalCalendarMonths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		interval Interval
+		exp      int
+	}{
+		{name: "raw", interval: Raw, exp: 0},
+		{name: "one month", interval: OneMonth, exp: 1},
+		{name: "three month", interval: ThreeMonth, exp: 3},
+		{name: "six month", interval: SixMonth, exp: 6},
+		{name: "nine month", interval: NineMonth, exp: 9},
+		{name: "one year", interval: OneYear, exp: 12},
+		{name: "non month interval", interval: OneDay, exp: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.exp, tc.interval.calendarMonths())
+		})
+	}
+}
+
+func TestAddPaddingCalendarMonth(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC) // 4 months
+
+	k := &Item{
+		Interval: OneMonth,
+		Candles: []Candle{
+			{Time: time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), Open: 1, High: 2, Low: 0.5, Close: 1.5, Volume: 100},
+			{Time: time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), Open: 3, High: 4, Low: 2.5, Close: 3.5, Volume: 300},
+			{Time: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), Open: 4, High: 5, Low: 3.5, Close: 4.5, Volume: 400},
+		},
+	}
+
+	err := k.addPadding(start, end, false)
+	require.NoError(t, err, "addPadding must not error for OneMonth interval")
+	require.Len(t, k.Candles, 4, "must have 4 monthly candles")
+
+	assert.Equal(t, time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), k.Candles[0].Time, "first candle time should match")
+	assert.Equal(t, 1.0, k.Candles[0].Open, "first candle should be original data")
+	assert.Equal(t, time.Date(2023, 11, 1, 0, 0, 0, 0, time.UTC), k.Candles[1].Time, "second candle should be padded Nov")
+	assert.Equal(t, 0.0, k.Candles[1].Volume, "padded candle should have zero volume")
+	assert.Equal(t, time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), k.Candles[2].Time, "third candle time should match Dec")
+	assert.Equal(t, 3.0, k.Candles[2].Open, "third candle should be original data")
+	assert.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), k.Candles[3].Time, "fourth candle time should match Jan")
+	assert.Equal(t, 4.0, k.Candles[3].Open, "fourth candle should be original data")
+
+	// Test with no candles for the period
+	k.Candles = nil
+	err = k.addPadding(start, end, false)
+	require.NoError(t, err, "addPadding must not error with no candles")
+	require.Len(t, k.Candles, 4, "must have 4 padded monthly candles")
+	for i, c := range k.Candles {
+		assert.Equal(t, start.AddDate(0, i, 0), c.Time, "padded candle time should be month-aligned")
+	}
+}
+
+func TestTotalCandlesPerIntervalCalendarMonth(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	assert.Equal(t, uint64(12), TotalCandlesPerInterval(start, end, OneMonth), "should be 12 monthly candles in a year")
+	assert.Equal(t, uint64(4), TotalCandlesPerInterval(start, end, ThreeMonth), "should be 4 quarterly candles in a year")
+	assert.Equal(t, uint64(1), TotalCandlesPerInterval(start, end, OneYear), "should be 1 yearly candle in a year")
+
+	// Partial year: Jan 1 to Jul 1 = 6 complete months
+	end = time.Date(2023, 7, 1, 0, 0, 0, 0, time.UTC)
+	assert.Equal(t, uint64(6), TotalCandlesPerInterval(start, end, OneMonth), "should be 6 monthly candles in half a year")
+}
+
 func TestGetClosePriceAtTime(t *testing.T) {
 	t.Parallel()
 	tt := time.Now()

@@ -1615,7 +1615,7 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 		for i := range supportedOptionsTypes {
 			nextPageCursor = ""
 			for {
-				instrumentInfo, err := e.GetInstrumentInfo(ctx, getCategoryName(a), "", "", supportedOptionsTypes[i], nextPageCursor, 1000)
+				instrumentInfo, err := e.GetInstrumentInfo(ctx, getCategoryName(a), "", "Trading", supportedOptionsTypes[i], nextPageCursor, 1000)
 				if err != nil {
 					return fmt.Errorf("%w - %v", err, supportedOptionsTypes[i])
 				}
@@ -1631,6 +1631,9 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 	}
 	l := make([]limits.MinMaxLevel, 0, len(allInstrumentsInfo.List))
 	for _, inst := range allInstrumentsInfo.List {
+		if a == asset.Options && inst.Status != "Trading" {
+			continue
+		}
 		symbol := inst.transformSymbol(a)
 		pair, err := e.MatchSymbolWithAvailablePairs(symbol, a, true)
 		if err != nil {

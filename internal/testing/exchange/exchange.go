@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ import (
 )
 
 // Setup takes an empty exchange instance and loads config for it from testdata/configtest and connects a NewTestWebsocket
-func Setup(e exchange.IBotExchange) error {
+func Setup(e exchange.IBotExchange, verbose ...bool) error {
 	cfg := &config.Config{}
 
 	root, err := testutils.RootPathFromCWD()
@@ -46,6 +47,10 @@ func Setup(e exchange.IBotExchange) error {
 	if err != nil {
 		return fmt.Errorf("GetExchangeConfig(%q) error: %w", eName, err)
 	}
+	if len(verbose) > 0 {
+		exchConf.Verbose = verbose[0]
+	}
+
 	b := e.GetBase()
 	b.Websocket = sharedtestvalues.NewTestWebsocket()
 
@@ -60,6 +65,32 @@ func Setup(e exchange.IBotExchange) error {
 
 // httpMockFile is a consistent path under each exchange to find the mock server definitions
 const httpMockFile = "testdata/http.json"
+
+const defaultWSConnectTimeout = 30 * time.Second
+
+func connectWithinTimeout(tb testing.TB, timeout time.Duration, connect func(context.Context) error) {
+	tb.Helper()
+
+	if timeout <= 0 {
+		timeout = defaultWSConnectTimeout
+	}
+
+	connectCtx, cancelConnect := context.WithCancel(tb.Context())
+	tb.Cleanup(cancelConnect)
+
+	errC := make(chan error, 1)
+	go func() {
+		errC <- connect(connectCtx)
+	}()
+
+	select {
+	case err := <-errC:
+		require.NoError(tb, err, "Connect must not error")
+	case <-time.After(timeout):
+		cancelConnect()
+		tb.Fatalf("Connect timed out after %v", timeout)
+	}
+}
 
 // MockHTTPInstance takes an existing Exchange instance and attaches it to a new http server
 // It is expected to be run once,  since http requests do not often tangle with each other
@@ -102,11 +133,11 @@ func MockHTTPInstance(e exchange.IBotExchange, optionalPathPostfix ...string) er
 func MockWsInstance[T any, PT interface {
 	*T
 	exchange.IBotExchange
-}](tb testing.TB, h http.HandlerFunc) *T {
+}](tb testing.TB, h http.HandlerFunc, verbose ...bool) *T {
 	tb.Helper()
 
 	e := PT(new(T))
-	require.NoError(tb, Setup(e), "Test exchange Setup must not error")
+	require.NoError(tb, Setup(e, verbose...), "Test exchange Setup must not error")
 
 	s := httptest.NewServer(h)
 
@@ -125,8 +156,7 @@ func MockWsInstance[T any, PT interface {
 	// Exchanges which don't support subscription conf; Can be removed when all exchanges support sub conf
 	b.Websocket.GenerateSubs = func() (subscription.List, error) { return subscription.List{}, nil }
 
-	err = b.Websocket.Connect(context.TODO())
-	require.NoError(tb, err, "Connect must not error")
+	connectWithinTimeout(tb, defaultWSConnectTimeout, b.Websocket.Connect)
 
 	return e
 }
@@ -196,7 +226,7 @@ var (
 // SetupWs is a helper function to connect both auth and normal websockets
 // It will skip the test if websockets are not enabled
 // It's up to the test to skip if it requires creds, though
-func SetupWs(tb testing.TB, e exchange.IBotExchange) {
+func SetupWs(tb testing.TB, e exchange.IBotExchange, connectTimeout ...time.Duration) {
 	tb.Helper()
 
 	setupWsMutex.Lock()
@@ -220,8 +250,11 @@ func SetupWs(tb testing.TB, e exchange.IBotExchange) {
 	// Exchanges which don't support subscription conf; Can be removed when all exchanges support sub conf
 	w.GenerateSubs = func() (subscription.List, error) { return subscription.List{}, nil }
 
-	err = w.Connect(context.TODO())
-	require.NoError(tb, err, "Connect must not error")
+	timeout := defaultWSConnectTimeout
+	if len(connectTimeout) > 0 && connectTimeout[0] > 0 {
+		timeout = connectTimeout[0]
+	}
+	connectWithinTimeout(tb, timeout, w.Connect)
 	w.DataHandler = stream.NewRelay(100000)
 	setupWsOnce[e] = true
 }

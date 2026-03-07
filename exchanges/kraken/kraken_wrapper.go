@@ -199,6 +199,7 @@ func (e *Exchange) Setup(exch *config.Exchange) error {
 		DefaultURL:            krakenWSURL,
 		RunningURL:            wsRunningURL,
 		Connector:             e.WsConnect,
+		ConnectorWithContext:  e.wsConnect,
 		Subscriber:            e.Subscribe,
 		Unsubscriber:          e.Unsubscribe,
 		GenerateSubscriptions: e.generateSubscriptions,

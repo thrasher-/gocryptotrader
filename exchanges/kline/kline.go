@@ -133,6 +133,26 @@ func (i Interval) Duration() time.Duration {
 	return time.Duration(i)
 }
 
+// calendarMonths returns the number of calendar months this interval represents,
+// or 0 if it is not a calendar-month-based interval. Calendar-month intervals
+// must use AddDate arithmetic because months have variable day counts.
+func (i Interval) calendarMonths() int {
+	switch i {
+	case OneMonth:
+		return 1
+	case ThreeMonth:
+		return 3
+	case SixMonth:
+		return 6
+	case NineMonth:
+		return 9
+	case OneYear:
+		return 12
+	default:
+		return 0
+	}
+}
+
 // Short returns short string version of interval
 func (i Interval) Short() string {
 	if i == Raw {
@@ -197,7 +217,19 @@ func (k *Item) addPadding(start, exclusiveEnd time.Time, purgeOnPartial bool) er
 		return errCannotEstablishTimeWindow
 	}
 
-	padded := make([]Candle, int(window/k.Interval.Duration()))
+	months := k.Interval.calendarMonths()
+
+	var totalCandles int
+	if months > 0 {
+		// Calendar-month intervals: count months between start and end.
+		for t := start; t.Before(exclusiveEnd); t = t.AddDate(0, months, 0) {
+			totalCandles++
+		}
+	} else {
+		totalCandles = int(window / k.Interval.Duration())
+	}
+
+	padded := make([]Candle, totalCandles)
 	var target int
 	for x := range padded {
 		switch {
@@ -216,7 +248,11 @@ func (k *Item) addPadding(start, exclusiveEnd time.Time, purgeOnPartial bool) er
 			padded[x] = k.Candles[target]
 			target++
 		}
-		start = start.Add(k.Interval.Duration())
+		if months > 0 {
+			start = start.AddDate(0, months, 0)
+		} else {
+			start = start.Add(k.Interval.Duration())
+		}
 	}
 
 	// NOTE: This checks if the end time exceeds time.Now() and we are capturing
@@ -361,6 +397,13 @@ func TotalCandlesPerInterval(start, end time.Time, interval Interval) uint64 {
 		return 0
 	}
 
+	if months := interval.calendarMonths(); months > 0 {
+		var count uint64
+		for t := start; t.Before(end); t = t.AddDate(0, months, 0) {
+			count++
+		}
+		return count
+	}
 	window := end.Sub(start)
 	return uint64(window) / uint64(interval) //nolint:gosec // No overflow risk
 }

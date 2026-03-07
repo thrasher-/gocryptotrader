@@ -92,9 +92,14 @@ var defaultSubscriptions = subscription.List{
 	{Enabled: true, Channel: subscription.MyTradesChannel, Authenticated: true},
 }
 
-// WsConnect initiates a websocket connection
+// WsConnect initiates a websocket connection.
+// This legacy entrypoint keeps backwards compatibility for manager setups that
+// use Connector without context propagation.
 func (e *Exchange) WsConnect() error {
-	ctx := context.TODO()
+	return e.wsConnect(context.TODO())
+}
+
+func (e *Exchange) wsConnect(ctx context.Context) error {
 	if !e.Websocket.IsEnabled() || !e.IsEnabled() {
 		return websocket.ErrWebsocketNotEnabled
 	}

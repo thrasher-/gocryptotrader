@@ -67,7 +67,10 @@ func TestResubscribe(t *testing.T) {
 	require.NoError(t, err)
 
 	err = e.Websocket.AddSubscriptions(conn, expanded...)
-	require.NoError(t, err)
+	require.NoError(t, err, "fixture connection must fall back to global subscription store")
+
+	err = e.Websocket.AddSubscriptions(nil, expanded...)
+	require.ErrorIs(t, err, subscription.ErrDuplicate)
 
 	err = e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
 		Asks:        []orderbook.Level{{Price: 50000, Amount: 0.1}},
@@ -80,7 +83,12 @@ func TestResubscribe(t *testing.T) {
 	require.NoError(t, err)
 	err = m.Resubscribe(t.Context(), e, conn, "ob.BTC_USDT.50", currency.NewBTCUSDT(), asset.Spot)
 	require.NoError(t, err)
-	assert.True(t, m.IsResubscribing(currency.NewBTCUSDT(), asset.Spot))
+	require.Eventually(t,
+		func() bool { return !m.IsResubscribing(currency.NewBTCUSDT(), asset.Spot) },
+		time.Second,
+		time.Millisecond*10,
+		"Resubscribe state should clear after async failure",
+	)
 }
 
 func TestCompletedResubscribe(t *testing.T) {

@@ -3,8 +3,10 @@ package websocket
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,6 +127,157 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 
 	err = multi.SubscribeToChannels(t.Context(), amazingConn, subscription.List{nil})
 	assert.ErrorIs(t, err, common.ErrNilPointer, "Should error correctly when list contains a nil subscription")
+}
+
+func TestSubscribeUnsubscribeCallbacksDoNotDeadlock(t *testing.T) {
+	t.Parallel()
+	ws := NewManager()
+	require.NoError(t, ws.Setup(newDefaultSetup()), "WS Setup must not error")
+
+	ws.Subscriber = currySimpleSub(ws)
+	ws.Unsubscriber = currySimpleUnsub(ws)
+
+	subs, err := ws.GenerateSubs()
+	require.NoError(t, err, "Generating test subscriptions must not error")
+
+	subDone := make(chan error, 1)
+	go func() {
+		subDone <- ws.SubscribeToChannels(t.Context(), nil, subs)
+	}()
+	select {
+	case err = <-subDone:
+		require.NoError(t, err, "SubscribeToChannels must not error")
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for SubscribeToChannels callback")
+	}
+
+	unsubDone := make(chan error, 1)
+	go func() {
+		unsubDone <- ws.UnsubscribeChannels(t.Context(), nil, subs)
+	}()
+	select {
+	case err = <-unsubDone:
+		require.NoError(t, err, "UnsubscribeChannels must not error")
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for UnsubscribeChannels callback")
+	}
+}
+
+func TestSubscriptionMutatorsConcurrentSafety(t *testing.T) {
+	t.Parallel()
+	w := NewManager()
+
+	const subCount = 64
+	subs := make([]*subscription.Subscription, 0, subCount)
+	for i := range subCount {
+		subs = append(subs, &subscription.Subscription{Key: i, Channel: subscription.TickerChannel})
+	}
+
+	errCh := make(chan error, subCount*2)
+	var wg sync.WaitGroup
+	for i := range subs {
+		s := subs[i]
+		wg.Go(func() {
+			if err := w.AddSuccessfulSubscriptions(nil, s); err != nil {
+				errCh <- fmt.Errorf("AddSuccessfulSubscriptions must not error: %w", err)
+			}
+			if err := w.RemoveSubscriptions(nil, s); err != nil {
+				errCh <- fmt.Errorf("RemoveSubscriptions must not error: %w", err)
+			}
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	assert.Empty(t, w.GetSubscriptions(), "All subscriptions should be removed after concurrent mutations")
+}
+
+func TestSubscriptionMutatorsConcurrentSafetyWithConnectionStore(t *testing.T) {
+	t.Parallel()
+	w := NewManager()
+	conn := &fakeConnection{subscriptions: subscription.NewStore()}
+	wsConn := &websocket{subscriptions: subscription.NewStore()}
+	w.connections = map[Connection]*websocket{conn: wsConn}
+
+	const subCount = 64
+	subs := make([]*subscription.Subscription, 0, subCount)
+	for i := range subCount {
+		subs = append(subs, &subscription.Subscription{Key: i, Channel: subscription.OrderbookChannel})
+	}
+
+	errCh := make(chan error, subCount*2)
+	var wg sync.WaitGroup
+	for i := range subs {
+		s := subs[i]
+		wg.Go(func() {
+			if err := w.AddSubscriptions(conn, s); err != nil {
+				errCh <- fmt.Errorf("AddSubscriptions must not error: %w", err)
+			}
+			if err := w.RemoveSubscriptions(conn, s); err != nil {
+				errCh <- fmt.Errorf("RemoveSubscriptions must not error: %w", err)
+			}
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	assert.Empty(t, wsConn.subscriptions.List(), "Connection subscription store should be empty after concurrent mutations")
+}
+
+func TestSubscriptionMutatorsUnknownConnectionInMultiConnectionMode(t *testing.T) {
+	t.Parallel()
+	w := NewManager()
+	w.useMultiConnectionManagement = true
+	w.subscriptions = subscription.NewStore()
+
+	managedConn := &fakeConnection{subscriptions: subscription.NewStore()}
+	w.connections = map[Connection]*websocket{
+		managedConn: {
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{managedConn},
+		},
+	}
+
+	unknownConn := &connection{URL: "wss://test"}
+	s := &subscription.Subscription{Key: 42, Channel: subscription.TickerChannel}
+
+	err := w.AddSubscriptions(unknownConn, s)
+	require.ErrorContains(t, err, errConnectionNotFound.Error())
+	require.Zero(t, w.subscriptions.Len(), "Unknown connection must not mutate global subscription store")
+	assert.Equal(t, subscription.InactiveState, s.State(), "State should not change on unknown connection error")
+
+	err = w.AddSuccessfulSubscriptions(unknownConn, s)
+	require.ErrorContains(t, err, errConnectionNotFound.Error())
+	require.Zero(t, w.subscriptions.Len(), "Unknown connection must not mutate global subscription store")
+	assert.Equal(t, subscription.InactiveState, s.State(), "State should not change on unknown connection error")
+
+	err = w.RemoveSubscriptions(unknownConn, s)
+	require.ErrorContains(t, err, errConnectionNotFound.Error())
+	require.Zero(t, w.subscriptions.Len(), "Unknown connection must not mutate global subscription store")
+}
+
+func TestSubscriptionMutatorsFallbackToGlobalStoreWithoutManagedConnections(t *testing.T) {
+	t.Parallel()
+
+	w := NewManager()
+	w.useMultiConnectionManagement = true
+	w.subscriptions = subscription.NewStore()
+
+	fixtureConn := &fakeConnection{subscriptions: subscription.NewStore()}
+	sub := &subscription.Subscription{Key: 42, Channel: subscription.TickerChannel}
+	err := w.AddSubscriptions(fixtureConn, sub)
+	require.NoError(t, err)
+	require.Equal(t, 1, w.subscriptions.Len(), "Fallback path must use global subscription store when no managed connections exist")
+
+	err = w.RemoveSubscriptions(fixtureConn, sub)
+	require.NoError(t, err)
+	require.Zero(t, w.subscriptions.Len())
 }
 
 // TestResubscribe tests Resubscribing to existing subscriptions
@@ -472,6 +625,65 @@ func (f *fakeConnection) Shutdown() error {
 }
 
 func (f *fakeConnection) Subscriptions() *subscription.Store { return f.subscriptions }
+
+type panicURLConnection struct{ Connection }
+
+func (p panicURLConnection) GetURL() string { panic("boom") }
+
+func TestSafeConnectionURL(t *testing.T) {
+	t.Parallel()
+
+	url, ok := safeConnectionURL(nil)
+	assert.False(t, ok, "nil connection should not produce a URL")
+	assert.Empty(t, url)
+
+	url, ok = safeConnectionURL(&connection{URL: "wss://test"})
+	require.True(t, ok)
+	assert.Equal(t, "wss://test", url)
+
+	url, ok = safeConnectionURL(panicURLConnection{})
+	assert.False(t, ok, "panic from GetURL should be recovered")
+	assert.Empty(t, url)
+}
+
+func TestConnectionLabel(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "<nil>", connectionLabel(nil))
+	assert.Equal(t, "wss://test", connectionLabel(&connection{URL: "wss://test"}))
+	assert.Equal(t, fmt.Sprintf("%T", panicURLConnection{}), connectionLabel(panicURLConnection{}), "panic path should fall back to type label")
+}
+
+func TestUnsubscribeChannelsDirect(t *testing.T) {
+	t.Parallel()
+
+	w := NewManager()
+	subs := subscription.List{{Channel: subscription.TickerChannel}}
+	w.subscriptions = subscription.NewStore()
+	require.NoError(t, w.subscriptions.Add(subs[0]))
+	assert.NoError(t, w.unsubscribeChannels(t.Context(), nil, nil), "empty channels should not error")
+	require.ErrorIs(t, w.unsubscribeChannels(t.Context(), nil, subs), common.ErrNilPointer)
+
+	called := false
+	w.Unsubscriber = func(ch subscription.List) error {
+		called = true
+		require.Equal(t, subs, ch)
+		return nil
+	}
+	require.NoError(t, w.unsubscribeChannels(t.Context(), nil, subs))
+	require.True(t, called, "single-connection unsubscriber must be invoked")
+
+	m := NewManager()
+	m.useMultiConnectionManagement = true
+	conn := &fakeConnection{subscriptions: subscription.NewStore()}
+	store := subscription.NewStore()
+	require.NoError(t, store.Add(subs[0]))
+	m.connections = map[Connection]*websocket{
+		conn: {setup: &ConnectionSetup{Unsubscriber: func(context.Context, Connection, subscription.List) error { return nil }}, subscriptions: store},
+	}
+	require.NoError(t, m.unsubscribeChannels(t.Context(), conn, subs), "multi-connection unsubscriber must be invoked")
+	require.ErrorIs(t, m.unsubscribeChannels(t.Context(), &connection{URL: "wss://unknown"}, subs), errConnectionNotFound)
+}
 
 func TestScaleConnectionsToSubscriptions(t *testing.T) {
 	t.Parallel()
