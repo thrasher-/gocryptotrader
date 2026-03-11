@@ -1518,6 +1518,345 @@ func TestWSTickerResponse(t *testing.T) {
 	}
 }
 
+func TestParseWSBookEntry(t *testing.T) {
+	t.Parallel()
+
+	t.Run("spot", func(t *testing.T) {
+		t.Parallel()
+
+		book, fundingRate, err := parseWSBookEntry([]byte(`[38334303613,9348.8,0.53]`))
+		require.NoError(t, err, "parseWSBookEntry must not error")
+		assert.False(t, fundingRate, "spot orderbook entries must not be flagged as funding")
+		assert.Equal(t, WebsocketBook{
+			ID:     38334303613,
+			Price:  9348.8,
+			Amount: 0.53,
+		}, book, "spot orderbook entry must decode correctly")
+	})
+
+	t.Run("funding", func(t *testing.T) {
+		t.Parallel()
+
+		book, fundingRate, err := parseWSBookEntry([]byte(`[41238905,2,0.002,1000]`))
+		require.NoError(t, err, "parseWSBookEntry must not error")
+		assert.True(t, fundingRate, "funding orderbook entries must be flagged as funding")
+		assert.Equal(t, WebsocketBook{
+			ID:     41238905,
+			Period: 2,
+			Price:  0.002,
+			Amount: 1000,
+		}, book, "funding orderbook entry must decode correctly")
+	})
+
+	t.Run("spot null required field errors", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := parseWSBookEntry([]byte(`[38334303613,null,0.53]`))
+		require.Error(t, err, "parseWSBookEntry must error on null spot price")
+		assert.ErrorContains(t, err, "orderbook price", "parseWSBookEntry must identify the null spot price field")
+	})
+
+	t.Run("funding null required field errors", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := parseWSBookEntry([]byte(`[41238905,2,0.002,null]`))
+		require.Error(t, err, "parseWSBookEntry must error on null funding amount")
+		assert.ErrorContains(t, err, "orderbook amount", "parseWSBookEntry must identify the null funding amount field")
+	})
+
+	t.Run("spot tolerates extra trailing fields", func(t *testing.T) {
+		t.Parallel()
+
+		book, fundingRate, err := parseWSBookEntry([]byte(`[38334303613,9348.8,0.53,99,100]`))
+		require.NoError(t, err, "parseWSBookEntry must tolerate extra trailing fields")
+		assert.False(t, fundingRate, "spot orderbook entries with extra trailing fields must remain spot")
+		assert.Equal(t, WebsocketBook{
+			ID:     38334303613,
+			Price:  9348.8,
+			Amount: 0.53,
+		}, book, "spot orderbook entries must ignore extra trailing fields")
+	})
+}
+
+func TestParseWSBookUpdateData(t *testing.T) {
+	t.Parallel()
+
+	t.Run("spot snapshot", func(t *testing.T) {
+		t.Parallel()
+
+		update, err := parseWSBookUpdateData([]byte(`[1,[[1001,50000,1.5],[1002,50010,-2.5]],1]`), true)
+		require.NoError(t, err, "parseWSBookUpdateData must not error on a spot snapshot")
+		assert.True(t, update.isSnapshot, "spot snapshot must be marked as a snapshot")
+		assert.False(t, update.fundingRate, "spot snapshot must not be marked as funding")
+		assert.Equal(t, []WebsocketBook{
+			{ID: 1001, Price: 50000, Amount: 1.5},
+			{ID: 1002, Price: 50010, Amount: -2.5},
+		}, update.books, "spot snapshot books must decode correctly")
+	})
+
+	t.Run("funding update", func(t *testing.T) {
+		t.Parallel()
+
+		update, err := parseWSBookUpdateData([]byte(`[2,[2001,30,0.00025,-1200],2]`), true)
+		require.NoError(t, err, "parseWSBookUpdateData must not error on a funding update")
+		assert.False(t, update.isSnapshot, "funding update must not be marked as a snapshot")
+		assert.True(t, update.fundingRate, "funding update must be marked as funding")
+		assert.Equal(t, int64(2), update.sequenceNo, "funding update sequence number must decode correctly")
+		assert.Equal(t, []WebsocketBook{
+			{ID: 2001, Period: 30, Price: 0.00025, Amount: -1200},
+		}, update.books, "funding update books must decode correctly")
+	})
+
+	t.Run("missing sequence number", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parseWSBookUpdateData([]byte(`[1,[1001,49990,3]]`), false)
+		require.ErrorIs(t, err, errNoSeqNo, "parseWSBookUpdateData must error when sequence numbers are not configured")
+	})
+
+	t.Run("snapshot missing sequence number", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parseWSBookUpdateData([]byte(`[1,[[1001,50000,1.5],[1002,50010,-2.5]]]`), false)
+		require.ErrorIs(t, err, errNoSeqNo, "parseWSBookUpdateData must preserve the legacy missing sequence number error for snapshots")
+	})
+}
+
+func TestWSTickerUpdateUnmarshalRejectsNullRequiredFields(t *testing.T) {
+	t.Parallel()
+
+	t.Run("spot", func(t *testing.T) {
+		t.Parallel()
+
+		var update wsSpotTickerUpdate
+		err := json.Unmarshal([]byte(`[null,2228.36155358,61.305,1323.2442970500003,0.395,0.0065,61.371,50973.3020771,62.5,57.421]`), &update)
+		require.Error(t, err, "spot ticker update must error when a required field is null")
+		assert.ErrorContains(t, err, "spot ticker bid", "spot ticker update must identify the null required field")
+	})
+
+	t.Run("funding", func(t *testing.T) {
+		t.Parallel()
+
+		var update wsFundingTickerUpdate
+		err := json.Unmarshal([]byte(`[0.002,61.304,2,2228.36155358,61.305,30,null,0.395,0.0065,61.371,50973.3020771,62.5,57.421,null,null,15.25]`), &update)
+		require.Error(t, err, "funding ticker update must error when a required field is null")
+		assert.ErrorContains(t, err, "funding ticker ask size", "funding ticker update must identify the null required field")
+	})
+}
+
+func TestParseWSTickerUpdateData(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		raw    string
+		assert func(*testing.T, ticker.Price)
+	}{
+		{
+			name: "spot",
+			raw:  `[11534,[61.304,2228.36155358,61.305,1323.2442970500003,0.395,0.0065,61.371,50973.3020771,62.5,57.421]]`,
+			assert: func(t *testing.T, price ticker.Price) {
+				t.Helper()
+
+				assert.Equal(t, 61.304, price.Bid, "spot bid must decode correctly")
+				assert.Equal(t, 61.305, price.Ask, "spot ask must decode correctly")
+				assert.Equal(t, 61.371, price.Last, "spot last must decode correctly")
+				assert.Equal(t, 50973.3020771, price.Volume, "spot volume must decode correctly")
+				assert.Equal(t, 62.5, price.High, "spot high must decode correctly")
+				assert.Equal(t, 57.421, price.Low, "spot low must decode correctly")
+			},
+		},
+		{
+			name: "funding",
+			raw:  `[123412,[0.002,61.304,2,2228.36155358,61.305,30,1323.2442970500003,0.395,0.0065,61.371,50973.3020771,62.5,57.421,null,null,15.25]]`,
+			assert: func(t *testing.T, price ticker.Price) {
+				t.Helper()
+
+				assert.Equal(t, 0.002, price.FlashReturnRate, "funding FRR must decode correctly")
+				assert.Equal(t, 61.304, price.Bid, "funding bid must decode correctly")
+				assert.Equal(t, 2.0, price.BidPeriod, "funding bid period must decode correctly")
+				assert.Equal(t, 2228.36155358, price.BidSize, "funding bid size must decode correctly")
+				assert.Equal(t, 61.305, price.Ask, "funding ask must decode correctly")
+				assert.Equal(t, 30.0, price.AskPeriod, "funding ask period must decode correctly")
+				assert.Equal(t, 1323.2442970500003, price.AskSize, "funding ask size must decode correctly")
+				assert.Equal(t, 61.371, price.Last, "funding last must decode correctly")
+				assert.Equal(t, 50973.3020771, price.Volume, "funding volume must decode correctly")
+				assert.Equal(t, 62.5, price.High, "funding high must decode correctly")
+				assert.Equal(t, 57.421, price.Low, "funding low must decode correctly")
+				assert.Equal(t, 15.25, price.FlashReturnRateAmount, "funding FRR amount must decode correctly")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			price, err := parseWSTickerUpdateData([]byte(test.raw))
+			require.NoError(t, err, "parseWSTickerUpdateData must not error")
+			test.assert(t, price)
+		})
+	}
+}
+
+func TestHandleWSTickerUpdateTypedUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		sub    *subscription.Subscription
+		raw    string
+		assert func(*testing.T, *ticker.Price)
+	}{
+		{
+			name: "spot",
+			sub: &subscription.Subscription{
+				Asset: asset.Spot,
+				Pairs: currency.Pairs{btcusdPair},
+			},
+			raw: `[11534,[61.304,2228.36155358,61.305,1323.2442970500003,0.395,0.0065,61.371,50973.3020771,62.5,57.421]]`,
+			assert: func(t *testing.T, price *ticker.Price) {
+				t.Helper()
+
+				assert.Equal(t, 61.304, price.Bid, "spot bid must decode correctly")
+				assert.Equal(t, 61.305, price.Ask, "spot ask must decode correctly")
+				assert.Equal(t, 61.371, price.Last, "spot last must decode correctly")
+				assert.Equal(t, 50973.3020771, price.Volume, "spot volume must decode correctly")
+				assert.Equal(t, 62.5, price.High, "spot high must decode correctly")
+				assert.Equal(t, 57.421, price.Low, "spot low must decode correctly")
+			},
+		},
+		{
+			name: "funding",
+			sub: &subscription.Subscription{
+				Asset: asset.MarginFunding,
+				Pairs: currency.Pairs{btcusdPair},
+			},
+			raw: `[123412,[0.002,61.304,2,2228.36155358,61.305,30,1323.2442970500003,0.395,0.0065,61.371,50973.3020771,62.5,57.421,null,null,15.25]]`,
+			assert: func(t *testing.T, price *ticker.Price) {
+				t.Helper()
+
+				assert.Equal(t, 0.002, price.FlashReturnRate, "funding FRR must decode correctly")
+				assert.Equal(t, 61.304, price.Bid, "funding bid must decode correctly")
+				assert.Equal(t, 2.0, price.BidPeriod, "funding bid period must decode correctly")
+				assert.Equal(t, 2228.36155358, price.BidSize, "funding bid size must decode correctly")
+				assert.Equal(t, 61.305, price.Ask, "funding ask must decode correctly")
+				assert.Equal(t, 30.0, price.AskPeriod, "funding ask period must decode correctly")
+				assert.Equal(t, 1323.2442970500003, price.AskSize, "funding ask size must decode correctly")
+				assert.Equal(t, 61.371, price.Last, "funding last must decode correctly")
+				assert.Equal(t, 50973.3020771, price.Volume, "funding volume must decode correctly")
+				assert.Equal(t, 62.5, price.High, "funding high must decode correctly")
+				assert.Equal(t, 57.421, price.Low, "funding low must decode correctly")
+				assert.Equal(t, 15.25, price.FlashReturnRateAmount, "funding FRR amount must decode correctly")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			exch := new(Exchange)
+			require.NoError(t, testexch.Setup(exch), "test exchange setup must not error")
+
+			err := exch.handleWSTickerUpdate(t.Context(), test.sub, []byte(test.raw))
+			require.NoError(t, err, "handleWSTickerUpdate must not error")
+
+			select {
+			case payload := <-exch.Websocket.DataHandler.C:
+				price, ok := payload.Data.(*ticker.Price)
+				require.True(t, ok, "websocket payload must contain a ticker.Price")
+				assert.Equal(t, exch.Name, price.ExchangeName, "exchange name must be populated")
+				assert.Equal(t, test.sub.Asset, price.AssetType, "asset type must be populated")
+				assert.Equal(t, test.sub.Pairs[0], price.Pair, "pair must be populated")
+				test.assert(t, price)
+			default:
+				t.Fatal("expected a websocket ticker payload")
+			}
+		})
+	}
+}
+
+func TestHandleWSBookUpdateTypedUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		sub        *subscription.Subscription
+		snapshot   string
+		update     string
+		assertBook func(*testing.T, *orderbook.Book)
+	}{
+		{
+			name: "spot",
+			sub: &subscription.Subscription{
+				Key:   1,
+				Asset: asset.Spot,
+				Pairs: currency.Pairs{btcusdPair},
+			},
+			snapshot: `[1,[[1001,50000,1.5],[1002,50010,-2.5]],1]`,
+			update:   `[1,[1001,49990,3],2]`,
+			assertBook: func(t *testing.T, book *orderbook.Book) {
+				t.Helper()
+
+				assert.False(t, book.IsFundingRate, "spot orderbook must not be marked as funding")
+				require.Len(t, book.Bids, 1, "spot orderbook must have one bid")
+				require.Len(t, book.Asks, 1, "spot orderbook must have one ask")
+				assert.Equal(t, int64(1001), book.Bids[0].ID, "spot bid ID must be correct")
+				assert.Equal(t, 49990.0, book.Bids[0].Price, "spot bid price must be updated")
+				assert.Equal(t, 3.0, book.Bids[0].Amount, "spot bid amount must be updated")
+				assert.Equal(t, int64(1002), book.Asks[0].ID, "spot ask ID must be correct")
+				assert.Equal(t, 50010.0, book.Asks[0].Price, "spot ask price must be correct")
+				assert.Equal(t, 2.5, book.Asks[0].Amount, "spot ask amount must be normalised to positive")
+			},
+		},
+		{
+			name: "funding",
+			sub: &subscription.Subscription{
+				Key:   2,
+				Asset: asset.MarginFunding,
+				Pairs: currency.Pairs{btcusdPair},
+			},
+			snapshot: `[2,[[2001,30,0.0002,-1000],[2002,2,0.0003,1500]],1]`,
+			update:   `[2,[2001,30,0.00025,-1200],2]`,
+			assertBook: func(t *testing.T, book *orderbook.Book) {
+				t.Helper()
+
+				assert.True(t, book.IsFundingRate, "funding orderbook must be marked as funding")
+				require.Len(t, book.Bids, 1, "funding orderbook must have one bid")
+				require.Len(t, book.Asks, 1, "funding orderbook must have one ask")
+				assert.Equal(t, int64(2001), book.Bids[0].ID, "funding bid ID must be correct")
+				assert.Equal(t, int64(30), book.Bids[0].Period, "funding bid period must be correct")
+				assert.Equal(t, 0.00025, book.Bids[0].Price, "funding bid rate must be updated")
+				assert.Equal(t, 1200.0, book.Bids[0].Amount, "funding bid amount must be normalised to positive")
+				assert.Equal(t, int64(2002), book.Asks[0].ID, "funding ask ID must be correct")
+				assert.Equal(t, int64(2), book.Asks[0].Period, "funding ask period must be correct")
+				assert.Equal(t, 0.0003, book.Asks[0].Price, "funding ask rate must be correct")
+				assert.Equal(t, 1500.0, book.Asks[0].Amount, "funding ask amount must be correct")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			exch := new(Exchange)
+			require.NoError(t, testexch.Setup(exch), "test exchange setup must not error")
+
+			err := exch.handleWSBookUpdate(t.Context(), test.sub, []byte(test.snapshot), []any{float64(1), nil, float64(1)})
+			require.NoError(t, err, "handleWSBookUpdate snapshot must not error")
+
+			err = exch.handleWSBookUpdate(t.Context(), test.sub, []byte(test.update), []any{float64(1), nil, float64(2)})
+			require.NoError(t, err, "handleWSBookUpdate update must not error")
+
+			book, err := exch.Websocket.Orderbook.GetOrderbook(test.sub.Pairs[0], test.sub.Asset)
+			require.NoError(t, err, "GetOrderbook must not error")
+			test.assertBook(t, book)
+		})
+	}
+}
+
 func TestWSCandleResponse(t *testing.T) {
 	err := e.Websocket.AddSubscriptions(e.Websocket.Conn, &subscription.Subscription{Asset: asset.Spot, Pairs: currency.Pairs{btcusdPair}, Channel: subscription.CandlesChannel, Key: 343351})
 	require.NoError(t, err, "AddSubscriptions must not error")

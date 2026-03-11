@@ -106,6 +106,109 @@ type checksum struct {
 	Sequence int64
 }
 
+type wsBookUpdateData struct {
+	books       []WebsocketBook
+	fundingRate bool
+	isSnapshot  bool
+	sequenceNo  int64
+}
+
+type wsSpotTickerUpdate struct {
+	Bid    float64
+	Ask    float64
+	Last   float64
+	Volume float64
+	High   float64
+	Low    float64
+}
+
+func unmarshalWSRequiredField(field json.RawMessage, destination any, fieldName string) error {
+	if bytes.Equal(bytes.TrimSpace(field), []byte("null")) {
+		return fmt.Errorf("required %s field is null", fieldName)
+	}
+	if err := json.Unmarshal(field, destination); err != nil {
+		return fmt.Errorf("error unmarshalling %s field: %w", fieldName, err)
+	}
+	return nil
+}
+
+func (w *wsSpotTickerUpdate) UnmarshalJSON(data []byte) error {
+	var fields []json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if len(fields) != 10 {
+		return fmt.Errorf("%w: websocket ticker field count %d", errTickerInvalidFieldCount, len(fields))
+	}
+
+	for _, tc := range []struct {
+		field  json.RawMessage
+		name   string
+		target any
+	}{
+		{field: fields[0], name: "spot ticker bid", target: &w.Bid},
+		{field: fields[2], name: "spot ticker ask", target: &w.Ask},
+		{field: fields[6], name: "spot ticker last", target: &w.Last},
+		{field: fields[7], name: "spot ticker volume", target: &w.Volume},
+		{field: fields[8], name: "spot ticker high", target: &w.High},
+		{field: fields[9], name: "spot ticker low", target: &w.Low},
+	} {
+		if err := unmarshalWSRequiredField(tc.field, tc.target, tc.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type wsFundingTickerUpdate struct {
+	FlashReturnRate       float64
+	Bid                   float64
+	BidPeriod             float64
+	BidSize               float64
+	Ask                   float64
+	AskPeriod             float64
+	AskSize               float64
+	Last                  float64
+	Volume                float64
+	High                  float64
+	Low                   float64
+	FlashReturnRateAmount float64
+}
+
+func (w *wsFundingTickerUpdate) UnmarshalJSON(data []byte) error {
+	var fields []json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if len(fields) != 16 {
+		return fmt.Errorf("%w: websocket ticker field count %d", errTickerInvalidFieldCount, len(fields))
+	}
+
+	for _, tc := range []struct {
+		field  json.RawMessage
+		name   string
+		target any
+	}{
+		{field: fields[0], name: "funding ticker flash return rate", target: &w.FlashReturnRate},
+		{field: fields[1], name: "funding ticker bid", target: &w.Bid},
+		{field: fields[2], name: "funding ticker bid period", target: &w.BidPeriod},
+		{field: fields[3], name: "funding ticker bid size", target: &w.BidSize},
+		{field: fields[4], name: "funding ticker ask", target: &w.Ask},
+		{field: fields[5], name: "funding ticker ask period", target: &w.AskPeriod},
+		{field: fields[6], name: "funding ticker ask size", target: &w.AskSize},
+		{field: fields[9], name: "funding ticker last", target: &w.Last},
+		{field: fields[10], name: "funding ticker volume", target: &w.Volume},
+		{field: fields[11], name: "funding ticker high", target: &w.High},
+		{field: fields[12], name: "funding ticker low", target: &w.Low},
+		{field: fields[15], name: "funding ticker flash return rate amount", target: &w.FlashReturnRateAmount},
+	} {
+		if err := unmarshalWSRequiredField(tc.field, tc.target, tc.name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // checksumStore quick global for now
 var (
 	checksumStore = make(map[int]*checksum)
@@ -596,11 +699,11 @@ func (e *Exchange) handleWSChannelUpdate(ctx context.Context, s *subscription.Su
 
 	switch s.Channel {
 	case subscription.OrderbookChannel:
-		return e.handleWSBookUpdate(ctx, s, d)
+		return e.handleWSBookUpdate(ctx, s, respRaw, d)
 	case subscription.CandlesChannel:
 		return e.handleWSAllCandleUpdates(ctx, s, respRaw)
 	case subscription.TickerChannel:
-		return e.handleWSTickerUpdate(ctx, s, d)
+		return e.handleWSTickerUpdate(ctx, s, respRaw)
 	case subscription.AllTradesChannel:
 		return e.handleWSAllTrades(ctx, s, respRaw)
 	}
@@ -642,108 +745,127 @@ func (e *Exchange) handleWSChecksum(c *subscription.Subscription, d []any) error
 	return nil
 }
 
-func (e *Exchange) handleWSBookUpdate(ctx context.Context, c *subscription.Subscription, d []any) error {
+func parseWSBookEntry(data []byte) (WebsocketBook, bool, error) {
+	var fields []json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return WebsocketBook{}, false, fmt.Errorf("error unmarshalling orderbook entry fields: %w", err)
+	}
+	if len(fields) < 3 {
+		return WebsocketBook{}, false, fmt.Errorf("unexpected websocket orderbook field count: %d", len(fields))
+	}
+
+	var book WebsocketBook
+	if err := unmarshalWSRequiredField(fields[0], &book.ID, "orderbook ID"); err != nil {
+		return WebsocketBook{}, false, err
+	}
+	if len(fields) == 4 {
+		if err := unmarshalWSRequiredField(fields[1], &book.Period, "orderbook period"); err != nil {
+			return WebsocketBook{}, false, err
+		}
+		if err := unmarshalWSRequiredField(fields[2], &book.Price, "orderbook price"); err != nil {
+			return WebsocketBook{}, false, err
+		}
+		if err := unmarshalWSRequiredField(fields[3], &book.Amount, "orderbook amount"); err != nil {
+			return WebsocketBook{}, false, err
+		}
+		return book, true, nil
+	}
+	if err := unmarshalWSRequiredField(fields[1], &book.Price, "orderbook price"); err != nil {
+		return WebsocketBook{}, false, err
+	}
+	if err := unmarshalWSRequiredField(fields[2], &book.Amount, "orderbook amount"); err != nil {
+		return WebsocketBook{}, false, err
+	}
+	return book, false, nil
+}
+
+func parseWSBooks(data []byte) (books []WebsocketBook, fundingRate, isSnapshot bool, err error) {
+	var fields []json.RawMessage
+	if err = json.Unmarshal(data, &fields); err != nil {
+		return nil, false, false, fmt.Errorf("error unmarshalling orderbook payload fields: %w", err)
+	}
+	if len(fields) == 0 {
+		return nil, false, false, errors.New("no data within orderbook snapshot")
+	}
+
+	if bytes.HasPrefix(fields[0], []byte("[")) {
+		books = make([]WebsocketBook, len(fields))
+		for i := range fields {
+			var book WebsocketBook
+			book, isFundingRate, err := parseWSBookEntry(fields[i])
+			if err != nil {
+				return nil, false, false, err
+			}
+			if i == 0 {
+				fundingRate = isFundingRate
+			}
+			books[i] = book
+		}
+		return books, fundingRate, true, nil
+	}
+
+	book, fundingRate, err := parseWSBookEntry(data)
+	if err != nil {
+		return nil, false, false, err
+	}
+	return []WebsocketBook{book}, fundingRate, false, nil
+}
+
+func parseWSBookUpdateData(respRaw []byte, hasSequenceNo bool) (wsBookUpdateData, error) {
+	v, valueType, _, err := jsonparser.Get(respRaw, "[1]")
+	if err != nil {
+		return wsBookUpdateData{}, fmt.Errorf("%w `bookUpdate[1]`: %w", common.ErrParsingWSField, err)
+	}
+	if valueType != jsonparser.Array {
+		return wsBookUpdateData{}, fmt.Errorf("%w `bookUpdate[1]`: %w %q", common.ErrParsingWSField, jsonparser.UnknownValueTypeError, valueType)
+	}
+
+	books, fundingRate, isSnapshot, err := parseWSBooks(v)
+	if err != nil {
+		return wsBookUpdateData{}, err
+	}
+
+	update := wsBookUpdateData{
+		books:       books,
+		fundingRate: fundingRate,
+		isSnapshot:  isSnapshot,
+	}
+	if !hasSequenceNo {
+		return wsBookUpdateData{}, errNoSeqNo
+	}
+	if isSnapshot {
+		return update, nil
+	}
+
+	update.sequenceNo, err = jsonparser.GetInt(respRaw, "[2]")
+	if err != nil {
+		return wsBookUpdateData{}, fmt.Errorf("%w `bookUpdate[2]`: %w", common.ErrParsingWSField, err)
+	}
+	return update, nil
+}
+
+func (e *Exchange) handleWSBookUpdate(ctx context.Context, c *subscription.Subscription, respRaw []byte, d []any) error {
 	if c == nil {
 		return fmt.Errorf("%w: Subscription param", common.ErrNilPointer)
 	}
 	if len(c.Pairs) != 1 {
 		return subscription.ErrNotSinglePair
 	}
-	var newOrderbook []WebsocketBook
-	obSnapBundle, ok := d[1].([]any)
-	if !ok {
-		return errors.New("orderbook interface cast failed")
-	}
-	if len(obSnapBundle) == 0 {
-		return errors.New("no data within orderbook snapshot")
-	}
-	if len(d) < 3 {
-		return errNoSeqNo
-	}
-	sequenceNo, ok := d[2].(float64)
-	if !ok {
-		return errors.New("type assertion failure")
-	}
-	var fundingRate bool
-	switch id := obSnapBundle[0].(type) {
-	case []any:
-		for i := range obSnapBundle {
-			data, ok := obSnapBundle[i].([]any)
-			if !ok {
-				return errors.New("type assertion failed for orderbok item data")
-			}
-			id, okAssert := data[0].(float64)
-			if !okAssert {
-				return errors.New("type assertion failed for orderbook id data")
-			}
-			pricePeriod, okAssert := data[1].(float64)
-			if !okAssert {
-				return errors.New("type assertion failed for orderbook price data")
-			}
-			rateAmount, okAssert := data[2].(float64)
-			if !okAssert {
-				return errors.New("type assertion failed for orderbook rate data")
-			}
-			if len(data) == 4 {
-				fundingRate = true
-				amount, okFunding := data[3].(float64)
-				if !okFunding {
-					return errors.New("type assertion failed for orderbook funding data")
-				}
-				newOrderbook = append(newOrderbook, WebsocketBook{
-					ID:     int64(id),
-					Period: int64(pricePeriod),
-					Price:  rateAmount,
-					Amount: amount,
-				})
-			} else {
-				newOrderbook = append(newOrderbook, WebsocketBook{
-					ID:     int64(id),
-					Price:  pricePeriod,
-					Amount: rateAmount,
-				})
-			}
-		}
-		if err := e.WsInsertSnapshot(c.Pairs[0], c.Asset, newOrderbook, fundingRate); err != nil {
-			return fmt.Errorf("inserting snapshot error: %s",
-				err)
-		}
-	case float64:
-		pricePeriod, okSnap := obSnapBundle[1].(float64)
-		if !okSnap {
-			return errors.New("type assertion failed for orderbook price snapshot data")
-		}
-		amountRate, okSnap := obSnapBundle[2].(float64)
-		if !okSnap {
-			return errors.New("type assertion failed for orderbook amount snapshot data")
-		}
-		if len(obSnapBundle) == 4 {
-			fundingRate = true
-			var amount float64
-			amount, okSnap = obSnapBundle[3].(float64)
-			if !okSnap {
-				return errors.New("type assertion failed for orderbook amount snapshot data")
-			}
-			newOrderbook = append(newOrderbook, WebsocketBook{
-				ID:     int64(id),
-				Period: int64(pricePeriod),
-				Price:  amountRate,
-				Amount: amount,
-			})
-		} else {
-			newOrderbook = append(newOrderbook, WebsocketBook{
-				ID:     int64(id),
-				Price:  pricePeriod,
-				Amount: amountRate,
-			})
-		}
 
-		if err := e.WsUpdateOrderbook(ctx, c, c.Pairs[0], c.Asset, newOrderbook, int64(sequenceNo), fundingRate); err != nil {
-			return fmt.Errorf("updating orderbook error: %s",
-				err)
+	update, err := parseWSBookUpdateData(respRaw, len(d) >= 3)
+	if err != nil {
+		return err
+	}
+	if update.isSnapshot {
+		if err := e.WsInsertSnapshot(c.Pairs[0], c.Asset, update.books, update.fundingRate); err != nil {
+			return fmt.Errorf("inserting snapshot error: %s", err)
 		}
+		return nil
 	}
 
+	if err := e.WsUpdateOrderbook(ctx, c, c.Pairs[0], c.Asset, update.books, update.sequenceNo, update.fundingRate); err != nil {
+		return fmt.Errorf("updating orderbook error: %s", err)
+	}
 	return nil
 }
 
@@ -794,82 +916,72 @@ func (e *Exchange) handleWSAllCandleUpdates(ctx context.Context, c *subscription
 	return e.Websocket.DataHandler.Send(ctx, klines)
 }
 
-func (e *Exchange) handleWSTickerUpdate(ctx context.Context, c *subscription.Subscription, d []any) error {
+func (e *Exchange) handleWSTickerUpdate(ctx context.Context, c *subscription.Subscription, respRaw []byte) error {
 	if c == nil {
 		return fmt.Errorf("%w: Subscription param", common.ErrNilPointer)
 	}
 	if len(c.Pairs) != 1 {
 		return subscription.ErrNotSinglePair
 	}
-	tickerData, ok := d[1].([]any)
-	if !ok {
-		return errors.New("type assertion for tickerData")
+
+	t, err := parseWSTickerUpdateData(respRaw)
+	if err != nil {
+		return err
+	}
+	t.AssetType = c.Asset
+	t.Pair = c.Pairs[0]
+	t.ExchangeName = e.Name
+	return e.Websocket.DataHandler.Send(ctx, &t)
+}
+
+func parseWSTickerUpdateData(respRaw []byte) (ticker.Price, error) {
+	v, valueType, _, err := jsonparser.Get(respRaw, "[1]")
+	if err != nil {
+		return ticker.Price{}, fmt.Errorf("%w `tickerUpdate[1]`: %w", common.ErrParsingWSField, err)
+	}
+	if valueType != jsonparser.Array {
+		return ticker.Price{}, fmt.Errorf("%w `tickerUpdate[1]`: %w %q", common.ErrParsingWSField, jsonparser.UnknownValueTypeError, valueType)
 	}
 
-	t := &ticker.Price{
-		AssetType:    c.Asset,
-		Pair:         c.Pairs[0],
-		ExchangeName: e.Name,
+	var fields []json.RawMessage
+	if err := json.Unmarshal(v, &fields); err != nil {
+		return ticker.Price{}, fmt.Errorf("error unmarshalling ticker payload fields: %w", err)
 	}
 
-	if len(tickerData) == 10 {
-		if t.Bid, ok = tickerData[0].(float64); !ok {
-			return errors.New("unable to type assert ticker bid")
+	var t ticker.Price
+	switch len(fields) {
+	case 10:
+		var update wsSpotTickerUpdate
+		if err := json.Unmarshal(v, &update); err != nil {
+			return ticker.Price{}, fmt.Errorf("error unmarshalling ticker payload: %w", err)
 		}
-		if t.Ask, ok = tickerData[2].(float64); !ok {
-			return errors.New("unable to type assert ticker ask")
+		t.Bid = update.Bid
+		t.Ask = update.Ask
+		t.Last = update.Last
+		t.Volume = update.Volume
+		t.High = update.High
+		t.Low = update.Low
+	case 16:
+		var update wsFundingTickerUpdate
+		if err := json.Unmarshal(v, &update); err != nil {
+			return ticker.Price{}, fmt.Errorf("error unmarshalling funding ticker payload: %w", err)
 		}
-		if t.Last, ok = tickerData[6].(float64); !ok {
-			return errors.New("unable to type assert ticker last")
-		}
-		if t.Volume, ok = tickerData[7].(float64); !ok {
-			return errors.New("unable to type assert ticker volume")
-		}
-		if t.High, ok = tickerData[8].(float64); !ok {
-			return errors.New("unable to type assert  ticker high")
-		}
-		if t.Low, ok = tickerData[9].(float64); !ok {
-			return errors.New("unable to type assert ticker low")
-		}
-	} else {
-		if t.FlashReturnRate, ok = tickerData[0].(float64); !ok {
-			return errors.New("unable to type assert ticker flash return rate")
-		}
-		if t.Bid, ok = tickerData[1].(float64); !ok {
-			return errors.New("unable to type assert ticker bid")
-		}
-		if t.BidPeriod, ok = tickerData[2].(float64); !ok {
-			return errors.New("unable to type assert ticker bid period")
-		}
-		if t.BidSize, ok = tickerData[3].(float64); !ok {
-			return errors.New("unable to type assert ticker bid size")
-		}
-		if t.Ask, ok = tickerData[4].(float64); !ok {
-			return errors.New("unable to type assert ticker ask")
-		}
-		if t.AskPeriod, ok = tickerData[5].(float64); !ok {
-			return errors.New("unable to type assert ticker ask period")
-		}
-		if t.AskSize, ok = tickerData[6].(float64); !ok {
-			return errors.New("unable to type assert ticker ask size")
-		}
-		if t.Last, ok = tickerData[9].(float64); !ok {
-			return errors.New("unable to type assert ticker last")
-		}
-		if t.Volume, ok = tickerData[10].(float64); !ok {
-			return errors.New("unable to type assert ticker volume")
-		}
-		if t.High, ok = tickerData[11].(float64); !ok {
-			return errors.New("unable to type assert ticker high")
-		}
-		if t.Low, ok = tickerData[12].(float64); !ok {
-			return errors.New("unable to type assert ticker low")
-		}
-		if t.FlashReturnRateAmount, ok = tickerData[15].(float64); !ok {
-			return errors.New("unable to type assert ticker flash return rate")
-		}
+		t.FlashReturnRate = update.FlashReturnRate
+		t.Bid = update.Bid
+		t.BidPeriod = update.BidPeriod
+		t.BidSize = update.BidSize
+		t.Ask = update.Ask
+		t.AskPeriod = update.AskPeriod
+		t.AskSize = update.AskSize
+		t.Last = update.Last
+		t.Volume = update.Volume
+		t.High = update.High
+		t.Low = update.Low
+		t.FlashReturnRateAmount = update.FlashReturnRateAmount
+	default:
+		return ticker.Price{}, fmt.Errorf("%w: websocket ticker field count %d", errTickerInvalidFieldCount, len(fields))
 	}
-	return e.Websocket.DataHandler.Send(ctx, t)
+	return t, nil
 }
 
 func (e *Exchange) handleWSAllTrades(ctx context.Context, s *subscription.Subscription, respRaw []byte) error {
