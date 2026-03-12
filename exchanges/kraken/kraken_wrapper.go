@@ -1684,10 +1684,10 @@ func (e *Exchange) IsPerpetualFutureCurrency(a asset.Item, cp currency.Pair) (bo
 
 // GetOpenInterest returns the open interest rate for a given asset pair
 func (e *Exchange) GetOpenInterest(ctx context.Context, keys ...key.PairAsset) ([]futures.OpenInterest, error) {
-	for i := range keys {
-		if keys[i].Asset != asset.Futures {
+	for _, pairAsset := range keys {
+		if pairAsset.Asset != asset.Futures {
 			// avoid API calls or returning errors after a successful retrieval
-			return nil, fmt.Errorf("%w %v %v", asset.ErrNotSupported, keys[i].Asset, keys[i].Pair())
+			return nil, fmt.Errorf("%w %v", asset.ErrNotSupported, pairAsset.Asset)
 		}
 	}
 	futuresTickersData, err := e.GetFuturesTickers(ctx)

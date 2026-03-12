@@ -89,7 +89,7 @@ func (e *Exchange) GetFuturesTickers(ctx context.Context) (FuturesTickersData, e
 // GetFuturesTickerBySymbol returns futures ticker data by symbol
 func (e *Exchange) GetFuturesTickerBySymbol(ctx context.Context, symbol string) (FuturesTickerData, error) {
 	var resp FuturesTickerData
-	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, "/api/v3/tickers"+"/"+symbol, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestFutures, "/api/v3/tickers/"+symbol, &resp)
 }
 
 // GetFuturesTradeHistory gets public trade history data for futures
@@ -232,12 +232,12 @@ func (e *Exchange) FuturesGetFills(ctx context.Context, lastFillTime time.Time) 
 // FuturesTransfer transfers funds between accounts
 func (e *Exchange) FuturesTransfer(ctx context.Context, fromAccount, toAccount, unit string, amount float64) (FuturesTransferData, error) {
 	var resp FuturesTransferData
-	req := make(map[string]any)
-	req["fromAccount"] = fromAccount
-	req["toAccount"] = toAccount
-	req["unit"] = unit
-	req["amount"] = amount
-	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/transfer", nil, &resp)
+	req := url.Values{}
+	req.Set("fromAccount", fromAccount)
+	req.Set("toAccount", toAccount)
+	req.Set("unit", unit)
+	req.Set("amount", strconv.FormatFloat(amount, 'f', -1, 64))
+	return resp, e.SendFuturesAuthRequest(ctx, http.MethodPost, "/api/v3/transfer", req, &resp)
 }
 
 // FuturesGetOpenPositions gets futures platform's notifications

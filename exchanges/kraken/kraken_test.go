@@ -161,11 +161,12 @@ func TestUpdateOrderbook(t *testing.T) {
 
 func TestFuturesBatchOrder(t *testing.T) {
 	t.Parallel()
-	req := []PlaceBatchOrderData{{
-		PlaceOrderType: "meow",
-		OrderID:        "test123",
-		Symbol:         futuresTestPair.Lower().String(),
-	}}
+	req := make([]PlaceBatchOrderData, 0, 1)
+	var tempData PlaceBatchOrderData
+	tempData.PlaceOrderType = "meow"
+	tempData.OrderID = "test123"
+	tempData.Symbol = futuresTestPair.Lower().String()
+	req = append(req, tempData)
 	_, err := e.FuturesBatchOrder(t.Context(), req)
 	assert.ErrorIs(t, err, errInvalidBatchOrderType, "FuturesBatchOrder should error correctly")
 
@@ -731,11 +732,12 @@ func TestCancelBatchExchangeOrder(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCannotManipulateOrders(t, e, canManipulateRealOrders)
 
-	ordersCancellation := []order.Cancel{{
+	ordersCancellation := make([]order.Cancel, 0, 1)
+	ordersCancellation = append(ordersCancellation, order.Cancel{
 		Pair:      currency.NewPairWithDelimiter(currency.BTC.String(), currency.USD.String(), "/"),
 		OrderID:   "OGEX6P-B5Q74-IGZ72R,OGEX6P-B5Q74-IGZ722",
 		AssetType: asset.Spot,
-	}}
+	})
 
 	_, err := e.CancelBatchOrders(t.Context(), ordersCancellation)
 	if sharedtestvalues.AreAPICredentialsSet(e) {
@@ -856,9 +858,7 @@ func TestGetCryptoDepositAddress(t *testing.T) {
 		Asset:  "XBT",
 		Method: "Bitcoin",
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 	if !canManipulateRealOrders {
 		t.Skip("canManipulateRealOrders not set, skipping test")
 	}
@@ -867,9 +867,7 @@ func TestGetCryptoDepositAddress(t *testing.T) {
 		Method:    "Bitcoin",
 		CreateNew: true,
 	})
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestGetDepositAddress(t *testing.T) {
@@ -1465,9 +1463,7 @@ func TestChecksumCalculation(t *testing.T) {
 	}
 
 	err := validateCRC32(&testOb, krakenAPIDocChecksum)
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, err)
 }
 
 func TestGetCharts(t *testing.T) {

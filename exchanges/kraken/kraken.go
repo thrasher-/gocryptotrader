@@ -349,8 +349,8 @@ func (e *Exchange) GetSpread(ctx context.Context, req *GetSpreadRequest) (*Sprea
 	if req.AssetClass != "" {
 		values.Set("asset_class", req.AssetClass)
 	}
-	var peanutButter *SpreadResponse
-	return peanutButter, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Spread", values), &peanutButter)
+	var result *SpreadResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Spread", values), &result)
 }
 
 // GetAccountBalance returns account balances by currency
@@ -414,7 +414,7 @@ func (e *Exchange) Withdraw(ctx context.Context, req *WithdrawRequest) (string, 
 	return response.ReferenceID, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Withdraw", params, &response)
 }
 
-// GetDepositMethods gets withdrawal fees for a specific asset
+// GetDepositMethods gets deposit methods for a specific asset
 func (e *Exchange) GetDepositMethods(ctx context.Context, req *GetDepositMethodsRequest) ([]DepositMethods, error) {
 	params := url.Values{}
 	params.Set("asset", req.Asset)

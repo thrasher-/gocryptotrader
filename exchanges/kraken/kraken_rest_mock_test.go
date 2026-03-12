@@ -157,7 +157,7 @@ func newMockedKraken(t *testing.T) *Exchange {
 	require.NoError(t, testexch.Setup(k), "Setup must not error")
 
 	k.SkipAuthCheck = true
-	k.SetCredentials("test", "secret", "", "", "", "")
+	k.SetCredentials("test", "c2VjcmV0", "", "", "", "")
 
 	server := httptest.NewServer(http.HandlerFunc(krakenMockRESTHandler))
 	t.Cleanup(server.Close)
@@ -176,7 +176,7 @@ func newMockedKrakenWithRESTHandler(t *testing.T, handler http.HandlerFunc) *Exc
 	require.NoError(t, testexch.Setup(k), "Setup must not error")
 
 	k.SkipAuthCheck = true
-	k.SetCredentials("test", "secret", "", "", "", "")
+	k.SetCredentials("test", "c2VjcmV0", "", "", "", "")
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -394,7 +394,7 @@ func TestGetOHLCRequestParams(t *testing.T) {
 	values := capturePublicQueryValues(
 		t,
 		"/0/public/OHLC",
-		`{"XBTUSD":[[1700000000,"1","2","0.5","1.5","1.2","5",10]],"last":1700000000}`,
+		`{"XBTUSD":[[1700000000,"1","2","0.5","1.5","1.2","5",10]],"XXBTZUSD":[[1700000000,"1","2","0.5","1.5","1.2","5",10]],"last":1700000000}`,
 		func(k *Exchange) error {
 			_, err := k.GetOHLC(t.Context(), &GetOHLCRequest{
 				Pair:       spotTestPair,
