@@ -72,7 +72,7 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 
 - Only use JSON tags on structs that are actually JSON marshalled/unmarshalled.
 - Request structs used exclusively to build URL query/form parameters should not include JSON tags.
-- Keep JSON tags on websocket payload request structs and any request/response struct serialized by `encoding/json`.
+- Keep JSON tags on websocket payload request structs and any request/response struct serialised by `encoding/json`.
 
 ### Path Construction
 
@@ -183,9 +183,9 @@ Use `require` and `assert` appropriately:
 
 ### Test Isolation
 
-- Keep tests isolated by behavior.
-- Prefer one behavior per `TestX` function name instead of combining multiple unrelated assertions into a single test function.
-- Table-driven tests are acceptable when all entries validate the same behavior category.
+- Keep tests isolated by behaviour.
+- Prefer one behaviour per `TestX` function name instead of combining multiple unrelated assertions into a single test function.
+- Table-driven tests are acceptable when all entries validate the same behaviour category.
 
 ### Test deduplication
 

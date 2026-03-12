@@ -1,7 +1,6 @@
 package request
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"strconv"
@@ -9,8 +8,6 @@ import (
 )
 
 const headerRetryAfter = "Retry-After"
-
-type retryNotAllowedKey struct{}
 
 // DefaultRetryPolicy determines whether the request should be retried, implemented with a default strategy.
 func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
@@ -45,14 +42,4 @@ func RetryAfter(resp *http.Response, now time.Time) time.Duration {
 	}
 
 	return 0
-}
-
-// WithRetryNotAllowed adds a value to the context that indicates that no retries are allowed for requests.
-func WithRetryNotAllowed(ctx context.Context) context.Context {
-	return context.WithValue(ctx, retryNotAllowedKey{}, struct{}{})
-}
-
-func hasRetryNotAllowed(ctx context.Context) bool {
-	_, ok := ctx.Value(retryNotAllowedKey{}).(struct{})
-	return ok
 }
