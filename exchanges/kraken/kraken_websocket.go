@@ -980,9 +980,6 @@ func fqChannelNameSub(s *subscription.Subscription) error {
 
 // wsAddOrder creates an order, returned order ID if success
 func (e *Exchange) wsAddOrder(ctx context.Context, req *WsAddOrderRequest) (string, error) {
-	if req == nil {
-		return "", common.ErrNilPointer
-	}
 	req.RequestID = e.MessageSequence()
 	req.Event = krakenWsAddOrder
 	req.Token = e.websocketAuthToken()
@@ -1061,15 +1058,15 @@ func (e *Exchange) wsCancelAllOrders(ctx context.Context) (*WsCancelOrderRespons
 	if err != nil {
 		return &WsCancelOrderResponse{}, err
 	}
-	var resp WsCancelOrderResponse
+	var resp *WsCancelOrderResponse
 	err = json.Unmarshal(jsonResp, &resp)
 	if err != nil {
-		return &WsCancelOrderResponse{}, err
+		return nil, err
 	}
 	if resp.ErrorMessage != "" {
-		return &WsCancelOrderResponse{}, errors.New(resp.ErrorMessage)
+		return nil, errors.New(resp.ErrorMessage)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
 /*

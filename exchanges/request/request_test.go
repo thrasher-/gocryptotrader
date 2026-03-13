@@ -436,6 +436,27 @@ func TestEvaluateRetry(t *testing.T) {
 	require.True(t, retry, "must retry on 429 response")
 }
 
+func TestDoRequest_WithRetryNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	policyCalls := 0
+	retry := func(*http.Response, error) (bool, error) {
+		policyCalls++
+		return true, nil
+	}
+	r, err := New("test", new(http.Client), WithRetryPolicy(retry), WithBackoff(func(int) time.Duration { return 0 }))
+	require.NoError(t, err)
+
+	err = r.SendPayload(WithRetryNotAllowed(t.Context()), Unset, func() (*Item, error) {
+		return &Item{
+			Method: http.MethodGet,
+			Path:   testURL + "/always-retry",
+		}, nil
+	}, UnauthenticatedRequest)
+	require.ErrorIs(t, err, ErrBadStatus)
+	assert.Equal(t, 0, policyCalls, "retry policy should not be called when retries are disallowed")
+}
+
 func TestGetNonce(t *testing.T) {
 	t.Parallel()
 	r, err := New("test", new(http.Client), WithLimiter(globalshell))
