@@ -41,6 +41,7 @@ type Update struct {
 	UpdateID   int64
 	UpdateTime time.Time
 	LastPushed time.Time
+	ReceivedAt time.Time
 	Asset      asset.Item
 	Bids       Levels
 	Asks       Levels

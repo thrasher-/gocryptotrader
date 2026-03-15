@@ -102,6 +102,10 @@ type Book struct {
 	// from the exchange.
 	LastPushed time.Time
 
+	// ReceivedAt is the time the websocket payload was received locally before
+	// decoding or orderbook construction.
+	ReceivedAt time.Time
+
 	// InsertedAt is the time the update was inserted into the orderbook
 	// management system. This field is used to calculate round-trip times and
 	// processing delays, e.g., InsertedAt.Sub(LastPushed) represents the
@@ -139,6 +143,7 @@ type options struct {
 	asset                  asset.Item
 	lastUpdated            time.Time
 	lastPushed             time.Time
+	receivedAt             time.Time
 	insertedAt             time.Time
 	lastUpdateID           int64
 	priceDuplication       bool

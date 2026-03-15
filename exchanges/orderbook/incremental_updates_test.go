@@ -14,6 +14,7 @@ func newSnapshot(length int) *Book {
 		Asks:         newAsks(length, length),
 		LastUpdated:  time.Now(),
 		LastPushed:   time.Now(),
+		ReceivedAt:   time.Now(),
 		LastUpdateID: 1,
 	}
 }
@@ -64,8 +65,12 @@ func TestProcessUpdate(t *testing.T) {
 	assert.ErrorIs(t, err, errAmountInvalid)
 
 	require.NoError(t, d.LoadSnapshot(newSnapshot(20)))
-	err = d.ProcessUpdate(&Update{UpdateTime: time.Now(), Asks: Levels{{Price: 1337.5, Amount: 69420, ID: 69420}}})
+	receivedAt := time.Now()
+	err = d.ProcessUpdate(&Update{UpdateTime: time.Now(), ReceivedAt: receivedAt, Asks: Levels{{Price: 1337.5, Amount: 69420, ID: 69420}}})
 	require.NoError(t, err)
+	ob, err = d.Retrieve()
+	require.NoError(t, err)
+	assert.Equal(t, receivedAt, ob.ReceivedAt, "ReceivedAt should update from incremental update")
 
 	require.NoError(t, d.LoadSnapshot(newSnapshot(20)))
 	err = d.ProcessUpdate(&Update{UpdateTime: time.Now(), Asks: Levels{{Price: 1337.5, Amount: 69420, ID: 69420}}, ExpectedChecksum: 1337})

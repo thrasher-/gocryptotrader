@@ -75,6 +75,7 @@ func TestRetrieve(t *testing.T) {
 		asset:                  asset.DownsideProfitContract,
 		lastUpdated:            time.Now(),
 		lastPushed:             time.Now(),
+		receivedAt:             time.Now(),
 		insertedAt:             time.Now(),
 		lastUpdateID:           1337,
 		priceDuplication:       true,
@@ -103,6 +104,7 @@ func TestRetrieve(t *testing.T) {
 	assert.Equal(t, asset.DownsideProfitContract, ob.Asset, "Should have correct Asset")
 	assert.Equal(t, d.options.lastUpdated, ob.LastUpdated, "Should have correct LastUpdated")
 	assert.Equal(t, d.options.lastPushed, ob.LastPushed, "Should have correct LastPushed")
+	assert.Equal(t, d.options.receivedAt, ob.ReceivedAt, "Should have correct ReceivedAt")
 	assert.Equal(t, d.options.insertedAt, ob.InsertedAt, "Should have correct InsertedAt")
 	assert.EqualValues(t, 1337, ob.LastUpdateID, "Should have correct LastUpdateID")
 	assert.True(t, ob.PriceDuplication, "Should have correct PriceDuplication")
@@ -216,6 +218,8 @@ func TestAssignOptions(t *testing.T) {
 		Pair:              cp,
 		Asset:             asset.Spot,
 		LastUpdated:       tn,
+		LastPushed:        tn,
+		ReceivedAt:        tn,
 		LastUpdateID:      1337,
 		PriceDuplication:  true,
 		IsFundingRate:     true,
@@ -228,6 +232,8 @@ func TestAssignOptions(t *testing.T) {
 	assert.Equal(t, cp, d.pair, "pair should be correct")
 	assert.Equal(t, asset.Spot, d.asset, "asset should be correct")
 	assert.Equal(t, tn, d.lastUpdated, "lastUpdated should be correct")
+	assert.Equal(t, tn, d.lastPushed, "lastPushed should be correct")
+	assert.Equal(t, tn, d.receivedAt, "receivedAt should be correct")
 	assert.EqualValues(t, 1337, d.lastUpdateID, "lastUpdatedID should be correct")
 	assert.True(t, d.priceDuplication, "priceDuplication should be correct")
 	assert.True(t, d.IsFundingRate(), "IsFundingRate should be correct")

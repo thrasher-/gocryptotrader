@@ -360,6 +360,7 @@ func (e *Exchange) processCandlestick(ctx context.Context, incoming []byte) erro
 }
 
 func (e *Exchange) processOrderbookTicker(incoming []byte, lastPushed time.Time) error {
+	receivedAt := time.Now()
 	var data WsOrderbookTickerData
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
@@ -370,12 +371,14 @@ func (e *Exchange) processOrderbookTicker(incoming []byte, lastPushed time.Time)
 		Asset:       asset.Spot,
 		LastUpdated: data.UpdateTime.Time(),
 		LastPushed:  lastPushed,
+		ReceivedAt:  receivedAt,
 		Bids:        []orderbook.Level{{Price: data.BestBidPrice.Float64(), Amount: data.BestBidAmount.Float64()}},
 		Asks:        []orderbook.Level{{Price: data.BestAskPrice.Float64(), Amount: data.BestAskAmount.Float64()}},
 	})
 }
 
 func (e *Exchange) processOrderbookUpdate(ctx context.Context, incoming []byte, lastPushed time.Time) error {
+	receivedAt := time.Now()
 	var data WsOrderbookUpdate
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
@@ -384,6 +387,7 @@ func (e *Exchange) processOrderbookUpdate(ctx context.Context, incoming []byte, 
 		UpdateID:   data.LastUpdateID,
 		UpdateTime: data.UpdateTime.Time(),
 		LastPushed: lastPushed,
+		ReceivedAt: receivedAt,
 		Pair:       data.Pair,
 		Asset:      asset.Spot,
 		Asks:       data.Asks.Levels(),
@@ -393,6 +397,7 @@ func (e *Exchange) processOrderbookUpdate(ctx context.Context, incoming []byte, 
 }
 
 func (e *Exchange) processOrderbookSnapshot(incoming []byte, lastPushed time.Time) error {
+	receivedAt := time.Now()
 	var data WsOrderbookSnapshot
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
@@ -406,6 +411,7 @@ func (e *Exchange) processOrderbookSnapshot(incoming []byte, lastPushed time.Tim
 				Asset:       a,
 				LastUpdated: data.UpdateTime.Time(),
 				LastPushed:  lastPushed,
+				ReceivedAt:  receivedAt,
 				Bids:        data.Bids.Levels(),
 				Asks:        data.Asks.Levels(),
 			}); err != nil {
@@ -417,6 +423,7 @@ func (e *Exchange) processOrderbookSnapshot(incoming []byte, lastPushed time.Tim
 }
 
 func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn websocket.Connection, incoming []byte, lastPushed time.Time, a asset.Item) error {
+	receivedAt := time.Now()
 	var data WsOrderbookUpdateWithSnapshot
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
@@ -439,6 +446,7 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 			Asset:        a,
 			LastUpdated:  data.UpdateTime.Time(),
 			LastPushed:   lastPushed,
+			ReceivedAt:   receivedAt,
 			LastUpdateID: data.LastUpdateID,
 			Bids:         data.Bids.Levels(),
 			Asks:         data.Asks.Levels(),
@@ -462,6 +470,7 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 		Asset:      a,
 		UpdateTime: data.UpdateTime.Time(),
 		LastPushed: lastPushed,
+		ReceivedAt: receivedAt,
 		UpdateID:   data.LastUpdateID,
 		Bids:       data.Bids.Levels(),
 		Asks:       data.Asks.Levels(),

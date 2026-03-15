@@ -80,7 +80,20 @@ func (o *Orderbook) LoadSnapshot(book *orderbook.Book) error {
 	holder.ob.Publish()
 	publishedAt := time.Now()
 	sendErr := o.dataHandler.Send(ctx, holder.ob)
-	report := buildProcessReport(SnapshotProcess, book.LastUpdateID, 1, false, book.LastPushed, startedAt, appliedAt, publishedAt, time.Now(), sendErr)
+	report := buildProcessReport(processReportInput{
+		Operation:      SnapshotProcess,
+		UpdateID:       book.LastUpdateID,
+		AppliedUpdates: 1,
+		BidCount:       len(book.Bids),
+		AskCount:       len(book.Asks),
+		LastPushed:     book.LastPushed,
+		ReceivedAt:     book.ReceivedAt,
+		StartedAt:      startedAt,
+		AppliedAt:      appliedAt,
+		PublishedAt:    publishedAt,
+		CompletedAt:    time.Now(),
+		SendErr:        sendErr,
+	})
 	holder.storeProcessReport(report)
 	o.maybeLogProcessReport(report, book.Pair, book.Asset)
 	return sendErr
@@ -117,7 +130,21 @@ func (o *Orderbook) Update(u *orderbook.Update) error {
 	holder.ob.Publish()
 	publishedAt := time.Now()
 	sendErr := o.dataHandler.Send(context.TODO(), holder.ob)
-	report := buildProcessReport(UpdateProcess, u.UpdateID, appliedUpdates, buffered, u.LastPushed, startedAt, appliedAt, publishedAt, time.Now(), sendErr)
+	report := buildProcessReport(processReportInput{
+		Operation:      UpdateProcess,
+		UpdateID:       u.UpdateID,
+		AppliedUpdates: appliedUpdates,
+		BidCount:       len(u.Bids),
+		AskCount:       len(u.Asks),
+		Buffered:       buffered,
+		LastPushed:     u.LastPushed,
+		ReceivedAt:     u.ReceivedAt,
+		StartedAt:      startedAt,
+		AppliedAt:      appliedAt,
+		PublishedAt:    publishedAt,
+		CompletedAt:    time.Now(),
+		SendErr:        sendErr,
+	})
 	holder.storeProcessReport(report)
 	o.maybeLogProcessReport(report, u.Pair, u.Asset)
 	return sendErr

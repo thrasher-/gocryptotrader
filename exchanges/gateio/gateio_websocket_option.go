@@ -488,6 +488,7 @@ func (e *Exchange) processOrderbookTickerPushData(ctx context.Context, incoming 
 }
 
 func (e *Exchange) processOptionsOrderbookUpdate(ctx context.Context, incoming []byte, a asset.Item, pushTime time.Time) error {
+	receivedAt := time.Now()
 	var data WsFuturesAndOptionsOrderbookUpdate
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
@@ -506,6 +507,7 @@ func (e *Exchange) processOptionsOrderbookUpdate(ctx context.Context, incoming [
 		UpdateID:   data.LastUpdatedID,
 		UpdateTime: data.Timestamp.Time(),
 		LastPushed: pushTime,
+		ReceivedAt: receivedAt,
 		Pair:       data.ContractName,
 		Asset:      a,
 		Asks:       asks,
@@ -515,6 +517,7 @@ func (e *Exchange) processOptionsOrderbookUpdate(ctx context.Context, incoming [
 }
 
 func (e *Exchange) processOptionsOrderbookSnapshotPushData(event string, incoming []byte, lastPushed time.Time) error {
+	receivedAt := time.Now()
 	if event == "all" {
 		var data WsOptionsOrderbookSnapshot
 		err := json.Unmarshal(incoming, &data)
@@ -527,6 +530,7 @@ func (e *Exchange) processOptionsOrderbookSnapshotPushData(event string, incomin
 			Pair:              data.Contract,
 			LastUpdated:       data.Timestamp.Time(),
 			LastPushed:        lastPushed,
+			ReceivedAt:        receivedAt,
 			ValidateOrderbook: e.ValidateOrderbook,
 		}
 		base.Asks = make([]orderbook.Level, len(data.Asks))
@@ -581,6 +585,7 @@ func (e *Exchange) processOptionsOrderbookSnapshotPushData(event string, incomin
 			Pair:              currencyPair,
 			LastUpdated:       lastPushed,
 			LastPushed:        lastPushed,
+			ReceivedAt:        receivedAt,
 			ValidateOrderbook: e.ValidateOrderbook,
 		})
 		if err != nil {

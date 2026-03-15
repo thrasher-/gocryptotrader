@@ -766,24 +766,46 @@ func TestBuildProcessReport(t *testing.T) {
 	t.Parallel()
 
 	lastPushed := time.Unix(100, 0)
+	receivedAt := lastPushed.Add(200 * time.Millisecond)
 	startedAt := lastPushed.Add(time.Second)
 	appliedAt := startedAt.Add(2 * time.Millisecond)
 	publishedAt := appliedAt.Add(3 * time.Millisecond)
 	completedAt := publishedAt.Add(4 * time.Millisecond)
 
-	report := buildProcessReport(UpdateProcess, 42, 5, true, lastPushed, startedAt, appliedAt, publishedAt, completedAt, errors.New("send failed"))
+	report := buildProcessReport(processReportInput{
+		Operation:      UpdateProcess,
+		UpdateID:       42,
+		AppliedUpdates: 5,
+		BidCount:       7,
+		AskCount:       11,
+		Buffered:       true,
+		LastPushed:     lastPushed,
+		ReceivedAt:     receivedAt,
+		StartedAt:      startedAt,
+		AppliedAt:      appliedAt,
+		PublishedAt:    publishedAt,
+		CompletedAt:    completedAt,
+		SendErr:        errors.New("send failed"),
+	})
 
 	assert.Equal(t, UpdateProcess, report.Operation, "operation should match")
 	assert.Equal(t, int64(42), report.UpdateID, "update ID should match")
 	assert.Equal(t, 5, report.AppliedUpdates, "applied update count should match")
+	assert.Equal(t, 7, report.BidCount, "bid count should match")
+	assert.Equal(t, 11, report.AskCount, "ask count should match")
 	assert.True(t, report.Buffered, "buffered should be true")
 	assert.Equal(t, lastPushed, report.LastPushed, "last pushed should match")
+	assert.Equal(t, receivedAt, report.ReceivedAt, "received at should match")
 	assert.Equal(t, startedAt, report.StartedAt, "started at should match")
 	assert.Equal(t, completedAt, report.CompletedAt, "completed at should match")
 	assert.Equal(t, 2*time.Millisecond, report.ApplyDuration, "apply duration should match")
 	assert.Equal(t, 3*time.Millisecond, report.PublishDuration, "publish duration should match")
 	assert.Equal(t, 4*time.Millisecond, report.SendDuration, "send duration should match")
 	assert.Equal(t, 9*time.Millisecond, report.TotalDuration, "total duration should match")
+	assert.Equal(t, 800*time.Millisecond, report.ReceivedToStart, "received to start should match")
+	assert.Equal(t, 809*time.Millisecond, report.ReceivedToFinish, "received to finish should match")
+	assert.Equal(t, 200*time.Millisecond, report.ExchangePushToReceive, "push to receive should match")
+	assert.Equal(t, 1009*time.Millisecond, report.ExchangePushToFinish, "push to finish should match")
 	assert.True(t, report.SendFailed, "send failure should be recorded")
 }
 
@@ -815,6 +837,7 @@ func TestLastProcessReport(t *testing.T) {
 	require.ErrorIs(t, err, orderbook.ErrDepthNotFound)
 
 	snapshotLastPushed := time.Now().Add(-time.Second)
+	snapshotReceivedAt := snapshotLastPushed.Add(150 * time.Millisecond)
 	require.NoError(t, holder.LoadSnapshot(&orderbook.Book{
 		Exchange:          exchangeName,
 		Pair:              cp,
@@ -823,6 +846,7 @@ func TestLastProcessReport(t *testing.T) {
 		Asks:              orderbook.Levels{{Price: 4001, Amount: 1, ID: 2}},
 		LastUpdated:       time.Now(),
 		LastPushed:        snapshotLastPushed,
+		ReceivedAt:        snapshotReceivedAt,
 		LastUpdateID:      10,
 		ValidateOrderbook: true,
 	}))
@@ -832,12 +856,18 @@ func TestLastProcessReport(t *testing.T) {
 	assert.Equal(t, SnapshotProcess, report.Operation, "snapshot operation should be recorded")
 	assert.Equal(t, int64(10), report.UpdateID, "snapshot update ID should match")
 	assert.Equal(t, 1, report.AppliedUpdates, "snapshot should apply one update")
+	assert.Equal(t, 1, report.BidCount, "snapshot bid count should be recorded")
+	assert.Equal(t, 1, report.AskCount, "snapshot ask count should be recorded")
 	assert.False(t, report.Buffered, "snapshot should not be buffered")
 	assert.Equal(t, snapshotLastPushed, report.LastPushed, "snapshot last pushed should match")
+	assert.Equal(t, snapshotReceivedAt, report.ReceivedAt, "snapshot received at should match")
+	assert.Equal(t, snapshotReceivedAt.Sub(snapshotLastPushed), report.ExchangePushToReceive, "snapshot push to receive should match")
 	assert.False(t, report.StartedAt.IsZero(), "started at should be set")
 	assert.False(t, report.CompletedAt.IsZero(), "completed at should be set")
 	assert.False(t, report.CompletedAt.Before(report.StartedAt), "completed at should be after started at")
 	assert.Equal(t, report.ApplyDuration+report.PublishDuration+report.SendDuration, report.TotalDuration, "durations should add up")
+	assert.Equal(t, report.StartedAt.Sub(snapshotReceivedAt), report.ReceivedToStart, "snapshot received to start should match")
+	assert.Equal(t, report.CompletedAt.Sub(snapshotReceivedAt), report.ReceivedToFinish, "snapshot received to finish should match")
 	assert.False(t, report.SendFailed, "snapshot send should not fail")
 
 	holder.bufferEnabled = true
@@ -858,10 +888,12 @@ func TestLastProcessReport(t *testing.T) {
 	assert.Equal(t, report, queuedReport, "queued update should not overwrite last processed report")
 
 	updateLastPushed := time.Now().Add(-250 * time.Millisecond)
+	updateReceivedAt := updateLastPushed.Add(25 * time.Millisecond)
 	require.NoError(t, holder.Update(&orderbook.Update{
 		UpdateID:   12,
 		UpdateTime: time.Now(),
 		LastPushed: updateLastPushed,
+		ReceivedAt: updateReceivedAt,
 		Pair:       cp,
 		Asset:      asset.Spot,
 		Bids:       orderbook.Levels{{Price: 3998, Amount: 3, ID: 5}},
@@ -873,11 +905,17 @@ func TestLastProcessReport(t *testing.T) {
 	assert.Equal(t, UpdateProcess, report.Operation, "update operation should be recorded")
 	assert.Equal(t, int64(12), report.UpdateID, "latest update ID should be recorded")
 	assert.Equal(t, 2, report.AppliedUpdates, "buffer flush should record applied update count")
+	assert.Equal(t, 1, report.BidCount, "update bid count should be recorded")
+	assert.Equal(t, 1, report.AskCount, "update ask count should be recorded")
 	assert.True(t, report.Buffered, "buffered update should be marked")
 	assert.Equal(t, updateLastPushed, report.LastPushed, "latest buffered update last pushed should be recorded")
+	assert.Equal(t, updateReceivedAt, report.ReceivedAt, "latest buffered update received at should be recorded")
+	assert.Equal(t, updateReceivedAt.Sub(updateLastPushed), report.ExchangePushToReceive, "update push to receive should match")
 	assert.False(t, report.StartedAt.IsZero(), "started at should be set")
 	assert.False(t, report.CompletedAt.IsZero(), "completed at should be set")
 	assert.False(t, report.CompletedAt.Before(report.StartedAt), "completed at should be after started at")
 	assert.Equal(t, report.ApplyDuration+report.PublishDuration+report.SendDuration, report.TotalDuration, "durations should add up")
+	assert.Equal(t, report.StartedAt.Sub(updateReceivedAt), report.ReceivedToStart, "update received to start should match")
+	assert.Equal(t, report.CompletedAt.Sub(updateReceivedAt), report.ReceivedToFinish, "update received to finish should match")
 	assert.False(t, report.SendFailed, "update send should not fail")
 }

@@ -2,6 +2,7 @@ package gateio
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 	"testing"
@@ -16,6 +17,41 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 )
+
+func TestBuildSyncReport(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Unix(100, 0)
+	completedAt := startedAt.Add(25 * time.Millisecond)
+
+	report := buildSyncReport(syncReportInput{
+		Trigger:               syncTriggerDesync,
+		QueuedUpdateCount:     3,
+		FirstPendingID:        42,
+		LastPendingID:         44,
+		StartedAt:             startedAt,
+		CompletedAt:           completedAt,
+		DelayWaitDuration:     2 * time.Millisecond,
+		RESTFetchDuration:     3 * time.Millisecond,
+		WaitForUpdateDuration: 5 * time.Millisecond,
+		ApplyPendingDuration:  7 * time.Millisecond,
+		FinalErr:              errors.New("sync failed"),
+	})
+
+	assert.Equal(t, syncTriggerDesync, report.Trigger, "trigger should match")
+	assert.Equal(t, 3, report.QueuedUpdateCount, "queued update count should match")
+	assert.Equal(t, int64(42), report.FirstPendingID, "first pending ID should match")
+	assert.Equal(t, int64(44), report.LastPendingID, "last pending ID should match")
+	assert.Equal(t, startedAt, report.StartedAt, "started at should match")
+	assert.Equal(t, completedAt, report.CompletedAt, "completed at should match")
+	assert.Equal(t, 2*time.Millisecond, report.DelayWaitDuration, "delay wait duration should match")
+	assert.Equal(t, 3*time.Millisecond, report.RESTFetchDuration, "REST fetch duration should match")
+	assert.Equal(t, 5*time.Millisecond, report.WaitForUpdateDuration, "wait for update duration should match")
+	assert.Equal(t, 7*time.Millisecond, report.ApplyPendingDuration, "apply pending duration should match")
+	assert.Equal(t, 25*time.Millisecond, report.TotalDuration, "total duration should match")
+	assert.False(t, report.Success, "success should be false on failure")
+	assert.Equal(t, "sync failed", report.FinalError, "final error should match")
+}
 
 func TestProcessOrderbookUpdate(t *testing.T) {
 	t.Parallel()
@@ -158,7 +194,7 @@ func TestSyncOrderbook(t *testing.T) {
 
 	cache := &updateCache{}
 	pair := currency.NewPair(currency.ETH, currency.USDT)
-	err := cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, defaultWSOrderbookUpdateDeadline)
+	err := cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, defaultWSOrderbookUpdateDeadline, syncTriggerInitialise)
 	require.ErrorIs(t, err, subscription.ErrNotFound)
 
 	// Add dummy subscription so that it can be matched and a limit/level can be extracted for initial orderbook sync spot.
@@ -167,27 +203,27 @@ func TestSyncOrderbook(t *testing.T) {
 
 	ctxCancel, cancel := context.WithCancel(t.Context())
 	cancel()
-	err = cache.SyncOrderbook(ctxCancel, e, pair, asset.Spot, 0, defaultWSOrderbookUpdateDeadline)
+	err = cache.SyncOrderbook(ctxCancel, e, pair, asset.Spot, 0, defaultWSOrderbookUpdateDeadline, syncTriggerInitialise)
 	require.ErrorIs(t, err, context.Canceled)
 
 	cache.updates = []pendingUpdate{{update: &orderbook.Update{Pair: pair, Asset: asset.Spot}}}
-	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, 0)
+	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, 0, syncTriggerInitialise)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	cache.updates = []pendingUpdate{{update: &orderbook.Update{Pair: pair, Asset: asset.Spot}}}
-	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, time.Second)
+	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, time.Second, syncTriggerInitialise)
 	require.ErrorContains(t, err, context.DeadlineExceeded.Error())
 
 	err = e.Base.SetPairs([]currency.Pair{pair}, asset.Spot, true)
 	require.NoError(t, err)
 	cache.updates = []pendingUpdate{{update: &orderbook.Update{Pair: pair, Asset: asset.Spot, UpdateID: math.MaxInt64}}}
-	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, time.Second)
+	err = cache.SyncOrderbook(t.Context(), e, pair, asset.Spot, 0, time.Second, syncTriggerInitialise)
 	require.ErrorIs(t, err, orderbook.ErrOrderbookInvalid)
 
 	err = e.Base.SetPairs([]currency.Pair{pair}, asset.USDTMarginedFutures, true)
 	require.NoError(t, err)
 	cache.updates = []pendingUpdate{{update: &orderbook.Update{Pair: pair, Asset: asset.USDTMarginedFutures, UpdateID: math.MaxInt64}}}
-	err = cache.SyncOrderbook(t.Context(), e, pair, asset.USDTMarginedFutures, 0, time.Second)
+	err = cache.SyncOrderbook(t.Context(), e, pair, asset.USDTMarginedFutures, 0, time.Second, syncTriggerInitialise)
 	require.ErrorIs(t, err, orderbook.ErrOrderbookInvalid)
 }
 
@@ -389,6 +425,20 @@ func TestOBManagerProcessOrderbookUpdateHTTPMocked(t *testing.T) {
 		_, err := e.Websocket.Orderbook.LastUpdateID(currency.NewBTCUSDT(), asset.Spot)
 		return err == nil
 	}, time.Second*5, time.Millisecond*50, "orderbook must eventually be synced")
+
+	report, err := m.LastSyncReport(currency.NewBTCUSDT(), asset.Spot)
+	require.NoError(t, err, "LastSyncReport must not error")
+	assert.Equal(t, syncTriggerInitialise, report.Trigger, "sync trigger should match initial sync")
+	assert.Equal(t, 1, report.QueuedUpdateCount, "queued update count should match initial sync")
+	assert.Equal(t, int64(27596272446), report.FirstPendingID, "first pending ID should match initial sync")
+	assert.Equal(t, int64(27596272447), report.LastPendingID, "last pending ID should match initial sync")
+	assert.False(t, report.StartedAt.IsZero(), "started at should be set")
+	assert.False(t, report.CompletedAt.IsZero(), "completed at should be set")
+	assert.True(t, report.Success, "sync should report success")
+	assert.Empty(t, report.FinalError, "successful sync should not report an error")
+	assert.False(t, report.CompletedAt.Before(report.StartedAt), "completed at should be after started at")
+	assert.Equal(t, report.CompletedAt.Sub(report.StartedAt), report.TotalDuration, "total duration should match timestamps")
+	assert.NotZero(t, report.RESTFetchDuration, "REST fetch duration should be recorded")
 
 	err = m.ProcessOrderbookUpdate(t.Context(), e, 27596272448, &orderbook.Update{
 		UpdateID:   27596272449,

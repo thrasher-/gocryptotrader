@@ -34,10 +34,12 @@ type wsOBUpdateManager struct {
 }
 
 type updateCache struct {
-	updates []pendingUpdate
-	ch      chan int64
-	m       sync.Mutex
-	state   cacheState
+	updates    []pendingUpdate
+	ch         chan int64
+	m          sync.Mutex
+	state      cacheState
+	reportM    sync.RWMutex
+	lastReport syncReport
 }
 
 type cacheState uint32
@@ -71,7 +73,7 @@ func (m *wsOBUpdateManager) ProcessOrderbookUpdate(ctx context.Context, e *Excha
 	case cacheStateSynced:
 		return m.applyUpdate(ctx, e, cache, firstUpdateID, update)
 	case cacheStateInitialised:
-		m.initialiseOrderbookCache(ctx, e, firstUpdateID, update, cache)
+		m.initialiseOrderbookCache(ctx, e, firstUpdateID, update, cache, syncTriggerInitialise)
 	case cacheStateQueuing:
 		cache.updates = append(cache.updates, pendingUpdate{update: update, firstUpdateID: firstUpdateID})
 		select {
@@ -91,39 +93,39 @@ func (m *wsOBUpdateManager) applyUpdate(ctx context.Context, e *Exchange, cache 
 	lastUpdateID, err := e.Websocket.Orderbook.LastUpdateID(update.Pair, update.Asset)
 	if err != nil {
 		log.Errorf(log.ExchangeSys, "%s websocket orderbook manager: failed to sync orderbook for %v %v: %v", e.Name, update.Pair, update.Asset, err)
-		return m.invalidateCache(ctx, e, firstUpdateID, update, cache)
+		return m.invalidateCache(ctx, e, firstUpdateID, update, cache, syncTriggerLastUpdateIDError)
 	}
 	if lastUpdateID+1 != firstUpdateID {
 		if e.Verbose { // disconnection will pollute logs
 			log.Warnf(log.ExchangeSys, "%s websocket orderbook manager: failed to sync orderbook for %v %v: desync detected", e.Name, update.Pair, update.Asset)
 		}
-		return m.invalidateCache(ctx, e, firstUpdateID, update, cache)
+		return m.invalidateCache(ctx, e, firstUpdateID, update, cache, syncTriggerDesync)
 	}
 	if err := e.Websocket.Orderbook.Update(update); err != nil {
 		log.Errorf(log.ExchangeSys, "%s websocket orderbook manager: failed to sync orderbook for %v %v: %v", e.Name, update.Pair, update.Asset, err)
-		return m.invalidateCache(ctx, e, firstUpdateID, update, cache)
+		return m.invalidateCache(ctx, e, firstUpdateID, update, cache, syncTriggerApplyUpdateError)
 	}
 	return nil
 }
 
 // invalidateCache invalidates the existing orderbook, clears the update queue and reinitialises the orderbook cache
 // assumes lock already active on cache
-func (m *wsOBUpdateManager) invalidateCache(ctx context.Context, e *Exchange, firstUpdateID int64, update *orderbook.Update, cache *updateCache) error {
+func (m *wsOBUpdateManager) invalidateCache(ctx context.Context, e *Exchange, firstUpdateID int64, update *orderbook.Update, cache *updateCache, trigger syncTrigger) error {
 	if err := e.Websocket.Orderbook.InvalidateOrderbook(update.Pair, update.Asset); err != nil {
 		return err
 	}
-	m.initialiseOrderbookCache(ctx, e, firstUpdateID, update, cache)
+	m.initialiseOrderbookCache(ctx, e, firstUpdateID, update, cache, trigger)
 	return nil
 }
 
 // initialiseOrderbookCache sets the cache state to queuing, appends the update to the cache and spawns a goroutine
 // to fetch and synchronise the orderbook snapshot
 // assumes lock already active on cache
-func (m *wsOBUpdateManager) initialiseOrderbookCache(ctx context.Context, e *Exchange, firstUpdateID int64, update *orderbook.Update, cache *updateCache) {
+func (m *wsOBUpdateManager) initialiseOrderbookCache(ctx context.Context, e *Exchange, firstUpdateID int64, update *orderbook.Update, cache *updateCache, trigger syncTrigger) {
 	cache.state = cacheStateQueuing
 	cache.updates = append(cache.updates, pendingUpdate{update: update, firstUpdateID: firstUpdateID})
 	go func() {
-		if err := cache.SyncOrderbook(ctx, e, update.Pair, update.Asset, m.delay, m.deadline); err != nil {
+		if err := cache.SyncOrderbook(ctx, e, update.Pair, update.Asset, m.delay, m.deadline, trigger); err != nil {
 			log.Errorf(log.ExchangeSys, "%s websocket orderbook manager: failed to sync orderbook for %v %v: %v", e.Name, update.Pair, update.Asset, err)
 		}
 	}()
@@ -151,49 +153,96 @@ func (m *wsOBUpdateManager) LoadCache(p currency.Pair, a asset.Item) (*updateCac
 
 // SyncOrderbook fetches and synchronises an orderbook snapshot to the limit size so that pending updates can be
 // applied to the orderbook.
-func (c *updateCache) SyncOrderbook(ctx context.Context, e *Exchange, pair currency.Pair, a asset.Item, delay, deadline time.Duration) error {
+func (c *updateCache) SyncOrderbook(ctx context.Context, e *Exchange, pair currency.Pair, a asset.Item, delay, deadline time.Duration, trigger syncTrigger) (err error) {
+	startedAt := time.Now()
+	var (
+		delayWaitDuration     time.Duration
+		restFetchDuration     time.Duration
+		waitForUpdateDuration time.Duration
+		applyPendingDuration  time.Duration
+		queuedUpdateCount     int
+		firstPendingID        int64
+		lastPendingID         int64
+	)
+	recordPendingState := func() {
+		queuedUpdateCount, firstPendingID, lastPendingID = c.pendingState()
+	}
+	recordPendingState()
+	defer func() {
+		c.storeSyncReport(buildSyncReport(syncReportInput{
+			Trigger:               trigger,
+			QueuedUpdateCount:     queuedUpdateCount,
+			FirstPendingID:        firstPendingID,
+			LastPendingID:         lastPendingID,
+			StartedAt:             startedAt,
+			CompletedAt:           time.Now(),
+			DelayWaitDuration:     delayWaitDuration,
+			RESTFetchDuration:     restFetchDuration,
+			WaitForUpdateDuration: waitForUpdateDuration,
+			ApplyPendingDuration:  applyPendingDuration,
+			FinalErr:              err,
+		}))
+	}()
+
 	limit, err := e.extractOrderbookLimit(a)
 	if err != nil {
+		recordPendingState()
 		c.clearWithLock()
 		return err
 	}
 
 	// REST requests can be behind websocket updates by a large margin, so we wait here to allow the cache to fill with
 	// updates before we fetch the orderbook snapshot.
+	delayStartedAt := time.Now()
 	select {
 	case <-ctx.Done():
+		delayWaitDuration = time.Since(delayStartedAt)
+		recordPendingState()
 		c.clearWithLock()
 		return ctx.Err()
 	case <-time.After(delay):
 	}
+	delayWaitDuration = time.Since(delayStartedAt)
 
 	// Setting deadline to error out instead of waiting for rate limiter delay which excessively builds a backlog of
 	// pending updates.
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(deadline))
 	defer cancel()
 
+	restFetchStartedAt := time.Now()
 	book, err := e.fetchOrderbook(ctx, pair, a, limit)
+	restFetchDuration = time.Since(restFetchStartedAt)
 	if err != nil {
+		recordPendingState()
 		c.clearWithLock()
 		return err
 	}
 
+	waitForUpdateStartedAt := time.Now()
 	if err := c.waitForUpdate(ctx, book.LastUpdateID+1); err != nil {
+		waitForUpdateDuration = time.Since(waitForUpdateStartedAt)
+		recordPendingState()
 		c.clearWithLock()
 		return err
 	}
+	waitForUpdateDuration = time.Since(waitForUpdateStartedAt)
 
 	c.m.Lock() // Lock here to prevent ws handle data interference with REST request above.
 	defer func() {
 		c.clearNoLock()
 		c.m.Unlock()
 	}()
+	queuedUpdateCount, firstPendingID, lastPendingID = c.pendingStateNoLock()
 
+	applyPendingStartedAt := time.Now()
 	if err := e.Websocket.Orderbook.LoadSnapshot(book); err != nil {
+		applyPendingDuration = time.Since(applyPendingStartedAt)
 		return err
 	}
 
-	return c.applyPendingUpdates(e)
+	err = c.applyPendingUpdates(e)
+	applyPendingDuration = time.Since(applyPendingStartedAt)
+	return err
 }
 
 // waitForUpdate waits for an update with an ID >= nextUpdateID
@@ -262,4 +311,23 @@ func (c *updateCache) clearWithLock() {
 
 func (c *updateCache) clearNoLock() {
 	c.updates = nil
+}
+
+func (c *updateCache) pendingState() (int, int64, int64) {
+	c.m.Lock()
+	defer c.m.Unlock()
+	return c.pendingStateNoLock()
+}
+
+func (c *updateCache) pendingStateNoLock() (int, int64, int64) {
+	count := len(c.updates)
+	if count == 0 {
+		return 0, 0, 0
+	}
+	firstPendingID := c.updates[0].firstUpdateID
+	lastPending := c.updates[count-1]
+	if lastPending.update == nil {
+		return count, firstPendingID, 0
+	}
+	return count, firstPendingID, lastPending.update.UpdateID
 }
