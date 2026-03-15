@@ -20,6 +20,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
+	"github.com/thrasher-corp/gocryptotrader/exchange/stream"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/collateral"
@@ -6267,7 +6268,32 @@ func TestWsProcessPublicSpreadTrades(t *testing.T) {
 func TestWsProcessPublicSpreadTicker(t *testing.T) {
 	t.Parallel()
 	err := e.wsProcessPublicSpreadTicker(t.Context(), []byte(okxSpreadPublicTickerJSON))
-	assert.NoError(t, err)
+	assert.NoError(t, err, "wsProcessPublicSpreadTicker should not error for a valid spread ticker payload")
+}
+
+func TestWsProcessPublicSpreadTickerReturnsErrorWhenDataHandlerBufferFull(t *testing.T) {
+	t.Parallel()
+
+	ex := &Exchange{}
+	ex.Name = "OKX"
+	ex.Websocket = sharedtestvalues.NewTestWebsocket()
+	ex.Websocket.DataHandler = stream.NewRelay(1)
+
+	err := ex.Websocket.DataHandler.Send(t.Context(), struct{}{})
+	require.NoError(t, err, "data handler priming must not error")
+
+	errC := make(chan error, 1)
+	go func() {
+		errC <- ex.wsProcessPublicSpreadTicker(t.Context(), []byte(okxSpreadPublicTickerJSON))
+	}()
+
+	select {
+	case err = <-errC:
+		require.Error(t, err, "wsProcessPublicSpreadTicker must return an error when the data handler buffer is full")
+		assert.ErrorContains(t, err, "channel buffer is full", "wsProcessPublicSpreadTicker should surface the full relay buffer error")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("wsProcessPublicSpreadTicker must return promptly when the data handler buffer is full")
+	}
 }
 
 func TestWsProcessSpreadOrders(t *testing.T) {
