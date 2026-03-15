@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/key"
@@ -70,12 +71,19 @@ func (o *Orderbook) LoadSnapshot(book *orderbook.Book) error {
 	}
 
 	book.RestSnapshot = false
+	startedAt := time.Now()
 	if err := holder.ob.LoadSnapshot(book); err != nil {
 		return err
 	}
+	appliedAt := time.Now()
 
 	holder.ob.Publish()
-	return o.dataHandler.Send(ctx, holder.ob)
+	publishedAt := time.Now()
+	sendErr := o.dataHandler.Send(ctx, holder.ob)
+	report := buildProcessReport(SnapshotProcess, book.LastUpdateID, 1, false, book.LastPushed, startedAt, appliedAt, publishedAt, time.Now(), sendErr)
+	holder.storeProcessReport(report)
+	o.maybeLogProcessReport(report, book.Pair, book.Asset)
+	return sendErr
 }
 
 // Update updates a stored pointer to an orderbook.Depth struct containing bid and ask Tranches, this switches between
@@ -88,28 +96,41 @@ func (o *Orderbook) Update(u *orderbook.Update) error {
 		return fmt.Errorf("%w for Exchange %s CurrencyPair: %s AssetType: %s", orderbook.ErrDepthNotFound, o.exchangeName, u.Pair, u.Asset)
 	}
 
+	startedAt := time.Now()
+	appliedUpdates := 1
+	buffered := false
 	if o.bufferEnabled {
-		if processed, err := o.processBufferUpdate(holder, u); err != nil || !processed {
+		var err error
+		appliedUpdates, err = o.processBufferUpdate(holder, u)
+		if err != nil || appliedUpdates == 0 {
 			return err
 		}
+		buffered = true
 	} else {
 		if err := holder.ob.ProcessUpdate(u); err != nil {
 			return err
 		}
 	}
+	appliedAt := time.Now()
 
 	// Publish all state changes, disregarding verbosity or sync requirements.
 	holder.ob.Publish()
-	return o.dataHandler.Send(context.TODO(), holder.ob)
+	publishedAt := time.Now()
+	sendErr := o.dataHandler.Send(context.TODO(), holder.ob)
+	report := buildProcessReport(UpdateProcess, u.UpdateID, appliedUpdates, buffered, u.LastPushed, startedAt, appliedAt, publishedAt, time.Now(), sendErr)
+	holder.storeProcessReport(report)
+	o.maybeLogProcessReport(report, u.Pair, u.Asset)
+	return sendErr
 }
 
 // processBufferUpdate stores update into buffer, when buffer at capacity as
 // defined by o.obBufferLimit it well then sort and apply updates.
-func (o *Orderbook) processBufferUpdate(holder *orderbookHolder, u *orderbook.Update) (bool, error) {
+func (o *Orderbook) processBufferUpdate(holder *orderbookHolder, u *orderbook.Update) (int, error) {
 	holder.buffer = append(holder.buffer, *u)
 	if len(holder.buffer) < o.obBufferLimit {
-		return false, nil
+		return 0, nil
 	}
+	appliedUpdates := len(holder.buffer)
 
 	if o.sortBuffer {
 		// sort by last updated to ensure each update is in order
@@ -129,11 +150,11 @@ func (o *Orderbook) processBufferUpdate(holder *orderbookHolder, u *orderbook.Up
 
 	for i := range holder.buffer {
 		if err := holder.ob.ProcessUpdate(&holder.buffer[i]); err != nil {
-			return false, err
+			return 0, err
 		}
 	}
 
-	return true, nil
+	return appliedUpdates, nil
 }
 
 // GetOrderbook returns an orderbook copy as orderbook.Book

@@ -1,6 +1,7 @@
 package buffer
 
 import (
+	"errors"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -759,4 +760,124 @@ func TestInvalidateOrderbook(t *testing.T) {
 
 	_, err = w.GetOrderbook(cp, asset.Spot)
 	require.ErrorIs(t, err, orderbook.ErrOrderbookInvalid)
+}
+
+func TestBuildProcessReport(t *testing.T) {
+	t.Parallel()
+
+	lastPushed := time.Unix(100, 0)
+	startedAt := lastPushed.Add(time.Second)
+	appliedAt := startedAt.Add(2 * time.Millisecond)
+	publishedAt := appliedAt.Add(3 * time.Millisecond)
+	completedAt := publishedAt.Add(4 * time.Millisecond)
+
+	report := buildProcessReport(UpdateProcess, 42, 5, true, lastPushed, startedAt, appliedAt, publishedAt, completedAt, errors.New("send failed"))
+
+	assert.Equal(t, UpdateProcess, report.Operation, "operation should match")
+	assert.Equal(t, int64(42), report.UpdateID, "update ID should match")
+	assert.Equal(t, 5, report.AppliedUpdates, "applied update count should match")
+	assert.True(t, report.Buffered, "buffered should be true")
+	assert.Equal(t, lastPushed, report.LastPushed, "last pushed should match")
+	assert.Equal(t, startedAt, report.StartedAt, "started at should match")
+	assert.Equal(t, completedAt, report.CompletedAt, "completed at should match")
+	assert.Equal(t, 2*time.Millisecond, report.ApplyDuration, "apply duration should match")
+	assert.Equal(t, 3*time.Millisecond, report.PublishDuration, "publish duration should match")
+	assert.Equal(t, 4*time.Millisecond, report.SendDuration, "send duration should match")
+	assert.Equal(t, 9*time.Millisecond, report.TotalDuration, "total duration should match")
+	assert.True(t, report.SendFailed, "send failure should be recorded")
+}
+
+func TestLastProcessReport(t *testing.T) {
+	t.Parallel()
+
+	cp, err := getExclusivePair()
+	require.NoError(t, err)
+
+	relay := stream.NewRelay(10)
+	go func(relay *stream.Relay) {
+		for range relay.C {
+		}
+	}(relay)
+
+	holder := &Orderbook{
+		exchangeName: exchangeName,
+		dataHandler:  relay,
+		ob:           make(map[key.PairAsset]*orderbookHolder),
+	}
+
+	_, err = holder.LastProcessReport(currency.EMPTYPAIR, asset.Spot)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
+
+	_, err = holder.LastProcessReport(cp, 0)
+	require.ErrorIs(t, err, asset.ErrInvalidAsset)
+
+	_, err = holder.LastProcessReport(cp, asset.Spot)
+	require.ErrorIs(t, err, orderbook.ErrDepthNotFound)
+
+	snapshotLastPushed := time.Now().Add(-time.Second)
+	require.NoError(t, holder.LoadSnapshot(&orderbook.Book{
+		Exchange:          exchangeName,
+		Pair:              cp,
+		Asset:             asset.Spot,
+		Bids:              orderbook.Levels{{Price: 4000, Amount: 1, ID: 1}},
+		Asks:              orderbook.Levels{{Price: 4001, Amount: 1, ID: 2}},
+		LastUpdated:       time.Now(),
+		LastPushed:        snapshotLastPushed,
+		LastUpdateID:      10,
+		ValidateOrderbook: true,
+	}))
+
+	report, err := holder.LastProcessReport(cp, asset.Spot)
+	require.NoError(t, err, "LastProcessReport must not error")
+	assert.Equal(t, SnapshotProcess, report.Operation, "snapshot operation should be recorded")
+	assert.Equal(t, int64(10), report.UpdateID, "snapshot update ID should match")
+	assert.Equal(t, 1, report.AppliedUpdates, "snapshot should apply one update")
+	assert.False(t, report.Buffered, "snapshot should not be buffered")
+	assert.Equal(t, snapshotLastPushed, report.LastPushed, "snapshot last pushed should match")
+	assert.False(t, report.StartedAt.IsZero(), "started at should be set")
+	assert.False(t, report.CompletedAt.IsZero(), "completed at should be set")
+	assert.False(t, report.CompletedAt.Before(report.StartedAt), "completed at should be after started at")
+	assert.Equal(t, report.ApplyDuration+report.PublishDuration+report.SendDuration, report.TotalDuration, "durations should add up")
+	assert.False(t, report.SendFailed, "snapshot send should not fail")
+
+	holder.bufferEnabled = true
+	holder.obBufferLimit = 2
+
+	require.NoError(t, holder.Update(&orderbook.Update{
+		UpdateID:   11,
+		UpdateTime: time.Now(),
+		LastPushed: time.Now().Add(-500 * time.Millisecond),
+		Pair:       cp,
+		Asset:      asset.Spot,
+		Bids:       orderbook.Levels{{Price: 3999, Amount: 2, ID: 3}},
+		Asks:       orderbook.Levels{{Price: 4002, Amount: 2, ID: 4}},
+	}))
+
+	queuedReport, err := holder.LastProcessReport(cp, asset.Spot)
+	require.NoError(t, err, "LastProcessReport must not error while update is queued")
+	assert.Equal(t, report, queuedReport, "queued update should not overwrite last processed report")
+
+	updateLastPushed := time.Now().Add(-250 * time.Millisecond)
+	require.NoError(t, holder.Update(&orderbook.Update{
+		UpdateID:   12,
+		UpdateTime: time.Now(),
+		LastPushed: updateLastPushed,
+		Pair:       cp,
+		Asset:      asset.Spot,
+		Bids:       orderbook.Levels{{Price: 3998, Amount: 3, ID: 5}},
+		Asks:       orderbook.Levels{{Price: 4003, Amount: 3, ID: 6}},
+	}))
+
+	report, err = holder.LastProcessReport(cp, asset.Spot)
+	require.NoError(t, err, "LastProcessReport must not error after buffered flush")
+	assert.Equal(t, UpdateProcess, report.Operation, "update operation should be recorded")
+	assert.Equal(t, int64(12), report.UpdateID, "latest update ID should be recorded")
+	assert.Equal(t, 2, report.AppliedUpdates, "buffer flush should record applied update count")
+	assert.True(t, report.Buffered, "buffered update should be marked")
+	assert.Equal(t, updateLastPushed, report.LastPushed, "latest buffered update last pushed should be recorded")
+	assert.False(t, report.StartedAt.IsZero(), "started at should be set")
+	assert.False(t, report.CompletedAt.IsZero(), "completed at should be set")
+	assert.False(t, report.CompletedAt.Before(report.StartedAt), "completed at should be after started at")
+	assert.Equal(t, report.ApplyDuration+report.PublishDuration+report.SendDuration, report.TotalDuration, "durations should add up")
+	assert.False(t, report.SendFailed, "update send should not fail")
 }

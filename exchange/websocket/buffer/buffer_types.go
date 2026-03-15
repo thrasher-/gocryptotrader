@@ -36,6 +36,9 @@ type Orderbook struct {
 // orderbookHolder defines a store of pending updates and a pointer to the
 // orderbook depth
 type orderbookHolder struct {
-	ob     *orderbook.Depth
-	buffer []orderbook.Update
+	ob         *orderbook.Depth
+	buffer     []orderbook.Update
+	lastReport ProcessReport
+
+	reportM sync.RWMutex
 }
