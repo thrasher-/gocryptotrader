@@ -258,23 +258,23 @@ func (e *Exchange) GetWithdrawalsHistory(ctx context.Context, c currency.Code, a
 	if err := e.CurrencyPairs.IsAssetEnabled(a); err != nil {
 		return nil, err
 	}
-	withdrawalRecords, err := e.GetWithdrawalRecords(ctx, c.String(), 1, 0, 100)
+	withdrawalRecords, err := e.GetWithdrawalRecords(ctx, &WithdrawalRecordsRequest{Coin: c})
 	if err != nil {
 		return nil, err
 	}
-	resp := make([]exchange.WithdrawalHistory, len(withdrawalRecords.List))
-	for i := range withdrawalRecords.List {
-		id := strconv.FormatInt(withdrawalRecords.List[i].ID, 10)
+	resp := make([]exchange.WithdrawalHistory, len(withdrawalRecords))
+	for i := range withdrawalRecords {
+		id := strconv.FormatInt(withdrawalRecords[i].ID, 10)
 		resp[i] = exchange.WithdrawalHistory{
-			Status:          withdrawalRecords.List[i].Status,
+			Status:          withdrawalRecords[i].Status,
 			TransferID:      id,
-			Timestamp:       withdrawalRecords.List[i].Time.Time(),
-			Currency:        withdrawalRecords.List[i].AssetCode,
-			Amount:          withdrawalRecords.List[i].Amount,
-			Fee:             withdrawalRecords.List[i].Fee,
+			Timestamp:       withdrawalRecords[i].ApplyTime,
+			Currency:        withdrawalRecords[i].Coin.String(),
+			Amount:          withdrawalRecords[i].Amount,
+			Fee:             withdrawalRecords[i].Fee,
 			TransferType:    "withdrawal",
-			CryptoToAddress: withdrawalRecords.List[i].Address,
-			CryptoTxID:      withdrawalRecords.List[i].TXHash,
+			CryptoToAddress: withdrawalRecords[i].Address,
+			CryptoTxID:      withdrawalRecords[i].TransactionID,
 		}
 	}
 	return resp, nil
@@ -521,13 +521,21 @@ func (e *Exchange) WithdrawCryptocurrencyFunds(ctx context.Context, withdrawRequ
 	if err := withdrawRequest.Validate(); err != nil {
 		return nil, err
 	}
-	resp, err := e.Withdraw(ctx,
-		withdrawRequest.Crypto.Address,
-		withdrawRequest.Currency.String(),
-		strconv.FormatFloat(withdrawRequest.Amount, 'f', -1, 64),
-		withdrawRequest.Crypto.AddressTag,
-		withdrawRequest.Description,
-		"")
+	withdrawType := ""
+	if withdrawRequest.InternalTransfer {
+		withdrawType = "1"
+	}
+	resp, err := e.Withdraw(ctx, &WithdrawRequest{
+		Address:         withdrawRequest.Crypto.Address,
+		NetworkName:     withdrawRequest.Crypto.Chain,
+		Coin:            withdrawRequest.Currency,
+		Amount:          withdrawRequest.Amount,
+		Memo:            withdrawRequest.Crypto.AddressTag,
+		Mark:            withdrawRequest.Description,
+		Fee:             withdrawRequest.Crypto.FeeAmount,
+		WithdrawOrderID: withdrawRequest.ClientOrderID,
+		Type:            withdrawType,
+	})
 	if err != nil {
 		return nil, err
 	}
