@@ -377,6 +377,22 @@ func TestGetTickerEndpointsUseV2(t *testing.T) {
 	assert.Equal(t, 2, call, "Ticker requests should hit the mock server twice")
 }
 
+func TestGetTickerReturnsErrorOnEmptyV2Response(t *testing.T) {
+	t.Parallel()
+
+	ex := newTestHTTPExchange(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method, "GetTicker should use GET")
+		assert.Equal(t, "/v2/ticker/24hr.do", r.URL.Path, "GetTicker should use the v2 24hr ticker endpoint")
+		assert.Equal(t, "btc_usdt", r.URL.Query().Get("symbol"), "GetTicker should request the target symbol")
+		_, err := w.Write([]byte(`{"msg":"Success","result":"true","data":[],"error_code":0,"ts":1772335196000}`))
+		assert.NoError(t, err, "Writing the empty ticker response should not error")
+	})
+
+	_, err := ex.GetTicker(t.Context(), "btc_usdt")
+	require.ErrorIs(t, err, errTickerDataUnavailable, "GetTicker must return errTickerDataUnavailable for an empty v2 response")
+	assert.ErrorContains(t, err, "btc_usdt", "GetTicker should include the symbol in the empty-response error")
+}
+
 func TestGetMarketMetadataEndpointsUseV2(t *testing.T) {
 	t.Parallel()
 
@@ -1076,6 +1092,86 @@ func TestUpdateTicker(t *testing.T) {
 	t.Parallel()
 	_, err := e.UpdateTicker(t.Context(), testPair, asset.Spot)
 	assert.NoError(t, err, "UpdateTicker should not error")
+}
+
+func TestTransactionHistoryRequestValidate(t *testing.T) {
+	t.Parallel()
+
+	start := time.Unix(1772334000, 0).UTC()
+	end := start.Add(time.Hour)
+	for _, tc := range []struct {
+		name string
+		req  *TransactionHistoryRequest
+		err  error
+	}{
+		{name: "nil", req: nil, err: common.ErrNilPointer},
+		{name: "empty symbol", req: &TransactionHistoryRequest{}, err: errSymbolCannotBeEmpty},
+		{name: "end before start", req: &TransactionHistoryRequest{Symbol: "btc_usdt", StartTime: end, EndTime: start}, err: errEndTimeBeforeStart},
+		{name: "valid", req: &TransactionHistoryRequest{Symbol: "btc_usdt", StartTime: start, EndTime: end}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.req.validate()
+			if tc.err == nil {
+				assert.NoError(t, err, "validate should not error for a valid transaction history request")
+				return
+			}
+			assert.ErrorIs(t, err, tc.err, "validate should return the expected transaction history request error")
+		})
+	}
+}
+
+func TestWithdrawRequestValidate(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		req  *WithdrawRequest
+		err  error
+	}{
+		{name: "nil", req: nil, err: common.ErrNilPointer},
+		{name: "empty address", req: &WithdrawRequest{Coin: currency.BTC, Amount: 1}, err: errAddressCannotBeEmpty},
+		{name: "empty coin", req: &WithdrawRequest{Address: "wallet", Amount: 1}, err: errCoinCannotBeEmpty},
+		{name: "non-positive amount", req: &WithdrawRequest{Address: "wallet", Coin: currency.BTC}, err: errAmountMustBePositive},
+		{name: "negative fee", req: &WithdrawRequest{Address: "wallet", Coin: currency.BTC, Amount: 1, Fee: -0.1}, err: errFeeCannotBeNegative},
+		{name: "valid", req: &WithdrawRequest{Address: "wallet", Coin: currency.BTC, Amount: 1, Fee: 0.1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.req.validate()
+			if tc.err == nil {
+				assert.NoError(t, err, "validate should not error for a valid withdrawal request")
+				return
+			}
+			assert.ErrorIs(t, err, tc.err, "validate should return the expected withdrawal request error")
+		})
+	}
+}
+
+func TestWithdrawalRecordsRequestValidate(t *testing.T) {
+	t.Parallel()
+
+	start := time.Unix(1772334000, 0).UTC()
+	end := start.Add(time.Hour)
+	for _, tc := range []struct {
+		name string
+		req  *WithdrawalRecordsRequest
+		err  error
+	}{
+		{name: "nil", req: nil, err: common.ErrNilPointer},
+		{name: "end before start", req: &WithdrawalRecordsRequest{StartTime: end, EndTime: start}, err: errEndTimeBeforeStart},
+		{name: "valid", req: &WithdrawalRecordsRequest{Coin: currency.BTC, StartTime: start, EndTime: end}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.req.validate()
+			if tc.err == nil {
+				assert.NoError(t, err, "validate should not error for a valid withdrawal records request")
+				return
+			}
+			assert.ErrorIs(t, err, tc.err, "validate should return the expected withdrawal records request error")
+		})
+	}
 }
 
 func TestUpdateTickers(t *testing.T) {

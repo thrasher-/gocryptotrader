@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
@@ -152,37 +151,13 @@ type OrderResponse struct {
 	Status     int64      `json:"status"`
 }
 
-// QueryOrderResponse stores the data from queries
-type QueryOrderResponse struct {
-	ErrCapture
-	Orders json.RawMessage `json:"orders"`
-}
-
-// QueryOrderFinalResponse stores data from queries
+// QueryOrderFinalResponse stores data from order queries.
 type QueryOrderFinalResponse struct {
 	ErrCapture
 	Orders []OrderResponse
 }
 
-// OrderHistory stores data for past orders
-type OrderHistory struct {
-	Result      bool            `json:"result,string"`
-	Total       string          `json:"total"`
-	PageLength  uint8           `json:"page_length"`
-	Orders      json.RawMessage `json:"orders"`
-	CurrentPage uint8           `json:"current_page"`
-	ErrorCode   int64           `json:"error_code"`
-}
-
-// OrderHistoryResponse stores past orders
-type OrderHistoryResponse struct {
-	ErrCapture
-	PageLength  uint8           `json:"page_length"`
-	Orders      json.RawMessage `json:"orders"`
-	CurrentPage uint8           `json:"current_page"`
-}
-
-// OrderHistoryFinalResponse stores past orders
+// OrderHistoryFinalResponse stores decoded historical order data.
 type OrderHistoryFinalResponse struct {
 	ErrCapture
 	PageLength  uint8
@@ -240,16 +215,7 @@ type TransactionHistoryResp struct {
 	Transaction []TransactionTemp `json:"transaction"`
 }
 
-// OpenOrderResponse stores information about the opening orders
-type OpenOrderResponse struct {
-	ErrCapture
-	PageLength uint8           `json:"page_length"`
-	PageNumber uint8           `json:"page_number"`
-	Total      string          `json:"total"`
-	Orders     json.RawMessage `json:"orders"`
-}
-
-// OpenOrderFinalResponse stores the unmarshalled value of OpenOrderResponse
+// OpenOrderFinalResponse stores decoded current open order data.
 type OpenOrderFinalResponse struct {
 	ErrCapture
 	PageLength uint8

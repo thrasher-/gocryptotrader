@@ -72,6 +72,13 @@ var (
 	errPEMBlockIsNil           = errors.New("pem block is nil")
 	errUnableToParsePrivateKey = errors.New("unable to parse private key")
 	errPrivateKeyNotLoaded     = errors.New("private key not loaded")
+	errTickerDataUnavailable   = errors.New("ticker data unavailable")
+	errSymbolCannotBeEmpty     = errors.New("symbol cannot be empty")
+	errEndTimeBeforeStart      = errors.New("end time cannot be before start time")
+	errAddressCannotBeEmpty    = errors.New("address cannot be empty")
+	errCoinCannotBeEmpty       = errors.New("coin cannot be empty")
+	errAmountMustBePositive    = errors.New("amount must be greater than zero")
+	errFeeCannotBeNegative     = errors.New("fee cannot be negative")
 	lbankTimeLocation          = time.FixedZone("UTC+8", 8*60*60)
 )
 
@@ -86,7 +93,7 @@ func (e *Exchange) GetTicker(ctx context.Context, symbol string) (*TickerRespons
 		return nil, err
 	}
 	if len(resp) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("%w for symbol %s", errTickerDataUnavailable, symbol)
 	}
 	ticker := standardiseTickerResponse(&resp[0])
 	return &ticker, nil
@@ -483,7 +490,7 @@ func (e ErrCapture) responseErrorCode() int64 {
 	if e.Code != 0 {
 		return e.Code
 	}
-	return e.Error
+	return 0
 }
 
 func (e ErrCapture) responseErrorMessage() string {
@@ -668,10 +675,10 @@ func (r *TransactionHistoryRequest) validate() error {
 		return common.ErrNilPointer
 	}
 	if strings.TrimSpace(r.Symbol) == "" {
-		return errors.New("symbol cannot be empty")
+		return errSymbolCannotBeEmpty
 	}
 	if !r.StartTime.IsZero() && !r.EndTime.IsZero() && r.EndTime.Before(r.StartTime) {
-		return errors.New("end time cannot be before start time")
+		return errEndTimeBeforeStart
 	}
 	return nil
 }
@@ -681,16 +688,16 @@ func (r *WithdrawRequest) validate() error {
 		return common.ErrNilPointer
 	}
 	if strings.TrimSpace(r.Address) == "" {
-		return errors.New("address cannot be empty")
+		return errAddressCannotBeEmpty
 	}
 	if r.Coin.IsEmpty() {
-		return errors.New("coin cannot be empty")
+		return errCoinCannotBeEmpty
 	}
 	if r.Amount <= 0 {
-		return errors.New("amount must be greater than zero")
+		return errAmountMustBePositive
 	}
 	if r.Fee < 0 {
-		return errors.New("fee cannot be negative")
+		return errFeeCannotBeNegative
 	}
 	return nil
 }
@@ -700,7 +707,7 @@ func (r *WithdrawalRecordsRequest) validate() error {
 		return common.ErrNilPointer
 	}
 	if !r.StartTime.IsZero() && !r.EndTime.IsZero() && r.EndTime.Before(r.StartTime) {
-		return errors.New("end time cannot be before start time")
+		return errEndTimeBeforeStart
 	}
 	return nil
 }
