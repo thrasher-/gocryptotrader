@@ -36,9 +36,8 @@ func TestManageSubs(t *testing.T) {
 		errIs            error
 		errContains      string
 	}{
-		{name: "own trades", channel: subscription.MyTradesChannel, qualifiedChannel: krakenWsOwnTrades, response: []byte(`{"channelName":"ownTrades","event":"subscriptionStatus","reqid":3,"status":"subscribed","subscription":{"name":"ownTrades"}}`), responseCount: 1},
-		{name: "open orders", channel: subscription.MyOrdersChannel, qualifiedChannel: krakenWsOpenOrders, response: []byte(`{"channelName":"openOrders","event":"subscriptionStatus","reqid":3,"status":"subscribed","subscription":{"name":"openOrders"}}`), responseCount: 1},
-		{name: "requires single response", channel: subscription.MyTradesChannel, qualifiedChannel: krakenWsOwnTrades, responseCount: 0, errIs: errExpectedOneSubResponse, errContains: "got 0; Channel: myTrades"},
+		{name: "executions", channel: subscription.MyAccountChannel, qualifiedChannel: krakenWsV2Executions, response: []byte(`{"method":"subscribe","result":{"channel":"executions","snap_orders":true,"snap_trades":true},"success":true,"req_id":3}`), responseCount: 1},
+		{name: "requires single response", channel: subscription.MyAccountChannel, qualifiedChannel: krakenWsV2Executions, responseCount: 0, errIs: errExpectedOneSubResponse, errContains: "got 0; Channel: myAccount"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -79,6 +78,6 @@ func TestWsProcessSubStatusInvalidPair(t *testing.T) {
 	}
 	require.NoError(t, ex.Websocket.AddSubscriptions(nil, s), "subscription must be added in subscribing state")
 
-	ex.wsProcessSubStatus([]byte(`{"channelName":"ticker","event":"subscriptionStatus","pair":"not-a-pair","status":"subscribed","subscription":{"name":"ticker"}}`))
+	ex.wsProcessSubStatus([]byte(`{"method":"subscribe","result":{"channel":"ticker","symbol":"not-a-pair"},"success":true,"req_id":3}`))
 	assert.Equal(t, subscription.SubscribingState, s.State(), "invalid websocket subscription pair should leave the subscription state unchanged")
 }

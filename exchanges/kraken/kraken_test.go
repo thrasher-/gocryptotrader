@@ -1112,8 +1112,8 @@ func TestWsProcessCandleIntervalMapping(t *testing.T) {
 	}
 }
 
-// TestWsOwnTradesSub tests the authenticated WS subscription channel for trades
-func TestWsOwnTradesSub(t *testing.T) {
+// TestWsExecutionsSub tests the authenticated executions subscription channel.
+func TestWsExecutionsSub(t *testing.T) {
 	t.Parallel()
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
@@ -1122,8 +1122,8 @@ func TestWsOwnTradesSub(t *testing.T) {
 	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
 	testexch.SetupWs(t, e)
 
-	err := e.Subscribe(subscription.List{{Channel: subscription.MyTradesChannel, Authenticated: true}})
-	assert.NoError(t, err, "Subsrcibing to ownTrades should not error")
+	err := e.Subscribe(subscription.List{{Channel: subscription.MyAccountChannel, Authenticated: true}})
+	assert.NoError(t, err, "Subscribing to executions should not error")
 
 	subs := e.Websocket.GetSubscriptions()
 	assert.Len(t, subs, 1, "Should add 1 Subscription")
@@ -1136,26 +1136,13 @@ func TestWsOwnTradesSub(t *testing.T) {
 func TestWsProcessSubStatusAuthenticated(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name             string
-		channel          string
-		qualifiedChannel string
-	}{
-		{name: "own trades", channel: subscription.MyTradesChannel, qualifiedChannel: krakenWsOwnTrades},
-		{name: "open orders", channel: subscription.MyOrdersChannel, qualifiedChannel: krakenWsOpenOrders},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup Instance must not error")
+	s := &subscription.Subscription{Channel: subscription.MyAccountChannel, QualifiedChannel: krakenWsV2Executions, Authenticated: true}
+	require.NoError(t, ex.Websocket.AddSubscriptions(nil, s), "authenticated subscription must be added in subscribing state")
 
-			ex := new(Exchange)
-			require.NoError(t, testexch.Setup(ex), "Setup Instance must not error")
-			s := &subscription.Subscription{Channel: tc.channel, QualifiedChannel: tc.qualifiedChannel, Authenticated: true}
-			require.NoError(t, ex.Websocket.AddSubscriptions(nil, s), "authenticated subscription must be added in subscribing state")
-
-			ex.wsProcessSubStatus([]byte(`{"channelName":"` + tc.qualifiedChannel + `","event":"subscriptionStatus","reqid":3,"status":"subscribed","subscription":{"name":"` + tc.qualifiedChannel + `"}}`))
-			assert.Equal(t, subscription.SubscribedState, s.State(), "authenticated subscription status should be updated without requiring a pair field")
-		})
-	}
+	ex.wsProcessSubStatus([]byte(`{"method":"subscribe","result":{"channel":"executions","snap_orders":true,"snap_trades":true},"success":true,"req_id":3}`))
+	assert.Equal(t, subscription.SubscribedState, s.State(), "authenticated subscription status should be updated without requiring a pair field")
 }
 
 // TestGenerateSubscriptions tests the subscriptions generated from configuration
@@ -1185,8 +1172,7 @@ func TestGenerateSubscriptions(t *testing.T) {
 
 	ex.Websocket.SetCanUseAuthenticatedEndpoints(true)
 	exp = append(exp, subscription.List{
-		{Channel: subscription.MyOrdersChannel, QualifiedChannel: krakenWsOpenOrders},
-		{Channel: subscription.MyTradesChannel, QualifiedChannel: krakenWsOwnTrades},
+		{Channel: subscription.MyAccountChannel, QualifiedChannel: krakenWsV2Executions},
 	}...)
 	subs, err = ex.generateSubscriptions()
 	require.NoError(t, err, "generateSubscriptions must not error")
@@ -1212,11 +1198,12 @@ func TestWsAddOrder(t *testing.T) {
 
 	k := testexch.MockWsInstance[Exchange](t, curryWsMockUpgrader(t, mockWsServer))
 	require.True(t, k.IsWebsocketAuthenticationSupported(), "WS must be authenticated")
-	id, err := k.wsAddOrder(t.Context(), &WsAddOrderRequest{
-		OrderType: order.Limit.Lower(),
-		OrderSide: order.Buy.Lower(),
-		Pair:      "XBT/USD",
-		Price:     80000,
+	id, err := k.wsAddOrder(t.Context(), &WebsocketV2AddOrderParams{
+		OrderType:  "limit",
+		Side:       order.Buy.Lower(),
+		Symbol:     "XBT/USD",
+		LimitPrice: 80000,
+		OrderQty:   1,
 	})
 	require.NoError(t, err, "wsAddOrder must not error")
 	assert.Equal(t, "ONPNXH-KMKMU-F4MR5V", id, "wsAddOrder should return correct order ID")
@@ -1233,17 +1220,19 @@ func TestWsCancelOrders(t *testing.T) {
 	assert.ErrorIs(t, err, errCancellingOrder, "Should error cancelling order")
 	assert.ErrorContains(t, err, "BATFISH", "Should error containing txn id")
 	assert.ErrorContains(t, err, "CATFISH", "Should error containing txn id")
-	assert.ErrorContains(t, err, "[EOrder:Unknown order]", "Should error containing server error")
+	assert.ErrorContains(t, err, "EOrder:Unknown order", "Should error containing server error")
 
 	err = k.wsCancelOrders(t.Context(), []string{"RABBIT", "SQUIRREL", "MOUSE"})
 	assert.NoError(t, err, "Should not error with valid ids")
 }
 
 func TestWsCancelAllOrders(t *testing.T) {
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	testexch.SetupWs(t, e)
-	_, err := e.wsCancelAllOrders(t.Context())
+	t.Parallel()
+
+	k := testexch.MockWsInstance[Exchange](t, curryWsMockUpgrader(t, mockWsServer))
+	reply, err := k.wsCancelAllOrders(t.Context())
 	require.NoError(t, err, "wsCancelAllOrders must not error")
+	assert.Equal(t, int64(3), reply.Count, "wsCancelAllOrders should return the cancelled order count")
 }
 
 func TestWsHandleData(t *testing.T) {
@@ -1263,6 +1252,212 @@ func TestWsHandleData(t *testing.T) {
 		require.NoError(t, err, "AddSuccessfulSubscriptions must not error")
 	}
 	testexch.FixtureToDataHandler(t, "testdata/wsHandleData.json", e.wsHandleData)
+}
+
+func TestKrakenV2PairTranslation(t *testing.T) {
+	t.Parallel()
+
+	outbound := krakenV2PairToExchange(currency.NewPair(currency.XBT, currency.XDG))
+	assert.True(t, outbound.Equal(currency.NewPair(currency.BTC, currency.DOGE)), "v2 outbound symbols should use BTC and DOGE")
+
+	inbound, err := krakenV2PairFromExchange("BTC/DOGE")
+	require.NoError(t, err, "v2 symbol must parse")
+	assert.True(t, inbound.Equal(currency.NewPair(currency.XBT, currency.XDG)), "v2 inbound symbols should use Kraken's configured GCT symbols")
+}
+
+func TestKrakenV2AddOrderParamsFromSubmit(t *testing.T) {
+	t.Parallel()
+
+	_, err := krakenV2AddOrderParamsFromSubmit(nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "nil submission must return common.ErrNilPointer")
+
+	endTime := time.Date(2026, 7, 17, 1, 2, 3, 0, time.UTC)
+	params, err := krakenV2AddOrderParamsFromSubmit(&order.Submit{
+		Type:          order.Limit,
+		Side:          order.Buy,
+		Pair:          spotTestPair,
+		TimeInForce:   order.GoodTillDay | order.PostOnly,
+		ReduceOnly:    true,
+		Leverage:      2,
+		Price:         100,
+		Amount:        2,
+		ClientOrderID: "client-1",
+		EndTime:       endTime,
+	})
+	require.NoError(t, err, "limit submission must map to v2 parameters")
+	assert.Equal(t, &WebsocketV2AddOrderParams{
+		ClientOrderID: "client-1",
+		ExpireTime:    "2026-07-17T01:02:03Z",
+		LimitPrice:    100,
+		Margin:        true,
+		OrderQty:      2,
+		OrderType:     "limit",
+		PostOnly:      true,
+		ReduceOnly:    true,
+		Side:          "buy",
+		Symbol:        "BTC/USD",
+		TimeInForce:   "gtd",
+	}, params, "limit submission should map all supported v2 fields")
+
+	params, err = krakenV2AddOrderParamsFromSubmit(&order.Submit{
+		Type:             order.StopLimit,
+		Side:             order.Sell,
+		Pair:             spotTestPair,
+		Price:            99,
+		TriggerPrice:     98,
+		TriggerPriceType: order.IndexPrice,
+		Amount:           1,
+	})
+	require.NoError(t, err, "stop-limit submission must map to v2 parameters")
+	assert.Equal(t, 99.0, params.LimitPrice, "stop-limit price should match")
+	assert.Equal(t, &WebsocketV2OrderTriggers{Price: 98, PriceType: "static", Reference: "index"}, params.Triggers, "stop-limit trigger should match")
+
+	params, err = krakenV2AddOrderParamsFromSubmit(&order.Submit{
+		Type:             order.TrailingStop,
+		Side:             order.Sell,
+		Pair:             spotTestPair,
+		Amount:           1,
+		TriggerPriceType: order.LastPrice,
+		TrackingMode:     order.Percentage,
+		TrackingValue:    5,
+	})
+	require.NoError(t, err, "trailing-stop submission must map to v2 parameters")
+	assert.Equal(t, &WebsocketV2OrderTriggers{Price: 5, PriceType: "pct", Reference: "last"}, params.Triggers, "trailing-stop trigger should match")
+
+	_, err = krakenV2AddOrderParamsFromSubmit(&order.Submit{Type: order.Stop, Side: order.Sell, Pair: spotTestPair, Amount: 1})
+	require.ErrorIs(t, err, errV2TriggerPriceNotSet, "triggered submission without a trigger price must return the sentinel error")
+
+	_, err = krakenV2AddOrderParamsFromSubmit(&order.Submit{Type: order.TrailingStop, Side: order.Sell, Pair: spotTestPair, Amount: 1})
+	require.ErrorIs(t, err, errV2TrackingValueNotSet, "trailing-stop submission without a tracking value must return the sentinel error")
+}
+
+func TestWebsocketV2BookLevelUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		payload     string
+		expected    websocketV2BookLevel
+		errContains string
+	}{
+		{name: "quoted", payload: `{"price":"45285.20","qty":"0.00100000"}`, expected: websocketV2BookLevel{Price: 45285.2, PriceString: "45285.20", Quantity: 0.001, QtyString: "0.00100000"}},
+		{name: "numeric", payload: `{"price":45285.2,"qty":0.001}`, expected: websocketV2BookLevel{Price: 45285.2, PriceString: "45285.2", Quantity: 0.001, QtyString: "0.001"}},
+		{name: "invalid price", payload: `{"price":"invalid","qty":"0.001"}`, errContains: "error parsing price"},
+		{name: "invalid quantity", payload: `{"price":"45285.2","qty":"invalid"}`, errContains: "error parsing quantity"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var level websocketV2BookLevel
+			err := json.Unmarshal([]byte(tc.payload), &level)
+			if tc.errContains != "" {
+				require.ErrorContains(t, err, tc.errContains, "invalid book level must return the expected parse error")
+				return
+			}
+			require.NoError(t, err, "valid book level must unmarshal")
+			assert.Equal(t, tc.expected, level, "book level should preserve its decimal representation")
+		})
+	}
+}
+
+func TestWsProcessV2Status(t *testing.T) {
+	t.Parallel()
+
+	e := new(Exchange)
+	for _, tc := range []struct {
+		name        string
+		data        []json.RawMessage
+		errContains string
+	}{
+		{name: "online v2", data: []json.RawMessage{json.RawMessage(`{"api_version":"v2","system":"online"}`)}},
+		{name: "missing item", errContains: "expected one status item"},
+		{name: "offline", data: []json.RawMessage{json.RawMessage(`{"api_version":"v2","system":"maintenance"}`)}, errContains: "system status not online"},
+		{name: "superseded API", data: []json.RawMessage{json.RawMessage(`{"api_version":"v1","system":"online"}`)}, errContains: "unsupported WebSocket API version"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := e.wsProcessV2Status(tc.data)
+			if tc.errContains != "" {
+				require.ErrorContains(t, err, tc.errContains, "invalid v2 status must return the expected error")
+				return
+			}
+			require.NoError(t, err, "online v2 status must not error")
+		})
+	}
+}
+
+func TestWsHandleV2PublicData(t *testing.T) {
+	e := new(Exchange)
+	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
+	e.Name += "-WsHandleV2PublicData"
+	e.SetTradeFeedStatus(true)
+
+	require.NoError(t, e.wsHandleData(t.Context(), []byte(`{"channel":"status","type":"update","data":[{"api_version":"v2","connection_id":123,"system":"online","version":"2.0.10"}]}`)), "v2 status must not error")
+
+	require.NoError(t, e.wsHandleData(t.Context(), []byte(`{"channel":"ticker","type":"snapshot","data":[{"symbol":"BTC/USD","bid":100,"bid_qty":1,"ask":101,"ask_qty":2,"last":100.5,"volume":10,"vwap":100.2,"low":90,"high":110,"change":2,"timestamp":"2024-01-01T00:00:00Z"}]}`)), "v2 ticker must not error")
+	tickerMessage := <-e.Websocket.DataHandler.C
+	tick, ok := tickerMessage.Data.(*ticker.Price)
+	require.True(t, ok, "ticker message must contain a ticker price")
+	assert.True(t, tick.Pair.Equal(spotTestPair), "ticker pair should translate BTC to XBT")
+	assert.Equal(t, 101.0, tick.Ask, "ticker ask should match")
+	assert.Equal(t, 100.0, tick.Bid, "ticker bid should match")
+
+	require.NoError(t, e.wsHandleData(t.Context(), []byte(`{"channel":"trade","type":"update","data":[{"symbol":"BTC/USD","side":"buy","ord_type":"limit","price":100.25,"qty":0.5,"trade_id":42,"timestamp":"2024-01-01T00:00:01Z"}]}`)), "v2 trade must not error")
+	tradeMessage := <-e.Websocket.DataHandler.C
+	gotTrade, ok := tradeMessage.Data.(trade.Data)
+	require.True(t, ok, "trade message must contain trade data")
+	assert.True(t, gotTrade.CurrencyPair.Equal(spotTestPair), "trade pair should translate BTC to XBT")
+	assert.Equal(t, "42", gotTrade.TID, "trade ID should match")
+	assert.Equal(t, order.Buy, gotTrade.Side, "trade side should match")
+
+	require.NoError(t, e.wsHandleData(t.Context(), []byte(`{"channel":"ohlc","type":"update","data":[{"symbol":"BTC/USD","interval":5,"interval_begin":"2024-01-01T00:00:00Z","open":100,"high":105,"low":99,"close":104,"volume":2,"vwap":102,"trades":7}]}`)), "v2 candle must not error")
+	candleMessage := <-e.Websocket.DataHandler.C
+	candle, ok := candleMessage.Data.(kline.Item)
+	require.True(t, ok, "candle message must contain a kline item")
+	assert.True(t, candle.Pair.Equal(spotTestPair), "candle pair should translate BTC to XBT")
+	assert.Equal(t, kline.FiveMin, candle.Interval, "candle interval should match")
+	require.Len(t, candle.Candles, 1, "candle payload must contain one item")
+	assert.Equal(t, 204.0, candle.Candles[0].QuoteVolume, "quote volume should use vwap")
+}
+
+func TestWsHandleV2Executions(t *testing.T) {
+	t.Parallel()
+
+	e := new(Exchange)
+	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
+	require.NoError(t, e.wsHandleData(t.Context(), []byte(`{"channel":"executions","type":"update","sequence":1,"data":[{"order_id":"ORDER-1","exec_id":"EXEC-1","exec_type":"trade","order_status":"partially_filled","order_type":"limit","side":"buy","symbol":"BTC/USD","order_qty":2,"cum_qty":0.5,"last_qty":0.5,"last_price":100,"limit_price":101,"avg_price":100,"fees":[{"asset":"USD","qty":0.2}],"timestamp":"2024-01-01T00:00:01Z"}]}`)), "v2 execution must not error")
+
+	message := <-e.Websocket.DataHandler.C
+	detail, ok := message.Data.(*order.Detail)
+	require.True(t, ok, "execution message must contain an order detail")
+	assert.Equal(t, "ORDER-1", detail.OrderID, "order ID should match")
+	assert.True(t, detail.Pair.Equal(spotTestPair), "execution pair should translate BTC to XBT")
+	assert.Equal(t, order.PartiallyFilled, detail.Status, "order status should match")
+	assert.Equal(t, 1.5, detail.RemainingAmount, "remaining amount should match")
+	assert.Equal(t, 0.2, detail.Fee, "fee should match")
+	require.Len(t, detail.Trades, 1, "trade execution must be attached to the order")
+	assert.Equal(t, "EXEC-1", detail.Trades[0].TID, "execution ID should become the trade ID")
+}
+
+func TestWsHandleV2BookChecksum(t *testing.T) {
+	e := new(Exchange)
+	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
+	e.Name += "-WsHandleV2BookChecksum"
+	require.NoError(t, e.Websocket.AddSuccessfulSubscriptions(e.Websocket.Conn, &subscription.Subscription{
+		Channel: subscription.OrderbookChannel,
+		Pairs:   currency.Pairs{spotTestPair},
+		Asset:   asset.Spot,
+		Levels:  10,
+	}), "orderbook subscription must be added")
+
+	payload := []byte(`{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":"45283.5","qty":"0.10000000"},{"price":"45283.4","qty":"1.54582015"},{"price":"45282.1","qty":"0.10000000"},{"price":"45281.0","qty":"0.10000000"},{"price":"45280.3","qty":"1.54592586"},{"price":"45279.0","qty":"0.07990000"},{"price":"45277.6","qty":"0.03310103"},{"price":"45277.5","qty":"0.30000000"},{"price":"45277.3","qty":"1.54602737"},{"price":"45276.6","qty":"0.15445238"}],"asks":[{"price":"45285.2","qty":"0.00100000"},{"price":"45286.4","qty":"1.54571953"},{"price":"45286.6","qty":"1.54571109"},{"price":"45289.6","qty":"1.54560911"},{"price":"45290.2","qty":"0.15890660"},{"price":"45291.8","qty":"1.54553491"},{"price":"45294.7","qty":"0.04454749"},{"price":"45296.1","qty":"0.35380000"},{"price":"45297.5","qty":"0.09945542"},{"price":"45299.5","qty":"0.18772827"}],"checksum":3310070434}]}`)
+	require.NoError(t, e.wsHandleData(t.Context(), payload), "official Kraken v2 checksum example must validate")
+
+	book, err := e.Websocket.Orderbook.GetOrderbook(spotTestPair, asset.Spot)
+	require.NoError(t, err, "v2 orderbook must be stored")
+	require.Len(t, book.Bids, 10, "book must retain ten bids")
+	require.Len(t, book.Asks, 10, "book must retain ten asks")
+	assert.Equal(t, "45285.2", book.Asks[0].StrPrice, "raw price precision should be retained")
+	assert.Equal(t, "0.00100000", book.Asks[0].StrAmount, "raw quantity precision should be retained")
 }
 
 func TestWSProcessTrades(t *testing.T) {
@@ -1776,13 +1971,17 @@ func TestGetFuturesErr(t *testing.T) {
 func TestEnforceStandardChannelNames(t *testing.T) {
 	for _, n := range []string{
 		krakenWsSpread, krakenWsTicker, subscription.TickerChannel, subscription.OrderbookChannel, subscription.CandlesChannel,
-		subscription.AllTradesChannel, subscription.MyTradesChannel, subscription.MyOrdersChannel,
+		subscription.AllTradesChannel, subscription.MyAccountChannel,
 	} {
 		assert.NoError(t, enforceStandardChannelNames(&subscription.Subscription{Channel: n}), "Standard channel names and bespoke names should not error")
 	}
-	for _, n := range []string{krakenWsOrderbook, krakenWsOHLC, krakenWsTrade, krakenWsOwnTrades, krakenWsOpenOrders, krakenWsOrderbook + "-5"} {
+	for _, n := range []string{krakenWsOrderbook, krakenWsOHLC, krakenWsTrade, krakenWsV2Executions, krakenWsOrderbook + "-5"} {
 		err := enforceStandardChannelNames(&subscription.Subscription{Channel: n})
 		assert.ErrorIsf(t, err, subscription.ErrUseConstChannelName, "Private channel names should not be allowed for %s", n)
+	}
+	for _, n := range []string{subscription.MyTradesChannel, subscription.MyOrdersChannel} {
+		err := enforceStandardChannelNames(&subscription.Subscription{Channel: n})
+		assert.ErrorIsf(t, err, subscription.ErrNotSupported, "Superseded private channel names should not be supported for %s", n)
 	}
 }
 

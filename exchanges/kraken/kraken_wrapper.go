@@ -692,14 +692,12 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 			timeInForce = "IOC"
 		}
 		if e.Websocket.CanUseAuthenticatedWebsocketForWrapper() {
-			orderID, err = e.wsAddOrder(ctx, &WsAddOrderRequest{
-				OrderType:   s.Type.Lower(),
-				OrderSide:   s.Side.Lower(),
-				Pair:        s.Pair.Format(currency.PairFormat{Uppercase: true, Delimiter: "/"}).String(), // required pair format: ISO 4217-A3
-				Price:       s.Price,
-				Volume:      s.Amount,
-				TimeInForce: timeInForce,
-			})
+			var params *WebsocketV2AddOrderParams
+			params, err = krakenV2AddOrderParamsFromSubmit(s)
+			if err != nil {
+				return nil, err
+			}
+			orderID, err = e.wsAddOrder(ctx, params)
 			if err != nil {
 				return nil, err
 			}
@@ -758,6 +756,99 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 	}
 	resp.Status = status
 	return resp, nil
+}
+
+func krakenV2AddOrderParamsFromSubmit(s *order.Submit) (*WebsocketV2AddOrderParams, error) {
+	if s == nil {
+		return nil, common.ErrNilPointer
+	}
+	orderType, err := krakenV2OrderTypeName(s.Type)
+	if err != nil {
+		return nil, err
+	}
+	params := &WebsocketV2AddOrderParams{
+		ClientOrderID: s.ClientOrderID,
+		Margin:        s.Leverage > 0,
+		OrderQty:      s.Amount,
+		OrderType:     orderType,
+		PostOnly:      s.TimeInForce.Is(order.PostOnly),
+		ReduceOnly:    s.ReduceOnly,
+		Side:          s.Side.Lower(),
+		Symbol:        krakenV2PairToExchange(s.Pair).Format(currency.PairFormat{Uppercase: true, Delimiter: "/"}).String(),
+	}
+	switch {
+	case s.TimeInForce.Is(order.FillOrKill):
+		params.TimeInForce = "fok"
+	case s.TimeInForce.Is(order.ImmediateOrCancel):
+		params.TimeInForce = "ioc"
+	case s.TimeInForce.Is(order.GoodTillDay), s.TimeInForce.Is(order.GoodTillTime):
+		params.TimeInForce = "gtd"
+		if !s.EndTime.IsZero() {
+			params.ExpireTime = s.EndTime.UTC().Format(time.RFC3339)
+		}
+	}
+
+	switch s.Type {
+	case order.Limit:
+		params.LimitPrice = s.Price
+	case order.Market:
+		return params, nil
+	case order.Stop, order.StopLimit, order.TakeProfitMarket, order.TakeProfit:
+		if s.TriggerPrice <= 0 {
+			return nil, errV2TriggerPriceNotSet
+		}
+		reference, referenceErr := krakenV2TriggerReference(s.TriggerPriceType)
+		if referenceErr != nil {
+			return nil, referenceErr
+		}
+		params.Triggers = &WebsocketV2OrderTriggers{Price: s.TriggerPrice, PriceType: "static", Reference: reference}
+		if s.Type == order.StopLimit || s.Type == order.TakeProfit {
+			params.LimitPrice = s.Price
+		}
+	case order.TrailingStop, order.TrailingStopLimit:
+		if s.TrackingValue <= 0 {
+			return nil, errV2TrackingValueNotSet
+		}
+		reference, referenceErr := krakenV2TriggerReference(s.TriggerPriceType)
+		if referenceErr != nil {
+			return nil, referenceErr
+		}
+		priceType, trackingErr := krakenV2TrackingPriceType(s.TrackingMode)
+		if trackingErr != nil {
+			return nil, trackingErr
+		}
+		params.Triggers = &WebsocketV2OrderTriggers{Price: s.TrackingValue, PriceType: priceType, Reference: reference}
+		if s.Type == order.TrailingStopLimit {
+			params.LimitPrice = s.LimitTrackingValue
+			params.LimitPriceType, trackingErr = krakenV2TrackingPriceType(s.LimitTrackingMode)
+			if trackingErr != nil {
+				return nil, trackingErr
+			}
+		}
+	}
+	return params, nil
+}
+
+func krakenV2TriggerReference(priceType order.PriceType) (string, error) {
+	switch priceType {
+	case order.LastPrice:
+		return "last", nil
+	case order.IndexPrice:
+		return "index", nil
+	default:
+		return "", fmt.Errorf("%w: Kraken v2 trigger reference %d", order.ErrUnknownPriceType, priceType)
+	}
+}
+
+func krakenV2TrackingPriceType(mode order.TrackingMode) (string, error) {
+	switch mode {
+	case order.Distance:
+		return "quote", nil
+	case order.Percentage:
+		return "pct", nil
+	default:
+		return "", fmt.Errorf("%w: Kraken v2 tracking mode %d", order.ErrUnknownTrackingMode, mode)
+	}
 }
 
 // ModifyOrder modifies an existing order

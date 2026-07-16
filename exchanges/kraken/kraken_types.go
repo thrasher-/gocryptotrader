@@ -744,6 +744,196 @@ type WsCancelOrderResponse struct {
 	Count        int64  `json:"count"`
 }
 
+// WebsocketV2Request defines the common Kraken Spot WebSocket v2 request envelope.
+type WebsocketV2Request[T any] struct {
+	Method    string `json:"method"`
+	Params    T      `json:"params"`
+	RequestID int64  `json:"req_id,omitempty"`
+}
+
+// WebsocketV2SubscriptionParams defines Spot WebSocket v2 subscription parameters.
+type WebsocketV2SubscriptionParams struct {
+	Channel    string   `json:"channel"`
+	Symbols    []string `json:"symbol,omitempty"`
+	Interval   int      `json:"interval,omitempty"`
+	Depth      int      `json:"depth,omitempty"`
+	Token      string   `json:"token,omitempty"`
+	SnapOrders bool     `json:"snap_orders,omitempty"`
+	SnapTrades bool     `json:"snap_trades,omitempty"`
+}
+
+type websocketV2Response struct {
+	Method    string                    `json:"method"`
+	RequestID int64                     `json:"req_id,omitempty"`
+	Success   *bool                     `json:"success,omitempty"`
+	Error     string                    `json:"error,omitempty"`
+	Symbol    string                    `json:"symbol,omitempty"`
+	Result    websocketV2ResponseResult `json:"result"`
+}
+
+type websocketV2ResponseResult struct {
+	Channel    string `json:"channel"`
+	Symbol     string `json:"symbol"`
+	Interval   int    `json:"interval,omitempty"`
+	Depth      int    `json:"depth,omitempty"`
+	OrderID    string `json:"order_id,omitempty"`
+	Count      int64  `json:"count,omitempty"`
+	SnapOrders bool   `json:"snap_orders,omitempty"`
+	SnapTrades bool   `json:"snap_trades,omitempty"`
+}
+
+type websocketV2Message struct {
+	Channel  string            `json:"channel"`
+	Data     []json.RawMessage `json:"data"`
+	Sequence uint64            `json:"sequence,omitempty"`
+	Type     string            `json:"type"`
+}
+
+type websocketV2Status struct {
+	APIVersion   string `json:"api_version"`
+	ConnectionID uint64 `json:"connection_id"`
+	System       string `json:"system"`
+	Version      string `json:"version"`
+}
+
+type websocketV2Ticker struct {
+	Ask       float64   `json:"ask"`
+	AskQty    float64   `json:"ask_qty"`
+	Bid       float64   `json:"bid"`
+	BidQty    float64   `json:"bid_qty"`
+	Change    float64   `json:"change"`
+	High      float64   `json:"high"`
+	Last      float64   `json:"last"`
+	Low       float64   `json:"low"`
+	Symbol    string    `json:"symbol"`
+	Timestamp time.Time `json:"timestamp"`
+	Volume    float64   `json:"volume"`
+	VWAP      float64   `json:"vwap"`
+}
+
+type websocketV2Trade struct {
+	OrderType string    `json:"ord_type"`
+	Price     float64   `json:"price"`
+	Quantity  float64   `json:"qty"`
+	Side      string    `json:"side"`
+	Symbol    string    `json:"symbol"`
+	Timestamp time.Time `json:"timestamp"`
+	TradeID   uint64    `json:"trade_id"`
+}
+
+type websocketV2Candle struct {
+	Close         float64   `json:"close"`
+	High          float64   `json:"high"`
+	Interval      int       `json:"interval"`
+	IntervalBegin time.Time `json:"interval_begin"`
+	Low           float64   `json:"low"`
+	Open          float64   `json:"open"`
+	Symbol        string    `json:"symbol"`
+	Trades        uint64    `json:"trades"`
+	Volume        float64   `json:"volume"`
+	VWAP          float64   `json:"vwap"`
+}
+
+type websocketV2Book struct {
+	Asks      []websocketV2BookLevel `json:"asks"`
+	Bids      []websocketV2BookLevel `json:"bids"`
+	Checksum  uint32                 `json:"checksum"`
+	Symbol    string                 `json:"symbol"`
+	Timestamp time.Time              `json:"timestamp"`
+}
+
+type websocketV2BookLevel struct {
+	Price       float64
+	PriceString string
+	Quantity    float64
+	QtyString   string
+}
+
+// UnmarshalJSON preserves the decimal representation required by Kraken's CRC32 checksum.
+func (w *websocketV2BookLevel) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Price json.RawMessage `json:"price"`
+		Qty   json.RawMessage `json:"qty"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	w.PriceString = strings.Trim(string(raw.Price), `"`)
+	w.QtyString = strings.Trim(string(raw.Qty), `"`)
+	var err error
+	w.Price, err = strconv.ParseFloat(w.PriceString, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing price: %w", err)
+	}
+	w.Quantity, err = strconv.ParseFloat(w.QtyString, 64)
+	if err != nil {
+		return fmt.Errorf("error parsing quantity: %w", err)
+	}
+	return nil
+}
+
+// WebsocketV2Execution defines an order status or fill event from the executions channel.
+type WebsocketV2Execution struct {
+	AveragePrice  float64                   `json:"avg_price"`
+	CumulativeQty float64                   `json:"cum_qty"`
+	ExecutionID   string                    `json:"exec_id"`
+	ExecutionType string                    `json:"exec_type"`
+	Fees          []WebsocketV2ExecutionFee `json:"fees"`
+	LastPrice     float64                   `json:"last_price"`
+	LastQty       float64                   `json:"last_qty"`
+	LimitPrice    float64                   `json:"limit_price"`
+	OrderID       string                    `json:"order_id"`
+	OrderQty      float64                   `json:"order_qty"`
+	OrderStatus   string                    `json:"order_status"`
+	OrderType     string                    `json:"order_type"`
+	Side          string                    `json:"side"`
+	Symbol        string                    `json:"symbol"`
+	Timestamp     time.Time                 `json:"timestamp"`
+	TradeID       uint64                    `json:"trade_id"`
+}
+
+// WebsocketV2ExecutionFee defines a fee charged for an execution.
+type WebsocketV2ExecutionFee struct {
+	Asset    string  `json:"asset"`
+	Quantity float64 `json:"qty"`
+}
+
+// WebsocketV2AddOrderParams defines parameters for a Spot WebSocket v2 add_order request.
+type WebsocketV2AddOrderParams struct {
+	ClientOrderID  string                    `json:"cl_ord_id,omitempty"`
+	ExpireTime     string                    `json:"expire_time,omitempty"`
+	LimitPrice     float64                   `json:"limit_price,omitempty"`
+	LimitPriceType string                    `json:"limit_price_type,omitempty"`
+	Margin         bool                      `json:"margin,omitempty"`
+	OrderQty       float64                   `json:"order_qty"`
+	OrderType      string                    `json:"order_type"`
+	PostOnly       bool                      `json:"post_only,omitempty"`
+	ReduceOnly     bool                      `json:"reduce_only,omitempty"`
+	Side           string                    `json:"side"`
+	Symbol         string                    `json:"symbol"`
+	TimeInForce    string                    `json:"time_in_force,omitempty"`
+	Token          string                    `json:"token"`
+	Triggers       *WebsocketV2OrderTriggers `json:"triggers,omitempty"`
+}
+
+// WebsocketV2OrderTriggers defines trigger conditions for a Spot WebSocket v2 order.
+type WebsocketV2OrderTriggers struct {
+	Price     float64 `json:"price"`
+	PriceType string  `json:"price_type"`
+	Reference string  `json:"reference"`
+}
+
+// WebsocketV2CancelOrderParams defines parameters for a Spot WebSocket v2 cancel_order request.
+type WebsocketV2CancelOrderParams struct {
+	OrderIDs []string `json:"order_id"`
+	Token    string   `json:"token"`
+}
+
+// WebsocketV2CancelAllParams defines parameters for a Spot WebSocket v2 cancel_all request.
+type WebsocketV2CancelAllParams struct {
+	Token string `json:"token"`
+}
+
 // OrderVars stores side, status and type for any order/trade
 type OrderVars struct {
 	Side      order.Side
