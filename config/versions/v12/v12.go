@@ -11,7 +11,7 @@ import (
 
 const myAccountChannel = "myAccount"
 
-var legacyKrakenPrivateChannels = map[string]bool{
+var legacyPrivateChannels = map[string]bool{
 	"myOrders":   true,
 	"myTrades":   true,
 	"openOrders": true,
@@ -85,7 +85,7 @@ func upgradeSubscriptions(e []byte) ([]byte, error) {
 	hasLegacy := false
 	for i := range entries {
 		hasCurrent = hasCurrent || entries[i].channel == myAccountChannel
-		hasLegacy = hasLegacy || legacyKrakenPrivateChannels[entries[i].channel]
+		hasLegacy = hasLegacy || legacyPrivateChannels[entries[i].channel]
 	}
 	if !hasLegacy {
 		return e, nil
@@ -94,7 +94,7 @@ func upgradeSubscriptions(e []byte) ([]byte, error) {
 	upgraded := make([][]byte, 0, len(entries))
 	insertedCurrent := hasCurrent
 	for i := range entries {
-		if !legacyKrakenPrivateChannels[entries[i].channel] {
+		if !legacyPrivateChannels[entries[i].channel] {
 			upgraded = append(upgraded, entries[i].raw)
 			continue
 		}

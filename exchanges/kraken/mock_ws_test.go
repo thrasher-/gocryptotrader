@@ -17,11 +17,11 @@ func mockWsServer(tb testing.TB, msg []byte, w *gws.Conn) error {
 		return err
 	}
 	switch method {
-	case krakenWsV2CancelOrder:
+	case wsCancelOrder:
 		return mockWsCancelOrders(tb, msg, w)
-	case krakenWsV2AddOrder:
+	case wsAddOrder:
 		return mockWsAddOrder(tb, msg, w)
-	case krakenWsV2CancelAll:
+	case wsCancelAll:
 		return mockWsCancelAllOrders(tb, msg, w)
 	}
 	return nil
@@ -29,16 +29,16 @@ func mockWsServer(tb testing.TB, msg []byte, w *gws.Conn) error {
 
 func mockWsCancelAllOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	var req WebsocketV2Request[WebsocketV2CancelAllParams]
+	var req WebsocketRequest[WebsocketCancelAllParams]
 	if err := json.Unmarshal(msg, &req); err != nil {
 		return err
 	}
 	success := true
-	resp := websocketV2Response{
-		Method:    krakenWsV2CancelAll,
+	resp := websocketResponse{
+		Method:    wsCancelAll,
 		RequestID: req.RequestID,
 		Success:   &success,
-		Result:    websocketV2ResponseResult{Count: 3},
+		Result:    websocketResponseResult{Count: 3},
 	}
 	response, err := json.Marshal(resp)
 	if err != nil {
@@ -49,17 +49,17 @@ func mockWsCancelAllOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
 
 func mockWsCancelOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	var req WebsocketV2Request[WebsocketV2CancelOrderParams]
+	var req WebsocketRequest[WebsocketCancelOrderParams]
 	if err := json.Unmarshal(msg, &req); err != nil {
 		return err
 	}
 	for _, orderID := range req.Params.OrderIDs {
 		success := !strings.Contains(orderID, "FISH")
-		resp := websocketV2Response{
-			Method:    krakenWsV2CancelOrder,
+		resp := websocketResponse{
+			Method:    wsCancelOrder,
 			RequestID: req.RequestID,
 			Success:   &success,
-			Result:    websocketV2ResponseResult{OrderID: orderID},
+			Result:    websocketResponseResult{OrderID: orderID},
 		}
 		if !success {
 			resp.Error = "EOrder:Unknown order"
@@ -77,7 +77,7 @@ func mockWsCancelOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
 
 func mockWsAddOrder(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	var req WebsocketV2Request[WebsocketV2AddOrderParams]
+	var req WebsocketRequest[WebsocketAddOrderParams]
 	if err := json.Unmarshal(msg, &req); err != nil {
 		return err
 	}
@@ -88,11 +88,11 @@ func mockWsAddOrder(tb testing.TB, msg []byte, w *gws.Conn) error {
 	assert.Equal(tb, 80000.0, req.Params.LimitPrice, "LimitPrice should be correct")
 
 	success := true
-	resp := websocketV2Response{
-		Method:    krakenWsV2AddOrder,
+	resp := websocketResponse{
+		Method:    wsAddOrder,
 		RequestID: req.RequestID,
 		Success:   &success,
-		Result:    websocketV2ResponseResult{OrderID: "ONPNXH-KMKMU-F4MR5V"},
+		Result:    websocketResponseResult{OrderID: "ONPNXH-KMKMU-F4MR5V"},
 	}
 	response, err := json.Marshal(resp)
 	if err != nil {

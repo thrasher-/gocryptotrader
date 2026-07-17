@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	gws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -19,9 +20,33 @@ type mockAuthSubConnection struct {
 	expected  int
 }
 
+type mockPingConnection struct {
+	websocket.Connection
+	endpoint request.EndpointLimit
+	handler  websocket.PingHandler
+}
+
+func (m *mockPingConnection) SetupPingHandler(endpoint request.EndpointLimit, handler websocket.PingHandler) {
+	m.endpoint = endpoint
+	m.handler = handler
+}
+
 func (m *mockAuthSubConnection) SendMessageReturnResponses(_ context.Context, _ request.EndpointLimit, _, _ any, expected int) ([][]byte, error) {
 	m.expected = expected
 	return m.responses, nil
+}
+
+func TestStartWsPingHandler(t *testing.T) {
+	t.Parallel()
+
+	conn := new(mockPingConnection)
+	new(Exchange).startWsPingHandler(conn)
+	assert.Equal(t, request.Unset, conn.endpoint, "ping handler endpoint should be unset")
+	assert.Equal(t, websocket.PingHandler{
+		MessageType: gws.TextMessage,
+		Message:     []byte(`{"method":"ping"}`),
+		Delay:       wsPingDelay,
+	}, conn.handler, "ping handler should match Kraken's websocket requirements")
 }
 
 func TestManageSubs(t *testing.T) {
@@ -36,8 +61,8 @@ func TestManageSubs(t *testing.T) {
 		errIs            error
 		errContains      string
 	}{
-		{name: "executions", channel: subscription.MyAccountChannel, qualifiedChannel: krakenWsV2Executions, response: []byte(`{"method":"subscribe","result":{"channel":"executions","snap_orders":true,"snap_trades":true},"success":true,"req_id":3}`), responseCount: 1},
-		{name: "requires single response", channel: subscription.MyAccountChannel, qualifiedChannel: krakenWsV2Executions, responseCount: 0, errIs: errExpectedOneSubResponse, errContains: "got 0; Channel: myAccount"},
+		{name: "executions", channel: subscription.MyAccountChannel, qualifiedChannel: wsExecutions, response: []byte(`{"method":"subscribe","result":{"channel":"executions","snap_orders":true,"snap_trades":true},"success":true,"req_id":3}`), responseCount: 1},
+		{name: "requires single response", channel: subscription.MyAccountChannel, qualifiedChannel: wsExecutions, responseCount: 0, errIs: errExpectedOneSubResponse, errContains: "got 0; Channel: myAccount"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -51,7 +76,7 @@ func TestManageSubs(t *testing.T) {
 			}
 			ex.Websocket.AuthConn = conn
 
-			err := ex.manageSubs(t.Context(), krakenWsSubscribe, subscription.List{{
+			err := ex.manageSubs(t.Context(), wsSubscribe, subscription.List{{
 				Channel:          tc.channel,
 				QualifiedChannel: tc.qualifiedChannel,
 				Authenticated:    true,
@@ -65,6 +90,28 @@ func TestManageSubs(t *testing.T) {
 			assert.Equal(t, 1, conn.expected, "auth subscription without pairs waits for one response")
 		})
 	}
+}
+
+func TestHandleSubResps(t *testing.T) {
+	t.Parallel()
+
+	sub := &subscription.Subscription{
+		Channel: subscription.TickerChannel,
+		Pairs:   currency.Pairs{currency.NewPair(currency.XBT, currency.USD)},
+	}
+	t.Run("exchange formatted response", func(t *testing.T) {
+		t.Parallel()
+		err := new(Exchange).handleSubResps(sub, [][]byte{
+			[]byte(`{"method":"subscribe","result":{"channel":"ticker","symbol":"BTC/USD"},"success":true}`),
+		}, wsSubscribe)
+		assert.NoError(t, err, "exchange-formatted response should match the internal subscription pair")
+	})
+	t.Run("missing response", func(t *testing.T) {
+		t.Parallel()
+		err := new(Exchange).handleSubResps(sub, nil, wsSubscribe)
+		require.ErrorIs(t, err, errSubPairMissing, "missing response must return errSubPairMissing")
+		assert.ErrorContains(t, err, "XBT/USD", "missing response should retain exchange pair formatting")
+	})
 }
 
 func TestWsProcessSubStatusInvalidPair(t *testing.T) {

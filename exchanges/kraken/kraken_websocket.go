@@ -12,7 +12,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/buger/jsonparser"
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -31,48 +30,33 @@ import (
 
 // List of all websocket channels to subscribe to
 const (
-	krakenWSURL              = "wss://ws.kraken.com/v2"
-	krakenAuthWSURL          = "wss://ws-auth.kraken.com/v2"
-	krakenWSSandboxURL       = "wss://sandbox.kraken.com"
-	krakenWSSupportedVersion = "v2"
+	wsURL              = "wss://ws.kraken.com/v2"
+	wsAuthURL          = "wss://ws-auth.kraken.com/v2"
+	wsSupportedVersion = "v2"
 
 	// Websocket Channels
-	krakenWsHeartbeat            = "heartbeat"
-	krakenWsSystemStatus         = "systemStatus"
-	krakenWsSubscribe            = "subscribe"
-	krakenWsUnsubscribe          = "unsubscribe"
-	krakenWsSubscribed           = "subscribed"
-	krakenWsUnsubscribed         = "unsubscribed"
-	krakenWsSubscriptionStatus   = "subscriptionStatus"
-	krakenWsTicker               = "ticker"
-	krakenWsOHLC                 = "ohlc"
-	krakenWsTrade                = "trade"
-	krakenWsSpread               = "spread"
-	krakenWsOrderbook            = "book"
-	krakenWsOwnTrades            = "ownTrades"
-	krakenWsOpenOrders           = "openOrders"
-	krakenWsAddOrder             = "addOrder"
-	krakenWsCancelOrder          = "cancelOrder"
-	krakenWsCancelAll            = "cancelAll"
-	krakenWsAddOrderStatus       = "addOrderStatus"
-	krakenWsCancelOrderStatus    = "cancelOrderStatus"
-	krakenWsCancelAllOrderStatus = "cancelAllStatus"
-	krakenWsPong                 = "pong"
-	krakenWsPingDelay            = time.Second * 27
-
-	krakenWsV2Status      = "status"
-	krakenWsV2Executions  = "executions"
-	krakenWsV2AddOrder    = "add_order"
-	krakenWsV2CancelOrder = "cancel_order"
-	krakenWsV2CancelAll   = "cancel_all"
+	wsAddOrder    = "add_order"
+	wsCancelAll   = "cancel_all"
+	wsCancelOrder = "cancel_order"
+	wsExecutions  = "executions"
+	wsHeartbeat   = "heartbeat"
+	wsOHLC        = "ohlc"
+	wsOrderbook   = "book"
+	wsPong        = "pong"
+	wsStatus      = "status"
+	wsSubscribe   = "subscribe"
+	wsTicker      = "ticker"
+	wsTrade       = "trade"
+	wsUnsubscribe = "unsubscribe"
+	wsPingDelay   = time.Second * 27
 )
 
 var channelNames = map[string]string{
-	subscription.TickerChannel:    krakenWsTicker,
-	subscription.OrderbookChannel: krakenWsOrderbook,
-	subscription.CandlesChannel:   krakenWsOHLC,
-	subscription.AllTradesChannel: krakenWsTrade,
-	subscription.MyAccountChannel: krakenWsV2Executions,
+	subscription.TickerChannel:    wsTicker,
+	subscription.OrderbookChannel: wsOrderbook,
+	subscription.CandlesChannel:   wsOHLC,
+	subscription.AllTradesChannel: wsTrade,
+	subscription.MyAccountChannel: wsExecutions,
 }
 var reverseChannelNames = map[string]string{}
 
@@ -87,11 +71,11 @@ var (
 	errSubPairMissing         = errors.New("pair missing from subscription response")
 	errInvalidChecksum        = errors.New("invalid checksum")
 	errExpectedOneSubResponse = errors.New("expected 1 subscription response")
-	errV2TrackingValueNotSet  = errors.New("tracking value not set for a Kraken trailing-stop order")
-	errV2TriggerPriceNotSet   = errors.New("trigger price not set for a Kraken triggered order")
+	errTrackingValueNotSet    = errors.New("tracking value not set for a trailing-stop order")
+	errTriggerPriceNotSet     = errors.New("trigger price not set for a triggered order")
 )
 
-func krakenV2CurrencyToExchange(c currency.Code) currency.Code {
+func currencyToExchange(c currency.Code) currency.Code {
 	switch {
 	case c.Equal(currency.XBT), c.Equal(currency.XXBT):
 		return currency.BTC
@@ -102,7 +86,7 @@ func krakenV2CurrencyToExchange(c currency.Code) currency.Code {
 	}
 }
 
-func krakenV2CurrencyFromExchange(c currency.Code) currency.Code {
+func currencyFromExchange(c currency.Code) currency.Code {
 	switch {
 	case c.Equal(currency.BTC):
 		return currency.XBT
@@ -113,26 +97,27 @@ func krakenV2CurrencyFromExchange(c currency.Code) currency.Code {
 	}
 }
 
-func krakenV2PairToExchange(p currency.Pair) currency.Pair {
-	p.Base = krakenV2CurrencyToExchange(p.Base)
-	p.Quote = krakenV2CurrencyToExchange(p.Quote)
+func pairToExchange(p currency.Pair) currency.Pair {
+	p.Base = currencyToExchange(p.Base)
+	p.Quote = currencyToExchange(p.Quote)
 	return p
 }
 
-func krakenV2PairFromExchange(symbol string) (currency.Pair, error) {
+func pairFromExchange(symbol string) (currency.Pair, error) {
 	p, err := currency.NewPairDelimiter(symbol, "/")
 	if err != nil {
 		return currency.EMPTYPAIR, err
 	}
-	p.Base = krakenV2CurrencyFromExchange(p.Base)
-	p.Quote = krakenV2CurrencyFromExchange(p.Quote)
+	p.Base = currencyFromExchange(p.Base)
+	p.Quote = currencyFromExchange(p.Quote)
+	p.Delimiter = ""
 	return p, nil
 }
 
-func krakenV2PairsToExchange(pairs currency.Pairs) currency.Pairs {
+func pairsToExchange(pairs currency.Pairs) currency.Pairs {
 	translated := make(currency.Pairs, len(pairs))
 	for i := range pairs {
-		translated[i] = krakenV2PairToExchange(pairs[i])
+		translated[i] = pairToExchange(pairs[i])
 	}
 	return translated
 }
@@ -201,68 +186,18 @@ func (e *Exchange) wsReadData(ctx context.Context, ws websocket.Connection) {
 }
 
 func (e *Exchange) wsHandleData(ctx context.Context, respRaw []byte) error {
-	if _, err := jsonparser.GetUnsafeString(respRaw, "channel"); err == nil {
-		return e.wsHandleV2Data(ctx, respRaw)
+	var envelope struct {
+		Channel string `json:"channel"`
+		Method  string `json:"method"`
 	}
-	if _, err := jsonparser.GetUnsafeString(respRaw, "method"); err == nil {
-		return e.wsHandleV2Response(ctx, respRaw)
+	if err := json.Unmarshal(respRaw, &envelope); err != nil {
+		return fmt.Errorf("error unmarshalling WebSocket message envelope: %w", err)
 	}
-
-	// Retain decoding of recorded v1 fixtures while all runtime endpoints use v2.
-	if strings.HasPrefix(string(respRaw), "[") {
-		var msg []json.RawMessage
-		if err := json.Unmarshal(respRaw, &msg); err != nil {
-			return err
-		}
-		if len(msg) < 3 {
-			return fmt.Errorf("data array too short: %s", respRaw)
-		}
-
-		// For all types of channel second to last field is the channel Name
-		var chanName string
-		if err := json.Unmarshal(msg[len(msg)-2], &chanName); err != nil {
-			return fmt.Errorf("error unmarshalling channel name: %w", err)
-		}
-
-		pair := currency.EMPTYPAIR
-		var maybePair string
-		if err := json.Unmarshal(msg[len(msg)-1], &maybePair); err == nil {
-			p, err := currency.NewPairFromString(maybePair)
-			if err != nil {
-				return err
-			}
-			pair = p
-		}
-
-		return e.wsReadDataResponse(ctx, chanName, pair, msg)
-	}
-
-	event, err := jsonparser.GetString(respRaw, "event")
-	if err != nil {
-		return fmt.Errorf("%w parsing: %s", err, respRaw)
-	}
-
-	if event == krakenWsSubscriptionStatus { // Must happen before IncomingWithData to avoid race
-		e.wsProcessSubStatus(respRaw)
-	}
-
-	reqID, err := jsonparser.GetInt(respRaw, "reqid")
-	if err == nil && reqID != 0 && e.Websocket.Match.IncomingWithData(reqID, respRaw) {
-		return nil
-	}
-
-	if event == "" {
-		return nil
-	}
-
-	switch event {
-	case krakenWsPong, krakenWsHeartbeat:
-		return nil
-	case krakenWsCancelOrderStatus, krakenWsCancelAllOrderStatus, krakenWsAddOrderStatus, krakenWsSubscriptionStatus:
-		// All of these should have found a listener already
-		return fmt.Errorf("%w: %s %v", websocket.ErrSignatureNotMatched, event, reqID)
-	case krakenWsSystemStatus:
-		return e.wsProcessSystemStatus(respRaw)
+	switch {
+	case envelope.Channel != "":
+		return e.wsHandleMessage(ctx, respRaw)
+	case envelope.Method != "":
+		return e.wsHandleResponse(ctx, respRaw)
 	default:
 		return e.Websocket.DataHandler.Send(ctx, websocket.UnhandledMessageWarning{
 			Message: fmt.Sprintf("%s: %s", websocket.UnhandledMessage, respRaw),
@@ -270,27 +205,27 @@ func (e *Exchange) wsHandleData(ctx context.Context, respRaw []byte) error {
 	}
 }
 
-func (e *Exchange) wsHandleV2Response(ctx context.Context, respRaw []byte) error {
-	var resp websocketV2Response
+func (e *Exchange) wsHandleResponse(ctx context.Context, respRaw []byte) error {
+	var resp websocketResponse
 	if err := json.Unmarshal(respRaw, &resp); err != nil {
-		return fmt.Errorf("error unmarshalling WebSocket v2 response: %w", err)
+		return fmt.Errorf("error unmarshalling WebSocket response: %w", err)
 	}
 
-	if resp.Method == krakenWsSubscribe || resp.Method == krakenWsUnsubscribe {
+	if resp.Method == wsSubscribe || resp.Method == wsUnsubscribe {
 		e.wsProcessSubStatus(respRaw)
 	}
 
 	if resp.RequestID != 0 && e.Websocket.Match.IncomingWithData(resp.RequestID, respRaw) {
 		return nil
 	}
-	if resp.Method == krakenWsPong {
+	if resp.Method == wsPong {
 		return nil
 	}
 	if resp.Error != "" {
 		return errors.New(resp.Error)
 	}
-	if resp.Method == krakenWsSubscribe || resp.Method == krakenWsUnsubscribe ||
-		resp.Method == krakenWsV2AddOrder || resp.Method == krakenWsV2CancelOrder || resp.Method == krakenWsV2CancelAll {
+	if resp.Method == wsSubscribe || resp.Method == wsUnsubscribe ||
+		resp.Method == wsAddOrder || resp.Method == wsCancelOrder || resp.Method == wsCancelAll {
 		return fmt.Errorf("%w: %s %v", websocket.ErrSignatureNotMatched, resp.Method, resp.RequestID)
 	}
 	return e.Websocket.DataHandler.Send(ctx, websocket.UnhandledMessageWarning{
@@ -298,27 +233,27 @@ func (e *Exchange) wsHandleV2Response(ctx context.Context, respRaw []byte) error
 	})
 }
 
-func (e *Exchange) wsHandleV2Data(ctx context.Context, respRaw []byte) error {
-	var msg websocketV2Message
+func (e *Exchange) wsHandleMessage(ctx context.Context, respRaw []byte) error {
+	var msg websocketMessage
 	if err := json.Unmarshal(respRaw, &msg); err != nil {
-		return fmt.Errorf("error unmarshalling WebSocket v2 message: %w", err)
+		return fmt.Errorf("error unmarshalling WebSocket message: %w", err)
 	}
 
 	switch msg.Channel {
-	case krakenWsHeartbeat:
+	case wsHeartbeat:
 		return nil
-	case krakenWsV2Status:
-		return e.wsProcessV2Status(msg.Data)
-	case krakenWsTicker:
-		return e.wsProcessV2Tickers(ctx, msg.Data)
-	case krakenWsTrade:
-		return e.wsProcessV2Trades(ctx, msg.Data)
-	case krakenWsOHLC:
-		return e.wsProcessV2Candles(ctx, msg.Data)
-	case krakenWsOrderbook:
-		return e.wsProcessV2Orderbooks(ctx, msg.Type, msg.Data)
-	case krakenWsV2Executions:
-		return e.wsProcessV2Executions(ctx, msg.Data)
+	case wsStatus:
+		return e.wsProcessStatus(msg.Data)
+	case wsTicker:
+		return e.wsProcessTickers(ctx, msg.Data)
+	case wsTrade:
+		return e.wsProcessTrades(ctx, msg.Data)
+	case wsOHLC:
+		return e.wsProcessCandles(ctx, msg.Data)
+	case wsOrderbook:
+		return e.wsProcessOrderbooks(ctx, msg.Type, msg.Data)
+	case wsExecutions:
+		return e.wsProcessExecutions(ctx, msg.Data)
 	default:
 		return e.Websocket.DataHandler.Send(ctx, websocket.UnhandledMessageWarning{
 			Message: fmt.Sprintf("%s: %s", websocket.UnhandledMessage, respRaw),
@@ -326,30 +261,30 @@ func (e *Exchange) wsHandleV2Data(ctx context.Context, respRaw []byte) error {
 	}
 }
 
-func (e *Exchange) wsProcessV2Status(data []json.RawMessage) error {
+func (e *Exchange) wsProcessStatus(data []json.RawMessage) error {
 	if len(data) != 1 {
 		return fmt.Errorf("expected one status item, received %d", len(data))
 	}
-	var status websocketV2Status
+	var status websocketStatus
 	if err := json.Unmarshal(data[0], &status); err != nil {
 		return fmt.Errorf("error unmarshalling status data: %w", err)
 	}
 	if status.System != "online" {
 		return fmt.Errorf("system status not online: %s", status.System)
 	}
-	if status.APIVersion != krakenWSSupportedVersion {
+	if status.APIVersion != wsSupportedVersion {
 		return fmt.Errorf("unsupported WebSocket API version: %s", status.APIVersion)
 	}
 	return nil
 }
 
-func (e *Exchange) wsProcessV2Tickers(ctx context.Context, data []json.RawMessage) error {
+func (e *Exchange) wsProcessTickers(ctx context.Context, data []json.RawMessage) error {
 	for i := range data {
-		var item websocketV2Ticker
+		var item websocketTicker
 		if err := json.Unmarshal(data[i], &item); err != nil {
 			return fmt.Errorf("error unmarshalling ticker data: %w", err)
 		}
-		pair, err := krakenV2PairFromExchange(item.Symbol)
+		pair, err := pairFromExchange(item.Symbol)
 		if err != nil {
 			return fmt.Errorf("error parsing ticker symbol %q: %w", item.Symbol, err)
 		}
@@ -371,7 +306,7 @@ func (e *Exchange) wsProcessV2Tickers(ctx context.Context, data []json.RawMessag
 	return nil
 }
 
-func (e *Exchange) wsProcessV2Trades(ctx context.Context, data []json.RawMessage) error {
+func (e *Exchange) wsProcessTrades(ctx context.Context, data []json.RawMessage) error {
 	saveTradeData := e.IsSaveTradeDataEnabled()
 	tradeFeed := e.IsTradeFeedEnabled()
 	if !saveTradeData && !tradeFeed {
@@ -380,11 +315,11 @@ func (e *Exchange) wsProcessV2Trades(ctx context.Context, data []json.RawMessage
 
 	trades := make([]trade.Data, 0, len(data))
 	for i := range data {
-		var item websocketV2Trade
+		var item websocketTrade
 		if err := json.Unmarshal(data[i], &item); err != nil {
 			return fmt.Errorf("error unmarshalling trade data: %w", err)
 		}
-		pair, err := krakenV2PairFromExchange(item.Symbol)
+		pair, err := pairFromExchange(item.Symbol)
 		if err != nil {
 			return fmt.Errorf("error parsing trade symbol %q: %w", item.Symbol, err)
 		}
@@ -416,13 +351,13 @@ func (e *Exchange) wsProcessV2Trades(ctx context.Context, data []json.RawMessage
 	return nil
 }
 
-func (e *Exchange) wsProcessV2Candles(ctx context.Context, data []json.RawMessage) error {
+func (e *Exchange) wsProcessCandles(ctx context.Context, data []json.RawMessage) error {
 	for i := range data {
-		var item websocketV2Candle
+		var item websocketCandle
 		if err := json.Unmarshal(data[i], &item); err != nil {
 			return fmt.Errorf("error unmarshalling candle data: %w", err)
 		}
-		pair, err := krakenV2PairFromExchange(item.Symbol)
+		pair, err := pairFromExchange(item.Symbol)
 		if err != nil {
 			return fmt.Errorf("error parsing candle symbol %q: %w", item.Symbol, err)
 		}
@@ -447,13 +382,13 @@ func (e *Exchange) wsProcessV2Candles(ctx context.Context, data []json.RawMessag
 	return nil
 }
 
-func (e *Exchange) wsProcessV2Orderbooks(ctx context.Context, messageType string, data []json.RawMessage) error {
+func (e *Exchange) wsProcessOrderbooks(ctx context.Context, messageType string, data []json.RawMessage) error {
 	for i := range data {
-		var item websocketV2Book
+		var item websocketBook
 		if err := json.Unmarshal(data[i], &item); err != nil {
 			return fmt.Errorf("error unmarshalling orderbook data: %w", err)
 		}
-		pair, err := krakenV2PairFromExchange(item.Symbol)
+		pair, err := pairFromExchange(item.Symbol)
 		if err != nil {
 			return fmt.Errorf("error parsing orderbook symbol %q: %w", item.Symbol, err)
 		}
@@ -467,9 +402,9 @@ func (e *Exchange) wsProcessV2Orderbooks(ctx context.Context, messageType string
 
 		switch messageType {
 		case "snapshot":
-			err = e.wsProcessV2OrderbookSnapshot(pair, sub.Levels, &item)
+			err = e.wsProcessOrderbookSnapshot(pair, sub.Levels, &item)
 		case "update":
-			err = e.wsProcessV2OrderbookUpdate(pair, &item)
+			err = e.wsProcessOrderbookUpdate(pair, &item)
 		default:
 			return fmt.Errorf("unsupported orderbook message type %q", messageType)
 		}
@@ -497,7 +432,7 @@ func (e *Exchange) wsSubscriptionForPair(channel string, pair currency.Pair) *su
 	return nil
 }
 
-func (e *Exchange) wsProcessV2OrderbookSnapshot(pair currency.Pair, levels int, snapshot *websocketV2Book) error {
+func (e *Exchange) wsProcessOrderbookSnapshot(pair currency.Pair, levels int, snapshot *websocketBook) error {
 	updatedAt := snapshot.Timestamp
 	if updatedAt.IsZero() {
 		updatedAt = time.Now()
@@ -539,7 +474,7 @@ func (e *Exchange) wsProcessV2OrderbookSnapshot(pair currency.Pair, levels int, 
 	return validateCRC32(stored, snapshot.Checksum)
 }
 
-func (e *Exchange) wsProcessV2OrderbookUpdate(pair currency.Pair, update *websocketV2Book) error {
+func (e *Exchange) wsProcessOrderbookUpdate(pair currency.Pair, update *websocketBook) error {
 	updatedAt := update.Timestamp
 	if updatedAt.IsZero() {
 		updatedAt = time.Now()
@@ -577,9 +512,9 @@ func (e *Exchange) wsProcessV2OrderbookUpdate(pair currency.Pair, update *websoc
 	return validateCRC32(book, update.Checksum)
 }
 
-func (e *Exchange) wsProcessV2Executions(ctx context.Context, data []json.RawMessage) error {
+func (e *Exchange) wsProcessExecutions(ctx context.Context, data []json.RawMessage) error {
 	for i := range data {
-		var item WebsocketV2Execution
+		var item WebsocketExecution
 		if err := json.Unmarshal(data[i], &item); err != nil {
 			return fmt.Errorf("error unmarshalling execution data: %w", err)
 		}
@@ -599,7 +534,7 @@ func (e *Exchange) wsProcessV2Executions(ctx context.Context, data []json.RawMes
 		}
 		var err error
 		if item.Symbol != "" {
-			detail.Pair, err = krakenV2PairFromExchange(item.Symbol)
+			detail.Pair, err = pairFromExchange(item.Symbol)
 			if err != nil {
 				return fmt.Errorf("error parsing execution symbol %q: %w", item.Symbol, err)
 			}
@@ -611,10 +546,10 @@ func (e *Exchange) wsProcessV2Executions(ctx context.Context, data []json.RawMes
 			}
 		}
 		if item.OrderType != "" {
-			detail.Type = krakenV2OrderType(item.OrderType)
+			detail.Type = wsOrderType(item.OrderType)
 		}
 		if item.OrderStatus != "" {
-			detail.Status, err = krakenV2OrderStatus(item.OrderStatus)
+			detail.Status, err = wsOrderStatus(item.OrderStatus)
 			if err != nil {
 				return err
 			}
@@ -645,7 +580,7 @@ func (e *Exchange) wsProcessV2Executions(ctx context.Context, data []json.RawMes
 	return nil
 }
 
-func krakenV2OrderType(value string) order.Type {
+func wsOrderType(value string) order.Type {
 	switch value {
 	case "limit", "iceberg":
 		return order.Limit
@@ -668,7 +603,7 @@ func krakenV2OrderType(value string) order.Type {
 	}
 }
 
-func krakenV2OrderTypeName(value order.Type) (string, error) {
+func wsOrderTypeName(value order.Type) (string, error) {
 	switch value {
 	case order.Limit:
 		return "limit", nil
@@ -691,7 +626,7 @@ func krakenV2OrderTypeName(value order.Type) (string, error) {
 	}
 }
 
-func krakenV2OrderStatus(value string) (order.Status, error) {
+func wsOrderStatus(value string) (order.Status, error) {
 	if value == "pending_new" {
 		return order.Pending, nil
 	}
@@ -702,393 +637,9 @@ func krakenV2OrderStatus(value string) (order.Status, error) {
 func (e *Exchange) startWsPingHandler(conn websocket.Connection) {
 	conn.SetupPingHandler(request.Unset, websocket.PingHandler{
 		Message:     []byte(`{"method":"ping"}`),
-		Delay:       krakenWsPingDelay,
+		Delay:       wsPingDelay,
 		MessageType: gws.TextMessage,
 	})
-}
-
-// wsReadDataResponse classifies the WS response and sends to appropriate handler
-func (e *Exchange) wsReadDataResponse(ctx context.Context, c string, pair currency.Pair, response []json.RawMessage) error {
-	switch c {
-	case krakenWsTicker:
-		return e.wsProcessTickers(ctx, response[1], pair)
-	case krakenWsSpread:
-		return e.wsProcessSpread(response[1], pair)
-	case krakenWsTrade:
-		return e.wsProcessTrades(ctx, response[1], pair)
-	case krakenWsOwnTrades:
-		return e.wsProcessOwnTrades(ctx, response[0])
-	case krakenWsOpenOrders:
-		return e.wsProcessOpenOrders(ctx, response[0])
-	}
-
-	channelType := strings.TrimRight(c, "-0123456789")
-	switch channelType {
-	case krakenWsOHLC:
-		return e.wsProcessCandle(ctx, c, response[1], pair)
-	case krakenWsOrderbook:
-		return e.wsProcessOrderBook(ctx, c, response, pair)
-	default:
-		return fmt.Errorf("received unidentified data for subscription %s: %+v", c, response)
-	}
-}
-
-func (e *Exchange) wsProcessSystemStatus(respRaw []byte) error {
-	var systemStatus wsSystemStatus
-	if err := json.Unmarshal(respRaw, &systemStatus); err != nil {
-		return fmt.Errorf("%s parsing system status: %s", err, respRaw)
-	}
-	if systemStatus.Status != "online" {
-		return fmt.Errorf("system status not online: %v", systemStatus.Status)
-	}
-	if systemStatus.Version > krakenWSSupportedVersion {
-		log.Warnf(log.ExchangeSys, "%v New version of Websocket API released. Was %v Now %v", e.Name, krakenWSSupportedVersion, systemStatus.Version)
-	}
-	return nil
-}
-
-func (e *Exchange) wsProcessOwnTrades(ctx context.Context, ownOrdersRaw json.RawMessage) error {
-	var result []map[string]*WsOwnTrade
-	if err := json.Unmarshal(ownOrdersRaw, &result); err != nil {
-		return err
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-
-	for key, val := range result[0] {
-		oSide, err := order.StringToOrderSide(val.Type)
-		if err != nil {
-			return err
-		}
-		oType, err := order.StringToOrderType(val.OrderType)
-		if err != nil {
-			return err
-		}
-		if err := e.Websocket.DataHandler.Send(ctx, &order.Detail{
-			Exchange: e.Name,
-			OrderID:  val.OrderTransactionID,
-			Trades: []order.TradeHistory{
-				{
-					Price:     val.Price,
-					Amount:    val.Vol,
-					Fee:       val.Fee,
-					Exchange:  e.Name,
-					TID:       key,
-					Type:      oType,
-					Side:      oSide,
-					Timestamp: val.Time.Time(),
-				},
-			},
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// wsProcessOpenOrders processes open orders from the websocket response
-func (e *Exchange) wsProcessOpenOrders(ctx context.Context, ownOrdersResp json.RawMessage) error {
-	var result []map[string]*WsOpenOrder
-	if err := json.Unmarshal(ownOrdersResp, &result); err != nil {
-		return err
-	}
-
-	for r := range result {
-		for key, val := range result[r] {
-			d := &order.Detail{
-				Exchange:             e.Name,
-				OrderID:              key,
-				AverageExecutedPrice: val.AveragePrice,
-				Amount:               val.Volume,
-				LimitPriceUpper:      val.LimitPrice,
-				ExecutedAmount:       val.ExecutedVolume,
-				Fee:                  val.Fee,
-				Date:                 val.OpenTime.Time(),
-				LastUpdated:          val.LastUpdated.Time(),
-			}
-
-			if val.Status != "" {
-				var err error
-				if d.Status, err = order.StringToOrderStatus(val.Status); err != nil {
-					return err
-				}
-			}
-
-			if val.Description.Pair != "" {
-				var err error
-				d.Side = order.Sell
-				if !strings.Contains(val.Description.Order, "sell") {
-					if d.Side, err = order.StringToOrderSide(val.Description.Type); err != nil {
-						return err
-					}
-				}
-				if d.Type, err = order.StringToOrderType(val.Description.OrderType); err != nil {
-					return err
-				}
-				if d.Pair, err = currency.NewPairFromString(val.Description.Pair); err != nil {
-					return err
-				}
-				if d.AssetType, err = e.GetPairAssetType(d.Pair); err != nil {
-					return err
-				}
-			}
-
-			if val.Description.Price > 0 {
-				d.Leverage = val.Description.Leverage
-				d.Price = val.Description.Price
-			}
-
-			if val.Volume > 0 {
-				// Note: Volume and ExecutedVolume are only populated when status is open
-				d.RemainingAmount = val.Volume - val.ExecutedVolume
-			}
-			if err := e.Websocket.DataHandler.Send(ctx, d); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// wsProcessTickers converts ticker data and sends it to the datahandler
-func (e *Exchange) wsProcessTickers(ctx context.Context, dataRaw json.RawMessage, pair currency.Pair) error {
-	var t wsTicker
-	if err := json.Unmarshal(dataRaw, &t); err != nil {
-		return fmt.Errorf("error unmarshalling ticker data: %w", err)
-	}
-
-	return e.Websocket.DataHandler.Send(ctx, &ticker.Price{
-		ExchangeName: e.Name,
-		Ask:          t.Ask[0].Float64(),
-		Bid:          t.Bid[0].Float64(),
-		Close:        t.Last[0].Float64(),
-		Volume:       t.Volume[0].Float64(),
-		Low:          t.Low[0].Float64(),
-		High:         t.High[0].Float64(),
-		Open:         t.Open[0].Float64(),
-		AssetType:    asset.Spot,
-		Pair:         pair,
-	})
-}
-
-// wsProcessSpread converts spread/orderbook data and sends it to the datahandler
-func (e *Exchange) wsProcessSpread(rawData json.RawMessage, pair currency.Pair) error {
-	var data wsSpread
-	if err := json.Unmarshal(rawData, &data); err != nil {
-		return fmt.Errorf("error unmarshalling spread data: %w", err)
-	}
-	if e.Verbose {
-		log.Debugf(log.ExchangeSys, "%s Spread data for %q received. Best bid: '%v' Best ask: '%v' Time: %q, Bid volume: '%v', Ask volume: '%v'",
-			e.Name,
-			pair,
-			data.Bid.Float64(),
-			data.Ask.Float64(),
-			data.Time.Time(),
-			data.BidVolume.Float64(),
-			data.AskVolume.Float64())
-	}
-	return nil
-}
-
-// wsProcessTrades converts trade data and sends it to the datahandler
-func (e *Exchange) wsProcessTrades(ctx context.Context, respRaw json.RawMessage, pair currency.Pair) error {
-	saveTradeData := e.IsSaveTradeDataEnabled()
-	tradeFeed := e.IsTradeFeedEnabled()
-	if !saveTradeData && !tradeFeed {
-		return nil
-	}
-
-	var t []wsTrades
-	if err := json.Unmarshal(respRaw, &t); err != nil {
-		return fmt.Errorf("error unmarshalling trade data: %w", err)
-	}
-
-	trades := make([]trade.Data, len(t))
-	for i := range trades {
-		side := order.Buy
-		if t[i].Side == "s" {
-			side = order.Sell
-		}
-		trades[i] = trade.Data{
-			AssetType:    asset.Spot,
-			CurrencyPair: pair,
-			Exchange:     e.Name,
-			Price:        t[i].Price.Float64(),
-			Amount:       t[i].Volume.Float64(),
-			Timestamp:    t[i].Time.Time().UTC(),
-			Side:         side,
-		}
-	}
-	if tradeFeed {
-		for i := range trades {
-			if err := e.Websocket.DataHandler.Send(ctx, trades[i]); err != nil {
-				return err
-			}
-		}
-	}
-	if saveTradeData {
-		return trade.AddTradesToBuffer(trades...)
-	}
-	return nil
-}
-
-func hasKey(raw json.RawMessage, key string) bool {
-	_, dataType, _, err := jsonparser.Get(raw, key)
-	if err != nil || dataType == jsonparser.NotExist {
-		return false
-	}
-	return true
-}
-
-// wsProcessOrderBook handles both partial and full orderbook updates
-func (e *Exchange) wsProcessOrderBook(ctx context.Context, c string, response []json.RawMessage, pair currency.Pair) error {
-	key := &subscription.Subscription{
-		Channel: c,
-		Asset:   asset.Spot,
-		Pairs:   currency.Pairs{pair},
-	}
-	if err := fqChannelNameSub(key); err != nil {
-		return err
-	}
-	s := e.Websocket.GetSubscription(key)
-	if s == nil {
-		return fmt.Errorf("%w: %s %s %s", subscription.ErrNotFound, asset.Spot, c, pair)
-	}
-	if s.State() == subscription.UnsubscribingState {
-		// We only care if it's currently unsubscribing
-		return nil
-	}
-
-	if isSnapshot := hasKey(response[1], "as") && hasKey(response[1], "bs"); !isSnapshot {
-		var update wsUpdate
-		if err := json.Unmarshal(response[1], &update); err != nil {
-			return fmt.Errorf("error unmarshalling orderbook update: %w", err)
-		}
-		if len(response) == 5 {
-			var update2 wsUpdate
-			if err := json.Unmarshal(response[2], &update2); err != nil {
-				return fmt.Errorf("error unmarshalling orderbook update: %w", err)
-			}
-			update.Bids = make([]wsOrderbookItem, len(update2.Bids))
-			copy(update.Bids, update2.Bids)
-			update.Checksum = update2.Checksum
-		}
-		err := e.wsProcessOrderBookUpdate(pair, &update)
-		if errors.Is(err, errInvalidChecksum) {
-			log.Debugf(log.Global, "%s Resubscribing to invalid %s orderbook", e.Name, pair)
-			go func() {
-				if e2 := e.Websocket.ResubscribeToChannel(ctx, e.Websocket.Conn, s); e2 != nil && !errors.Is(e2, subscription.ErrInStateAlready) {
-					log.Errorf(log.ExchangeSys, "%s resubscription failure for %v: %v", e.Name, pair, e2)
-				}
-			}()
-		}
-		return err
-	}
-
-	var snapshot wsSnapshot
-	if err := json.Unmarshal(response[1], &snapshot); err != nil {
-		return fmt.Errorf("error unmarshalling orderbook snapshot: %w", err)
-	}
-	return e.wsProcessOrderBookPartial(pair, &snapshot, key.Levels)
-}
-
-// wsProcessOrderBookPartial creates a new orderbook entry for a given currency pair
-func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsSnapshot, levels int) error {
-	base := orderbook.Book{
-		Pair:                   pair,
-		Asset:                  asset.Spot,
-		ValidateOrderbook:      e.ValidateOrderbook,
-		Bids:                   make(orderbook.Levels, len(obSnapshot.Bids)),
-		Asks:                   make(orderbook.Levels, len(obSnapshot.Asks)),
-		MaxDepth:               levels,
-		ChecksumStringRequired: true,
-	}
-	// Kraken ob data is timestamped per price, GCT orderbook data is
-	// timestamped per entry using the highest last update time, we can attempt
-	// to respect both within a reasonable degree
-	var highestLastUpdate time.Time
-	for i := range obSnapshot.Asks {
-		base.Asks[i].Price = obSnapshot.Asks[i].Price
-		base.Asks[i].StrPrice = obSnapshot.Asks[i].PriceRaw
-		base.Asks[i].Amount = obSnapshot.Asks[i].Amount
-		base.Asks[i].StrAmount = obSnapshot.Asks[i].AmountRaw
-
-		askUpdatedTime := obSnapshot.Asks[i].Time.Time()
-		if highestLastUpdate.Before(askUpdatedTime) {
-			highestLastUpdate = askUpdatedTime
-		}
-	}
-
-	for i := range obSnapshot.Bids {
-		base.Bids[i].Price = obSnapshot.Bids[i].Price
-		base.Bids[i].StrPrice = obSnapshot.Bids[i].PriceRaw
-		base.Bids[i].Amount = obSnapshot.Bids[i].Amount
-		base.Bids[i].StrAmount = obSnapshot.Bids[i].AmountRaw
-
-		bidUpdateTime := obSnapshot.Bids[i].Time.Time()
-		if highestLastUpdate.Before(bidUpdateTime) {
-			highestLastUpdate = bidUpdateTime
-		}
-	}
-	base.LastUpdated = highestLastUpdate
-	base.Exchange = e.Name
-	return e.Websocket.Orderbook.LoadSnapshot(&base)
-}
-
-// wsProcessOrderBookUpdate updates an orderbook entry for a given currency pair
-func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate) error {
-	obUpdate := orderbook.Update{
-		Asset: asset.Spot,
-		Pair:  pair,
-		Bids:  make(orderbook.Levels, len(wsUpdt.Bids)),
-		Asks:  make(orderbook.Levels, len(wsUpdt.Asks)),
-	}
-
-	// Calculating checksum requires incoming decimal place checks for both
-	// price and amount as there is no set standard between currency pairs. This
-	// is calculated per update as opposed to snapshot because changes to
-	// decimal amounts could occur at any time.
-	var highestLastUpdate time.Time
-	// Ask data is not always sent
-	for i := range wsUpdt.Asks {
-		obUpdate.Asks[i].Price = wsUpdt.Asks[i].Price
-		obUpdate.Asks[i].StrPrice = wsUpdt.Asks[i].PriceRaw
-		obUpdate.Asks[i].Amount = wsUpdt.Asks[i].Amount
-		obUpdate.Asks[i].StrAmount = wsUpdt.Asks[i].AmountRaw
-
-		askUpdatedTime := wsUpdt.Asks[i].Time.Time()
-		if highestLastUpdate.Before(askUpdatedTime) {
-			highestLastUpdate = askUpdatedTime
-		}
-	}
-
-	// Bid data is not always sent
-	for i := range wsUpdt.Bids {
-		obUpdate.Bids[i].Price = wsUpdt.Bids[i].Price
-		obUpdate.Bids[i].StrPrice = wsUpdt.Bids[i].PriceRaw
-		obUpdate.Bids[i].Amount = wsUpdt.Bids[i].Amount
-		obUpdate.Bids[i].StrAmount = wsUpdt.Bids[i].AmountRaw
-
-		bidUpdatedTime := wsUpdt.Bids[i].Time.Time()
-		if highestLastUpdate.Before(bidUpdatedTime) {
-			highestLastUpdate = bidUpdatedTime
-		}
-	}
-	obUpdate.UpdateTime = highestLastUpdate
-
-	err := e.Websocket.Orderbook.Update(&obUpdate)
-	if err != nil {
-		return err
-	}
-
-	book, err := e.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
-	if err != nil {
-		return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w", pair, asset.Spot, err)
-	}
-
-	return validateCRC32(book, wsUpdt.Checksum)
 }
 
 func validateCRC32(b *orderbook.Book, token uint32) error {
@@ -1123,41 +674,6 @@ func trim(s string) string {
 	return s
 }
 
-// wsProcessCandle converts candle data and sends it to the data handler
-func (e *Exchange) wsProcessCandle(ctx context.Context, c string, resp json.RawMessage, pair currency.Pair) error {
-	var data wsCandle
-	if err := json.Unmarshal(resp, &data); err != nil {
-		return fmt.Errorf("error unmarshalling candle data: %w", err)
-	}
-
-	// Faster than getting it through the subscription
-	parts := strings.Split(c, "-")
-	if len(parts) != 2 {
-		return errBadChannelSuffix
-	}
-	intervalMinutes, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return fmt.Errorf("%w: %s", kline.ErrInvalidInterval, c)
-	}
-	volume := data.Volume.Float64()
-	vwap := data.VWAP.Float64()
-	return e.Websocket.DataHandler.Send(ctx, kline.Item{
-		Asset:    asset.Spot,
-		Pair:     pair,
-		Exchange: e.Name,
-		Interval: kline.Interval(time.Minute * time.Duration(intervalMinutes)),
-		Candles: []kline.Candle{{
-			Time:        data.LastUpdateTime.Time(),
-			Open:        data.Open.Float64(),
-			High:        data.High.Float64(),
-			Low:         data.Low.Float64(),
-			Close:       data.Close.Float64(),
-			Volume:      volume,
-			QuoteVolume: volume * vwap,
-		}},
-	})
-}
-
 // GetSubscriptionTemplate returns a subscription channel template
 func (e *Exchange) GetSubscriptionTemplate(_ *subscription.Subscription) (*template.Template, error) {
 	return template.New("master.tmpl").Funcs(template.FuncMap{"channelName": channelName}).Parse(subTplText)
@@ -1188,7 +704,7 @@ func (e *Exchange) Subscribe(in subscription.List) error {
 	groupedSubs := subs.GroupPairs()
 
 	errs = common.AppendError(errs,
-		e.ParallelChanOp(ctx, groupedSubs, func(ctx context.Context, s subscription.List) error { return e.manageSubs(ctx, krakenWsSubscribe, s) }, 1),
+		e.ParallelChanOp(ctx, groupedSubs, func(ctx context.Context, s subscription.List) error { return e.manageSubs(ctx, wsSubscribe, s) }, 1),
 	)
 
 	for _, s := range subs {
@@ -1226,7 +742,7 @@ func (e *Exchange) Unsubscribe(keys subscription.List) error {
 	subs = subs.GroupPairs()
 
 	return common.AppendError(errs,
-		e.ParallelChanOp(ctx, subs, func(ctx context.Context, s subscription.List) error { return e.manageSubs(ctx, krakenWsUnsubscribe, s) }, 1),
+		e.ParallelChanOp(ctx, subs, func(ctx context.Context, s subscription.List) error { return e.manageSubs(ctx, wsUnsubscribe, s) }, 1),
 	)
 }
 
@@ -1243,13 +759,13 @@ func (e *Exchange) manageSubs(ctx context.Context, op string, subs subscription.
 	}
 
 	reqFmt := currency.PairFormat{Uppercase: true, Delimiter: "/"}
-	r := &WebsocketV2Request[WebsocketV2SubscriptionParams]{
+	r := &WebsocketRequest[WebsocketSubscriptionParams]{
 		Method:    op,
 		RequestID: e.MessageSequence(),
-		Params: WebsocketV2SubscriptionParams{
+		Params: WebsocketSubscriptionParams{
 			Channel: s.QualifiedChannel,
 			Depth:   s.Levels,
-			Symbols: krakenV2PairsToExchange(s.Pairs).Format(reqFmt).Strings(),
+			Symbols: pairsToExchange(s.Pairs).Format(reqFmt).Strings(),
 		},
 	}
 
@@ -1260,7 +776,7 @@ func (e *Exchange) manageSubs(ctx context.Context, op string, subs subscription.
 	conn := e.Websocket.Conn
 	if s.Authenticated {
 		r.Params.Token = e.websocketAuthToken()
-		if op == krakenWsSubscribe && s.QualifiedChannel == krakenWsV2Executions {
+		if op == wsSubscribe && s.QualifiedChannel == wsExecutions {
 			r.Params.SnapOrders = true
 			r.Params.SnapTrades = true
 		}
@@ -1301,12 +817,16 @@ func (e *Exchange) handleSubResps(s *subscription.Subscription, resps [][]byte, 
 	errMap := map[string]error{}
 	pairErrs := map[currency.Pair]error{}
 	for _, p := range s.Pairs {
-		pairErrs[p.Format(reqFmt)] = errSubPairMissing
+		expectedPair, err := pairFromExchange(pairToExchange(p).Format(reqFmt).String())
+		if err != nil {
+			return fmt.Errorf("%w formatting WS pair; Channel: %s Pair: %s", err, s.Channel, p)
+		}
+		pairErrs[expectedPair] = errSubPairMissing
 	}
 
 	subPairs := currency.Pairs{}
 	for _, resp := range resps {
-		var response websocketV2Response
+		var response websocketResponse
 		if err := json.Unmarshal(resp, &response); err != nil {
 			return fmt.Errorf("%w parsing WS response from message: %s", err, resp)
 		}
@@ -1317,7 +837,7 @@ func (e *Exchange) handleSubResps(s *subscription.Subscription, resps [][]byte, 
 		if pName == "" {
 			return fmt.Errorf("%w parsing WS symbol from message: %s", errSubPairMissing, resp)
 		}
-		pair, err := krakenV2PairFromExchange(pName)
+		pair, err := pairFromExchange(pName)
 		if err != nil {
 			return fmt.Errorf("%w parsing WS pair; Channel: %s Pair: %s", err, s.Channel, pName)
 		}
@@ -1330,7 +850,7 @@ func (e *Exchange) handleSubResps(s *subscription.Subscription, resps [][]byte, 
 			pairErrs[pair] = errMap[errStr]
 		} else {
 			delete(pairErrs, pair)
-			if e.Verbose && op == krakenWsSubscribe {
+			if e.Verbose && op == wsSubscribe {
 				subPairs = subPairs.Add(pair)
 			}
 		}
@@ -1344,11 +864,11 @@ func (e *Exchange) handleSubResps(s *subscription.Subscription, resps [][]byte, 
 
 	var errs error
 	for err, pairs := range errPairs {
-		errs = common.AppendError(errs, fmt.Errorf("%w; Channel: %s Pairs: %s", err, s.Channel, pairs.Join()))
+		errs = common.AppendError(errs, fmt.Errorf("%w; Channel: %s Pairs: %s", err, s.Channel, pairs.Format(reqFmt).Join()))
 	}
 
 	if e.Verbose && len(subPairs) > 0 {
-		log.Debugf(log.ExchangeSys, "%s Subscribed to Channel: %s Pairs: %s", e.Name, s.Channel, subPairs.Join())
+		log.Debugf(log.ExchangeSys, "%s Subscribed to Channel: %s Pairs: %s", e.Name, s.Channel, subPairs.Format(reqFmt).Join())
 	}
 
 	return errs
@@ -1359,12 +879,12 @@ func (e *Exchange) getSubRespErr(resp []byte, op string) error {
 	if err := e.getRespErr(resp); err != nil {
 		return err
 	}
-	method, err := jsonparser.GetUnsafeString(resp, "method")
-	if err != nil {
+	var response websocketResponse
+	if err := json.Unmarshal(resp, &response); err != nil {
 		return fmt.Errorf("error parsing WS method: %w from message: %s", err, resp)
 	}
-	if method != op {
-		return fmt.Errorf("wrong WS method: %s; expected: %s from message %s", method, op, resp)
+	if response.Method != op {
+		return fmt.Errorf("wrong WS method: %s; expected: %s from message %s", response.Method, op, resp)
 	}
 	return nil
 }
@@ -1374,7 +894,7 @@ func (e *Exchange) getSubRespErr(resp []byte, op string) error {
 // It might log parsing errors about the nature of the error
 // If the error message is not defined it will return a wrapped errUnknownError
 func (e *Exchange) getRespErr(resp []byte) error {
-	var response websocketV2Response
+	var response websocketResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
 		return fmt.Errorf("error parsing WS response: %w from message: %s", err, resp)
 	}
@@ -1394,7 +914,7 @@ func (e *Exchange) getRespErr(resp []byte) error {
 // It's job is to ensure that subscription state is kept correct sequentially between WS messages
 // If this responsibility was moved to Subscribe then we would have a race due to the channel connecting IncomingWithData
 func (e *Exchange) wsProcessSubStatus(resp []byte) {
-	var response websocketV2Response
+	var response websocketResponse
 	if err := json.Unmarshal(resp, &response); err != nil || response.Result.Channel == "" {
 		return
 	}
@@ -1414,7 +934,7 @@ func (e *Exchange) wsProcessSubStatus(resp []byte) {
 	}
 	lookupKey := any(subscription.ChannelKey{Subscription: keySub})
 	if response.Result.Symbol != "" {
-		pair, err := krakenV2PairFromExchange(response.Result.Symbol)
+		pair, err := pairFromExchange(response.Result.Symbol)
 		if err != nil {
 			log.Errorf(log.ExchangeSys, "%s error parsing websocket subscription pair %q: %s from message: %s", e.Name, response.Result.Symbol, err, resp)
 			return
@@ -1431,7 +951,7 @@ func (e *Exchange) wsProcessSubStatus(resp []byte) {
 	}
 
 	var err error
-	if response.Method == krakenWsSubscribe {
+	if response.Method == wsSubscribe {
 		err = s.SetState(subscription.SubscribedState)
 	} else if s.State() != subscription.ResubscribingState { // Do not remove a resubscribing sub which just unsubbed
 		conn := e.Websocket.Conn
@@ -1459,7 +979,7 @@ func channelName(s *subscription.Subscription) string {
 
 func enforceStandardChannelNames(s *subscription.Subscription) error {
 	if s.Channel == subscription.MyTradesChannel || s.Channel == subscription.MyOrdersChannel {
-		return fmt.Errorf("%w: use subscription.MyAccountChannel for Kraken v2 executions", subscription.ErrNotSupported)
+		return fmt.Errorf("%w: use subscription.MyAccountChannel for executions", subscription.ErrNotSupported)
 	}
 	name := strings.Split(s.Channel, "-") // Protect against attempted usage of book-N as a channel name
 	if n, ok := reverseChannelNames[name[0]]; ok && n != s.Channel {
@@ -1468,38 +988,8 @@ func enforceStandardChannelNames(s *subscription.Subscription) error {
 	return nil
 }
 
-// fqChannelNameSub converts an fully qualified channel name into standard name and subscription params
-// e.g. book-5 => subscription.OrderbookChannel with Levels: 5
-func fqChannelNameSub(s *subscription.Subscription) error {
-	parts := strings.Split(s.Channel, "-")
-	name := parts[0]
-	if stdName, ok := reverseChannelNames[name]; ok {
-		name = stdName
-	}
-
-	if name == subscription.OrderbookChannel || name == subscription.CandlesChannel {
-		if len(parts) != 2 {
-			return errBadChannelSuffix
-		}
-		i, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return errBadChannelSuffix
-		}
-		switch name {
-		case subscription.OrderbookChannel:
-			s.Levels = i
-		case subscription.CandlesChannel:
-			s.Interval = kline.Interval(time.Minute * time.Duration(i))
-		}
-	}
-
-	s.Channel = name
-
-	return nil
-}
-
 // wsAddOrder creates an order and returns its order ID.
-func (e *Exchange) wsAddOrder(ctx context.Context, params *WebsocketV2AddOrderParams) (string, error) {
+func (e *Exchange) wsAddOrder(ctx context.Context, params *WebsocketAddOrderParams) (string, error) {
 	if params == nil {
 		return "", common.ErrNilPointer
 	}
@@ -1507,10 +997,10 @@ func (e *Exchange) wsAddOrder(ctx context.Context, params *WebsocketV2AddOrderPa
 	if err != nil {
 		return "", fmt.Errorf("invalid add_order symbol %q: %w", params.Symbol, err)
 	}
-	params.Symbol = krakenV2PairToExchange(pair).Format(currency.PairFormat{Uppercase: true, Delimiter: "/"}).String()
+	params.Symbol = pairToExchange(pair).Format(currency.PairFormat{Uppercase: true, Delimiter: "/"}).String()
 	params.Token = e.websocketAuthToken()
-	req := WebsocketV2Request[WebsocketV2AddOrderParams]{
-		Method:    krakenWsV2AddOrder,
+	req := WebsocketRequest[WebsocketAddOrderParams]{
+		Method:    wsAddOrder,
 		Params:    *params,
 		RequestID: e.MessageSequence(),
 	}
@@ -1518,7 +1008,7 @@ func (e *Exchange) wsAddOrder(ctx context.Context, params *WebsocketV2AddOrderPa
 	if err != nil {
 		return "", err
 	}
-	var resp websocketV2Response
+	var resp websocketResponse
 	if err := json.Unmarshal(jsonResp, &resp); err != nil {
 		return "", err
 	}
@@ -1538,14 +1028,14 @@ func (e *Exchange) wsAddOrder(ctx context.Context, params *WebsocketV2AddOrderPa
 	return resp.Result.OrderID, nil
 }
 
-// wsCancelOrders cancels one or more open orders in a single v2 request.
+// wsCancelOrders cancels one or more open orders in a single request.
 func (e *Exchange) wsCancelOrders(ctx context.Context, orderIDs []string) error {
 	if len(orderIDs) == 0 {
 		return nil
 	}
-	req := WebsocketV2Request[WebsocketV2CancelOrderParams]{
-		Method: krakenWsV2CancelOrder,
-		Params: WebsocketV2CancelOrderParams{
+	req := WebsocketRequest[WebsocketCancelOrderParams]{
+		Method: wsCancelOrder,
+		Params: WebsocketCancelOrderParams{
 			OrderIDs: orderIDs,
 			Token:    e.websocketAuthToken(),
 		},
@@ -1557,7 +1047,7 @@ func (e *Exchange) wsCancelOrders(ctx context.Context, orderIDs []string) error 
 	}
 	var errs error
 	for i := range responses {
-		var resp websocketV2Response
+		var resp websocketResponse
 		if err := json.Unmarshal(responses[i], &resp); err != nil {
 			errs = common.AppendError(errs, fmt.Errorf("%w: %w", errCancellingOrder, err))
 			continue
@@ -1573,27 +1063,26 @@ func (e *Exchange) wsCancelOrders(ctx context.Context, orderIDs []string) error 
 	return errs
 }
 
-// wsCancelAllOrders cancels all opened orders
-// Returns number (count param) of affected orders or 0 if no open orders found
-func (e *Exchange) wsCancelAllOrders(ctx context.Context) (*WsCancelOrderResponse, error) {
-	req := WebsocketV2Request[WebsocketV2CancelAllParams]{
-		Method:    krakenWsV2CancelAll,
-		Params:    WebsocketV2CancelAllParams{Token: e.websocketAuthToken()},
+// wsCancelAllOrders cancels all open orders and returns the affected order count.
+func (e *Exchange) wsCancelAllOrders(ctx context.Context) (int64, error) {
+	req := WebsocketRequest[WebsocketCancelAllParams]{
+		Method:    wsCancelAll,
+		Params:    WebsocketCancelAllParams{Token: e.websocketAuthToken()},
 		RequestID: e.MessageSequence(),
 	}
 
 	jsonResp, err := e.Websocket.AuthConn.SendMessageReturnResponse(ctx, request.Unset, req.RequestID, &req)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	if err := e.getRespErr(jsonResp); err != nil {
-		return nil, err
+		return 0, err
 	}
-	var resp websocketV2Response
+	var resp websocketResponse
 	if err := json.Unmarshal(jsonResp, &resp); err != nil {
-		return nil, err
+		return 0, err
 	}
-	return &WsCancelOrderResponse{Count: resp.Result.Count}, nil
+	return resp.Result.Count, nil
 }
 
 /*
