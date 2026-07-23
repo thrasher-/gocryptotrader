@@ -2077,19 +2077,12 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	}
 	cfg.Currency.ForexProviders = nil
 	cfg.Currency.CryptocurrencyProvider = currency.Provider{}
-	err := cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
-	if cfg.Currency.ForexProviders == nil {
-		t.Error("Failed to populate c.Currency.ForexProviders")
-	}
-	if cfg.Currency.CryptocurrencyProvider.APIKey != DefaultUnsetAPIKey {
-		t.Error("Failed to set the api key to the default key")
-	}
-	if cfg.Currency.CryptocurrencyProvider.Name != "CoinMarketCap" {
-		t.Error("Failed to set the  c.Currency.CryptocurrencyProvider.Name")
-	}
+	require.NoError(t, cfg.CheckCurrencyConfigValues(), "default currency config must validate")
+	assert.NotNil(t, cfg.Currency.ForexProviders, "currency config should populate forex providers")
+	assert.Equal(t, DefaultUnsetAPIKey, cfg.Currency.CryptocurrencyProvider.APIKey,
+		"cryptocurrency provider should use the default API key")
+	assert.Equal(t, "CoinMarketCap", cfg.Currency.CryptocurrencyProvider.Name,
+		"cryptocurrency provider should default to CoinMarketCap")
 
 	cfg.Currency.ForexProviders[0].Enabled = true
 	cfg.Currency.ForexProviders[0].Name = "CurrencyConverter"
@@ -2102,13 +2095,9 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	cfg.Currency.FiatDisplayCurrency = currency.EMPTYCODE
 	cfg.FiatDisplayCurrency = &currency.BTC
 	cfg.Currency.CryptocurrencyProvider.Enabled = true
-	err = cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
-	if !cfg.Currency.CurrencyPairFormat.Uppercase {
-		t.Error("Failed to apply c.CurrencyPairFormat format to c.Currency.CurrencyPairFormat")
-	}
+	require.NoError(t, cfg.CheckCurrencyConfigValues(), "configured currency values must validate")
+	assert.True(t, cfg.Currency.CurrencyPairFormat.Uppercase,
+		"currency config should apply the legacy pair format")
 
 	cfg.Currency.CryptocurrencyProvider.Enabled = false
 	cfg.Currency.CryptocurrencyProvider.APIKey = ""
@@ -2118,16 +2107,41 @@ func TestCheckCurrencyConfigValues(t *testing.T) {
 	cfg.Currency.ForexProviders[0].Name = "Name"
 	cfg.Currency.ForexProviders[0].PrimaryProvider = true
 	cfg.Cryptocurrencies = &currency.Currencies{}
-	err = cfg.CheckCurrencyConfigValues()
-	if err != nil {
-		t.Error(err)
-	}
-	if cfg.FiatDisplayCurrency != nil {
-		t.Error("Failed to clear c.FiatDisplayCurrency")
-	}
-	if cfg.Currency.CryptocurrencyProvider.APIKey != DefaultUnsetAPIKey ||
-		cfg.Currency.CryptocurrencyProvider.AccountPlan != DefaultUnsetAccountPlan {
-		t.Error("Failed to set CryptocurrencyProvider.APIkey and AccountPlan")
+	require.NoError(t, cfg.CheckCurrencyConfigValues(), "disabled provider config must validate")
+	assert.Nil(t, cfg.FiatDisplayCurrency, "currency config should clear the legacy fiat display currency")
+	assert.Equal(t, DefaultUnsetAPIKey, cfg.Currency.CryptocurrencyProvider.APIKey,
+		"cryptocurrency provider should use the default API key")
+	assert.Equal(t, DefaultAccountPlan, cfg.Currency.CryptocurrencyProvider.AccountPlan,
+		"missing account plan should default to Basic")
+}
+
+func TestCheckCurrencyConfigValuesAccountPlan(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "empty", expected: "basic"},
+		{name: "legacy placeholder", input: " AccountPlan ", expected: "basic"},
+		{name: "current", input: "growth", expected: "growth"},
+		{name: "unknown", input: "custom", expected: "custom"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{
+				Currency: currency.Config{
+					CryptocurrencyProvider: currency.Provider{
+						Name:        "CoinMarketCap",
+						AccountPlan: tc.input,
+					},
+				},
+			}
+
+			require.NoError(t, cfg.CheckCurrencyConfigValues(), "CheckCurrencyConfigValues must not error")
+			assert.Equal(t, tc.expected, cfg.Currency.CryptocurrencyProvider.AccountPlan, "account plan should be canonicalised when applicable")
+		})
 	}
 }
 

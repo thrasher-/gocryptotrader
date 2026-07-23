@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thrasher-corp/gocryptotrader/common"
 )
 
 // Please set API keys to test endpoint
@@ -97,20 +98,18 @@ func TestSetup(t *testing.T) {
 
 func TestCheckAccountPlan(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
+	for _, tc := range []struct {
 		name      string
 		plan      uint8
 		min       uint8
 		expectErr bool
 	}{
 		{name: "basic allows basic", plan: Basic, min: Basic},
-		{name: "basic blocks hobbyist", plan: Basic, min: Hobbyist, expectErr: true},
-		{name: "startup allows hobbyist", plan: Startup, min: Hobbyist},
-		{name: "startup blocks standard", plan: Startup, min: Standard, expectErr: true},
+		{name: "basic blocks builder", plan: Basic, min: Builder, expectErr: true},
+		{name: "startup allows builder", plan: Startup, min: Builder},
+		{name: "startup blocks growth", plan: Startup, min: Growth, expectErr: true},
 		{name: "enterprise allows professional", plan: Enterprise, min: Professional},
-	}
-
-	for _, tc := range testCases {
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			c := &Coinmarketcap{Plan: tc.plan}
@@ -159,7 +158,7 @@ func TestGetCryptocurrencyLatestListing(t *testing.T) {
 func TestGetCryptocurrencyLatestMarketPairs(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Growth)
 	_, err := c.GetCryptocurrencyLatestMarketPairs(1, 0, 0)
 	assert.NoError(t, err)
 }
@@ -167,7 +166,7 @@ func TestGetCryptocurrencyLatestMarketPairs(t *testing.T) {
 func TestGetCryptocurrencyOHLCHistorical(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Startup)
 	_, err := c.GetCryptocurrencyOHLCHistorical(1, time.Now(), time.Now())
 	assert.NoError(t, err)
 }
@@ -191,25 +190,78 @@ func TestGetCryptocurrencyLatestQuotes(t *testing.T) {
 func TestGetCryptocurrencyHistoricalQuotes(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Basic)
 	_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Now(), time.Now())
 	assert.NoError(t, err)
+}
+
+func TestGetCryptocurrencyHistoricalQuotesDecodesResultMap(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v3/cryptocurrency/quotes/historical": `{"data":{"1":{"id":1,"name":"Bitcoin","symbol":"BTC","quotes":[{"timestamp":"2018-06-22T00:00:00Z","quote":{"USD":{"price":6242.48}}}]}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	result, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Unix(1, 0), time.Unix(2, 0))
+	require.NoError(t, err, "historical quote request must not error")
+	assert.Equal(t, int64(1), result.ID, "cryptocurrency ID should match")
+	require.Len(t, result.Quotes, 1, "historical quotes must contain the returned entry")
+	assert.Equal(t, 6242.48, result.Quotes[0].Quote.USD.Price, "historical USD price should match")
+}
+
+func TestGetCryptocurrencyHistoricalQuotesRejectsMissingResult(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v3/cryptocurrency/quotes/historical": `{"data":{"2":{"id":2}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Unix(1, 0), time.Unix(2, 0))
+	assert.ErrorIs(t, err, common.ErrNoResponse, "historical quote response without the requested ID should return no response")
 }
 
 func TestGetExchangeInfo(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Startup)
+	skipIfLiveCredentialsUnavailable(t, c, Basic)
 	_, err := c.GetExchangeInfo(1)
 	assert.NoError(t, err)
+}
+
+func TestGetExchangeInfoAllowsBasicPlan(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/info": `{"data":{"1":{"id":270,"name":"Binance","slug":"binance"}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+	c.Plan = Basic
+
+	result, err := c.GetExchangeInfo(1)
+	require.NoError(t, err, "Basic-plan exchange metadata request must not error")
+	require.Contains(t, result, "1", "exchange metadata must contain the requested entry")
+	assert.Equal(t, int64(270), result["1"].ID, "exchange ID should match")
 }
 
 func TestGetExchangeMap(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Startup)
+	skipIfLiveCredentialsUnavailable(t, c, Basic)
 	_, err := c.GetExchangeMap(0, 0)
 	assert.NoError(t, err)
+}
+
+func TestGetExchangeMapAllowsBasicPlan(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/map": `{"data":[{"id":270,"name":"Binance","slug":"binance","is_active":1}],"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+	c.Plan = Basic
+
+	result, err := c.GetExchangeMap(1, 10)
+	require.NoError(t, err, "Basic-plan exchange map request must not error")
+	require.Len(t, result, 1, "exchange map must contain the returned entry")
+	assert.Equal(t, int64(270), result[0].ID, "exchange ID should match")
 }
 
 func TestGetExchangeHistoricalListings(t *testing.T) {
@@ -231,7 +283,7 @@ func TestGetExchangeLatestListings(t *testing.T) {
 func TestGetExchangeLatestMarketPairs(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Growth)
 	_, err := c.GetExchangeLatestMarketPairs(1, 0, 0)
 	assert.NoError(t, err)
 }
@@ -239,17 +291,70 @@ func TestGetExchangeLatestMarketPairs(t *testing.T) {
 func TestGetExchangeLatestQuotes(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Growth)
 	_, err := c.GetExchangeLatestQuotes(1)
 	assert.NoError(t, err)
+}
+
+func TestGetExchangeLatestQuotesDecodesResultMap(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/quotes/latest": `{"data":{"1":{"id":270,"name":"Binance","slug":"binance","quote":{"USD":{"volume_24h":768478308.52}}},"2":{"id":89,"name":"Coinbase Exchange","slug":"coinbase-exchange","quote":{"USD":{"volume_24h":1234.5}}}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	result, err := c.GetExchangeLatestQuotes(1)
+	require.NoError(t, err, "latest exchange quote request must not error")
+	assert.Equal(t, int64(270), result.Binance.ID, "Binance ID should match")
+	require.Len(t, result.Exchanges, 2, "latest exchange quotes must retain every result")
+	assert.Equal(t, "Coinbase Exchange", result.Exchanges["2"].Name, "second exchange name should match")
+	assert.Equal(t, 1234.5, result.Exchanges["2"].Quote["USD"].Volume24H, "second exchange volume should match")
+}
+
+func TestGetExchangeLatestQuotesWithoutBinance(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/quotes/latest": `{"data":{"2":{"id":89,"name":"Coinbase Exchange","slug":"coinbase-exchange"}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	result, err := c.GetExchangeLatestQuotes(2)
+	require.NoError(t, err, "latest exchange quote request must not error")
+	require.Len(t, result.Exchanges, 1, "latest exchange quotes must retain every result")
+	assert.Zero(t, result.Binance, "Binance compatibility field should remain empty")
 }
 
 func TestGetExchangeHistoricalQuotes(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Basic)
 	_, err := c.GetExchangeHistoricalQuotes(1, time.Now(), time.Now())
 	assert.NoError(t, err)
+}
+
+func TestGetExchangeHistoricalQuotesDecodesResultMap(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/quotes/historical": `{"data":{"1":{"id":270,"name":"Binance","slug":"binance","quotes":[{"timestamp":"2018-06-03T00:00:00Z","quote":{"USD":{"volume_24h":1632390000}},"num_market_pairs":338}]}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	result, err := c.GetExchangeHistoricalQuotes(1, time.Unix(1, 0), time.Unix(2, 0))
+	require.NoError(t, err, "historical exchange quote request must not error")
+	assert.Equal(t, int64(270), result.ID, "exchange ID should match")
+	require.Len(t, result.Quotes, 1, "historical exchange quotes must contain the returned entry")
+	assert.Equal(t, 1632390000.0, result.Quotes[0].Quote["USD"].Volume24H, "historical exchange volume should match")
+}
+
+func TestGetExchangeHistoricalQuotesRejectsMissingResult(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v1/exchange/quotes/historical": `{"data":{"2":{"id":2}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	_, err := c.GetExchangeHistoricalQuotes(1, time.Unix(1, 0), time.Unix(2, 0))
+	assert.ErrorIs(t, err, common.ErrNoResponse, "historical exchange response without the requested ID should return no response")
 }
 
 func TestGetGlobalMeticLatestQuotes(t *testing.T) {
@@ -263,7 +368,7 @@ func TestGetGlobalMeticLatestQuotes(t *testing.T) {
 func TestGetGlobalMeticHistoricalQuotes(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Standard)
+	skipIfLiveCredentialsUnavailable(t, c, Basic)
 	_, err := c.GetGlobalMeticHistoricalQuotes(time.Now(), time.Now())
 	assert.NoError(t, err)
 }
@@ -271,42 +376,92 @@ func TestGetGlobalMeticHistoricalQuotes(t *testing.T) {
 func TestGetPriceConversion(t *testing.T) {
 	t.Parallel()
 	c := newConfiguredClient(t)
-	skipIfLiveCredentialsUnavailable(t, c, Hobbyist)
+	skipIfLiveCredentialsUnavailable(t, c, Builder)
 	_, err := c.GetPriceConversion(0, 1, time.Now())
 	assert.NoError(t, err)
 }
 
+func TestGetPriceConversionDecodesNumericID(t *testing.T) {
+	t.Parallel()
+	c, closeFn := newSyntheticClient(t, map[string]string{
+		"/v2/tools/price-conversion": `{"data":{"symbol":"BTC","id":1,"name":"Bitcoin","amount":50,"last_updated":"2018-06-06T08:04:36Z","quote":{"USD":{"price":284656.08}}},"status":{"error_code":0}}`,
+	})
+	t.Cleanup(closeFn)
+
+	result, err := c.GetPriceConversion(50, 1, time.Time{})
+	require.NoError(t, err, "price conversion request must not error")
+	assert.Equal(t, int64(1), result.ID, "price conversion ID should match")
+	assert.Equal(t, 284656.08, result.Quote["USD"].Price, "converted price should match")
+}
+
+func TestGetPriceConversionPlanAccess(t *testing.T) {
+	t.Parallel()
+	responses := map[string]string{
+		"/v2/tools/price-conversion": `{"data":{"symbol":"BTC","id":1,"name":"Bitcoin","amount":1,"quote":{"USD":{"price":2}}},"status":{"error_code":0}}`,
+	}
+	c, closeFn := newSyntheticClient(t, responses)
+	t.Cleanup(closeFn)
+
+	c.Plan = 0
+	_, err := c.GetPriceConversion(1, 1, time.Time{})
+	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "an unset plan should not allow latest price conversion")
+
+	c.Plan = Basic
+	_, err = c.GetPriceConversion(1, 1, time.Time{})
+	require.NoError(t, err, "Basic-plan latest price conversion must not error")
+
+	_, err = c.GetPriceConversion(1, 1, time.Now())
+	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "Basic-plan historical conversion should return the plan error")
+
+	historicalClient, historicalCloseFn := newSyntheticClient(t, responses)
+	t.Cleanup(historicalCloseFn)
+	historicalClient.Plan = Builder
+	_, err = historicalClient.GetPriceConversion(1, 1, time.Now())
+	assert.NoError(t, err, "Builder-plan historical conversion should not error")
+}
+
 func TestSetAccountPlan(t *testing.T) {
 	t.Parallel()
-	var c Coinmarketcap
-	accPlans := []string{"basic", "startup", "hobbyist", "standard", "professional", "enterprise"}
-	for _, plan := range accPlans {
-		err := c.SetAccountPlan(plan)
-		assert.NoError(t, err)
-
-		switch plan {
-		case "basic":
-			assert.Equal(t, Basic, c.Plan)
-		case "startup":
-			assert.Equal(t, Startup, c.Plan)
-		case "hobbyist":
-			assert.Equal(t, Hobbyist, c.Plan)
-		case "standard":
-			assert.Equal(t, Standard, c.Plan)
-		case "professional":
-			assert.Equal(t, Professional, c.Plan)
-		case "enterprise":
-			assert.Equal(t, Enterprise, c.Plan)
-		}
+	for _, tc := range []struct {
+		name        string
+		accountPlan string
+		expected    uint8
+		err         error
+	}{
+		{name: "basic", accountPlan: "basic", expected: Basic},
+		{name: "builder", accountPlan: "builder", expected: Builder},
+		{name: "startup", accountPlan: "startup", expected: Startup},
+		{name: "growth", accountPlan: "growth", expected: Growth},
+		{name: "professional", accountPlan: "professional", expected: Professional},
+		{name: "enterprise", accountPlan: "enterprise", expected: Enterprise},
+		{name: "normalised", accountPlan: " Growth ", expected: Growth},
+		{name: "legacy hobbyist", accountPlan: "hobbyist", err: errInvalidAccountPlan},
+		{name: "legacy standard", accountPlan: "standard", err: errInvalidAccountPlan},
+		{name: "unknown", accountPlan: "unknown", err: errInvalidAccountPlan},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := Coinmarketcap{Plan: Enterprise}
+			err := c.SetAccountPlan(tc.accountPlan)
+			if tc.err != nil {
+				require.ErrorIs(t, err, tc.err, "SetAccountPlan must reject invalid or obsolete account plans")
+				assert.Equal(t, Enterprise, c.Plan, "an invalid plan should not change the current account plan")
+				return
+			}
+			require.NoError(t, err, "SetAccountPlan must not error")
+			assert.Equal(t, tc.expected, c.Plan, "account plan should match")
+		})
 	}
 }
 
 func TestNewFromSettingsAndSetupDisabled(t *testing.T) {
 	t.Parallel()
-	cfg := Settings{Enabled: true, AccountPlan: "basic", APIKey: "x"}
+	cfg := Settings{Enabled: true, Verbose: true, AccountPlan: "basic", APIKey: "x"}
 	client, err := NewFromSettings(cfg)
 	require.NoError(t, err)
 	assert.True(t, client.Enabled)
+	assert.True(t, client.Verbose, "Setup should apply the verbose setting")
+	assert.Equal(t, "x", client.APIkey, "Setup should apply the API key")
 	assert.Equal(t, Basic, client.Plan)
 
 	var disabled Coinmarketcap
@@ -316,18 +471,73 @@ func TestNewFromSettingsAndSetupDisabled(t *testing.T) {
 	assert.False(t, disabled.Enabled)
 }
 
+func TestSetupRejectsInvalidPlanWithoutMutation(t *testing.T) {
+	t.Parallel()
+	client := Coinmarketcap{
+		Enabled: true,
+		Verbose: true,
+		APIkey:  "old-api-key",
+		Plan:    Enterprise,
+	}
+
+	err := client.Setup(Settings{
+		Enabled:     true,
+		Verbose:     false,
+		APIKey:      "new-api-key",
+		AccountPlan: "invalid",
+	})
+	require.ErrorIs(t, err, errInvalidAccountPlan, "Setup must reject an invalid account plan")
+	assert.True(t, client.Enabled, "Setup should preserve the enabled state after an error")
+	assert.True(t, client.Verbose, "Setup should preserve the verbose state after an error")
+	assert.Equal(t, "old-api-key", client.APIkey, "Setup should preserve the API key after an error")
+	assert.Equal(t, Enterprise, client.Plan, "Setup should preserve the account plan after an error")
+}
+
 func TestQuoteMapUnmarshal(t *testing.T) {
 	t.Parallel()
-	var qm QuoteMap
-	err := qm.UnmarshalJSON([]byte(`{"USD":{"price":1.23},"BTC":{"price":0.1}}`))
-	require.NoError(t, err)
-	assert.Equal(t, 1.23, qm["USD"].Price)
-	assert.Equal(t, 0.1, qm["BTC"].Price)
-
-	err = qm.UnmarshalJSON([]byte(`[{"USD":{"price":2.34}},{"ETH":{"price":3.45}}]`))
-	require.NoError(t, err)
-	assert.Equal(t, 2.34, qm["USD"].Price)
-	assert.Equal(t, 3.45, qm["ETH"].Price)
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected QuoteMap
+		wantErr  bool
+	}{
+		{
+			name:  "object",
+			input: `{"USD":{"price":1.23},"BTC":{"price":0.1}}`,
+			expected: QuoteMap{
+				"USD": {Price: 1.23},
+				"BTC": {Price: 0.1},
+			},
+		},
+		{name: "empty object", input: `{}`, expected: QuoteMap{}},
+		{
+			name:  "v3 array",
+			input: `[{"id":2781,"symbol":"USD","price":2.34},{"id":1027,"symbol":"ETH","price":3.45}]`,
+			expected: QuoteMap{
+				"USD": {ID: 2781, Symbol: "USD", Price: 2.34},
+				"ETH": {ID: 1027, Symbol: "ETH", Price: 3.45},
+			},
+		},
+		{name: "empty array", input: `[]`, expected: QuoteMap{}},
+		{name: "null", input: `null`, wantErr: true},
+		{name: "missing symbol", input: `[{"id":2781}]`, wantErr: true},
+		{name: "empty symbol", input: `[{"id":2781,"symbol":""}]`, wantErr: true},
+		{name: "whitespace symbol", input: `[{"id":2781,"symbol":" USD "}]`, wantErr: true},
+		{name: "duplicate symbol", input: `[{"symbol":"USD"},{"symbol":"USD"}]`, wantErr: true},
+		{name: "invalid element", input: `[{"id":"invalid","symbol":"USD"}]`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var actual QuoteMap
+			err := actual.UnmarshalJSON([]byte(tc.input))
+			if tc.wantErr {
+				assert.ErrorIs(t, err, common.ErrInvalidResponse, "invalid quote collection should return the response error")
+				return
+			}
+			require.NoError(t, err, "quote collection must unmarshal")
+			assert.Equal(t, tc.expected, actual, "quote collection should match")
+		})
+	}
 }
 
 func TestAPIErrorCodeUnmarshal(t *testing.T) {
@@ -347,7 +557,7 @@ func TestAPIErrorCodeUnmarshal(t *testing.T) {
 
 func TestCoinmarketcapEndpointSuccessSynthetic(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
+	for _, tc := range []struct {
 		name    string
 		path    string
 		payload string
@@ -363,7 +573,7 @@ func TestCoinmarketcapEndpointSuccessSynthetic(t *testing.T) {
 		}},
 		{"GetCryptocurrencyOHLCLatest", "/v2/cryptocurrency/ohlcv/latest", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyOHLCLatest(1); return err }},
 		{"GetCryptocurrencyLatestQuotes", "/v3/cryptocurrency/quotes/latest", `{"data":[],"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyLatestQuotes(1); return err }},
-		{"GetCryptocurrencyHistoricalQuotes", "/v3/cryptocurrency/quotes/historical", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error {
+		{"GetCryptocurrencyHistoricalQuotes", "/v3/cryptocurrency/quotes/historical", `{"data":{"1":{}},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error {
 			_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Now().Add(-time.Hour), time.Now())
 			return err
 		}},
@@ -371,7 +581,7 @@ func TestCoinmarketcapEndpointSuccessSynthetic(t *testing.T) {
 		{"GetExchangeMap", "/v1/exchange/map", `{"data":[],"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeMap(1, 2); return err }},
 		{"GetExchangeLatestMarketPairs", "/v1/exchange/market-pairs/latest", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeLatestMarketPairs(1, 1, 2); return err }},
 		{"GetExchangeLatestQuotes", "/v1/exchange/quotes/latest", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeLatestQuotes(1); return err }},
-		{"GetExchangeHistoricalQuotes", "/v1/exchange/quotes/historical", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error {
+		{"GetExchangeHistoricalQuotes", "/v1/exchange/quotes/historical", `{"data":{"1":{}},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error {
 			_, err := c.GetExchangeHistoricalQuotes(1, time.Now().Add(-time.Hour), time.Now())
 			return err
 		}},
@@ -381,9 +591,7 @@ func TestCoinmarketcapEndpointSuccessSynthetic(t *testing.T) {
 			return err
 		}},
 		{"GetPriceConversion", "/v2/tools/price-conversion", `{"data":{},"status":{"error_code":0,"error_message":""}}`, func(c *Coinmarketcap) error { _, err := c.GetPriceConversion(1, 1, time.Now()); return err }},
-	}
-
-	for _, tc := range testCases {
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			client, done := newSyntheticClient(t, map[string]string{tc.path: tc.payload})
@@ -396,7 +604,7 @@ func TestCoinmarketcapEndpointSuccessSynthetic(t *testing.T) {
 
 func TestCoinmarketcapEndpointStatusErrorSynthetic(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
+	for _, tc := range []struct {
 		name    string
 		path    string
 		payload string
@@ -405,12 +613,31 @@ func TestCoinmarketcapEndpointStatusErrorSynthetic(t *testing.T) {
 		{"GetCryptocurrencyInfo", "/v2/cryptocurrency/info", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyInfo(1); return err }},
 		{"GetCryptocurrencyIDMap", "/v1/cryptocurrency/map", `{"data":[],"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyIDMap(); return err }},
 		{"GetCryptocurrencyLatestListing", "/v3/cryptocurrency/listings/latest", `{"data":[],"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyLatestListing(1, 2); return err }},
+		{"GetCryptocurrencyLatestMarketPairs", "/v2/cryptocurrency/market-pairs/latest", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyLatestMarketPairs(1, 1, 2); return err }},
+		{"GetCryptocurrencyOHLCHistorical", "/v2/cryptocurrency/ohlcv/historical", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error {
+			_, err := c.GetCryptocurrencyOHLCHistorical(1, time.Now().Add(-time.Hour), time.Now())
+			return err
+		}},
 		{"GetCryptocurrencyLatestQuotes", "/v3/cryptocurrency/quotes/latest", `{"data":[],"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetCryptocurrencyLatestQuotes(1); return err }},
+		{"GetCryptocurrencyHistoricalQuotes", "/v3/cryptocurrency/quotes/historical", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error {
+			_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Now().Add(-time.Hour), time.Now())
+			return err
+		}},
+		{"GetExchangeInfo", "/v1/exchange/info", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeInfo(1); return err }},
+		{"GetExchangeMap", "/v1/exchange/map", `{"data":[],"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeMap(1, 2); return err }},
+		{"GetExchangeLatestMarketPairs", "/v1/exchange/market-pairs/latest", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeLatestMarketPairs(1, 1, 2); return err }},
+		{"GetExchangeLatestQuotes", "/v1/exchange/quotes/latest", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetExchangeLatestQuotes(1); return err }},
+		{"GetExchangeHistoricalQuotes", "/v1/exchange/quotes/historical", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error {
+			_, err := c.GetExchangeHistoricalQuotes(1, time.Now().Add(-time.Hour), time.Now())
+			return err
+		}},
 		{"GetGlobalMeticLatestQuotes", "/v1/global-metrics/quotes/latest", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetGlobalMeticLatestQuotes(); return err }},
+		{"GetGlobalMeticHistoricalQuotes", "/v1/global-metrics/quotes/historical", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error {
+			_, err := c.GetGlobalMeticHistoricalQuotes(time.Now().Add(-time.Hour), time.Now())
+			return err
+		}},
 		{"GetPriceConversion", "/v2/tools/price-conversion", `{"data":{},"status":{"error_code":1001,"error_message":"boom"}}`, func(c *Coinmarketcap) error { _, err := c.GetPriceConversion(1, 1, time.Now()); return err }},
-	}
-
-	for _, tc := range testCases {
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			client, done := newSyntheticClient(t, map[string]string{tc.path: tc.payload})
@@ -424,7 +651,7 @@ func TestCoinmarketcapEndpointStatusErrorSynthetic(t *testing.T) {
 
 func TestCoinmarketcapEndpointRequestFailureSynthetic(t *testing.T) {
 	t.Parallel()
-	testCases := []struct {
+	for _, tc := range []struct {
 		name   string
 		invoke func(*Coinmarketcap) error
 	}{
@@ -456,9 +683,7 @@ func TestCoinmarketcapEndpointRequestFailureSynthetic(t *testing.T) {
 			return err
 		}},
 		{"GetPriceConversion", func(c *Coinmarketcap) error { _, err := c.GetPriceConversion(1, 1, time.Time{}); return err }},
-	}
-
-	for _, tc := range testCases {
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			client, done := newSyntheticClient(t, map[string]string{})
@@ -471,31 +696,136 @@ func TestCoinmarketcapEndpointRequestFailureSynthetic(t *testing.T) {
 
 func TestCoinmarketcapAccountPlanGatesSynthetic(t *testing.T) {
 	t.Parallel()
-	c, done := newSyntheticClient(t, map[string]string{})
-	defer done()
+	for _, tc := range []struct {
+		name        string
+		path        string
+		payload     string
+		minimumPlan uint8
+		invoke      func(*Coinmarketcap) error
+	}{
+		{
+			name:        "cryptocurrency market pairs require growth",
+			path:        "/v2/cryptocurrency/market-pairs/latest",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Growth,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetCryptocurrencyLatestMarketPairs(1, 0, 0)
+				return err
+			},
+		},
+		{
+			name:        "cryptocurrency historical OHLCV requires startup",
+			path:        "/v2/cryptocurrency/ohlcv/historical",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Startup,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetCryptocurrencyOHLCHistorical(1, time.Now(), time.Now())
+				return err
+			},
+		},
+		{
+			name:        "cryptocurrency latest OHLCV requires startup",
+			path:        "/v2/cryptocurrency/ohlcv/latest",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Startup,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetCryptocurrencyOHLCLatest(1)
+				return err
+			},
+		},
+		{
+			name:        "cryptocurrency historical quotes allow basic",
+			path:        "/v3/cryptocurrency/quotes/historical",
+			payload:     `{"data":{"1":{}},"status":{"error_code":0}}`,
+			minimumPlan: Basic,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetCryptocurrencyHistoricalQuotes(1, time.Now(), time.Now())
+				return err
+			},
+		},
+		{
+			name:        "exchange info allows basic",
+			path:        "/v1/exchange/info",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Basic,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetExchangeInfo(1)
+				return err
+			},
+		},
+		{
+			name:        "exchange map allows basic",
+			path:        "/v1/exchange/map",
+			payload:     `{"data":[],"status":{"error_code":0}}`,
+			minimumPlan: Basic,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetExchangeMap(1, 1)
+				return err
+			},
+		},
+		{
+			name:        "exchange market pairs require growth",
+			path:        "/v1/exchange/market-pairs/latest",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Growth,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetExchangeLatestMarketPairs(1, 1, 1)
+				return err
+			},
+		},
+		{
+			name:        "exchange latest quotes require growth",
+			path:        "/v1/exchange/quotes/latest",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Growth,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetExchangeLatestQuotes(1)
+				return err
+			},
+		},
+		{
+			name:        "exchange historical quotes allow basic",
+			path:        "/v1/exchange/quotes/historical",
+			payload:     `{"data":{"1":{}},"status":{"error_code":0}}`,
+			minimumPlan: Basic,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetExchangeHistoricalQuotes(1, time.Now(), time.Now())
+				return err
+			},
+		},
+		{
+			name:        "global historical quotes allow basic",
+			path:        "/v1/global-metrics/quotes/historical",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Basic,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetGlobalMeticHistoricalQuotes(time.Now(), time.Now())
+				return err
+			},
+		},
+		{
+			name:        "historical price conversion requires builder",
+			path:        "/v2/tools/price-conversion",
+			payload:     `{"data":{},"status":{"error_code":0}}`,
+			minimumPlan: Builder,
+			invoke: func(c *Coinmarketcap) error {
+				_, err := c.GetPriceConversion(1, 1, time.Now())
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c, done := newSyntheticClient(t, map[string]string{tc.path: tc.payload})
+			defer done()
 
-	c.Plan = Basic
+			c.Plan = tc.minimumPlan
+			err := tc.invoke(c)
+			require.NoError(t, err, "documented minimum plan must allow the endpoint")
 
-	_, err := c.GetCryptocurrencyLatestMarketPairs(1, 0, 0)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetCryptocurrencyLatestMarketPairs should return expected error")
-	_, err = c.GetCryptocurrencyOHLCHistorical(1, time.Now(), time.Now())
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetCryptocurrencyOHLCHistorical should return expected error")
-	_, err = c.GetCryptocurrencyOHLCLatest(1)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetCryptocurrencyOHLCLatest should return expected error")
-	_, err = c.GetCryptocurrencyHistoricalQuotes(1, time.Now(), time.Now())
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetCryptocurrencyHistoricalQuotes should return expected error")
-	_, err = c.GetExchangeInfo(1)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetExchangeInfo should return expected error")
-	_, err = c.GetExchangeMap(1, 1)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetExchangeMap should return expected error")
-	_, err = c.GetExchangeLatestMarketPairs(1, 1, 1)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetExchangeLatestMarketPairs should return expected error")
-	_, err = c.GetExchangeLatestQuotes(1)
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetExchangeLatestQuotes should return expected error")
-	_, err = c.GetExchangeHistoricalQuotes(1, time.Now(), time.Now())
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetExchangeHistoricalQuotes should return expected error")
-	_, err = c.GetGlobalMeticHistoricalQuotes(time.Now(), time.Now())
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetGlobalMeticHistoricalQuotes should return expected error")
-	_, err = c.GetPriceConversion(1, 1, time.Now())
-	assert.ErrorIs(t, err, errFunctionUseNotAllowed, "GetPriceConversion should return expected error")
+			c.Plan = tc.minimumPlan >> 1
+			err = tc.invoke(c)
+			assert.ErrorIs(t, err, errFunctionUseNotAllowed, "lower plan should return the plan error")
+		})
+	}
 }
