@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -17,8 +18,10 @@ import (
 )
 
 var (
-	errTradFiTypeRequired      = errors.New("tradfi transaction type required")
-	errTradFiCloseTypeRequired = errors.New("tradfi close type required (1=full close, 2=partial close)")
+	errTradFiTypeRequired                   = errors.New("tradfi transaction type required")
+	errTradFiCloseTypeRequired              = errors.New("tradfi close type required (1=partial close, 2=full close)")
+	errTradFiSymbolCommissionFilterRequired = errors.New("tradfi commission symbol or category code required")
+	errTradFiLogIDRequired                  = errors.New("tradfi log ID required")
 )
 
 // GetTradFiMT5Account retrieves the MT5 account information for the authenticated user.
@@ -31,6 +34,33 @@ func (e *Exchange) GetTradFiMT5Account(ctx context.Context) (*TradFiMT5Account, 
 func (e *Exchange) GetTradFiSymbolCategories(ctx context.Context) ([]*TradFiCategory, error) {
 	var resp gateioAPIResponse[*TradFiCategoryList]
 	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, tradfiSymbolsCategoriesEPL, "tradfi/symbols/categories", &resp); err != nil {
+		return nil, err
+	}
+	if resp.Data == nil {
+		return nil, common.ErrNoResults
+	}
+	return resp.Data.List, nil
+}
+
+// GetTradFiSymbolCommissions retrieves commission rates for the requested symbols or category codes.
+func (e *Exchange) GetTradFiSymbolCommissions(ctx context.Context, arg *GetTradFiSymbolCommissionsRequest) ([]*TradFiSymbolCommission, error) {
+	if arg == nil {
+		return nil, errTradFiSymbolCommissionFilterRequired
+	}
+	symbols := strings.TrimSpace(strings.Join(arg.Symbols, ","))
+	categoryCodes := strings.TrimSpace(strings.Join(arg.CategoryCodes, ","))
+	if symbols == "" && categoryCodes == "" {
+		return nil, errTradFiSymbolCommissionFilterRequired
+	}
+	params := url.Values{}
+	if symbols != "" {
+		params.Set("symbols", symbols)
+	}
+	if categoryCodes != "" {
+		params.Set("category_code", categoryCodes)
+	}
+	var resp gateioAPIResponse[*TradFiSymbolCommissionList]
+	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, tradfiSymbolsCommissionsEPL, common.EncodeURLValues("tradfi/symbols/commissions", params), &resp); err != nil {
 		return nil, err
 	}
 	if resp.Data == nil {
@@ -210,7 +240,7 @@ func (e *Exchange) CreateTradFiOrder(ctx context.Context, arg *TradFiOrderReques
 }
 
 // UpdateTradFiOrder modifies an existing pending order's price, take profit, or stop loss.
-func (e *Exchange) UpdateTradFiOrder(ctx context.Context, orderID int64, arg *TradFiOrderUpdateRequest) (*TradFiUpdatedOrder, error) {
+func (e *Exchange) UpdateTradFiOrder(ctx context.Context, orderID uint64, arg *TradFiOrderUpdateRequest) (*TradFiUpdatedOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -221,16 +251,16 @@ func (e *Exchange) UpdateTradFiOrder(ctx context.Context, orderID int64, arg *Tr
 		return nil, fmt.Errorf("%w: tradfi order volume required", limits.ErrPriceBelowMin)
 	}
 	var resp gateioAPIResponse[*TradFiUpdatedOrder]
-	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiUpdateOrdersEPL, http.MethodPut, "tradfi/orders/"+strconv.FormatInt(orderID, 10), nil, arg, &resp)
+	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiUpdateOrdersEPL, http.MethodPut, "tradfi/orders/"+strconv.FormatUint(orderID, 10), nil, arg, &resp)
 }
 
 // CancelTradFiOrder cancels a pending order by its order ID.
-func (e *Exchange) CancelTradFiOrder(ctx context.Context, orderID int64) error {
+func (e *Exchange) CancelTradFiOrder(ctx context.Context, orderID uint64) error {
 	if orderID == 0 {
 		return order.ErrOrderIDNotSet
 	}
 	var resp gateioAPIResponse[struct{}]
-	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiDeleteOrdersEPL, http.MethodDelete, "tradfi/orders/"+strconv.FormatInt(orderID, 10), nil, nil, &resp)
+	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiDeleteOrdersEPL, http.MethodDelete, "tradfi/orders/"+strconv.FormatUint(orderID, 10), nil, nil, &resp)
 }
 
 // GetTradFiOrderHistory retrieves historical (completed) orders.
@@ -265,6 +295,15 @@ func (e *Exchange) GetTradFiOrderHistory(ctx context.Context, arg *GetTradFiOrde
 	return resp.Data.List, nil
 }
 
+// GetTradFiOrderLog retrieves order details using the log ID returned by order placement.
+func (e *Exchange) GetTradFiOrderLog(ctx context.Context, logID uint64) (*TradFiOrderLog, error) {
+	if logID == 0 {
+		return nil, errTradFiLogIDRequired
+	}
+	var resp gateioAPIResponse[*TradFiOrderLog]
+	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiOrderLogEPL, http.MethodGet, "tradfi/orders/log/"+strconv.FormatUint(logID, 10), nil, nil, &resp)
+}
+
 // GetTradFiActivePositions retrieves the list of currently open positions.
 func (e *Exchange) GetTradFiActivePositions(ctx context.Context) ([]*TradFiPosition, error) {
 	var resp gateioAPIResponse[*TradFiPositionList]
@@ -278,16 +317,16 @@ func (e *Exchange) GetTradFiActivePositions(ctx context.Context) ([]*TradFiPosit
 }
 
 // UpdateTradFiPosition modifies the take profit or stop loss of an open position.
-func (e *Exchange) UpdateTradFiPosition(ctx context.Context, positionID int64, arg *TradFiPositionUpdateRequest) error {
+func (e *Exchange) UpdateTradFiPosition(ctx context.Context, positionID uint64, arg *TradFiPositionUpdateRequest) error {
 	if positionID == 0 {
 		return order.ErrOrderIDNotSet
 	}
 	var resp gateioAPIResponse[struct{}]
-	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiUpdatePositionsEPL, http.MethodPut, "tradfi/positions/"+strconv.FormatInt(positionID, 10), nil, arg, &resp)
+	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiUpdatePositionsEPL, http.MethodPut, "tradfi/positions/"+strconv.FormatUint(positionID, 10), nil, arg, &resp)
 }
 
 // CloseTradFiPosition fully or partially closes an open position.
-func (e *Exchange) CloseTradFiPosition(ctx context.Context, positionID int64, arg *TradFiClosePositionRequest) error {
+func (e *Exchange) CloseTradFiPosition(ctx context.Context, positionID uint64, arg *TradFiClosePositionRequest) error {
 	if positionID == 0 {
 		return order.ErrOrderIDNotSet
 	}
@@ -297,8 +336,11 @@ func (e *Exchange) CloseTradFiPosition(ctx context.Context, positionID int64, ar
 	if arg.CloseType != 1 && arg.CloseType != 2 {
 		return errTradFiCloseTypeRequired
 	}
+	if arg.CloseType == 1 && arg.CloseVolume <= 0 {
+		return fmt.Errorf("%w: tradfi close volume is required for a partial close", order.ErrAmountMustBeSet)
+	}
 	var resp gateioAPIResponse[struct{}]
-	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiCreatePositionsEPL, http.MethodPost, "tradfi/positions/"+strconv.FormatInt(positionID, 10)+"/close", nil, arg, &resp)
+	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, tradfiCreatePositionsEPL, http.MethodPost, "tradfi/positions/"+strconv.FormatUint(positionID, 10)+"/close", nil, arg, &resp)
 }
 
 // GetTradFiPositionHistory retrieves the history of closed positions.

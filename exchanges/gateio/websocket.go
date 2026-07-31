@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -118,6 +119,10 @@ func (e *Exchange) websocketLogin(ctx context.Context, conn websocket.Connection
 	}
 
 	tn := time.Now().Unix()
+	timestamp, err := convertNonNegativeInt64ToUint64(tn, "websocket login timestamp")
+	if err != nil {
+		return err
+	}
 	msg := "api\n" + channel + "\n" + "\n" + strconv.FormatInt(tn, 10)
 	mac := hmac.New(sha512.New, []byte(creds.Secret))
 	if _, err = mac.Write([]byte(msg)); err != nil {
@@ -132,7 +137,7 @@ func (e *Exchange) websocketLogin(ctx context.Context, conn websocket.Connection
 		Timestamp: strconv.FormatInt(tn, 10),
 	}
 
-	resp, err := conn.SendMessageReturnResponse(ctx, websocketRateLimitNotNeededEPL, payload.RequestID, &WebsocketRequest{Time: tn, Channel: channel, Event: "api", Payload: payload})
+	resp, err := conn.SendMessageReturnResponse(ctx, websocketRateLimitNotNeededEPL, payload.RequestID, &WebsocketRequest{Time: timestamp, Channel: channel, Event: "api", Payload: payload})
 	if err != nil {
 		return err
 	}
@@ -154,9 +159,9 @@ func (e *Exchange) websocketLogin(ctx context.Context, conn websocket.Connection
 	return fmt.Errorf("%s: %s", wsErr.Errors.Label, wsErr.Errors.Message)
 }
 
-func (e *Exchange) generateWsSignature(secret, event, channel string, t int64) (string, error) {
+func (e *Exchange) generateWsSignature(secret, event, channel string, t uint64) (string, error) {
 	mac := hmac.New(sha512.New, []byte(secret))
-	if _, err := mac.Write([]byte("channel=" + channel + "&event=" + event + "&time=" + strconv.FormatInt(t, 10))); err != nil {
+	if _, err := mac.Write([]byte("channel=" + channel + "&event=" + event + "&time=" + strconv.FormatUint(t, 10))); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(mac.Sum(nil)), nil
@@ -241,7 +246,7 @@ func parseWSHeader(msg []byte) (r *WSResponse, errs error) {
 		case 4:
 			r.RequestID = string(v)
 		case 5:
-			if id, err := strconv.ParseInt(string(v), 10, 64); err != nil {
+			if id, err := strconv.ParseUint(string(v), 10, 64); err != nil {
 				errs = common.AppendError(errs, fmt.Errorf("%w parsing `id`", err))
 			} else {
 				r.ID = id
@@ -306,7 +311,7 @@ func (e *Exchange) processTrades(incoming []byte) error {
 				Price:        data.Price.Float64(),
 				Amount:       data.Amount.Float64(),
 				Side:         side,
-				TID:          strconv.FormatInt(data.ID, 10),
+				TID:          strconv.FormatUint(data.ID, 10),
 			}); err != nil {
 				return err
 			}
@@ -377,8 +382,16 @@ func (e *Exchange) processOrderbookUpdate(ctx context.Context, incoming []byte, 
 	if err := json.Unmarshal(incoming, &data); err != nil {
 		return err
 	}
-	return e.wsOBUpdateMgr.ProcessOrderbookUpdate(ctx, data.FirstUpdateID, &orderbook.Update{
-		UpdateID:   data.LastUpdateID,
+	firstUpdateID, err := convertOrderbookIDToInt64(data.FirstUpdateID)
+	if err != nil {
+		return err
+	}
+	lastUpdateID, err := convertOrderbookIDToInt64(data.LastUpdateID)
+	if err != nil {
+		return err
+	}
+	return e.wsOBUpdateMgr.ProcessOrderbookUpdate(ctx, firstUpdateID, &orderbook.Update{
+		UpdateID:   lastUpdateID,
 		UpdateTime: data.UpdateTime.Time(),
 		LastPushed: lastPushed,
 		Pair:       data.Pair,
@@ -428,6 +441,14 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 	if err != nil {
 		return err
 	}
+	firstUpdateID, err := convertOrderbookIDToInt64(data.FirstUpdateID)
+	if err != nil {
+		return err
+	}
+	lastWireUpdateID, err := convertOrderbookIDToInt64(data.LastUpdateID)
+	if err != nil {
+		return err
+	}
 
 	if data.Full {
 		if err := e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
@@ -436,7 +457,7 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 			Asset:        a,
 			LastUpdated:  data.UpdateTime.Time(),
 			LastPushed:   lastPushed,
-			LastUpdateID: data.LastUpdateID,
+			LastUpdateID: lastWireUpdateID,
 			Bids:         data.Bids.Levels(),
 			Asks:         data.Asks.Levels(),
 		}); err != nil {
@@ -451,7 +472,7 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 	}
 
 	lastUpdateID, err := e.Websocket.Orderbook.LastUpdateID(pair, a)
-	if err != nil || lastUpdateID+1 != data.FirstUpdateID {
+	if err != nil || lastUpdateID+1 != firstUpdateID {
 		return common.AppendError(err, e.wsOBResubMgr.Resubscribe(ctx, e, conn, data.Channel, pair, a))
 	}
 	return e.Websocket.Orderbook.Update(&orderbook.Update{
@@ -459,7 +480,7 @@ func (e *Exchange) processOrderbookUpdateWithSnapshot(ctx context.Context, conn 
 		Asset:      a,
 		UpdateTime: data.UpdateTime.Time(),
 		LastPushed: lastPushed,
-		UpdateID:   data.LastUpdateID,
+		UpdateID:   lastWireUpdateID,
 		Bids:       data.Bids.Levels(),
 		Asks:       data.Asks.Levels(),
 		AllowEmpty: true,
@@ -534,7 +555,7 @@ func (e *Exchange) processUserPersonalTrades(data []byte) error {
 			CurrencyPair: resp.Result[x].CurrencyPair,
 			Side:         side,
 			OrderID:      resp.Result[x].OrderID,
-			TradeID:      strconv.FormatInt(resp.Result[x].ID, 10),
+			TradeID:      strconv.FormatUint(resp.Result[x].ID, 10),
 			Price:        resp.Result[x].Price.Float64(),
 			Amount:       resp.Result[x].Amount.Float64(),
 		}
@@ -702,11 +723,19 @@ func (e *Exchange) manageSubs(ctx context.Context, event string, conn websocket.
 
 // manageSubReq constructs the subscription management message for a subscription
 func (e *Exchange) manageSubReq(ctx context.Context, event string, s *subscription.Subscription) (*WsInput, error) {
+	messageID, err := convertNonNegativeInt64ToUint64(e.MessageSequence(), "websocket message sequence")
+	if err != nil {
+		return nil, err
+	}
+	timestamp, err := convertNonNegativeInt64ToUint64(time.Now().Unix(), "websocket subscription timestamp")
+	if err != nil {
+		return nil, err
+	}
 	req := &WsInput{
-		ID:      e.MessageSequence(),
+		ID:      messageID,
 		Event:   event,
 		Channel: channelName(s),
-		Time:    time.Now().Unix(),
+		Time:    timestamp,
 		Payload: strings.Split(s.QualifiedChannel, ","),
 	}
 	if s.Authenticated {
@@ -725,6 +754,20 @@ func (e *Exchange) manageSubReq(ctx context.Context, event string, s *subscripti
 		}
 	}
 	return req, nil
+}
+
+func convertOrderbookIDToInt64(id uint64) (int64, error) {
+	if id > math.MaxInt64 {
+		return 0, fmt.Errorf("%w: orderbook update ID %d exceeds signed sequence range", common.ErrMalformedData, id)
+	}
+	return int64(id), nil
+}
+
+func convertNonNegativeInt64ToUint64(value int64, field string) (uint64, error) {
+	if value < 0 {
+		return 0, fmt.Errorf("%w: %s cannot be negative: %d", common.ErrMalformedData, field, value)
+	}
+	return uint64(value), nil
 }
 
 // Subscribe sends a websocket message to stop receiving data from the channel
@@ -993,8 +1036,12 @@ func (e *Exchange) SendWebsocketRequest(ctx context.Context, epl request.Endpoin
 	}
 
 	tn := time.Now().Unix()
+	timestamp, err := convertNonNegativeInt64ToUint64(tn, "websocket request timestamp")
+	if err != nil {
+		return err
+	}
 	req := &WebsocketRequest{
-		Time:    tn,
+		Time:    timestamp,
 		Channel: channel,
 		Event:   "api",
 		Payload: WebsocketPayload{

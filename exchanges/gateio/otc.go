@@ -25,11 +25,11 @@ var (
 	errBankNameRequired                   = errors.New("OTC bank name is required")
 	errBankCountryRequired                = errors.New("OTC bank country is required")
 	errBankAddressRequired                = errors.New("OTC bank address is required")
-	errIBANAddresRequired                 = errors.New("OTC IBAN address is required")
-	errSwiftAddressRequired               = errors.New("OTC swift address is required")
+	errIBANAddressRequired                = errors.New("OTC IBAN address is required")
+	errSWIFTAddressRequired               = errors.New("OTC SWIFT address is required")
 	errDocumentationFileRequired          = errors.New("OTC documentation file is required")
 	errBusinessLicenseCertificateRequired = errors.New("OTC business license registration certificate required")
-	errShareholdersRequired               = errors.New("OTC shareholders filecontent required")
+	errShareholdersRequired               = errors.New("OTC shareholders file content required")
 	errPassportRequired                   = errors.New("OTC legal representative passport required")
 )
 
@@ -41,11 +41,20 @@ func (e *Exchange) GetFiatStablecoinQuote(ctx context.Context, arg *OTCQuoteRequ
 	if arg.Side == "" {
 		return nil, errOTCSideRequired
 	}
+	if arg.Side != "PAY" && arg.Side != "GET" {
+		return nil, fmt.Errorf("%w: OTC side must be PAY or GET", order.ErrSideIsInvalid)
+	}
 	if arg.PayCoin.IsEmpty() {
 		return nil, currency.ErrCurrencyCodeEmpty
 	}
 	if arg.GetCoin.IsEmpty() {
 		return nil, currency.ErrCurrencyCodeEmpty
+	}
+	if arg.Side == "PAY" && arg.PayAmount <= 0 {
+		return nil, fmt.Errorf("%w: OTC pay amount is required for PAY quotes", order.ErrAmountMustBeSet)
+	}
+	if arg.Side == "GET" && arg.GetAmount <= 0 {
+		return nil, fmt.Errorf("%w: OTC get amount is required for GET quotes", order.ErrAmountMustBeSet)
 	}
 	var resp gateioAPIResponse[*OTCQuoteData]
 	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, otcQuoteEPL, http.MethodPost, "otc/quote", nil, arg, &resp)
@@ -69,7 +78,7 @@ func (e *Exchange) CreateFiatOrder(ctx context.Context, arg *OTCFiatOrderRequest
 		return nil, errOTCBankIDRequired
 	}
 	if arg.CryptoCurrency.IsEmpty() {
-		return nil, fmt.Errorf("%w; crypty currency required", currency.ErrCurrencyCodeEmpty)
+		return nil, fmt.Errorf("%w; crypto currency required", currency.ErrCurrencyCodeEmpty)
 	}
 	if arg.FiatCurrency.IsEmpty() {
 		return nil, fmt.Errorf("%w; fiat currency required", currency.ErrCurrencyCodeEmpty)
@@ -88,6 +97,24 @@ func (e *Exchange) CreateFiatOrder(ctx context.Context, arg *OTCFiatOrderRequest
 func (e *Exchange) CreateStablecoinOrder(ctx context.Context, arg *OTCStablecoinOrderRequest) (*OTCActionResponse, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
+	}
+	if arg.PayCoin.IsEmpty() || arg.GetCoin.IsEmpty() {
+		return nil, currency.ErrCurrencyCodeEmpty
+	}
+	if arg.PayAmount <= 0 {
+		return nil, fmt.Errorf("%w: OTC pay amount is required", order.ErrAmountMustBeSet)
+	}
+	if arg.GetAmount <= 0 {
+		return nil, fmt.Errorf("%w: OTC get amount is required", order.ErrAmountMustBeSet)
+	}
+	if arg.Side == "" {
+		return nil, errOTCSideRequired
+	}
+	if arg.Side != "PAY" && arg.Side != "GET" {
+		return nil, fmt.Errorf("%w: OTC side must be PAY or GET", order.ErrSideIsInvalid)
+	}
+	if arg.QuoteToken == "" {
+		return nil, errOTCQuoteTokenRequired
 	}
 	var resp *OTCActionResponse
 	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, otcStablecoinOrderCreateEPL, http.MethodPost, "otc/stable_coin/order/create", nil, arg, &resp)
@@ -124,10 +151,10 @@ func (e *Exchange) CreateBankCard(ctx context.Context, arg *OTCBankCreateMultipa
 		return nil, errBankAddressRequired
 	}
 	if arg.IBAN == "" {
-		return nil, errIBANAddresRequired
+		return nil, errIBANAddressRequired
 	}
-	if arg.Swift == "" {
-		return nil, errSwiftAddressRequired
+	if arg.SWIFT == "" {
+		return nil, errSWIFTAddressRequired
 	}
 	if arg.DocumentationFile == "" {
 		return nil, errDocumentationFileRequired

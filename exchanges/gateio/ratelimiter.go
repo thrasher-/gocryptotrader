@@ -71,6 +71,9 @@ const (
 	walletConvertSmallBalancesEPL
 	walletWithdrawEPL
 	walletCancelWithdrawEPL
+	walletSubAccountTransferByUIDEPL
+	walletTransferOrderStatusEPL
+	walletSmallBalanceHistoryEPL
 
 	subAccountEPL
 
@@ -131,6 +134,7 @@ const (
 	flashOrderReviewEPL
 
 	privateUnifiedSpotEPL
+	unifiedBorrowOrRepayEPL
 
 	perpetualAccountEPL
 	perpetualAccountBooksEPL
@@ -226,6 +230,7 @@ const (
 	unifiedCurrencyDiscountTiersEPL
 	unifiedLoanMarginTiersEPL
 	unifiedPortfolioCalculatorEPL
+	unifiedSetUserLeverageEPL
 	unifiedGetLeverageUserCurrencySettingEPL
 	unifiedCreateLeverageUserCurrencySettingEPL
 	unifiedLeverageUserCurrencyConfigEPL
@@ -268,6 +273,13 @@ const (
 	marginUniBorrowableEPL
 	marginUniCurrencyPairsEPL
 	marginUniCurrencyPairEPL
+	marginUserLoanMarginTiersEPL
+	marginLoanMarginTiersEPL
+	marginLeverageUserMarketSettingEPL
+
+	// Other private earning endpoint limits
+	earnDualPublicEPL
+	earnPrivateEPL
 
 	// TradFi EPLs
 	tradfiUsersMT5AccountEPL
@@ -282,11 +294,13 @@ const (
 	tradfiUpdateOrdersEPL
 	tradfiDeleteOrdersEPL
 	tradfiOrdersHistoryEPL
+	tradfiOrderLogEPL
 	tradfiGetPositionsEPL
 	tradfiUpdatePositionsEPL
 	tradfiCreatePositionsEPL
 	tradfiPositionsHistoryEPL
 	tradfiSymbolsCategoriesEPL
+	tradfiSymbolsCommissionsEPL
 	tradfiSymbolsEPL
 	tradfiTickersEPL
 
@@ -323,6 +337,8 @@ const (
 	crossexHistoryTradesEPL
 	crossexAccountBookEPL
 	crossexCoinDiscountRateEPL
+	crossexMarketTickersEPL
+	crossexMarketFundingInfoEPL
 
 	// P2P EPLs
 	p2pAccountInfoEPL
@@ -331,8 +347,6 @@ const (
 	p2pSetWorkHoursEPL
 	p2pPendingTransactionsEPL
 	p2pCompletedTransactionsEPL
-	p2pMyListEPL
-	p2pMyHistoryListEPL
 	p2pTransactionDetailsEPL
 	p2pConfirmPaymentEPL
 	p2pConfirmReceiptEPL
@@ -455,6 +469,9 @@ var packageRateLimits = request.RateLimitDefinitions{
 	walletConvertSmallBalancesEPL:           personalAccountRateLimit(),
 	walletWithdrawEPL:                       withdrawFromWalletRateLimit(),
 	walletCancelWithdrawEPL:                 standardRateLimit(),
+	walletSubAccountTransferByUIDEPL:        onePer10SecondsRateLimit(),
+	walletTransferOrderStatusEPL:            standardRateLimit(),
+	walletSmallBalanceHistoryEPL:            standardRateLimit(),
 
 	subAccountEPL: personalAccountRateLimit(),
 
@@ -577,7 +594,8 @@ var packageRateLimits = request.RateLimitDefinitions{
 	optionsCancelOrderEPL:        optionsSubmitCancelAmendRateLimit(),
 	optionsTradingHistoryEPL:     standardRateLimit(),
 
-	privateUnifiedSpotEPL: standardRateLimit(),
+	privateUnifiedSpotEPL:   otherPrivateEndpointRateLimit(),
+	unifiedBorrowOrRepayEPL: fifteenPer10SecondsRateLimit(),
 
 	websocketRateLimitNotNeededEPL: nil, // no rate limit for certain websocket functions
 
@@ -610,6 +628,7 @@ var packageRateLimits = request.RateLimitDefinitions{
 	unifiedCurrencyDiscountTiersEPL:             standardRateLimit(),
 	unifiedLoanMarginTiersEPL:                   standardRateLimit(),
 	unifiedPortfolioCalculatorEPL:               standardRateLimit(),
+	unifiedSetUserLeverageEPL:                   standardRateLimit(),
 	unifiedGetLeverageUserCurrencySettingEPL:    standardRateLimit(),
 	unifiedCreateLeverageUserCurrencySettingEPL: standardRateLimit(),
 	unifiedLeverageUserCurrencyConfigEPL:        standardRateLimit(),
@@ -632,26 +651,32 @@ var packageRateLimits = request.RateLimitDefinitions{
 	loanMultiCollateralFixedRateEPL:     standardRateLimit(),
 
 	// Earn uni limits
-	earnUniCreateLendsEPL:     standardRateLimit(),
-	earnUniGetLendsEPL:        standardRateLimit(),
-	earnUniUpdateLendsEPL:     standardRateLimit(),
-	earnUniLendRecordsEPL:     standardRateLimit(),
-	earnUniInterestsEPL:       standardRateLimit(),
-	earnUniInterestRecordsEPL: standardRateLimit(),
-	earnUniInterestStatusEPL:  standardRateLimit(),
-	earnUniChartEPL:           standardRateLimit(),
-	earnUniRateEPL:            standardRateLimit(),
+	earnUniCreateLendsEPL:     otherPrivateEndpointRateLimit(),
+	earnUniGetLendsEPL:        otherPrivateEndpointRateLimit(),
+	earnUniUpdateLendsEPL:     otherPrivateEndpointRateLimit(),
+	earnUniLendRecordsEPL:     otherPrivateEndpointRateLimit(),
+	earnUniInterestsEPL:       otherPrivateEndpointRateLimit(),
+	earnUniInterestRecordsEPL: otherPrivateEndpointRateLimit(),
+	earnUniInterestStatusEPL:  otherPrivateEndpointRateLimit(),
+	earnUniChartEPL:           otherPrivateEndpointRateLimit(),
+	earnUniRateEPL:            otherPrivateEndpointRateLimit(),
 	earnUniCurrenciesEPL:      standardRateLimit(),
 	earnUniCurrencyEPL:        standardRateLimit(),
 
 	// Margin uni limits
-	marginUniCreateLoansEPL:     standardRateLimit(),
-	marginUniGetLoansEPL:        standardRateLimit(),
-	marginUniLoanRecordsEPL:     standardRateLimit(),
-	marginUniInterestRecordsEPL: standardRateLimit(),
-	marginUniBorrowableEPL:      standardRateLimit(),
-	marginUniCurrencyPairsEPL:   standardRateLimit(),
-	marginUniCurrencyPairEPL:    standardRateLimit(),
+	marginUniCreateLoansEPL:            standardRateLimit(),
+	marginUniGetLoansEPL:               standardRateLimit(),
+	marginUniLoanRecordsEPL:            standardRateLimit(),
+	marginUniInterestRecordsEPL:        standardRateLimit(),
+	marginUniBorrowableEPL:             standardRateLimit(),
+	marginUniCurrencyPairsEPL:          standardRateLimit(),
+	marginUniCurrencyPairEPL:           standardRateLimit(),
+	marginUserLoanMarginTiersEPL:       otherPrivateEndpointRateLimit(),
+	marginLoanMarginTiersEPL:           otherPrivateEndpointRateLimit(),
+	marginLeverageUserMarketSettingEPL: otherPrivateEndpointRateLimit(),
+
+	earnDualPublicEPL: standardRateLimit(),
+	earnPrivateEPL:    otherPrivateEndpointRateLimit(),
 
 	// TradFi limits
 	tradfiUsersMT5AccountEPL:    standardRateLimit(),
@@ -666,11 +691,13 @@ var packageRateLimits = request.RateLimitDefinitions{
 	tradfiUpdateOrdersEPL:       spotOrderPlacementRateLimit(),
 	tradfiDeleteOrdersEPL:       orderCloseRateLimit(),
 	tradfiOrdersHistoryEPL:      standardRateLimit(),
+	tradfiOrderLogEPL:           otherPrivateEndpointRateLimit(),
 	tradfiGetPositionsEPL:       standardRateLimit(),
 	tradfiUpdatePositionsEPL:    standardRateLimit(),
 	tradfiCreatePositionsEPL:    standardRateLimit(),
 	tradfiPositionsHistoryEPL:   standardRateLimit(),
 	tradfiSymbolsCategoriesEPL:  standardRateLimit(),
+	tradfiSymbolsCommissionsEPL: standardRateLimit(),
 	tradfiSymbolsEPL:            standardRateLimit(),
 	tradfiTickersEPL:            standardRateLimit(),
 
@@ -707,28 +734,28 @@ var packageRateLimits = request.RateLimitDefinitions{
 	crossexHistoryTradesEPL:                 standardRateLimit(),
 	crossexAccountBookEPL:                   standardRateLimit(),
 	crossexCoinDiscountRateEPL:              standardRateLimit(),
+	crossexMarketTickersEPL:                 onePerSecondRateLimit(),
+	crossexMarketFundingInfoEPL:             onePerSecondRateLimit(),
 
 	// P2P limits
-	p2pAccountInfoEPL:           standardRateLimit(),
-	p2pCounterpartyInfoEPL:      standardRateLimit(),
-	p2pPaymentMethodsEPL:        standardRateLimit(),
-	p2pSetWorkHoursEPL:          standardRateLimit(),
-	p2pPendingTransactionsEPL:   standardRateLimit(),
-	p2pCompletedTransactionsEPL: standardRateLimit(),
-	p2pMyListEPL:                standardRateLimit(),
-	p2pMyHistoryListEPL:         standardRateLimit(),
-	p2pTransactionDetailsEPL:    standardRateLimit(),
-	p2pConfirmPaymentEPL:        standardRateLimit(),
-	p2pConfirmReceiptEPL:        standardRateLimit(),
-	p2pCancelTransactionEPL:     standardRateLimit(),
-	p2pPublishAdEPL:             standardRateLimit(),
-	p2pUpdateAdStatusEPL:        standardRateLimit(),
-	p2pAdDetailEPL:              standardRateLimit(),
-	p2pMyAdsListEPL:             standardRateLimit(),
-	p2pAdsListEPL:               standardRateLimit(),
-	p2pChatHistoryEPL:           standardRateLimit(),
-	p2pSendChatMessageEPL:       standardRateLimit(),
-	p2pUploadChatFileEPL:        standardRateLimit(),
+	p2pAccountInfoEPL:           otherPrivateEndpointRateLimit(),
+	p2pCounterpartyInfoEPL:      otherPrivateEndpointRateLimit(),
+	p2pPaymentMethodsEPL:        otherPrivateEndpointRateLimit(),
+	p2pSetWorkHoursEPL:          otherPrivateEndpointRateLimit(),
+	p2pPendingTransactionsEPL:   otherPrivateEndpointRateLimit(),
+	p2pCompletedTransactionsEPL: otherPrivateEndpointRateLimit(),
+	p2pTransactionDetailsEPL:    otherPrivateEndpointRateLimit(),
+	p2pConfirmPaymentEPL:        otherPrivateEndpointRateLimit(),
+	p2pConfirmReceiptEPL:        otherPrivateEndpointRateLimit(),
+	p2pCancelTransactionEPL:     otherPrivateEndpointRateLimit(),
+	p2pPublishAdEPL:             otherPrivateEndpointRateLimit(),
+	p2pUpdateAdStatusEPL:        otherPrivateEndpointRateLimit(),
+	p2pAdDetailEPL:              otherPrivateEndpointRateLimit(),
+	p2pMyAdsListEPL:             otherPrivateEndpointRateLimit(),
+	p2pAdsListEPL:               otherPrivateEndpointRateLimit(),
+	p2pChatHistoryEPL:           otherPrivateEndpointRateLimit(),
+	p2pSendChatMessageEPL:       otherPrivateEndpointRateLimit(),
+	p2pUploadChatFileEPL:        otherPrivateEndpointRateLimit(),
 
 	// Bot limits
 	botStrategyRecommendEPL:        otherPrivateEndpointRateLimit(),
@@ -743,18 +770,18 @@ var packageRateLimits = request.RateLimitDefinitions{
 	botPortfolioStopEPL:            otherPrivateEndpointRateLimit(),
 
 	// Rebate limits
-	rebateAgencyTransactionHistoryEPL:  standardRateLimit(),
-	rebateAgencyCommissionHistoryEPL:   standardRateLimit(),
-	rebatePartnerTransactionHistoryEPL: standardRateLimit(),
-	rebatePartnerCommissionHistoryEPL:  standardRateLimit(),
-	rebatePartnerSubListEPL:            standardRateLimit(),
-	rebateBrokerCommissionHistoryEPL:   standardRateLimit(),
-	rebateBrokerTransactionHistoryEPL:  standardRateLimit(),
-	rebateUserInfoEPL:                  standardRateLimit(),
-	rebateUserSubRelationEPL:           standardRateLimit(),
-	rebatePartnerApplicationsRecentEPL: standardRateLimit(),
-	rebatePartnerEligibilityEPL:        standardRateLimit(),
-	rebatePartnerDataAggregatedEPL:     standardRateLimit(),
+	rebateAgencyTransactionHistoryEPL:  otherPrivateEndpointRateLimit(),
+	rebateAgencyCommissionHistoryEPL:   otherPrivateEndpointRateLimit(),
+	rebatePartnerTransactionHistoryEPL: otherPrivateEndpointRateLimit(),
+	rebatePartnerCommissionHistoryEPL:  otherPrivateEndpointRateLimit(),
+	rebatePartnerSubListEPL:            otherPrivateEndpointRateLimit(),
+	rebateBrokerCommissionHistoryEPL:   otherPrivateEndpointRateLimit(),
+	rebateBrokerTransactionHistoryEPL:  otherPrivateEndpointRateLimit(),
+	rebateUserInfoEPL:                  otherPrivateEndpointRateLimit(),
+	rebateUserSubRelationEPL:           otherPrivateEndpointRateLimit(),
+	rebatePartnerApplicationsRecentEPL: otherPrivateEndpointRateLimit(),
+	rebatePartnerEligibilityEPL:        otherPrivateEndpointRateLimit(),
+	rebatePartnerDataAggregatedEPL:     otherPrivateEndpointRateLimit(),
 
 	// OTC limits
 	otcQuoteEPL:                    standardRateLimit(),
@@ -788,6 +815,18 @@ func hundredPer60SecondsRateLimit() *request.RateLimiterWithWeight {
 
 func standardRateLimit() *request.RateLimiterWithWeight {
 	return request.NewRateLimitWithWeight(time.Second*10, 200, 1)
+}
+
+func onePer10SecondsRateLimit() *request.RateLimiterWithWeight {
+	return request.NewRateLimitWithWeight(time.Second*10, 1, 1)
+}
+
+func onePerSecondRateLimit() *request.RateLimiterWithWeight {
+	return request.NewRateLimitWithWeight(time.Second, 1, 1)
+}
+
+func fifteenPer10SecondsRateLimit() *request.RateLimiterWithWeight {
+	return request.NewRateLimitWithWeight(time.Second*10, 15, 1)
 }
 
 func personalAccountRateLimit() *request.RateLimiterWithWeight {

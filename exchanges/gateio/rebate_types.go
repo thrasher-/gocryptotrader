@@ -71,26 +71,26 @@ type RebateCommission struct {
 // AgencyTransactionHistoryResponse holds an agency's transaction history of recommended users.
 type AgencyTransactionHistoryResponse struct {
 	CurrencyPair currency.Pair        `json:"currency_pair"`
-	Total        int64                `json:"total"`
+	Total        uint64               `json:"total"`
 	List         []*RebateTransaction `json:"list"`
 }
 
 // AgencyCommissionHistoryResponse holds an agency's rebate history of recommended users.
 type AgencyCommissionHistoryResponse struct {
 	CurrencyPair currency.Pair       `json:"currency_pair"`
-	Total        int64               `json:"total"`
+	Total        uint64              `json:"total"`
 	List         []*RebateCommission `json:"list"`
 }
 
 // PartnerTransactionHistoryResponse holds a partner's transaction history of recommended users.
 type PartnerTransactionHistoryResponse struct {
-	Total int64                `json:"total"`
+	Total uint64               `json:"total"`
 	List  []*RebateTransaction `json:"list"`
 }
 
 // PartnerCommissionHistoryResponse holds a partner's rebate history of recommended users.
 type PartnerCommissionHistoryResponse struct {
-	Total int64               `json:"total"`
+	Total uint64              `json:"total"`
 	List  []*RebateCommission `json:"list"`
 }
 
@@ -104,7 +104,7 @@ type PartnerSubordinate struct {
 
 // PartnerSubordinateListResponse holds a partner's subordinate list including sub-agents, direct and indirect customers.
 type PartnerSubordinateListResponse struct {
-	Total int64                 `json:"total"`
+	Total uint64                `json:"total"`
 	List  []*PartnerSubordinate `json:"list"`
 }
 
@@ -118,42 +118,42 @@ type BrokerSubBrokerInfo struct {
 
 // BrokerCommission holds a single broker rebate commission record.
 type BrokerCommission struct {
-	CommissionTime    types.Time           `json:"commission_time"`
-	UserID            uint64               `json:"user_id"`
-	GroupName         string               `json:"group_name"`
-	Amount            types.Number         `json:"amount"`
-	Fee               types.Number         `json:"fee"`
-	FeeAsset          string               `json:"fee_asset"`
-	RebateFee         types.Number         `json:"rebate_fee"`
-	Source            string               `json:"source"`
-	CurrencyPair      currency.Pair        `json:"currency_pair"`
-	SubBrokerInfo     *BrokerSubBrokerInfo `json:"sub_broker_info"`
-	AlphaContractAddr string               `json:"alpha_contract_addr"`
+	CommissionTime       types.Time           `json:"commission_time"`
+	UserID               uint64               `json:"user_id"`
+	GroupName            string               `json:"group_name"`
+	Amount               types.Number         `json:"amount"`
+	Fee                  types.Number         `json:"fee"`
+	FeeAsset             string               `json:"fee_asset"`
+	RebateFee            types.Number         `json:"rebate_fee"`
+	Source               string               `json:"source"`
+	CurrencyPair         currency.Pair        `json:"currency_pair"`
+	SubBrokerInfo        *BrokerSubBrokerInfo `json:"sub_broker_info"`
+	AlphaContractAddress string               `json:"alpha_contract_addr"`
 }
 
 // BrokerTransaction holds a single broker trading history record.
 type BrokerTransaction struct {
-	TransactionTime   types.Time           `json:"transaction_time"`
-	UserID            uint64               `json:"user_id"`
-	GroupName         string               `json:"group_name"`
-	Fee               types.Number         `json:"fee"`
-	CurrencyPair      currency.Pair        `json:"currency_pair"`
-	Amount            types.Number         `json:"amount"`
-	FeeAsset          string               `json:"fee_asset"`
-	Source            string               `json:"source"`
-	SubBrokerInfo     *BrokerSubBrokerInfo `json:"sub_broker_info"`
-	AlphaContractAddr string               `json:"alpha_contract_addr"`
+	TransactionTime      types.Time           `json:"transaction_time"`
+	UserID               uint64               `json:"user_id"`
+	GroupName            string               `json:"group_name"`
+	Fee                  types.Number         `json:"fee"`
+	CurrencyPair         currency.Pair        `json:"currency_pair"`
+	Amount               types.Number         `json:"amount"`
+	FeeAsset             string               `json:"fee_asset"`
+	Source               string               `json:"source"`
+	SubBrokerInfo        *BrokerSubBrokerInfo `json:"sub_broker_info"`
+	AlphaContractAddress string               `json:"alpha_contract_addr"`
 }
 
 // BrokerCommissionHistoryResponse holds a broker's rebate records for users.
 type BrokerCommissionHistoryResponse struct {
-	Total int64               `json:"total"`
+	Total uint64              `json:"total"`
 	List  []*BrokerCommission `json:"list"`
 }
 
 // BrokerTransactionHistoryResponse holds a broker's trading history for users.
 type BrokerTransactionHistoryResponse struct {
-	Total int64                `json:"total"`
+	Total uint64               `json:"total"`
 	List  []*BrokerTransaction `json:"list"`
 }
 
@@ -162,8 +162,8 @@ type UserSubordinateRelation struct {
 	UID    uint64 `json:"uid"`
 	Belong string `json:"belong"`
 	// Type identifies the relationship: 0 - Not in system, 1 - Direct subordinate agent, 2 - Indirect subordinate agent, 3 - Direct direct customer, 4 - Indirect direct customer, 5 - Regular user.
-	Type   uint64 `json:"type"`
-	RefUID uint64 `json:"ref_uid"`
+	Type         uint64 `json:"type"`
+	ReferenceUID uint64 `json:"ref_uid"`
 }
 
 // UserSubordinateRelationResponse holds user subordinate relationship records.
@@ -173,45 +173,45 @@ type UserSubordinateRelationResponse struct {
 
 // RecentPartnerApplicationRecords represents recent partner application records
 type RecentPartnerApplicationRecords struct {
-	ID                int64  `json:"id"`
-	UID               int64  `json:"uid"`
-	Language          string `json:"language"`
-	CountryID         int64  `json:"country_id"`
-	Firstname         string `json:"firstname"`
-	Lastname          string `json:"lastname"`
-	Email             string `json:"email"`
-	JoinUID           int64  `json:"join_uid"`
-	JoinCountryID     int64  `json:"join_country_id"`
-	IdentityComment   string `json:"identity_comment"`
-	PromotionChannels string `json:"promotion_channels"`
-	ContactDetails    string `json:"contact_details"`
-	KnowDetails       string `json:"know_details"`
-	QuestionLang      string `json:"question_lang"`
-	CreateTimest      string `json:"create_timest"`
-	UpdateTimest      string `json:"update_timest"`
-	ApplyType         int64  `json:"apply_type"`
-	AuditStatus       int64  `json:"audit_status"`
-	EditCounts        int64  `json:"edit_counts"`
-	ProofImages       string `json:"proof_images"`
-	ProofVideos       string `json:"proof_videos"`
-	ProofURL          string `json:"proof_url"`
-	AuditReason       int64  `json:"audit_reason"`
-	ChannelType       int64  `json:"channel_type"`
-	Region            string `json:"region"`
-	Phone             string `json:"phone"`
-	Telegram          string `json:"telegram"`
+	ID                uint64         `json:"id"`
+	UID               uint64         `json:"uid"`
+	Language          string         `json:"language"`
+	CountryID         uint64         `json:"country_id"`
+	Firstname         string         `json:"firstname"`
+	Lastname          string         `json:"lastname"`
+	Email             string         `json:"email"`
+	JoinUID           uint64         `json:"join_uid"`
+	JoinCountryID     uint64         `json:"join_country_id"`
+	IdentityComment   string         `json:"identity_comment"`
+	PromotionChannels string         `json:"promotion_channels"`
+	ContactDetails    string         `json:"contact_details"`
+	KnowDetails       string         `json:"know_details"`
+	QuestionLanguage  string         `json:"question_lang"`
+	CreateTime        types.DateTime `json:"create_timest"`
+	UpdateTime        types.DateTime `json:"update_timest"`
+	ApplyType         uint64         `json:"apply_type"`
+	AuditStatus       uint64         `json:"audit_status"`
+	EditCount         uint64         `json:"edit_counts"`
+	ProofImages       string         `json:"proof_images"`
+	ProofVideos       string         `json:"proof_videos"`
+	ProofURL          string         `json:"proof_url"`
+	AuditReason       uint64         `json:"audit_reason"`
+	ChannelType       uint64         `json:"channel_type"`
+	Region            string         `json:"region"`
+	Phone             string         `json:"phone"`
+	Telegram          string         `json:"telegram"`
 	OtherContact      struct {
-		Type  int64        `json:"type"`
-		Value types.Number `json:"value"`
+		Type  uint64 `json:"type"`
+		Value string `json:"value"`
 	} `json:"other_contact"`
 	ProofImagesURLList []string `json:"proof_images_url_list"`
-	ProofVideosURLList []any    `json:"proof_videos_url_list"`
+	ProofVideosURLList []string `json:"proof_videos_url_list"`
 	ApplyMessage       string   `json:"apply_msg"`
 	JumpURL            string   `json:"jump_url"`
 }
 
-// RebaseEligibilityResponse represents an application eligibility response
-type RebaseEligibilityResponse struct {
+// RebateEligibilityResponse represents an application eligibility response
+type RebateEligibilityResponse struct {
 	Eligible         bool     `json:"eligible"`
 	BlockReasons     []string `json:"block_reasons"`
 	BlockReasonCodes []string `json:"block_reason_codes"`
@@ -219,12 +219,12 @@ type RebaseEligibilityResponse struct {
 
 // RebateAgentStatisticsResponse represents rebate agent statistics
 type RebateAgentStatisticsResponse struct {
-	RebateAmount     types.Number `json:"rebate_amount"`
-	TradeVolume      types.Number `json:"trade_volume"`
-	NetFee           types.Number `json:"net_fee"`
-	CustomerCount    int64        `json:"customer_count"`
-	TradingUserCount types.Number `json:"trading_user_count"`
-	TimeRangeDesc    string       `json:"time_range_desc"`
-	BusinessType     int64        `json:"business_type"`
-	BusinessTypeDesc string       `json:"business_type_desc"`
+	RebateAmount            types.Number  `json:"rebate_amount"`
+	TradeVolume             types.Number  `json:"trade_volume"`
+	NetFee                  types.Number  `json:"net_fee"`
+	CustomerCount           uint64        `json:"customer_count"`
+	TradingUserCount        *types.Number `json:"trading_user_count"`
+	TimeRangeDescription    string        `json:"time_range_desc"`
+	BusinessType            uint64        `json:"business_type"`
+	BusinessTypeDescription string        `json:"business_type_desc"`
 }

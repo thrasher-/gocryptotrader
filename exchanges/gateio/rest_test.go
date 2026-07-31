@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,12 +39,6 @@ import (
 )
 
 const canManipulateRealOrders = false
-
-// apiCredentials holds the credentials used for due diligence testing; please supply your own
-var apiCredentials = &accounts.Credentials{
-	Key:    "",
-	Secret: "",
-}
 
 var (
 	e                    *Exchange
@@ -326,8 +321,14 @@ func TestGetTradingFeeRatio(t *testing.T) {
 
 func TestGetAccountBatchFeeRates(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAccountBatchFeeRates(t.Context(), []string{"BTC_USDT", "ETH_USDT"})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/spot/batch_fee?currency_pairs=BTC_USDT%2CETH_USDT", `{"BTC_USDT":{"maker_fee":"0.001","taker_fee":"0.002"},"ETH_USDT":{"maker_fee":"0.001","taker_fee":"0.002"}}`)
+	}
+	result, err := ex.GetAccountBatchFeeRates(t.Context(), []string{"BTC_USDT", "ETH_USDT"})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -485,21 +486,46 @@ func TestCancelBatchOrdersWithIDList(t *testing.T) {
 	_, err := e.CancelBatchOrdersWithIDList(t.Context(), []CancelOrderByIDParam{})
 	require.ErrorIs(t, err, errNoValidParameterPassed)
 
+	_, err = e.CancelBatchOrdersWithIDList(t.Context(), make([]CancelOrderByIDParam, 21))
+	require.ErrorIs(t, err, errInvalidOrderSize)
+
 	_, err = e.CancelBatchOrdersWithIDList(t.Context(), []CancelOrderByIDParam{{CurrencyPair: getPair(t, asset.Spot)}})
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.CancelBatchOrdersWithIDList(t.Context(), []CancelOrderByIDParam{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	pair := getPair(t, asset.Spot)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method, "request method should match")
+			assert.Equal(t, "/api/v4/spot/cancel_batch_orders", r.URL.RequestURI(), "request URI should match")
+			var payload []map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); !assert.NoError(t, err, "request body should decode") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, []map[string]string{
+				{"currency_pair": pair.String(), "id": "1234567"},
+				{"currency_pair": pair.String(), "id": "123453"},
+			}, payload)
+			_, writeErr := fmt.Fprintf(w, `[{"currency_pair":%q,"id":"1234567","succeeded":true},{"currency_pair":%q,"id":"123453","succeeded":true}]`, pair.String(), pair.String())
+			assert.NoError(t, writeErr, "writing response should not error")
+		}))
+	}
+	result, err := ex.CancelBatchOrdersWithIDList(t.Context(), []CancelOrderByIDParam{
 		{
-			CurrencyPair: getPair(t, asset.Spot),
+			CurrencyPair: pair,
 			ID:           "1234567",
 		},
 		{
-			CurrencyPair: getPair(t, asset.Spot),
+			CurrencyPair: pair,
 			ID:           "123453",
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
+	assert.Len(t, result, 2)
 }
 
 func TestGetSpotOrder(t *testing.T) {
@@ -559,39 +585,50 @@ func TestGetServerTime(t *testing.T) {
 
 func TestCountdownCancelSpotOrders(t *testing.T) {
 	t.Parallel()
-	_, err := e.CountdownCancelorders(t.Context(), CountdownCancelOrderParam{Timeout: 0, CurrencyPair: getPair(t, asset.Spot)})
-	require.ErrorIs(t, err, errInvalidCountdown)
-
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.CountdownCancelorders(t.Context(), CountdownCancelOrderParam{Timeout: 10, CurrencyPair: getPair(t, asset.Spot)})
-	assert.NoError(t, err)
-
 	for _, tc := range []struct {
-		name         string
-		requiresAuth bool
-		arg          CountdownCancelOrderParam
-		expectedErr  error
+		name        string
+		call        func(context.Context, *Exchange, CountdownCancelOrderParam) (*TriggerTimeResponse, error)
+		arg         CountdownCancelOrderParam
+		expectedErr error
 	}{
 		{
-			name:         "valid",
-			requiresAuth: true,
+			name: "legacy_method",
+			call: func(ctx context.Context, ex *Exchange, arg CountdownCancelOrderParam) (*TriggerTimeResponse, error) {
+				return ex.CountdownCancelorders(ctx, arg)
+			},
 			arg: CountdownCancelOrderParam{
 				Timeout:      10,
 				CurrencyPair: getPair(t, asset.Spot),
 			},
 		},
 		{
-			name: "timeout_zero",
+			name: "cancel_countdown",
+			call: func(ctx context.Context, ex *Exchange, arg CountdownCancelOrderParam) (*TriggerTimeResponse, error) {
+				return ex.CountdownCancelSpotOrders(ctx, arg)
+			},
 			arg: CountdownCancelOrderParam{
 				Timeout:      0,
+				CurrencyPair: getPair(t, asset.Spot),
+			},
+		},
+		{
+			name: "legacy_invalid_timeout",
+			call: func(ctx context.Context, ex *Exchange, arg CountdownCancelOrderParam) (*TriggerTimeResponse, error) {
+				return ex.CountdownCancelorders(ctx, arg)
+			},
+			arg: CountdownCancelOrderParam{
+				Timeout:      4,
 				CurrencyPair: getPair(t, asset.Spot),
 			},
 			expectedErr: errInvalidCountdown,
 		},
 		{
-			name: "timeout_negative",
+			name: "invalid_timeout",
+			call: func(ctx context.Context, ex *Exchange, arg CountdownCancelOrderParam) (*TriggerTimeResponse, error) {
+				return ex.CountdownCancelSpotOrders(ctx, arg)
+			},
 			arg: CountdownCancelOrderParam{
-				Timeout:      -1,
+				Timeout:      1,
 				CurrencyPair: getPair(t, asset.Spot),
 			},
 			expectedErr: errInvalidCountdown,
@@ -599,12 +636,16 @@ func TestCountdownCancelSpotOrders(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if tc.requiresAuth {
+			if !mockTests && tc.expectedErr == nil {
 				sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 			}
-			_, err := e.CountdownCancelSpotOrders(t.Context(), tc.arg)
+			ex := e
+			if mockTests && tc.expectedErr == nil {
+				ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/spot/countdown_cancel_all", fmt.Sprintf(`{"currency_pair":"BTC_USDT","timeout":%d}`, tc.arg.Timeout), `{}`)
+			}
+			_, err := tc.call(t.Context(), ex, tc.arg)
 			if tc.expectedErr != nil {
-				assert.ErrorIs(t, err, tc.expectedErr)
+				require.ErrorIs(t, err, tc.expectedErr)
 				return
 			}
 			require.NoError(t, err)
@@ -696,8 +737,14 @@ func TestCancelPriceTriggeredOrder(t *testing.T) {
 	_, err := e.CancelPriceTriggeredOrder(t.Context(), "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err = e.CancelPriceTriggeredOrder(t.Context(), "1234")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodDelete, "/api/v4/spot/price_orders/1234", `{}`)
+	}
+	_, err = ex.CancelPriceTriggeredOrder(t.Context(), "1234")
 	assert.NoError(t, err)
 }
 
@@ -754,7 +801,7 @@ func TestGetMarginFundingAccountList(t *testing.T) {
 func TestUpdateUsersAutoRepaymentSetting(t *testing.T) {
 	t.Parallel()
 	if !mockTests {
-		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
 	result, err := e.UpdateUsersAutoRepaymentSetting(t.Context(), true)
 	require.NoError(t, err)
@@ -1064,37 +1111,83 @@ func TestGetWithdrawalStatus(t *testing.T) {
 
 func TestGetSubAccountBalances(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetSubAccountBalances(t.Context(), "")
-	assert.NoError(t, err)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/sub_account_balances", `[{"uid":"1000001","available":{"BTC":"1"},"locking":{"BTC":"0"}}]`)
+	}
+	result, err := ex.GetSubAccountBalances(t.Context(), "")
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	if mockTests {
+		assert.Equal(t, "1000001", result[0].UID, "quoted subaccount UID should decode without precision loss")
+	}
 }
 
 func TestGetSubAccountMarginBalances(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetSubAccountMarginBalances(t.Context(), "")
-	assert.NoError(t, err)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/sub_account_margin_balances", `[{"uid":"1000001","available":[]}]`)
+	}
+	result, err := ex.GetSubAccountMarginBalances(t.Context(), "")
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	if mockTests {
+		assert.Equal(t, "1000001", result[0].UID, "quoted subaccount UID should decode without precision loss")
+	}
 }
 
 func TestGetTransferOrderStatus(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetTransferOrderStatus(t.Context(), "12345678", "abcdefg")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/order_status?client_order_id=12345678&tx_id=abcdefg", `{}`)
+	}
+	_, err := ex.GetTransferOrderStatus(t.Context(), "12345678", "abcdefg")
 	assert.NoError(t, err)
 }
 
 func TestGetSubAccountFuturesBalances(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetSubAccountFuturesBalances(t.Context(), "", currency.EMPTYCODE)
-	assert.NoError(t, err)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/sub_account_futures_balances", `[{"uid":"1000001","available":{}}]`)
+	}
+	result, err := ex.GetSubAccountFuturesBalances(t.Context(), "", currency.EMPTYCODE)
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	if mockTests {
+		assert.Equal(t, 1000001.0, result[0].UserID.Float64(), "quoted subaccount UID should decode without precision loss")
+	}
 }
 
 func TestGetSubAccountCrossMarginBalances(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetSubAccountCrossMarginBalances(t.Context(), "")
-	assert.NoError(t, err)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/sub_account_cross_margin_balances", `[{"uid":"1000001","available":{"user_id":1000001,"balances":{}}}]`)
+	}
+	result, err := ex.GetSubAccountCrossMarginBalances(t.Context(), "")
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	if mockTests {
+		assert.Equal(t, "1000001", result[0].UID, "quoted subaccount UID should decode without precision loss")
+	}
 }
 
 func TestGetSavedAddresses(t *testing.T) {
@@ -1167,21 +1260,28 @@ func TestPremiumIndexKline(t *testing.T) {
 	to := time.Now().UTC()
 	from := to.Add(-2 * kline.OneWeek.Duration())
 
-	t.Run("live request", func(t *testing.T) {
+	t.Run("request", func(t *testing.T) {
 		t.Parallel()
-		if mockTests {
-			t.SkipNow()
-		}
+		requestFrom, requestTo := from, to
 		coinMarginedContract := getPair(t, asset.CoinMarginedFutures)
 		usdtMarginedContract := getPair(t, asset.USDTMarginedFutures)
-		_, err := e.PremiumIndexKline(t.Context(), currency.BTC, coinMarginedContract, from, to, 0, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error for CoinMarginedFutures")
-		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, usdtMarginedContract, from, to, 0, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error for USDTMarginedFutures")
-		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, usdtMarginedContract, time.Time{}, time.Time{}, 1, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error with supplied limit")
-		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, usdtMarginedContract, from, to, 1, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error with supplied bounds and limit")
+		if mockTests {
+			requestFrom = time.Unix(1780581847, 0)
+			requestTo = time.Unix(1781791447, 0)
+			coinMarginedContract = currency.NewPairWithDelimiter("BTC", "USD", "_")
+			usdtMarginedContract = currency.NewPairWithDelimiter("BTC", "USDT", "_")
+		}
+		coinMarginedResult, err := e.PremiumIndexKline(t.Context(), currency.BTC, coinMarginedContract, requestFrom, requestTo, 0, kline.OneWeek)
+		require.NoError(t, err, "PremiumIndexKLine should not error for CoinMarginedFutures")
+		usdtMarginedResult, err := e.PremiumIndexKline(t.Context(), currency.USDT, usdtMarginedContract, requestFrom, requestTo, 0, kline.OneWeek)
+		require.NoError(t, err, "PremiumIndexKLine should not error for USDTMarginedFutures")
+		limitedResult, err := e.PremiumIndexKline(t.Context(), currency.USDT, usdtMarginedContract, time.Time{}, time.Time{}, 1, kline.OneWeek)
+		require.NoError(t, err, "PremiumIndexKLine should not error with supplied limit")
+		if mockTests {
+			assert.NotEmpty(t, coinMarginedResult, "mock response should contain CoinMarginedFutures premium index data")
+			assert.NotEmpty(t, usdtMarginedResult, "mock response should contain USDTMarginedFutures premium index data")
+			assert.NotEmpty(t, limitedResult, "mock response should contain limited premium index data")
+		}
 	})
 
 	t.Run("validation", func(t *testing.T) {
@@ -1193,6 +1293,10 @@ func TestPremiumIndexKline(t *testing.T) {
 		assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "empty contract should return expected error")
 		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, contract, time.Time{}, time.Time{}, 0, kline.FiveDay)
 		assert.ErrorIs(t, err, kline.ErrUnsupportedInterval, "unsupported interval should return expected error")
+		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, contract, from, time.Time{}, 1, kline.OneWeek)
+		assert.ErrorIs(t, err, errNoValidParameterPassed, "from and limit must not be combined")
+		_, err = e.PremiumIndexKline(t.Context(), currency.USDT, contract, time.Time{}, to, 1, kline.OneWeek)
+		assert.ErrorIs(t, err, errNoValidParameterPassed, "to and limit must not be combined")
 	})
 }
 
@@ -1345,7 +1449,7 @@ func TestUpdateFuturesPositionMargin(t *testing.T) {
 	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
 	_, err = e.UpdateFuturesPositionMargin(t.Context(), currency.BTC, 0, getPair(t, asset.CoinMarginedFutures))
-	assert.ErrorIs(t, err, errChangeHasToBePositive)
+	assert.ErrorIs(t, err, errChangeCannotBeZero)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	_, err = e.UpdateFuturesPositionMargin(t.Context(), currency.BTC, 0.01, getPair(t, asset.CoinMarginedFutures))
@@ -1378,8 +1482,15 @@ func TestUpdateFuturesPositionRiskLimit(t *testing.T) {
 	_, err = e.UpdateFuturesPositionRiskLimit(t.Context(), currency.BTC, currency.EMPTYPAIR, 10)
 	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.UpdateFuturesPositionRiskLimit(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 10)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	pair := getPair(t, asset.USDTMarginedFutures)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/futures/usdt/positions/"+pair.String()+"/risk_limit?risk_limit=10", `{"contract":"BTC_USDT","risk_limit":"10"}`)
+	}
+	_, err = ex.UpdateFuturesPositionRiskLimit(t.Context(), currency.USDT, pair, 10)
 	assert.NoError(t, err)
 }
 
@@ -1598,8 +1709,14 @@ func TestEnableOrDisableDualMode(t *testing.T) {
 	_, err := e.EnableOrDisableDualMode(t.Context(), currency.EMPTYCODE, true)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err = e.EnableOrDisableDualMode(t.Context(), currency.BTC, true)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/futures/btc/dual_mode?dual_mode=true", `{}`)
+	}
+	_, err = ex.EnableOrDisableDualMode(t.Context(), currency.BTC, true)
 	assert.NoError(t, err)
 }
 
@@ -1668,11 +1785,26 @@ func TestUpdatePositionRiskLimitInDualMode(t *testing.T) {
 	_, err = e.UpdatePositionRiskLimitInDualMode(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0)
 	require.ErrorIs(t, err, errInvalidRiskLimit)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.UpdatePositionRiskLimitInDualMode(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 20000)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method, "request method should match")
+			expectedPaths := map[string]bool{
+				"/api/v4/futures/btc/dual_comp/positions/BTC_USD/risk_limit?risk_limit=20000":   true,
+				"/api/v4/futures/usdt/dual_comp/positions/BTC_USDT/risk_limit?risk_limit=20000": true,
+			}
+			assert.True(t, expectedPaths[r.URL.RequestURI()], "request URI should match")
+			_, writeErr := fmt.Fprint(w, `[]`)
+			assert.NoError(t, writeErr, "writing response should not error")
+		}))
+	}
+	_, err = ex.UpdatePositionRiskLimitInDualMode(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 20000)
 	assert.NoError(t, err)
 
-	_, err = e.UpdatePositionRiskLimitInDualMode(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 20000)
+	_, err = ex.UpdatePositionRiskLimitInDualMode(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 20000)
 	assert.NoError(t, err)
 }
 
@@ -1915,6 +2047,22 @@ func TestCountdownCancelFuturesOrders(t *testing.T) {
 			},
 		},
 		{
+			name:         "cancel_countdown",
+			requiresAuth: true,
+			settle:       currency.BTC,
+			arg: CountdownParams{
+				Timeout: 0,
+			},
+		},
+		{
+			name:   "invalid_timeout",
+			settle: currency.BTC,
+			arg: CountdownParams{
+				Timeout: 4,
+			},
+			expectedErr: errInvalidTimeout,
+		},
+		{
 			name:   "empty_settlement",
 			settle: currency.EMPTYCODE,
 			arg: CountdownParams{
@@ -1922,21 +2070,17 @@ func TestCountdownCancelFuturesOrders(t *testing.T) {
 			},
 			expectedErr: errEmptyOrInvalidSettlementCurrency,
 		},
-		{
-			name:   "negative_timeout",
-			settle: currency.BTC,
-			arg: CountdownParams{
-				Timeout: -1,
-			},
-			expectedErr: errInvalidTimeout,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if tc.requiresAuth {
+			if tc.requiresAuth && !mockTests {
 				sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 			}
-			_, err := e.CountdownCancelFuturesOrders(t.Context(), tc.settle, tc.arg)
+			ex := e
+			if mockTests && tc.requiresAuth {
+				ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/futures/btc/countdown_cancel_all", fmt.Sprintf(`{"timeout":%d,"contract":""}`, tc.arg.Timeout), `{}`)
+			}
+			_, err := ex.CountdownCancelFuturesOrders(t.Context(), tc.settle, tc.arg)
 			if tc.expectedErr != nil {
 				assert.ErrorIs(t, err, tc.expectedErr)
 				return
@@ -2143,7 +2287,7 @@ func TestUpdateDeliveryPositionMargin(t *testing.T) {
 	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
 	_, err = e.UpdateDeliveryPositionMargin(t.Context(), currency.USDT, 0, getPair(t, asset.DeliveryFutures))
-	assert.ErrorIs(t, err, errChangeHasToBePositive)
+	assert.ErrorIs(t, err, errChangeCannotBeZero)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	_, err = e.UpdateDeliveryPositionMargin(t.Context(), currency.USDT, 0.001, getPair(t, asset.DeliveryFutures))
@@ -2174,8 +2318,15 @@ func TestUpdateDeliveryPositionRiskLimit(t *testing.T) {
 	_, err = e.UpdateDeliveryPositionRiskLimit(t.Context(), currency.USDT, currency.EMPTYPAIR, 0)
 	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.UpdateDeliveryPositionRiskLimit(t.Context(), currency.USDT, getPair(t, asset.DeliveryFutures), 30)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	contract := getPair(t, asset.DeliveryFutures)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/delivery/usdt/positions/"+contract.String()+"/risk_limit?risk_limit=30", `{"contract":"`+contract.String()+`","risk_limit":"30"}`)
+	}
+	_, err = ex.UpdateDeliveryPositionRiskLimit(t.Context(), currency.USDT, contract, 30)
 	assert.NoError(t, err)
 }
 
@@ -2236,7 +2387,7 @@ func TestGetOptionsSpecifiedSettlementHistory(t *testing.T) {
 	cp, err := currency.NewPairFromString(optionsSettlement[0].Contract)
 	require.NoError(t, err)
 
-	_, err = e.GetOptionsSpecifiedContractsSettlement(t.Context(), cp, underlying, optionsSettlement[0].Timestamp.Time().Unix())
+	_, err = e.GetOptionsSpecifiedContractsSettlement(t.Context(), cp, underlying, optionsSettlement[0].Timestamp.Time())
 	assert.NoError(t, err)
 }
 
@@ -2321,17 +2472,30 @@ func TestInitiateFlashSwapOrderReview(t *testing.T) {
 
 func TestGetDualInvestmentProductList(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetDualInvestmentProductList(t.Context(), "apy", "put", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
+	ex := e
+	if mockTests {
+		ex = newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodGet, r.Method, "request method should match")
+			expectedPaths := map[string]bool{
+				"/api/v4/earn/dual/investment_plan?page=1&page_size=1000&plan_id=123123412341&quote_currency=USDT&sort=apy&type=put":                   true,
+				"/api/v4/earn/dual/investment_plan?coin=BTC&page=1&page_size=1000&plan_id=123123412341&quote_currency=USDT&sort=short-period&type=put": true,
+				"/api/v4/earn/dual/investment_plan?page=1&page_size=1000&plan_id=123123412341&quote_currency=USDT&sort=apy&type=call":                  true,
+			}
+			assert.True(t, expectedPaths[r.URL.RequestURI()], "request URI should match")
+			_, writeErr := fmt.Fprint(w, `[]`)
+			assert.NoError(t, writeErr, "writing response should not error")
+		}))
+	}
+	_, err := ex.GetDualInvestmentProductList(t.Context(), "apy", "put", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
 	require.NoError(t, err)
 
-	_, err = e.GetDualInvestmentProductList(t.Context(), "short-period", "put", currency.BTC, currency.USDT, 123123412341, 1, 1000)
+	_, err = ex.GetDualInvestmentProductList(t.Context(), "short-period", "put", currency.BTC, currency.USDT, 123123412341, 1, 1000)
 	require.NoError(t, err)
 
-	_, err = e.GetDualInvestmentProductList(t.Context(), "apy", "call", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
+	_, err = ex.GetDualInvestmentProductList(t.Context(), "apy", "call", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
 	require.NoError(t, err)
 
-	_, err = e.GetDualInvestmentProductList(t.Context(), "apy", "put", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
+	_, err = ex.GetDualInvestmentProductList(t.Context(), "apy", "put", currency.EMPTYCODE, currency.USDT, 123123412341, 1, 1000)
 	require.NoError(t, err)
 }
 
@@ -2341,34 +2505,53 @@ func TestGetDualInvestmentOrderList(t *testing.T) {
 	_, err := e.GetDualInvestmentOrderList(t.Context(), endTime, startTime, "put", "SETTLEMENT_PROCESSING", currency.EMPTYCODE, 0, 100)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err = e.GetDualInvestmentOrderList(t.Context(), startTime, endTime, "call", "HOLD", currency.ETH, 0, 100)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/dual/orders?coin=ETH&from=1744103854&limit=100&status=HOLD&to=1744190254&type=call", `[]`)
+	}
+	_, err = ex.GetDualInvestmentOrderList(t.Context(), startTime, endTime, "call", "HOLD", currency.ETH, 0, 100)
 	require.NoError(t, err)
 }
 
 func TestPlaceDualInvestmentOrder(t *testing.T) {
 	t.Parallel()
-	err := e.PlaceDualInvestmentOrder(t.Context(), nil)
+	_, err := e.PlaceDualInvestmentOrder(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	err = e.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{Text: "abc"})
+	_, err = e.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{Text: "abc"})
 	require.ErrorIs(t, err, errPlanIDRequired)
 
-	err = e.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{PlanID: "12321"})
+	_, err = e.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{PlanID: "12321"})
 	require.ErrorIs(t, err, order.ErrAmountIsInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/dual/orders", `{"plan_id":"12321","amount":"1223.213"}`, `{}`)
+	}
+	result, err := ex.PlaceDualInvestmentOrder(t.Context(), &DualInvestmentOrderParam{
 		PlanID: "12321",
 		Amount: 1223.213,
 	})
 	require.NoError(t, err)
+	assert.NotNil(t, result)
 }
 
 func TestGetDualCurrencyEarningAssets(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetDualCurrencyEarningAssets(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/dual/balance", `[]`)
+	}
+	result, err := ex.GetDualCurrencyEarningAssets(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2378,8 +2561,14 @@ func TestGetDualCurrencyEarlyRedemptionPreview(t *testing.T) {
 	_, err := e.GetDualCurrencyEarlyRedemptionPreview(t.Context(), "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetDualCurrencyEarlyRedemptionPreview(t.Context(), "12345678")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/dual/order-refund-preview?order_id=12345678", `{}`)
+	}
+	result, err := ex.GetDualCurrencyEarlyRedemptionPreview(t.Context(), "12345678")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2392,8 +2581,14 @@ func TestRedeemDualCurrencyOrder(t *testing.T) {
 	err = e.RedeemDualCurrencyOrder(t.Context(), "9487", "")
 	require.ErrorIs(t, err, errOrderRefundRequestIDRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.RedeemDualCurrencyOrder(t.Context(), "9487", "OepRSEfv")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/dual/order-refund", `{"order_id":"9487","req_id":"OepRSEfv"}`, `{}`)
+	}
+	err = ex.RedeemDualCurrencyOrder(t.Context(), "9487", "OepRSEfv")
 	require.NoError(t, err)
 }
 
@@ -2402,15 +2597,27 @@ func TestModifyDualCurrencyOrderReinvest(t *testing.T) {
 	err := e.ModifyDualCurrencyOrderReinvest(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "nil arg must return ErrNilPointer")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.ModifyDualCurrencyOrderReinvest(t.Context(), &DualModifyOrderReinvestRequest{OrderID: 9497, Status: 1})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/dual/modify-order-reinvest", `{"order_id":9497,"status":1}`, `{}`)
+	}
+	err = ex.ModifyDualCurrencyOrderReinvest(t.Context(), &DualModifyOrderReinvestRequest{OrderID: 9497, Status: 1})
 	require.NoError(t, err)
 }
 
 func TestGetDualCurrencyRecommendedProjects(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetDualCurrencyRecommendedProjects(t.Context(), "senior", "", "", "")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/dual/project-recommend?mode=senior", `[]`)
+	}
+	result, err := ex.GetDualCurrencyRecommendedProjects(t.Context(), "senior", "", "", "")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2424,25 +2631,40 @@ func TestCreateAutoInvestPlan(t *testing.T) {
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin, "non-positive plan amount must return ErrAmountBelowMin")
 
 	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10})
+	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty, "empty plan currency must return ErrCurrencyCodeEmpty")
+
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT"})
 	require.ErrorIs(t, err, errPeriodTypeRequired, "empty plan period type must return errPeriodTypeRequired")
 
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanPeriodType: "monthly"})
-	require.ErrorIs(t, err, errPlanPeriodDayRequired, "zero plan period day must return errPlanPeriodDayRequired")
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT", PlanPeriodType: "monthly"})
+	require.ErrorIs(t, err, errPlanPeriodDayInvalid, "zero monthly plan period day must return errPlanPeriodDayInvalid")
 
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanPeriodType: "monthly", PlanPeriodDay: 1, PlanPeriodHour: 1})
-	require.ErrorIs(t, err, errPlanPeriodHourRequired, "non-zero plan period hour must return errPlanPeriodHourRequired")
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT", PlanPeriodType: "monthly", PlanPeriodDay: 1, PlanPeriodHour: 24})
+	require.ErrorIs(t, err, errPlanPeriodHourInvalid, "hour 24 must return errPlanPeriodHourInvalid")
 
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanPeriodType: "monthly", PlanPeriodDay: 1})
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT", PlanPeriodType: "daily"})
 	require.ErrorIs(t, err, errNoValidParameterPassed, "empty items must return errNoValidParameterPassed")
 
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanPeriodType: "monthly", PlanPeriodDay: 1, Items: []*AutoInvestPlanItem{{Ratio: 100}}})
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT", PlanPeriodType: "monthly", PlanPeriodDay: 1, Items: []*AutoInvestPlanItem{{Ratio: 100}}})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty, "empty item asset must return ErrCurrencyCodeEmpty")
 
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanPeriodType: "monthly", PlanPeriodDay: 1, Items: []*AutoInvestPlanItem{{Asset: currency.BTC}}})
+	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{PlanAmount: 10, PlanMoney: "USDT", PlanPeriodType: "monthly", PlanPeriodDay: 1, Items: []*AutoInvestPlanItem{{Asset: currency.BTC}}})
 	require.ErrorIs(t, err, order.ErrAmountMustBeSet, "non-positive item ratio must return ErrAmountMustBeSet")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/earn/autoinvest/plans/create",
+			`{"plan_name":"","plan_des":"","plan_period_type":"monthly","plan_period_day":1,"plan_period_hour":0,"plan_money":"USDT","plan_amount":"10","type":0,"items":[{"asset":"BTC","ratio":"100"}],"fund_source":"","fund_flow":""}`,
+			`{}`,
+		)
+	}
+	_, err = ex.CreateAutoInvestPlan(t.Context(), &CreateAutoInvestPlanRequest{
 		PlanMoney:      "USDT",
 		PlanAmount:     10,
 		PlanPeriodType: "monthly",
@@ -2460,8 +2682,14 @@ func TestUpdateAutoInvestPlan(t *testing.T) {
 	err = e.UpdateAutoInvestPlan(t.Context(), &AutoInvestPlanUpdateRequest{PlanID: 0})
 	require.ErrorIs(t, err, errPlanIDRequired, "zero plan_id must return errPlanIDRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.UpdateAutoInvestPlan(t.Context(), &AutoInvestPlanUpdateRequest{PlanID: 142582, FundSource: "earn", FundFlow: "auto_invest"})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/autoinvest/plans/update", `{"plan_id":142582,"fund_source":"earn","fund_flow":"auto_invest"}`, `{}`)
+	}
+	err = ex.UpdateAutoInvestPlan(t.Context(), &AutoInvestPlanUpdateRequest{PlanID: 142582, FundSource: "earn", FundFlow: "auto_invest"})
 	require.NoError(t, err)
 }
 
@@ -2470,8 +2698,14 @@ func TestStopAutoInvestPlan(t *testing.T) {
 	err := e.StopAutoInvestPlan(t.Context(), 0)
 	require.ErrorIs(t, err, errPlanIDRequired, "zero plan_id must return errPlanIDRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.StopAutoInvestPlan(t.Context(), 142582)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/autoinvest/plans/stop", `{"plan_id":142582}`, `{}`)
+	}
+	err = ex.StopAutoInvestPlan(t.Context(), 142582)
 	require.NoError(t, err)
 }
 
@@ -2483,15 +2717,27 @@ func TestAddAutoInvestPlanPosition(t *testing.T) {
 	err = e.AddAutoInvestPlanPosition(t.Context(), 142583, 0)
 	require.ErrorIs(t, err, order.ErrAmountIsInvalid, "empty amount must return ErrAmountIsInvalid")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.AddAutoInvestPlanPosition(t.Context(), 142583, 12.345)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/autoinvest/plans/add_position", `{"plan_id":142583,"amount":"12.345"}`, `{}`)
+	}
+	err = ex.AddAutoInvestPlanPosition(t.Context(), 142583, 12.345)
 	require.NoError(t, err)
 }
 
 func TestGetAutoInvestSupportedCoins(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestSupportedCoins(t.Context(), "USDT")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/coins?plan_money=USDT", `[]`)
+	}
+	result, err := ex.GetAutoInvestSupportedCoins(t.Context(), "USDT")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2507,8 +2753,14 @@ func TestGetAutoInvestMinimumAmount(t *testing.T) {
 	_, err = e.GetAutoInvestMinimumAmount(t.Context(), &AutoInvestMinAmountRequest{Money: "USDT"})
 	require.ErrorIs(t, err, errNoValidParameterPassed, "empty items must return errNoValidParameterPassed")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestMinimumAmount(t.Context(), &AutoInvestMinAmountRequest{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/autoinvest/min_invest_amount", `{"money":"USDT","items":[{"asset":"BTC","ratio":"33"},{"asset":"ETH","ratio":"33"},{"asset":"SOL","ratio":"34"}]}`, `{}`)
+	}
+	result, err := ex.GetAutoInvestMinimumAmount(t.Context(), &AutoInvestMinAmountRequest{
 		Money: "USDT",
 		Items: []*AutoInvestPlanItem{
 			{Asset: currency.BTC, Ratio: 33},
@@ -2525,8 +2777,14 @@ func TestGetAutoInvestPlanExecutionRecords(t *testing.T) {
 	_, err := e.GetAutoInvestPlanExecutionRecords(t.Context(), 0, 0, 0)
 	require.ErrorIs(t, err, errPlanIDRequired, "zero plan_id must return errPlanIDRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestPlanExecutionRecords(t.Context(), 12345, 0, 0)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/plans/records?plan_id=12345", `{}`)
+	}
+	result, err := ex.GetAutoInvestPlanExecutionRecords(t.Context(), 12345, 0, 0)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2539,16 +2797,28 @@ func TestGetAutoInvestPlanOrderDetails(t *testing.T) {
 	_, err = e.GetAutoInvestPlanOrderDetails(t.Context(), 1, 0)
 	require.ErrorIs(t, err, errRecordIDRequired, "zero record_id must return errRecordIDRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestPlanOrderDetails(t.Context(), 12345, 67890)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/orders?plan_id=12345&record_id=67890", `[]`)
+	}
+	result, err := ex.GetAutoInvestPlanOrderDetails(t.Context(), 12345, 67890)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetAutoInvestCurrencyConfig(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestCurrencyConfig(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/config", `[]`)
+	}
+	result, err := ex.GetAutoInvestCurrencyConfig(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2558,8 +2828,14 @@ func TestGetAutoInvestPlanDetails(t *testing.T) {
 	_, err := e.GetAutoInvestPlanDetails(t.Context(), 0)
 	require.ErrorIs(t, err, errPlanIDRequired, "zero plan_id must return errPlanIDRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestPlanDetails(t.Context(), 12345)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/plans/detail?plan_id=12345", `{}`)
+	}
+	result, err := ex.GetAutoInvestPlanDetails(t.Context(), 12345)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2569,8 +2845,14 @@ func TestGetAutoInvestPlanList(t *testing.T) {
 	_, err := e.GetAutoInvestPlanList(t.Context(), "", 0, 0)
 	require.ErrorIs(t, err, errPlanStatusRequired, "empty status must return errPlanStatusRequired")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetAutoInvestPlanList(t.Context(), "active", 1, 100)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/autoinvest/plans/list_info?page=1&page_size=100&status=active", `{}`)
+	}
+	result, err := ex.GetAutoInvestPlanList(t.Context(), "active", 1, 100)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2609,16 +2891,25 @@ func TestSetFixedTermSubscriptionOrder(t *testing.T) {
 	_, err = e.SetFixedTermSubscriptionOrder(t.Context(), &FixedTermSubscriptionRequest{ProductID: 1})
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin, "non-positive amount must return ErrAmountBelowMin")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.SetFixedTermSubscriptionOrder(t.Context(), &FixedTermSubscriptionRequest{ProductID: 1, Amount: 1})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/earn/fixed-term/user/lend", `{"code":0,"message":"","data":{"order_id":1},"timestamp":1700000000}`)
+	}
+	result, err := ex.SetFixedTermSubscriptionOrder(t.Context(), &FixedTermSubscriptionRequest{ProductID: 1, Amount: 1})
 	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NotNil(t, result)
+	assert.Equal(t, uint64(1), result.OrderID, "order ID must be decoded from the response data")
 }
 
 func TestGetFixedTermSubscriptionOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetFixedTermSubscriptionOrders(t.Context(), 11, "", currency.EMPTYCODE, 1, 10, time.Time{}, time.Time{}, "")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	result, err := e.GetFixedTermSubscriptionOrders(t.Context(), 1, 1, 10, 11, 0, "", currency.EMPTYCODE, "")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -2634,7 +2925,9 @@ func TestGetFixedTermSubscriptionHistory(t *testing.T) {
 	_, err = e.GetFixedTermSubscriptionHistory(t.Context(), 1, 1, 0, 0, 0, "", "", currency.EMPTYCODE, time.Time{}, time.Time{})
 	require.ErrorIs(t, err, errNoValidParameterPassed, "zero limit must return errNoValidParameterPassed")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetFixedTermSubscriptionHistory(t.Context(), 1, 1, 10, 0, 0, "", "", currency.EMPTYCODE, time.Time{}, time.Time{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -2926,8 +3219,19 @@ func TestGetWithdrawalsHistory(t *testing.T) {
 
 func TestGetAccountFundingHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetAccountFundingHistory(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodGet, r.Method, "request method should match")
+			assert.Contains(t, []string{"/api/v4/wallet/deposits", "/api/v4/wallet/withdrawals"}, r.URL.RequestURI(), "request URI should match")
+			_, writeErr := fmt.Fprint(w, `[]`)
+			assert.NoError(t, writeErr, "writing response should not error")
+		}))
+	}
+	_, err := ex.GetAccountFundingHistory(t.Context())
 	assert.NoError(t, err)
 }
 
@@ -2973,6 +3277,56 @@ func TestCancelExchangeOrder(t *testing.T) {
 }
 
 func TestCancelBatchOrders(t *testing.T) {
+	if mockTests {
+		pair := getPair(t, asset.Spot)
+		requestCount := 0
+		ex := newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method, "request method should match")
+			assert.Equal(t, "/api/v4/spot/cancel_batch_orders", r.URL.RequestURI(), "request URI should match")
+			var payload []map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); !assert.NoError(t, err, "request body should decode") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			expectedLength := 10
+			if requestCount == 1 {
+				expectedLength = 1
+			}
+			if !assert.Len(t, payload, expectedLength, "wrapper should retain ten-order request chunks") {
+				http.Error(w, "unexpected batch length", http.StatusBadRequest)
+				return
+			}
+			response := make([]*CancelOrderByIDResponse, len(payload))
+			for i := range payload {
+				expectedID := strconv.Itoa(requestCount*10 + i + 1)
+				assert.Equal(t, map[string]string{"currency_pair": pair.String(), "id": expectedID}, payload[i])
+				response[i] = &CancelOrderByIDResponse{CurrencyPair: pair, OrderID: expectedID, Succeeded: true}
+			}
+			requestCount++
+			encoded, marshalErr := json.Marshal(response)
+			if !assert.NoError(t, marshalErr, "response should encode") {
+				http.Error(w, marshalErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			_, writeErr := w.Write(encoded)
+			assert.NoError(t, writeErr, "writing response should not error")
+		}))
+		cancellations := make([]order.Cancel, 11)
+		for i := range cancellations {
+			cancellations[i] = order.Cancel{
+				OrderID:   strconv.Itoa(i + 1),
+				AccountID: "1",
+				Pair:      pair,
+				AssetType: asset.Spot,
+			}
+		}
+		result, err := ex.CancelBatchOrders(t.Context(), cancellations)
+		require.NoError(t, err)
+		assert.Len(t, result.Status, 11)
+		assert.Equal(t, 2, requestCount, "eleven wrapper cancellations should use two requests")
+		return
+	}
+
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	for _, a := range e.GetAssetTypes(false) {
 		_, err := e.CancelBatchOrders(t.Context(), []order.Cancel{
@@ -3284,7 +3638,7 @@ var wsOptionsPushDataHandler = map[string]string{
 	"options.trades":                `{"time": 1630576356,	"channel": "options.trades",	"event": "update",	"result": [{"contract": "BTC_USDT-20211231-59800-C",        "create_time": 1639144526,        "id": 12279,        "price": 997.8,        "size": -100,        "create_time_ms": 1639144526597,        "underlying": "BTC_USDT"    }	]}`,
 	"options.ul_trades":             `{"time": 1630576356,	"channel": "options.ul_trades",	"event": "update",	"result": [{"contract": "BTC_USDT-20211231-59800-C","create_time": 1639144526,"id": 12279,"price": 997.8,"size": -100,"create_time_ms": 1639144526597,"underlying": "BTC_USDT","is_call": true}	]}`,
 	"options.ul_price":              `{"time": 1630576356,	"channel": "options.ul_price",	"event": "update",	"result": {"underlying": "BTC_USDT",	   "price": 49653.24,"time": 1639143988,"time_ms": 1639143988931}}`,
-	"options.mark_price":            `{"time": 1630576356,	"channel": "options.mark_price",	"event": "update",	"result": {"contract": "BTC_USDT-20211231-59800-P",    "price": 11021.27,    "time": 1639143401,    "time_ms": 1639143401676}}`,
+	"options.mark_prices":           `{"time": 1630576356,	"channel": "options.mark_prices",	"event": "update",	"result": {"contract": "BTC_USDT-20211231-59800-P",    "price": 11021.27,    "time": 1639143401,    "time_ms": 1639143401676}}`,
 	"options.settlements":           `{"time": 1630576356,	"channel": "options.settlements",	"event": "update",	"result": {"contract": "BTC_USDT-20211130-55000-P",	   "orderbook_id": 2,	   "position_size": 1,	   "profit": 0.5,"settle_price": 70000,	   "strike_price": 65000,	   "tag": "WEEK",	   "trade_id": 1,	   "trade_size": 1,	   "underlying": "BTC_USDT",	   "time": 1639051907,	   "time_ms": 1639051907000}}`,
 	"options.contracts":             `{"time": 1630576356,	"channel": "options.contracts",	"event": "update",	"result": {	   "contract": "BTC_USDT-20211130-50000-P",	   "create_time": 1637917026,	   "expiration_time": 1638230400,"init_margin_high": 0.15,	   "init_margin_low": 0.1,	   "is_call": false,	   "maint_margin_base": 0.075,	   "maker_fee_rate": 0.0004,	   "mark_price_round": 0.1,	   "min_balance_short": 0.5,	   "min_order_margin": 0.1,	   "multiplier": 0.0001,	   "order_price_deviate": 0,	   "order_price_round": 0.1,	   "order_size_max": 1,	   "order_size_min": 10,	   "orders_limit": 100000,	   "ref_discount_rate": 0.1,	   "ref_rebate_rate": 0,	   "strike_price": 50000,	   "tag": "WEEK",	   "taker_fee_rate": 0.0004,	   "underlying": "BTC_USDT",	   "time": 1639051907,	   "time_ms": 1639051907000}}`,
 	"options.contract_candlesticks": `{	"time": 1630650451,	"channel": "options.contract_candlesticks",	"event": "update",	"result": [{"t": 1639039260,       "v": 100,       "c": "1041.4",       "h": "1041.4",       "l": "1041.4","o": "1041.4",       "a": "0",       "n": "10s_BTC_USDT-20211231-59800-C"   }	]}`,
@@ -3311,6 +3665,106 @@ func TestWsHandleOptionsData(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestWsHandleOptionsDataDecodesBareResults(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		payload string
+		assert  func(*testing.T, any)
+	}{
+		{
+			name:    "underlying ticker",
+			payload: wsOptionsPushDataHandler[optionsUnderlyingTickersChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionUnderlyingTicker)
+				require.True(t, ok, "underlying ticker push must decode to WsOptionUnderlyingTicker")
+				assert.Equal(t, "BTC_USDT", got.Name, "underlying name must match the result payload")
+				assert.Equal(t, 50695.43, got.IndexPrice.Float64(), "index price must match the result payload")
+			},
+		},
+		{
+			name:    "underlying price",
+			payload: wsOptionsPushDataHandler[optionsUnderlyingPriceChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionsUnderlyingPrice)
+				require.True(t, ok, "underlying price push must decode to WsOptionsUnderlyingPrice")
+				assert.Equal(t, "BTC_USDT", got.Underlying, "underlying must match the result payload")
+				assert.Equal(t, 49653.24, got.Price.Float64(), "underlying price must match the result payload")
+			},
+		},
+		{
+			name:    "mark price",
+			payload: wsOptionsPushDataHandler[optionsMarkPriceChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionsMarkPrice)
+				require.True(t, ok, "mark price push must decode to WsOptionsMarkPrice")
+				assert.Equal(t, 11021.27, got.Price.Float64(), "mark price must match the result payload")
+			},
+		},
+		{
+			name:    "settlement",
+			payload: wsOptionsPushDataHandler[optionsSettlementChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionsSettlement)
+				require.True(t, ok, "settlement push must decode to WsOptionsSettlement")
+				assert.Equal(t, "BTC_USDT", got.Underlying, "settlement underlying must match the result payload")
+				assert.Equal(t, 70000.0, got.SettlePrice.Float64(), "settlement price must match the result payload")
+			},
+		},
+		{
+			name:    "contract",
+			payload: wsOptionsPushDataHandler[optionsContractsChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionsContract)
+				require.True(t, ok, "contract push must decode to WsOptionsContract")
+				assert.Equal(t, "BTC_USDT", got.Underlying, "contract underlying must match the result payload")
+				assert.Equal(t, 0.0001, got.Multiplier.Float64(), "contract multiplier must match the result payload")
+			},
+		},
+		{
+			name:    "orderbook ticker",
+			payload: wsOptionsPushDataHandler[optionsOrderbookTickerChannel],
+			assert: func(t *testing.T, data any) {
+				t.Helper()
+				got, ok := data.(*WsOptionsOrderbookTicker)
+				require.True(t, ok, "orderbook ticker push must decode to WsOptionsOrderbookTicker")
+				assert.Equal(t, "BTC_USDT-20211130-50000-C", got.ContractName, "contract must match the result payload")
+				assert.Equal(t, uint64(2517661076), got.UpdateID, "update ID must match the result payload")
+				assert.Equal(t, 54696.6, got.BidPrice.Float64(), "bid price must match the result payload")
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ex := new(Exchange)
+			require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")
+			require.NoError(t, ex.WsHandleOptionsData(t.Context(), nil, []byte(tc.payload)), "WsHandleOptionsData must not error")
+			tc.assert(t, (<-ex.Websocket.DataHandler.C).Data)
+		})
+	}
+}
+
+func TestWsHandleFuturesDataDecodesBareOrderbookTicker(t *testing.T) {
+	t.Parallel()
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")
+	payload := []byte(`{"time":1615366379,"channel":"futures.book_ticker","event":"update","result":{"t":1615366379123,"u":2517661076,"s":"BTC_USD","b":"54696.6","B":37000,"a":"54696.7","A":47061}}`)
+	require.NoError(t, ex.WsHandleFuturesData(t.Context(), nil, payload, asset.CoinMarginedFutures), "WsHandleFuturesData must not error")
+
+	got, ok := (<-ex.Websocket.DataHandler.C).Data.(*WsFuturesOrderbookTicker)
+	require.True(t, ok, "orderbook ticker push must decode to WsFuturesOrderbookTicker")
+	assert.Equal(t, "BTC_USD", got.CurrencyPair, "currency pair must match the result payload")
+	assert.Equal(t, uint64(2517661076), got.UpdateID, "update ID must match the result payload")
+	assert.Equal(t, 54696.6, got.BestBidPrice.Float64(), "best bid price must match the result payload")
 }
 
 var wsOptionsAuthenticatedDataHandler = map[string]string{
@@ -3421,6 +3875,22 @@ func TestGenerateDeliveryFuturesDefaultSubscriptionsSkipsUnsupportedAsset(t *tes
 	got, err := ex.GenerateDeliveryFuturesDefaultSubscriptions(asset.BTCMarginedDeliveryFutures)
 	require.NoError(t, err, "GenerateDeliveryFuturesDefaultSubscriptions must not error for unsupported delivery asset")
 	require.Empty(t, got, "unsupported delivery asset must not generate subscriptions")
+}
+
+func TestGenerateOptionsDefaultSubscriptions(t *testing.T) {
+	t.Parallel()
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")
+
+	subs, err := ex.GenerateOptionsDefaultSubscriptions()
+	require.NoError(t, err, "GenerateOptionsDefaultSubscriptions must not error")
+	require.NotEmpty(t, subs, "GenerateOptionsDefaultSubscriptions must return subscriptions")
+	for _, sub := range subs {
+		assert.Equal(t, asset.Options, sub.Asset, "subscription asset must be options")
+		require.Len(t, sub.Pairs, 1, "option subscription must contain one pair")
+		assert.False(t, sub.Pairs[0].IsEmpty(), "option subscription pair must be populated")
+	}
 }
 
 func TestGenerateOptionsDefaultSubscriptionsSkipsDisabledAssetBeforeAuth(t *testing.T) {
@@ -3822,8 +4292,14 @@ func TestGetMaximumBorrowableAmountUnifiedAccount(t *testing.T) {
 	_, err := e.GetMaximumBorrowableAmountUnifiedAccount(t.Context(), currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetMaximumBorrowableAmountUnifiedAccount(t.Context(), currency.ETH)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/borrowable?currency=ETH", `{"currency":"ETH","amount":"1"}`)
+	}
+	result, err := ex.GetMaximumBorrowableAmountUnifiedAccount(t.Context(), currency.ETH)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -3833,8 +4309,14 @@ func TestGetUnifiedAccountMaximumTransferableAmount(t *testing.T) {
 	_, err := e.GetUnifiedAccountMaximumTransferableAmount(t.Context(), currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUnifiedAccountMaximumTransferableAmount(t.Context(), currency.ETH)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/transferable?currency=ETH", `{"currency":"ETH","amount":"1"}`)
+	}
+	result, err := ex.GetUnifiedAccountMaximumTransferableAmount(t.Context(), currency.ETH)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -3847,8 +4329,14 @@ func TestGetMultipleTransferableAmountForUnifiedAccounts(t *testing.T) {
 	_, err = e.GetMultipleTransferableAmountForUnifiedAccounts(t.Context(), currency.BTC, currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetMultipleTransferableAmountForUnifiedAccounts(t.Context(), currency.BTC, currency.ETH)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/transferables?currencies=BTC%2CETH", `[{"currency":"BTC","amount":"1"},{"currency":"ETH","amount":"1"}]`)
+	}
+	result, err := ex.GetMultipleTransferableAmountForUnifiedAccounts(t.Context(), currency.BTC, currency.ETH)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -3861,8 +4349,14 @@ func TestGetBatchUnifiedAccountMaximumBorrowableAmount(t *testing.T) {
 	_, err = e.GetBatchUnifiedAccountMaximumBorrowableAmount(t.Context(), currency.BTC, currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetBatchUnifiedAccountMaximumBorrowableAmount(t.Context(), currency.BTC, currency.ETH)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/batch_borrowable?currencies=BTC%2CETH", `[{"currency":"BTC","amount":"1"},{"currency":"ETH","amount":"1"}]`)
+	}
+	result, err := ex.GetBatchUnifiedAccountMaximumBorrowableAmount(t.Context(), currency.BTC, currency.ETH)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -3876,22 +4370,40 @@ func TestBorrowOrRepay(t *testing.T) {
 	_, err = e.BorrowOrRepay(t.Context(), &BorrowOrRepayRequest{Currency: currency.ETH, Type: "borrow"})
 	require.ErrorIs(t, err, order.ErrAmountIsInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.BorrowOrRepay(t.Context(), &BorrowOrRepayRequest{Amount: 2, Currency: currency.ETH, Type: "borrow"})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/unified/loans", `{"currency":"ETH","type":"borrow","amount":"2"}`, `{"tran_id":"1"}`)
+	}
+	_, err = ex.BorrowOrRepay(t.Context(), &BorrowOrRepayRequest{Amount: 2, Currency: currency.ETH, Type: "borrow"})
 	assert.NoError(t, err)
 }
 
 func TestGetLoans(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetLoans(t.Context(), currency.ETH, "repay", 0, 1000)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/loans?currency=ETH&limit=1000&type=repay", `[]`)
+	}
+	_, err := ex.GetLoans(t.Context(), currency.ETH, "repay", 0, 1000)
 	assert.NoError(t, err)
 }
 
 func TestGetLoanRecords(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetLoanRecords(t.Context(), currency.ETH, "repay", 0, 1000)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/loan_records?currency=ETH&limit=1000&type=repay", `[]`)
+	}
+	_, err := ex.GetLoanRecords(t.Context(), currency.ETH, "repay", 0, 1000)
 	assert.NoError(t, err)
 }
 
@@ -3901,15 +4413,27 @@ func TestGetInterestDeductionRecords(t *testing.T) {
 	_, err := e.GetInterestDeductionRecords(t.Context(), currency.BTC, 0, 10, endTime, startTime, "platform")
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err = e.GetInterestDeductionRecords(t.Context(), currency.BTC, 0, 10, startTime, endTime, "platform")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/interest_records?currency=BTC&from=1744103854&limit=10&to=1744190254&type=platform", `[]`)
+	}
+	_, err = ex.GetInterestDeductionRecords(t.Context(), currency.BTC, 0, 10, startTime, endTime, "platform")
 	assert.NoError(t, err)
 }
 
 func TestGetUserRiskUnitDetails(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetUserRiskUnitDetails(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/risk_units", `{}`)
+	}
+	_, err := ex.GetUserRiskUnitDetails(t.Context())
 	assert.NoError(t, err)
 }
 
@@ -3921,15 +4445,27 @@ func TestSetUnifiedAccountMode(t *testing.T) {
 	err = e.SetUnifiedAccountMode(t.Context(), &UnifiedAccountMode{Settings: &UnifiedAccountModeSettings{}})
 	require.ErrorIs(t, err, errMissingUnifiedAccountMode)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.SetUnifiedAccountMode(t.Context(), &UnifiedAccountMode{Mode: "portfolio"})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPut, "/api/v4/unified/unified_mode", `{}`)
+	}
+	err = ex.SetUnifiedAccountMode(t.Context(), &UnifiedAccountMode{Mode: "portfolio"})
 	assert.NoError(t, err)
 }
 
 func TestGetUnifiedAccountMode(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUnifiedAccountMode(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/unified_mode", `{"mode":"portfolio"}`)
+	}
+	result, err := ex.GetUnifiedAccountMode(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -3939,27 +4475,71 @@ func TestGetUnifiedAccountEstimatedInterestRate(t *testing.T) {
 	_, err := e.GetUnifiedAccountEstimatedInterestRate(t.Context(), nil)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	_, err = e.GetUnifiedAccountEstimatedInterestRate(t.Context(), []string{"BTC", "USDT", ""})
+	_, err = e.GetUnifiedAccountEstimatedInterestRate(t.Context(), []currency.Code{currency.BTC, currency.USDT, currency.EMPTYCODE})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUnifiedAccountEstimatedInterestRate(t.Context(), []string{"BTC", "USDT", "ETH"})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/estimate_rate?currencies=BTC%2CUSDT%2CETH", `{"BTC":"0.01","USDT":"0.01","ETH":"0.01"}`)
+	}
+	result, err := ex.GetUnifiedAccountEstimatedInterestRate(t.Context(), []currency.Code{currency.BTC, currency.USDT, currency.ETH})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetUnifiedAccountTiered(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUnifiedAccountTiered(t.Context())
+	ex := e
+	if mockTests {
+		ex = newHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/currency_discount_tiers", `[]`)
+	}
+	result, err := ex.GetUnifiedAccountTiered(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetUnifiedAccountTieredLoanMargin(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUnifiedAccountTieredLoanMargin(t.Context())
+	ex := e
+	if mockTests {
+		ex = newHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/loan_margin_tiers", `[]`)
+	}
+	result, err := ex.GetUnifiedAccountTieredLoanMargin(t.Context())
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
+func TestSetUserLeverage(t *testing.T) {
+	t.Parallel()
+
+	_, err := e.SetUserLeverage(t.Context(), 0)
+	require.ErrorIs(t, err, errInvalidLeverage)
+
+	_, err = e.SetUserLeverage(t.Context(), -1)
+	require.ErrorIs(t, err, errInvalidLeverage)
+
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method, "request method should match")
+			assert.Equal(t, "/api/v4/unified/leverage/user_setting", r.URL.RequestURI(), "request URI should match")
+			var payload map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&payload); !assert.NoError(t, err, "request body should decode") {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, map[string]string{"leverage": "10"}, payload)
+			_, err := fmt.Fprint(w, `[{"currency":"USDT","reason":"outstanding loans"}]`)
+			assert.NoError(t, err, "writing response should not error")
+		}))
+	}
+	result, err := ex.SetUserLeverage(t.Context(), 10)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -4014,18 +4594,7 @@ func TestCalculatePortfolioMargin(t *testing.T) {
 	_, err = e.CalculatePortfolioMargin(t.Context(), &PortfolioMarginCalculatorParams{OptionsOrders: []*OptionsOrderInfo{{OptionsName: currency.NewBTCUSDT(), Size: 1}}})
 	require.ErrorIs(t, err, errInvalidOrderSize)
 
-	if mockTests {
-		result, err := e.CalculatePortfolioMargin(t.Context(), &PortfolioMarginCalculatorParams{})
-		require.NoError(t, err, "CalculatePortfolioMargin must not error")
-		assert.NotNil(t, result, "result should not be nil")
-		return
-	}
-
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.CalculatePortfolioMargin(t.Context(), &PortfolioMarginCalculatorParams{
-		SpotBalances: []*SpotBalanceParams{{Currency: currency.BTC, Equity: 0.5}},
-		SpotHedge:    true,
-	})
+	result, err := e.CalculatePortfolioMargin(t.Context(), &PortfolioMarginCalculatorParams{})
 	require.NoError(t, err, "CalculatePortfolioMargin must not error")
 	assert.NotNil(t, result, "result should not be nil")
 }
@@ -4051,7 +4620,9 @@ func TestSetLoanCurrencyLeverage(t *testing.T) {
 	err = e.SetLoanCurrencyLeverage(t.Context(), &UnifiedLeverageSetting{Currency: currency.BTC})
 	require.ErrorIs(t, err, errInvalidLeverage)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	err = e.SetLoanCurrencyLeverage(t.Context(), &UnifiedLeverageSetting{Currency: currency.BTC, Leverage: 3})
 	assert.NoError(t, err)
 }
@@ -4091,8 +4662,14 @@ func TestSetUnifiedCollateralCurrency(t *testing.T) {
 	_, err := e.SetUnifiedCollateralCurrency(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "must return nil pointer error")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.SetUnifiedCollateralCurrency(t.Context(), &UnifiedSetCollateralRequest{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/unified/collateral_currencies", `{}`)
+	}
+	result, err := ex.SetUnifiedCollateralCurrency(t.Context(), &UnifiedSetCollateralRequest{
 		CollateralType: 1,
 		EnableList:     []string{"BTC", "ETH"},
 	})
@@ -4121,8 +4698,14 @@ func TestQuickRepayment(t *testing.T) {
 	_, err = e.QuickRepayment(t.Context(), &UnifiedQuickRepaymentRequest{DebtCurrencies: []currency.Code{currency.USDT}})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodesEmpty, "must return available currencies required error")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.QuickRepayment(t.Context(), &UnifiedQuickRepaymentRequest{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/unified/quick_repayment", `{"order_id":"1","repaid_info":[],"used_info":[]}`)
+	}
+	result, err := ex.QuickRepayment(t.Context(), &UnifiedQuickRepaymentRequest{
 		DebtCurrencies:      []currency.Code{currency.USDT, currency.ETH},
 		AvailableCurrencies: []currency.Code{currency.USDT, currency.BTC},
 	})
@@ -4599,8 +5182,14 @@ func TestConvertSmallBalances(t *testing.T) {
 
 func TestGetConvertibleSmallBalanceCurrencyHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetConvertibleSmallBalanceCurrencyHistory(t.Context(), currency.ETH, 1, 10)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/wallet/small_balance_history?currency=ETH&limit=10&page=1", `[]`)
+	}
+	_, err := ex.GetConvertibleSmallBalanceCurrencyHistory(t.Context(), currency.ETH, 1, 10)
 	require.NoError(t, err)
 }
 
@@ -4625,22 +5214,31 @@ func TestCreateSelfTradePreventionUserGroup(t *testing.T) {
 	_, err := e.CreateSelfTradePreventionUserGroup(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	_, err = e.CreateSelfTradePreventionUserGroup(t.Context(), &STPUserGroup{Name: "", ID: 234235664353})
+	_, err = e.CreateSelfTradePreventionUserGroup(t.Context(), &CreateSTPUserGroupRequest{})
 	require.ErrorIs(t, err, errSTPGroupNameRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.CreateSelfTradePreventionUserGroup(t.Context(), &STPUserGroup{
-		Name:      "stp_groups",
-		CreatorID: 879868760123,
-	})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/account/stp_groups", `{"name":"stp_groups"}`, `{"id":1,"name":"stp_groups","creator_id":879868760123,"create_time":1673330166}`)
+	}
+	result, err := ex.CreateSelfTradePreventionUserGroup(t.Context(), &CreateSTPUserGroupRequest{Name: "stp_groups"})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
 
 func TestGetUserSelfTradePreventionGroups(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUserSelfTradePreventionGroups(t.Context(), "thrasher")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/account/stp_groups?name=thrasher", `[{"id":1,"name":"thrasher"}]`)
+	}
+	result, err := ex.GetUserSelfTradePreventionGroups(t.Context(), "thrasher")
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
@@ -4650,8 +5248,14 @@ func TestGetUsersInSTPUserGroup(t *testing.T) {
 	_, err := e.GetUsersInSTPUserGroup(t.Context(), "")
 	require.ErrorIs(t, err, errSTPGroupIDRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUsersInSTPUserGroup(t.Context(), "1")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/account/stp_groups/1/users", `[{"user_id":1,"stp_id":1}]`)
+	}
+	result, err := ex.GetUsersInSTPUserGroup(t.Context(), "1")
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
@@ -4664,8 +5268,14 @@ func TestAddUsersToSTPUserGroup(t *testing.T) {
 	_, err = e.AddUsersToSTPUserGroup(t.Context(), "2123", nil)
 	require.ErrorIs(t, err, errUserIDRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.AddUsersToSTPUserGroup(t.Context(), "1", []uint64{12312312, 2132234232})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/account/stp_groups/1/users", `[{"user_id":12312312,"stp_id":1}]`)
+	}
+	result, err := ex.AddUsersToSTPUserGroup(t.Context(), "1", []uint64{12312312, 2132234232})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
@@ -4678,23 +5288,41 @@ func TestDeleteUserFromSTPUserGroup(t *testing.T) {
 	_, err = e.DeleteUserFromSTPUserGroup(t.Context(), "2123", 0)
 	require.ErrorIs(t, err, errUserIDRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.DeleteUserFromSTPUserGroup(t.Context(), "1", 12312312)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodDelete, "/api/v4/account/stp_groups/1/users?user_id=12312312", `[{"user_id":12312312,"stp_id":1}]`)
+	}
+	result, err := ex.DeleteUserFromSTPUserGroup(t.Context(), "1", 12312312)
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
 }
 
 func TestConfigureGTFeeDeduction(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	err := e.ConfigureGTFeeDeduction(t.Context(), false)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/account/debit_fee", `{}`)
+	}
+	err := ex.ConfigureGTFeeDeduction(t.Context(), false)
 	assert.NoError(t, err)
 }
 
 func TestGetGTFeeDeductionConfiguration(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetGTFeeDeductionConfiguration(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/account/debit_fee", `{"enabled":true}`)
+	}
+	_, err := ex.GetGTFeeDeductionConfiguration(t.Context())
 	assert.NoError(t, err)
 }
 
@@ -4709,24 +5337,46 @@ func TestPlaceMultiCollateralLoanOrder(t *testing.T) {
 	_, err = e.PlaceMultiCollateralLoanOrder(t.Context(), &MultiCollateralLoanOrderParam{BorrowCurrency: currency.ETH})
 	require.ErrorIs(t, err, order.ErrAmountIsInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.PlaceMultiCollateralLoanOrder(t.Context(), &MultiCollateralLoanOrderParam{BorrowCurrency: currency.ETH, BorrowAmount: 123})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/loan/multi_collateral/orders", `{"order_id":1}`)
+	}
+	result, err := ex.PlaceMultiCollateralLoanOrder(t.Context(), &MultiCollateralLoanOrderParam{BorrowCurrency: currency.ETH, BorrowAmount: 123})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetMultiCollateralLoanOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "", "current")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodGet, r.Method, "request method should match")
+			expectedPaths := map[string]bool{
+				"/api/v4/loan/multi_collateral/orders?limit=100&order_type=current&page=1":                true,
+				"/api/v4/loan/multi_collateral/orders?limit=100&page=1&sort=time_desc":                    true,
+				"/api/v4/loan/multi_collateral/orders?limit=100&order_type=current&page=1&sort=time_desc": true,
+			}
+			assert.True(t, expectedPaths[r.URL.RequestURI()], "request URI should match")
+			_, err := fmt.Fprint(w, `[]`)
+			assert.NoError(t, err, "writing response should not error")
+		}))
+	}
+	result, err := ex.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "", "current")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 
-	result, err = e.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "time_desc", "")
+	result, err = ex.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "time_desc", "")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 
-	result, err = e.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "time_desc", "current")
+	result, err = ex.GetMultiCollateralLoanOrders(t.Context(), 1, 100, "time_desc", "current")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -4738,7 +5388,13 @@ var (
 
 func getPair(tb testing.TB, a asset.Item) currency.Pair {
 	tb.Helper()
-	return enabledAssetPair[a]
+	if mockTests {
+		return enabledAssetPair[a]
+	}
+	pairs := getPairs(tb, a)
+	pair, err := e.FormatExchangeCurrency(pairs[0], a)
+	require.NoError(tb, err, "FormatExchangeCurrency must not error")
+	return pair
 }
 
 func getPairs(tb testing.TB, a asset.Item) currency.Pairs {
@@ -5120,8 +5776,14 @@ func TestTransferBetweenSubAccountsByUID(t *testing.T) {
 	_, err = e.TransferBetweenSubAccountsByUID(t.Context(), &SubAccountTransfer{Amount: 1., ReceiveUID: 2231234})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.TransferBetweenSubAccountsByUID(t.Context(), &SubAccountTransfer{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/withdrawals/push", `{}`)
+	}
+	_, err = ex.TransferBetweenSubAccountsByUID(t.Context(), &SubAccountTransfer{
 		Amount:     1.,
 		ReceiveUID: 2231234,
 		Currency:   currency.ETH,
@@ -5134,24 +5796,55 @@ func TestGetOrderDetails(t *testing.T) {
 	_, err := e.GetOrderDetails(t.Context(), "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetOrderDetails(t.Context(), "1234556")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/loan/multi_collateral/orders/1234556", `{}`)
+	}
+	result, err := ex.GetOrderDetails(t.Context(), "1234556")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
-func TestRepayMultiCollateraLoan(t *testing.T) {
+func TestRepayMultiCollateralLoan(t *testing.T) {
 	t.Parallel()
-	_, err := e.RepayMultiCollateraLoan(t.Context(), &MultiCollateralLoanRepaymentParams{})
+	_, err := e.RepayMultiCollateralLoan(t.Context(), &MultiCollateralLoanRepaymentParams{})
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	_, err = e.RepayMultiCollateraLoan(t.Context(), &MultiCollateralLoanRepaymentParams{OrderID: "1234"})
+	_, err = e.RepayMultiCollateralLoan(t.Context(), &MultiCollateralLoanRepaymentParams{OrderID: "1234"})
 	require.ErrorIs(t, err, currency.ErrCurrencyNotSupported)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.RepayMultiCollateraLoan(t.Context(), &MultiCollateralLoanRepaymentParams{OrderID: "1234", RepayItems: []LoanRepaymentMultiCollateralAssetItem{{Currency: currency.USDT}}})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/loan/multi_collateral/repay",
+			`{"order_id":"1234","repay_items":[{"currency":"USDT","amount":"1","repaid_all":false}]}`,
+			`{"order_id":1234,"repaid_currencies":[]}`,
+		)
+	}
+	result, err := ex.RepayMultiCollateralLoan(t.Context(), &MultiCollateralLoanRepaymentParams{OrderID: "1234", RepayItems: []LoanRepaymentMultiCollateralAssetItem{{Currency: currency.USDT, Amount: 1}}})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
+
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/loan/multi_collateral/repay",
+			`{"order_id":"1234","repay_items":[{"currency":"USDT","amount":"0","repaid_all":true}]}`,
+			`{"order_id":1234,"repaid_currencies":[]}`,
+		)
+		result, err = ex.RepayMultiCollateralLoan(t.Context(), &MultiCollateralLoanRepaymentParams{OrderID: "1234", RepayItems: []LoanRepaymentMultiCollateralAssetItem{{Currency: currency.USDT, RepaidAll: true}}})
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+	}
 }
 
 func TestGetMultiCurrencyCollateralRepaymentRecords(t *testing.T) {
@@ -5163,8 +5856,14 @@ func TestGetMultiCurrencyCollateralRepaymentRecords(t *testing.T) {
 	_, err = e.GetMultiCurrencyCollateralRepaymentRecords(t.Context(), "repay", currency.USDT, 0, 10, endTime, startTime)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetMultiCurrencyCollateralRepaymentRecords(t.Context(), "repay", currency.USDT, 0, 10, time.Time{}, time.Time{})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/loan/multi_collateral/repay?borrow_currency=USDT&limit=10&type=repay", `[]`)
+	}
+	result, err := ex.GetMultiCurrencyCollateralRepaymentRecords(t.Context(), "repay", currency.USDT, 0, 10, time.Time{}, time.Time{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5177,8 +5876,14 @@ func TestAddOrWithdrawCollateral(t *testing.T) {
 	_, err = e.AddOrWithdrawCollateral(t.Context(), &AddOrWithdrawCollateralParams{OrderID: 12344})
 	require.ErrorIs(t, err, errLoanTypeIsRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.AddOrWithdrawCollateral(t.Context(), &AddOrWithdrawCollateralParams{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/loan/multi_collateral/mortgage", `{"order_id":12344,"collateral_currencies":[]}`)
+	}
+	result, err := ex.AddOrWithdrawCollateral(t.Context(), &AddOrWithdrawCollateralParams{
 		OrderID:       12344,
 		OperationType: "withdraw",
 	})
@@ -5192,8 +5897,14 @@ func TestGetMultiCollateralAdjustmentRecords(t *testing.T) {
 	_, err := e.GetMultiCollateralAdjustmentRecords(t.Context(), 1, 10, endTime, startTime, currency.ETH)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetMultiCollateralAdjustmentRecords(t.Context(), 1, 10, startTime, endTime, currency.ETH)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/loan/multi_collateral/mortgage?collateral_currency=ETH&from=1744103854&limit=10&page=1&to=1744190254", `[]`)
+	}
+	result, err := ex.GetMultiCollateralAdjustmentRecords(t.Context(), 1, 10, startTime, endTime, currency.ETH)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5205,7 +5916,9 @@ func TestGetMultiCollateralCurrencyQuota(t *testing.T) {
 	_, err = e.GetMultiCollateralCurrencyQuota(t.Context(), "collateral", "")
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty, "empty currency must return ErrCurrencyCodeEmpty")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetMultiCollateralCurrencyQuota(t.Context(), "collateral", "BTC")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -5280,6 +5993,51 @@ func TestWebsocketSubmitOrders(t *testing.T) {
 	cpy.AssetType = asset.Spot
 	_, err = e.WebsocketSubmitOrders(request.WithVerbose(t.Context()), []*order.Submit{sub, &cpy})
 	require.NoError(t, err)
+}
+
+func TestValidateOrderCreateParams(t *testing.T) {
+	t.Parallel()
+
+	assert.ErrorIs(t, (*FuturesOrderCreateParams)(nil).validate(false), common.ErrNilPointer, "nil FuturesOrderCreateParams must error")
+	assert.ErrorIs(t, (*DeliveryOrderCreateParams)(nil).validate(false), common.ErrNilPointer, "nil DeliveryOrderCreateParams must error")
+
+	for _, tc := range []struct {
+		name        string
+		contract    currency.Pair
+		size        types.Number
+		timeInForce string
+		text        string
+		autoSize    string
+		settle      currency.Code
+		isREST      bool
+		err         error
+	}{
+		{name: "empty contract", err: currency.ErrCurrencyPairEmpty},
+		{name: "invalid order size", contract: BTCUSDT, err: errInvalidOrderSize},
+		{name: "bad time in force", contract: BTCUSDT, size: 1, timeInForce: "bad", err: order.ErrUnsupportedTimeInForce},
+		{name: "unsupported POC market order", contract: BTCUSDT, size: 1, timeInForce: pocTIF, err: order.ErrUnsupportedTimeInForce},
+		{name: "invalid text prefix", contract: BTCUSDT, size: 1, timeInForce: iocTIF, text: "test", err: errInvalidTextPrefix},
+		{name: "invalid auto size", contract: BTCUSDT, size: 1, timeInForce: iocTIF, text: "t-test", autoSize: "invalid", err: errInvalidAutoSize},
+		{name: "nonzero size with auto size", contract: BTCUSDT, size: 1, timeInForce: iocTIF, text: "t-test", autoSize: "close_long", err: order.ErrAmountIsInvalid},
+		{name: "REST missing settle", contract: BTCUSDT, timeInForce: iocTIF, text: "t-test", autoSize: "close_long", isREST: true, err: currency.ErrCurrencyCodeEmpty},
+		{name: "websocket invalid settle", contract: BTCUSDT, timeInForce: iocTIF, text: "t-test", autoSize: "close_long", settle: currency.NewCode("invalid"), err: currency.ErrCurrencyCodeEmpty},
+		{name: "valid", contract: BTCUSDT, timeInForce: iocTIF, text: "t-test", autoSize: "close_long", settle: currency.USDT},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			futuresParams := &FuturesOrderCreateParams{
+				Contract: tc.contract, Size: tc.size, TimeInForce: tc.timeInForce,
+				Text: tc.text, AutoSize: tc.autoSize, Settle: tc.settle,
+			}
+			assert.ErrorIs(t, futuresParams.validate(tc.isREST), tc.err, "FuturesOrderCreateParams validate must return the expected error")
+
+			deliveryParams := &DeliveryOrderCreateParams{
+				Contract: tc.contract, Size: tc.size, TimeInForce: tc.timeInForce,
+				Text: tc.text, AutoSize: tc.autoSize, Settle: tc.settle,
+			}
+			assert.ErrorIs(t, deliveryParams.validate(tc.isREST), tc.err, "DeliveryOrderCreateParams validate must return the expected error")
+		})
+	}
 }
 
 func TestUnmarshalJSONOrderbookLevels(t *testing.T) {
@@ -5363,16 +6121,38 @@ func TestCreateLendingOrRedemption(t *testing.T) {
 	err = e.CreateLendingOrRedemption(t.Context(), arg)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.MinRate = 0.00000211
-	err = e.CreateLendingOrRedemption(t.Context(), arg)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/uni/lends", `{"currency":"USDT","amount":"1","min_rate":"0.00000211","type":"lend"}`, `{}`)
+	}
+	err = ex.CreateLendingOrRedemption(t.Context(), arg)
 	require.NoError(t, err)
+
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPost, "/api/v4/earn/uni/lends", `{"currency":"USDT","amount":"1","type":"redeem"}`, `{}`)
+		err = ex.CreateLendingOrRedemption(t.Context(), &LendingOrRedemptionRequest{
+			Currency: currency.USDT,
+			Amount:   1,
+			Type:     "redeem",
+		})
+		require.NoError(t, err, "redemption should not require a minimum rate")
+	}
 }
 
 func TestGetUserLendingOrderList(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUserLendingOrderList(t.Context(), currency.USDT, 10, 100)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/lends?currency=USDT&limit=100&page=10", `[]`)
+	}
+	result, err := ex.GetUserLendingOrderList(t.Context(), currency.USDT, 10, 100)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5385,8 +6165,14 @@ func TestAmendUserLendingInformation(t *testing.T) {
 	err = e.AmendUserLendingInformation(t.Context(), currency.USDT, 0)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.AmendUserLendingInformation(t.Context(), currency.USDT, 0.0001)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(t, http.MethodPatch, "/api/v4/earn/uni/lends", `{"currency":"USDT","min_rate":"0.0001"}`, `{}`)
+	}
+	err = ex.AmendUserLendingInformation(t.Context(), currency.USDT, 0.0001)
 	require.NoError(t, err)
 }
 
@@ -5396,8 +6182,14 @@ func TestGetLendingTransactionRecords(t *testing.T) {
 	_, err := e.GetLendingTransactionRecords(t.Context(), currency.USDT, 1, 100, endTime, startTime, "lend")
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetLendingTransactionRecords(t.Context(), currency.USDT, 10, 100, startTime, endTime, "redeem")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/lend_records?currency=USDT&from=1744103854&limit=100&page=10&to=1744190254&type=redeem", `[]`)
+	}
+	result, err := ex.GetLendingTransactionRecords(t.Context(), currency.USDT, 10, 100, startTime, endTime, "redeem")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5407,8 +6199,14 @@ func TestGetUserTotalInterestIncomePerCurrency(t *testing.T) {
 	_, err := e.GetUserTotalInterestIncomePerCurrency(t.Context(), currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUserTotalInterestIncomePerCurrency(t.Context(), currency.USDT)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/interests/usdt", `{"currency":"USDT","total_interest":"1"}`)
+	}
+	result, err := ex.GetUserTotalInterestIncomePerCurrency(t.Context(), currency.USDT)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5419,8 +6217,14 @@ func TestGetUserDividendRecords(t *testing.T) {
 	_, err := e.GetUserDividendRecords(t.Context(), currency.USDT, 1, 100, endTime, startTime)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUserDividendRecords(t.Context(), currency.AE, 0, 0, startTime, endTime)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/interest_records?currency=AE&from=1744103854&to=1744190254", `[]`)
+	}
+	result, err := ex.GetUserDividendRecords(t.Context(), currency.AE, 0, 0, startTime, endTime)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5430,8 +6234,14 @@ func TestGetCurrencyInterestCompoundingStatus(t *testing.T) {
 	_, err := e.GetCurrencyInterestCompoundingStatus(t.Context(), currency.EMPTYCODE)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetCurrencyInterestCompoundingStatus(t.Context(), currency.USDT)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/interest_status/usdt", `{"currency":"USDT","interest_status":"on"}`)
+	}
+	result, err := ex.GetCurrencyInterestCompoundingStatus(t.Context(), currency.USDT)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5442,16 +6252,28 @@ func TestGetUniLoanCurrencyAnnualizedTrendChart(t *testing.T) {
 	_, err := e.GetUniLoanCurrencyAnnualizedTrendChart(t.Context(), endTime, startTime, currency.USDT)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUniLoanCurrencyAnnualizedTrendChart(t.Context(), startTime, endTime, currency.AE)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/chart?asset=AE&from=1744103854&to=1744190254", `[]`)
+	}
+	result, err := ex.GetUniLoanCurrencyAnnualizedTrendChart(t.Context(), startTime, endTime, currency.AE)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetCurrencyEstimatedAnnualizedInterestRate(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetCurrencyEstimatedAnnualizedInterestRate(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/earn/uni/rate", `[]`)
+	}
+	result, err := ex.GetCurrencyEstimatedAnnualizedInterestRate(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5496,8 +6318,14 @@ func TestLendOrBorrow(t *testing.T) {
 	})
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.IsolatedMarginLendOrBorrow(t.Context(), &LendOrBorrowRequest{
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/margin/uni/loans", `{}`)
+	}
+	result, err := ex.IsolatedMarginLendOrBorrow(t.Context(), &LendOrBorrowRequest{
 		Currency:     currency.BTC,
 		CurrencyPair: getPair(t, asset.Margin),
 		OrderType:    "borrow",
@@ -5560,15 +6388,15 @@ func TestGetIsolatedMarginAccountMaximumBorrowableAmountByCurrency(t *testing.T)
 	assert.NotNil(t, result)
 }
 
-func TestGetUsersOwnLverageLendingTiersInCurrentMarket(t *testing.T) {
+func TestGetUsersOwnLeverageLendingTiersInCurrentMarket(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetUsersOwnLverageLendingTiersInCurrentMarket(t.Context(), currency.EMPTYPAIR)
+	_, err := e.GetUsersOwnLeverageLendingTiersInCurrentMarket(t.Context(), currency.EMPTYPAIR)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
 	if !mockTests {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	}
-	result, err := e.GetUsersOwnLverageLendingTiersInCurrentMarket(t.Context(), getPair(t, asset.Margin))
+	result, err := e.GetUsersOwnLeverageLendingTiersInCurrentMarket(t.Context(), getPair(t, asset.Margin))
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5578,9 +6406,6 @@ func TestGetIsolatedMarginCurrentMarketLeverageLendingTiers(t *testing.T) {
 	_, err := e.GetIsolatedMarginCurrentMarketLeverageLendingTiers(t.Context(), currency.EMPTYPAIR)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	if !mockTests {
-		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	}
 	result, err := e.GetIsolatedMarginCurrentMarketLeverageLendingTiers(t.Context(), getPair(t, asset.Margin))
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -5591,8 +6416,14 @@ func TestSetUserIsolatedMarginAccountMarketLeverageMultiplier(t *testing.T) {
 	err := e.SetUserIsolatedMarginAccountMarketLeverageMultiplier(t.Context(), getPair(t, asset.Margin), 0)
 	require.ErrorIs(t, err, order.ErrSubmitLeverageNotSupported)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	err = e.SetUserIsolatedMarginAccountMarketLeverageMultiplier(t.Context(), getPair(t, asset.Margin), 10)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/margin/leverage/user_market_setting", `{}`)
+	}
+	err = ex.SetUserIsolatedMarginAccountMarketLeverageMultiplier(t.Context(), getPair(t, asset.Margin), 10)
 	require.NoError(t, err)
 }
 
@@ -5608,147 +6439,214 @@ func TestGetAvailableTransferChains(t *testing.T) {
 
 func TestGetTradFiMT5Account(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiMT5Account(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiMT5Account must not error")
+	require.NotNil(t, result, "GetTradFiMT5Account must return account data")
+	if mockTests {
+		assert.Equal(t, uint64(10122), result.MT5UID, "MT5 user ID should match")
+		assert.Equal(t, uint64(3), result.Status, "account status should match")
+	}
 }
 
 func TestGetTradFiSymbolCategories(t *testing.T) {
 	t.Parallel()
 	result, err := e.GetTradFiSymbolCategories(t.Context())
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetTradFiSymbolCategories must not error")
+	require.NotEmpty(t, result, "GetTradFiSymbolCategories must return category data")
+	if mockTests {
+		assert.Equal(t, uint64(0), result[0].CategoryID, "category ID should match")
+		assert.True(t, result[0].IsFavorite, "favorite category should be marked as a favorite")
+	}
+}
+
+func TestGetTradFiSymbolCommissions(t *testing.T) {
+	t.Parallel()
+	_, err := e.GetTradFiSymbolCommissions(t.Context(), nil)
+	require.ErrorIs(t, err, errTradFiSymbolCommissionFilterRequired, "GetTradFiSymbolCommissions must require a filter")
+
+	_, err = e.GetTradFiSymbolCommissions(t.Context(), &GetTradFiSymbolCommissionsRequest{})
+	require.ErrorIs(t, err, errTradFiSymbolCommissionFilterRequired, "GetTradFiSymbolCommissions must reject empty filters")
+
+	result, err := e.GetTradFiSymbolCommissions(t.Context(), &GetTradFiSymbolCommissionsRequest{
+		Symbols:       []string{"EURUSD"},
+		CategoryCodes: []string{"forex"},
+	})
+	require.NoError(t, err, "GetTradFiSymbolCommissions must not error")
+	require.NotEmpty(t, result, "GetTradFiSymbolCommissions must return commission data")
+	if mockTests {
+		assert.Equal(t, "forex", result[0].CategoryCode, "category code should match")
+		assert.Equal(t, "EURUSD", result[0].Symbol, "symbol should match")
+		assert.Equal(t, types.Number(6), result[0].FeePerLot, "fee per lot should match")
+	}
 }
 
 func TestGetTradFiSymbols(t *testing.T) {
 	t.Parallel()
 	result, err := e.GetTradFiSymbols(t.Context())
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetTradFiSymbols must not error")
+	require.NotEmpty(t, result, "GetTradFiSymbols must return symbol data")
+	if mockTests {
+		assert.Equal(t, uint64(2), result[0].PricePrecision, "price precision should match")
+	}
 }
 
 func TestGetTradFiSymbolDetails(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetTradFiSymbolDetails(t.Context(), nil)
-	require.ErrorIs(t, err, currency.ErrCurrencyPairsEmpty)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairsEmpty, "GetTradFiSymbolDetails must require symbols")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiSymbolDetails(t.Context(), currency.Pairs{{Base: currency.EUR, Quote: currency.USD}})
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetTradFiSymbolDetails must not error")
+	require.NotEmpty(t, result, "GetTradFiSymbolDetails must return symbol data")
+	if mockTests {
+		assert.Equal(t, "EURUSD", result[0].Symbol, "symbol should match")
+		assert.Equal(t, uint64(5), result[0].PricePrecision, "price precision should match")
+	}
 }
 
 func TestGetTradFiKlines(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetTradFiKlines(t.Context(), currency.EMPTYPAIR, nil)
-	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty)
+	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty, "GetTradFiKlines must require a symbol")
 
 	_, err = e.GetTradFiKlines(t.Context(), currency.Pair{Base: currency.EUR, Quote: currency.USD}, nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetTradFiKlines must require parameters")
 
 	_, err = e.GetTradFiKlines(t.Context(), currency.Pair{Base: currency.EUR, Quote: currency.USD}, &GetTradFiKlinesRequest{})
-	require.ErrorIs(t, err, kline.ErrInvalidInterval)
+	require.ErrorIs(t, err, kline.ErrInvalidInterval, "GetTradFiKlines must require a valid interval")
 
 	klineTypeString, err := klineIntervalToTypeString(kline.OneMin)
-	require.NoError(t, err)
+	require.NoError(t, err, "interval conversion must not error")
 
 	result, err := e.GetTradFiKlines(t.Context(), currency.Pair{Base: currency.EUR, Quote: currency.USD}, &GetTradFiKlinesRequest{KlineType: klineTypeString})
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetTradFiKlines must not error")
+	assert.NotEmpty(t, result, "GetTradFiKlines should return kline data")
 }
 
 func TestGetTradFiSymbolTicker(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetTradFiSymbolTicker(t.Context(), "")
-	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty)
+	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty, "GetTradFiSymbolTicker must require a symbol")
 
 	result, err := e.GetTradFiSymbolTicker(t.Context(), "EURUSD")
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiSymbolTicker must not error")
+	assert.NotNil(t, result, "GetTradFiSymbolTicker should return ticker data")
 }
 
 func TestActivateTradFiUser(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.ActivateTradFiUser(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "ActivateTradFiUser must not error")
+	require.NotNil(t, result, "ActivateTradFiUser must return user data")
+	if mockTests {
+		assert.Equal(t, "10122", result.MT5UID, "MT5 user ID should match")
+		assert.Equal(t, uint64(3), result.Status, "user status should match")
+	}
 }
 
 func TestGetTradFiUserAssets(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiUserAssets(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiUserAssets must not error")
+	require.NotNil(t, result, "GetTradFiUserAssets must return asset data")
+	if mockTests {
+		assert.Equal(t, types.Number(900), result.Balance, "balance should match")
+		assert.Equal(t, types.Number(100), result.UnrealizedPNL, "unrealized PNL should match")
+	}
 }
 
 func TestGetTradFiTransactions(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiTransactions(t.Context(), nil)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiTransactions must not error")
+	require.NotNil(t, result, "GetTradFiTransactions must return transaction data")
+	if mockTests {
+		require.Len(t, result.List, 1, "GetTradFiTransactions must return the mocked transaction")
+		assert.Equal(t, time.Unix(1769398039, 0), result.List[0].Time.Time(), "transaction time should decode from Unix seconds")
+	}
 
 	result, err = e.GetTradFiTransactions(t.Context(), &GetTradFiTransactionsRequest{
 		Type:     "deposit",
 		Page:     1,
 		PageSize: 10,
 	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiTransactions must support filters")
+	assert.NotNil(t, result, "filtered transaction data should not be nil")
 }
 
 func TestCreateTradFiTransaction(t *testing.T) {
 	t.Parallel()
 	err := e.CreateTradFiTransaction(t.Context(), nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
+	require.ErrorIs(t, err, common.ErrNilPointer, "CreateTradFiTransaction must require parameters")
 
 	err = e.CreateTradFiTransaction(t.Context(), &TradFiTransactionRequest{})
-	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
+	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty, "CreateTradFiTransaction must require an asset")
 
 	err = e.CreateTradFiTransaction(t.Context(), &TradFiTransactionRequest{Asset: currency.USDT})
-	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
+	require.ErrorIs(t, err, limits.ErrAmountBelowMin, "CreateTradFiTransaction must require a positive change")
 
 	err = e.CreateTradFiTransaction(t.Context(), &TradFiTransactionRequest{Asset: currency.USDT, Change: 100})
-	require.ErrorIs(t, err, errTradFiTypeRequired)
+	require.ErrorIs(t, err, errTradFiTypeRequired, "CreateTradFiTransaction must require a transaction type")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	err = e.CreateTradFiTransaction(t.Context(), &TradFiTransactionRequest{
 		Asset:  currency.USDT,
 		Change: 100.00,
 		Type:   "deposit",
 	})
-	require.NoError(t, err)
+	require.NoError(t, err, "CreateTradFiTransaction must not error")
 }
 
 func TestGetTradFiActiveOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiActiveOrders(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiActiveOrders must not error")
+	if mockTests {
+		require.Len(t, result, 1, "GetTradFiActiveOrders must return the mocked order")
+		assert.Equal(t, time.Unix(1744103854, 0), result[0].TimeSetup.Time(), "setup time should decode from Unix seconds")
+	}
 }
 
 func TestCreateTradFiOrder(t *testing.T) {
 	t.Parallel()
 	_, err := e.CreateTradFiOrder(t.Context(), nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
+	require.ErrorIs(t, err, common.ErrNilPointer, "CreateTradFiOrder must require parameters")
 
 	_, err = e.CreateTradFiOrder(t.Context(), &TradFiOrderRequest{})
-	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty)
+	require.ErrorIs(t, err, currency.ErrSymbolStringEmpty, "CreateTradFiOrder must require a symbol")
 
 	_, err = e.CreateTradFiOrder(t.Context(), &TradFiOrderRequest{Symbol: currency.Pair{Base: currency.EUR, Quote: currency.USD}})
-	require.ErrorIs(t, err, limits.ErrPriceBelowMin)
+	require.ErrorIs(t, err, limits.ErrPriceBelowMin, "CreateTradFiOrder must require a positive price")
 
 	_, err = e.CreateTradFiOrder(t.Context(), &TradFiOrderRequest{Symbol: currency.Pair{Base: currency.EUR, Quote: currency.USD}, Price: 1.09000})
-	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
+	require.ErrorIs(t, err, limits.ErrAmountBelowMin, "CreateTradFiOrder must require a positive volume")
 
 	_, err = e.CreateTradFiOrder(t.Context(), &TradFiOrderRequest{Symbol: currency.Pair{Base: currency.EUR, Quote: currency.USD}, Price: 1.09000, Volume: 0.10})
-	require.ErrorIs(t, err, order.ErrSideIsInvalid)
+	require.ErrorIs(t, err, order.ErrSideIsInvalid, "CreateTradFiOrder must require a valid side")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.CreateTradFiOrder(t.Context(), &TradFiOrderRequest{
 		Symbol:    currency.Pair{Base: currency.EUR, Quote: currency.USD},
 		Price:     1.09000,
@@ -5756,92 +6654,150 @@ func TestCreateTradFiOrder(t *testing.T) {
 		Side:      2,
 		Volume:    0.10,
 	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "CreateTradFiOrder must not error")
+	require.NotNil(t, result, "CreateTradFiOrder must return order data")
+	if mockTests {
+		assert.Equal(t, "117", result.ID, "queue task ID should match")
+	}
 }
 
 func TestUpdateTradFiOrder(t *testing.T) {
 	t.Parallel()
 	_, err := e.UpdateTradFiOrder(t.Context(), 0, nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
+	require.ErrorIs(t, err, common.ErrNilPointer, "UpdateTradFiOrder must require parameters")
 
 	_, err = e.UpdateTradFiOrder(t.Context(), 0, &TradFiOrderUpdateRequest{Price: "1.09100"})
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "UpdateTradFiOrder must require an order ID")
 
 	_, err = e.UpdateTradFiOrder(t.Context(), 1223, &TradFiOrderUpdateRequest{})
-	require.ErrorIs(t, err, limits.ErrPriceBelowMin)
+	require.ErrorIs(t, err, limits.ErrPriceBelowMin, "UpdateTradFiOrder must require a valid price")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.UpdateTradFiOrder(t.Context(), 1223, &TradFiOrderUpdateRequest{Price: "1.09100"})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "UpdateTradFiOrder must not error")
+	require.NotNil(t, result, "UpdateTradFiOrder must return order data")
+	if mockTests {
+		assert.Equal(t, uint64(1223), result.OrderID, "order ID should match")
+		assert.Equal(t, types.Number(1.091), result.Price, "updated price should match")
+	}
 }
 
 func TestCancelTradFiOrder(t *testing.T) {
 	t.Parallel()
 	err := e.CancelTradFiOrder(t.Context(), 0)
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "CancelTradFiOrder must require an order ID")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	err = e.CancelTradFiOrder(t.Context(), 1223)
-	require.NoError(t, err)
+	require.NoError(t, err, "CancelTradFiOrder must not error")
 }
 
 func TestGetTradFiOrderHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiOrderHistory(t.Context(), nil)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiOrderHistory must not error")
+	require.NotEmpty(t, result, "GetTradFiOrderHistory must return order data")
+	if mockTests {
+		assert.Equal(t, uint64(1223), result[0].OrderID, "order ID should match")
+		assert.Equal(t, time.Unix(1769398039, 0), result[0].TimeSetup.Time(), "setup time should decode from Unix seconds")
+	}
 
 	result, err = e.GetTradFiOrderHistory(t.Context(), &GetTradFiOrderHistoryRequest{
 		Symbol: currency.Pair{Base: currency.EUR, Quote: currency.USD},
 		Side:   2,
 	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiOrderHistory must support filters")
+	assert.NotNil(t, result, "filtered order history should not be nil")
+}
+
+func TestGetTradFiOrderLog(t *testing.T) {
+	t.Parallel()
+	_, err := e.GetTradFiOrderLog(t.Context(), 0)
+	require.ErrorIs(t, err, errTradFiLogIDRequired, "GetTradFiOrderLog must require a log ID")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	if tradFiOrderLogID == 0 {
+		t.Skip("a log ID returned from live TradFi order placement is required")
+	}
+	result, err := e.GetTradFiOrderLog(t.Context(), tradFiOrderLogID)
+	require.NoError(t, err, "GetTradFiOrderLog must not error")
+	require.NotNil(t, result, "GetTradFiOrderLog must return order data")
+	if mockTests {
+		assert.Equal(t, uint64(13950884), result.OrderID, "order ID should match")
+		assert.Equal(t, uint64(1223), result.LogID, "log ID should match")
+		assert.Equal(t, "AUDUSD", result.Symbol, "symbol should match")
+		assert.Equal(t, types.Number(0.72221), result.Price, "average fill price should match")
+	}
 }
 
 func TestGetTradFiActivePositions(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiActivePositions(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiActivePositions must not error")
+	require.NotEmpty(t, result, "GetTradFiActivePositions must return position data")
+	if mockTests {
+		assert.Equal(t, uint64(1223), result[0].PositionID, "position ID should match")
+		assert.Equal(t, types.Number(2.5), result[0].UnrealizedPNL, "unrealized PNL should match")
+	}
 }
 
 func TestUpdateTradFiPosition(t *testing.T) {
 	t.Parallel()
 	err := e.UpdateTradFiPosition(t.Context(), 0, &TradFiPositionUpdateRequest{})
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "UpdateTradFiPosition must require a position ID")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	err = e.UpdateTradFiPosition(t.Context(), 1223, &TradFiPositionUpdateRequest{
 		PriceTakeProfit: 1.10000,
 		PriceStopLoss:   1.08000,
 	})
-	require.NoError(t, err)
+	require.NoError(t, err, "UpdateTradFiPosition must not error")
 }
 
 func TestCloseTradFiPosition(t *testing.T) {
 	t.Parallel()
 	err := e.CloseTradFiPosition(t.Context(), 0, &TradFiClosePositionRequest{CloseType: 1})
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "CloseTradFiPosition must require a position ID")
 
 	err = e.CloseTradFiPosition(t.Context(), 1223, &TradFiClosePositionRequest{})
-	require.ErrorIs(t, err, errTradFiCloseTypeRequired)
+	require.ErrorIs(t, err, errTradFiCloseTypeRequired, "CloseTradFiPosition must require a close type")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	err = e.CloseTradFiPosition(t.Context(), 1223, &TradFiClosePositionRequest{CloseType: 1})
-	require.NoError(t, err)
+	require.ErrorIs(t, err, order.ErrAmountMustBeSet, "CloseTradFiPosition must require a volume for partial closure")
+
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	err = e.CloseTradFiPosition(t.Context(), 1223, &TradFiClosePositionRequest{CloseType: 2})
+	require.NoError(t, err, "CloseTradFiPosition must not error")
 }
 
 func TestGetTradFiPositionHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetTradFiPositionHistory(t.Context(), nil)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiPositionHistory must not error")
+	require.NotNil(t, result, "GetTradFiPositionHistory must return position data")
+	if mockTests {
+		require.Len(t, result.List, 1, "GetTradFiPositionHistory must return the mocked position")
+		assert.Equal(t, uint64(1223), result.List[0].PositionID, "position ID should match")
+		assert.Equal(t, types.Number(0.1), result.List[0].RealizedPNLDetail.Fee, "realized PNL fee should match")
+	}
 
 	result, err = e.GetTradFiPositionHistory(t.Context(), &GetTradFiPositionHistoryRequest{
 		Page:        1,
@@ -5849,8 +6805,8 @@ func TestGetTradFiPositionHistory(t *testing.T) {
 		Symbol:      currency.Pair{Base: currency.EUR, Quote: currency.USD},
 		PositionDir: order.Long.String(),
 	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetTradFiPositionHistory must support filters")
+	assert.NotNil(t, result, "filtered position history should not be nil")
 }
 
 func TestCreateChaseOrder(t *testing.T) {
@@ -5864,15 +6820,32 @@ func TestCreateChaseOrder(t *testing.T) {
 	_, err = e.CreateChaseOrder(t.Context(), &CreateChaseOrderRequest{Settle: currency.USDT, Contract: getPair(t, asset.USDTMarginedFutures)})
 	require.ErrorIs(t, err, errInvalidOrderSize)
 
-	_, err = e.CreateChaseOrder(t.Context(), &CreateChaseOrderRequest{Settle: currency.USDT, Contract: getPair(t, asset.USDTMarginedFutures), Amount: 1})
-	require.ErrorIs(t, err, errChaseOrderPriceLimitOrOffsetRequired)
+	_, err = e.CreateChaseOrder(t.Context(), &CreateChaseOrderRequest{
+		Settle:      currency.USDT,
+		Contract:    getPair(t, asset.USDTMarginedFutures),
+		Amount:      1,
+		PriceLimit:  1,
+		OffsetLimit: 1,
+	})
+	require.ErrorIs(t, err, errChaseOrderPriceLimitAndOffsetMutuallyExclusive)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.CreateChaseOrder(t.Context(), &CreateChaseOrderRequest{
-		Settle:     currency.USDT,
-		Contract:   getPair(t, asset.USDTMarginedFutures),
-		Amount:     1,
-		PriceLimit: 1,
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedJSONRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/futures/usdt/autoorder/v1/chase/create",
+			`{"contract":"BTC_USDT","amount":"1","price_limit":"0"}`,
+			`{"id":"1"}`,
+		)
+	}
+	result, err := ex.CreateChaseOrder(t.Context(), &CreateChaseOrderRequest{
+		Settle:   currency.USDT,
+		Contract: getPair(t, asset.USDTMarginedFutures),
+		Amount:   1,
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -5886,8 +6859,14 @@ func TestStopChaseOrder(t *testing.T) {
 	_, err = e.StopChaseOrder(t.Context(), currency.USDT, &StopChaseOrderRequest{})
 	require.ErrorIs(t, err, errChaseOrderIDOrTextRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.StopChaseOrder(t.Context(), currency.USDT, &StopChaseOrderRequest{ID: 1})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/futures/usdt/autoorder/v1/chase/stop", `{"order":{"id":"1"}}`)
+	}
+	result, err := ex.StopChaseOrder(t.Context(), currency.USDT, &StopChaseOrderRequest{ID: "1"})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -5897,64 +6876,101 @@ func TestStopAllChaseOrders(t *testing.T) {
 	_, err := e.StopAllChaseOrders(t.Context(), currency.EMPTYCODE, &StopAllChaseOrdersRequest{})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.StopAllChaseOrders(t.Context(), currency.USDT, &StopAllChaseOrdersRequest{Contract: getPair(t, asset.USDTMarginedFutures)})
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodPost, "/api/v4/futures/usdt/autoorder/v1/chase/stop_all", `{"orders":[{"id":"1"}]}`)
+	}
+	result, err := ex.StopAllChaseOrders(t.Context(), currency.USDT, &StopAllChaseOrdersRequest{Contract: getPair(t, asset.USDTMarginedFutures)})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetChaseOrders(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetChaseOrders(t.Context(), currency.EMPTYCODE, currency.EMPTYPAIR, false, time.Time{}, time.Time{}, 0, 0, 1, false, false, "")
+	_, err := e.GetChaseOrders(t.Context(), currency.EMPTYCODE, currency.EMPTYPAIR, false, time.Time{}, time.Time{}, 0, 0, 1, 0, 0, false)
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	_, err = e.GetChaseOrders(t.Context(), currency.USDT, currency.EMPTYPAIR, false, time.Time{}, time.Time{}, 0, 0, 0, false, false, "")
+	_, err = e.GetChaseOrders(t.Context(), currency.USDT, currency.EMPTYPAIR, false, time.Time{}, time.Time{}, 0, 0, 0, 0, 0, false)
 	require.ErrorIs(t, err, errInvalidChaseSortBy)
 
-	_, err = e.GetChaseOrders(t.Context(), currency.USDT, currency.EMPTYPAIR, false, time.Now(), time.Now().Add(-time.Hour), 0, 0, 1, false, false, "")
+	_, err = e.GetChaseOrders(t.Context(), currency.USDT, currency.EMPTYPAIR, false, time.Now(), time.Now().Add(-time.Hour), 0, 0, 1, 0, 0, false)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetChaseOrders(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), true, time.Time{}, time.Time{}, 1, 100, 1, false, false, "")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	contract := getPair(t, asset.USDTMarginedFutures)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/futures/usdt/autoorder/v1/chase/list?contract="+contract.String()+"&is_finished=false&page_num=1&page_size=100&sort_by=1", `{"orders":[{"id":"1"}]}`)
+	}
+	result, err := ex.GetChaseOrders(t.Context(), currency.USDT, contract, false, time.Time{}, time.Time{}, 1, 100, 1, 0, 0, false)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetChaseOrderDetail(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetChaseOrderDetail(t.Context(), currency.EMPTYCODE, 0)
+	_, err := e.GetChaseOrderDetail(t.Context(), currency.EMPTYCODE, "")
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 
-	_, err = e.GetChaseOrderDetail(t.Context(), currency.USDT, 0)
+	_, err = e.GetChaseOrderDetail(t.Context(), currency.USDT, "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetChaseOrderDetail(t.Context(), currency.USDT, 1)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/futures/usdt/autoorder/v1/chase/detail?id=1", `{"order":{"id":"1"}}`)
+	}
+	result, err := ex.GetChaseOrderDetail(t.Context(), currency.USDT, "1")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetRecentPartnerApplicationRecords(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetRecentPartnerApplicationRecords(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/rebate/partner/applications/recent", `{"code":0,"message":"","data":{"id":1,"uid":1},"timestamp":1744190254}`)
+	}
+	result, err := ex.GetRecentPartnerApplicationRecords(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestCheckPartnerApplicationEligibility(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.CheckPartnerApplicationEligibility(t.Context())
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/rebate/partner/eligibility", `{"code":0,"message":"","data":{"eligible":true},"timestamp":1744190254}`)
+	}
+	result, err := ex.CheckPartnerApplicationEligibility(t.Context())
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
 
 func TestGetAggregatedPartnerAgentStatistics(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	startTime, endTime := getTime()
-	result, err := e.GetAggregatedPartnerAgentStatistics(t.Context(), startTime, endTime, 1)
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/rebate/partner/data/aggregated?business_type=1&end_date=2025-04-09+17%3A17%3A34&start_date=2025-04-08+17%3A17%3A34", `{"code":0,"message":"","data":{"business_type":1,"customer_count":1},"timestamp":1744190254}`)
+	}
+	result, err := ex.GetAggregatedPartnerAgentStatistics(t.Context(), startTime, endTime, 1)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }

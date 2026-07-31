@@ -1,15 +1,20 @@
 package gateio
 
 import (
+	"fmt"
 	"testing"
 
+	gws "github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
+	mockws "github.com/thrasher-corp/gocryptotrader/internal/testing/websocket"
 )
 
 func TestWebsocketLogin(t *testing.T) {
@@ -17,7 +22,9 @@ func TestWebsocketLogin(t *testing.T) {
 	err := e.websocketLogin(t.Context(), nil, "")
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 
@@ -53,7 +60,9 @@ func TestWebsocketSpotSubmitOrder(t *testing.T) {
 	_, err = e.WebsocketSpotSubmitOrder(t.Context(), out)
 	require.ErrorIs(t, err, order.ErrPriceMustBeSetIfLimitOrder)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	out.Price = 100
 	e := newExchangeWithWebsocket(t, asset.Spot)
@@ -85,7 +94,9 @@ func TestWebsocketSpotSubmitOrders(t *testing.T) {
 	require.ErrorIs(t, err, order.ErrPriceMustBeSetIfLimitOrder)
 
 	out.Price = 20000
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 	// test single order
@@ -107,7 +118,9 @@ func TestWebsocketSpotCancelOrder(t *testing.T) {
 	_, err = e.WebsocketSpotCancelOrder(t.Context(), "1337", currency.EMPTYPAIR, "")
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 
@@ -130,7 +143,9 @@ func TestWebsocketSpotCancelAllOrdersByIDs(t *testing.T) {
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
 	out.Pair = BTCUSDT
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 
@@ -145,7 +160,9 @@ func TestWebsocketSpotCancelAllOrdersByPair(t *testing.T) {
 	_, err := e.WebsocketSpotCancelAllOrdersByPair(t.Context(), currency.NewPairWithDelimiter("LTC", "USDT", "_"), 0, "")
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 
@@ -174,7 +191,9 @@ func TestWebsocketSpotAmendOrder(t *testing.T) {
 
 	amend.Amount = "0.0004"
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 
@@ -192,7 +211,9 @@ func TestWebsocketSpotGetOrderStatus(t *testing.T) {
 	_, err = e.WebsocketSpotGetOrderStatus(t.Context(), "1337", currency.EMPTYPAIR, "")
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.Spot)
 	got, err := e.WebsocketSpotGetOrderStatus(t.Context(), "644999650452", BTCUSDT, "")
@@ -204,24 +225,62 @@ func TestWebsocketSpotGetOrderStatus(t *testing.T) {
 // This restricts the pairs to a single pair per asset type to reduce test time.
 func newExchangeWithWebsocket(t *testing.T, a asset.Item) *Exchange {
 	t.Helper()
-	if apiCredentials.Key == "" || apiCredentials.Secret == "" {
-		t.Skip()
+	if mockTests {
+		mock := func(tb testing.TB, msg []byte, conn *gws.Conn) error {
+			tb.Helper()
+			var req WebsocketRequest
+			require.NoError(tb, json.Unmarshal(msg, &req), "WebSocket request must unmarshal")
+
+			result := `{}`
+			switch req.Channel {
+			case "spot.order_place":
+				if len(req.Payload.RequestParam) > 0 && req.Payload.RequestParam[0] == '[' {
+					result = `[{"id":"1"}]`
+				} else {
+					result = `{"id":"1"}`
+				}
+			case "spot.order_cancel":
+				result = `{"id":"1"}`
+			case "spot.order_cancel_ids":
+				result = `[{"succeeded":true}]`
+			case "spot.order_cancel_cp":
+				result = `[{"id":"1"}]`
+			case "spot.order_amend", "spot.order_status":
+				result = `{"id":"1"}`
+			case "futures.order_place", "futures.order_cancel", "futures.order_amend", "futures.order_status":
+				result = `{"id":1}`
+			case "futures.order_batch_place", "futures.order_cancel_cp", "futures.order_list":
+				result = `[{"id":1}]`
+			}
+
+			response := fmt.Appendf(nil, `{"request_id":%q,"header":{"response_time":"1681986204784","status":"200","channel":%q,"event":"api"},"data":{"result":%s}}`, req.Payload.RequestID, req.Channel, result)
+			return conn.WriteMessage(gws.TextMessage, response)
+		}
+		ex := testexch.MockWsInstance[Exchange](t, mockws.CurryWsMockUpgrader(t, mock))
+		ex.API.AuthenticatedSupport = true
+		ex.API.AuthenticatedWebsocketSupport = true
+		ex.SetCredentials(&accounts.Credentials{Key: "mock-key", Secret: "mock-secret"})
+		ex.Websocket.SetCanUseAuthenticatedEndpoints(true)
+		return ex
 	}
-	e := new(Exchange)
-	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
-	testexch.UpdatePairsOnce(t, e)
-	e.API.AuthenticatedSupport = true
-	e.API.AuthenticatedWebsocketSupport = true
-	e.SetCredentials(apiCredentials)
-	e.Websocket.SetCanUseAuthenticatedEndpoints(true)
+	creds, err := e.GetCredentials(t.Context())
+	require.NoError(t, err, "GetCredentials must not error")
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")
+	testexch.UpdatePairsOnce(t, ex)
+	ex.API.AuthenticatedSupport = true
+	ex.API.AuthenticatedWebsocketSupport = true
+	ex.SetCredentials(creds)
+	ex.Websocket.SetCanUseAuthenticatedEndpoints(true)
 
 	// Disable all other asset types to ensure only the specified asset type is used for websocket tests.
-	for _, enabled := range e.GetAssetTypes(true) {
+	for _, enabled := range ex.GetAssetTypes(true) {
 		if enabled != a {
-			require.NoError(t, e.CurrencyPairs.SetAssetEnabled(enabled, false))
+			require.NoError(t, ex.CurrencyPairs.SetAssetEnabled(enabled, false))
 		}
 	}
 
-	require.NoError(t, e.Websocket.Connect(t.Context()))
-	return e
+	require.NoError(t, ex.Websocket.Connect(t.Context()))
+	return ex
 }

@@ -2,6 +2,7 @@ package gateio
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +14,9 @@ import (
 
 func TestGetBotStrategyRecommendations(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 
 	result, err := e.GetBotStrategyRecommendations(t.Context(), nil)
 	require.NoError(t, err)
@@ -26,6 +29,22 @@ func TestGetBotStrategyRecommendations(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
+
+	if mockTests {
+		result, err = e.GetBotStrategyRecommendations(t.Context(), &GetBotStrategyRecommendationsRequest{
+			Market:                         "BTC_USDT",
+			StrategyType:                   BotStrategySpotGrid,
+			Direction:                      "long",
+			InvestAmount:                   1000,
+			Scene:                          BotSceneTop1,
+			RefreshRecommendationID:        "rec_001",
+			Limit:                          10,
+			MaximumDrawdownLessThanOrEqual: "0.2",
+			BacktestAPRGreaterThanOrEqual:  "0.3",
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+	}
 }
 
 func TestCreateSpotGridBot(t *testing.T) {
@@ -50,14 +69,16 @@ func TestCreateSpotGridBot(t *testing.T) {
 
 	arg.CreateParams.HighPrice = 110000
 	_, err = e.CreateSpotGridBot(t.Context(), arg)
-	require.ErrorIs(t, err, errBotGridNumRequired)
+	require.ErrorIs(t, err, errBotGridNumberRequired)
 
 	arg.CreateParams.GridNumber = 20
 	arg.CreateParams.PriceType = 2
 	_, err = e.CreateSpotGridBot(t.Context(), arg)
 	require.ErrorIs(t, err, errBotPriceTypeInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.CreateParams.PriceType = BotPriceTypeGeometric
 	result, err := e.CreateSpotGridBot(t.Context(), arg)
 	require.NoError(t, err)
@@ -86,9 +107,9 @@ func TestCreateMarginGridBot(t *testing.T) {
 
 	arg.CreateParams.HighPrice = 110000
 	_, err = e.CreateMarginGridBot(t.Context(), arg)
-	require.ErrorIs(t, err, errBotGridNumRequired)
+	require.ErrorIs(t, err, errBotGridNumberRequired)
 
-	arg.CreateParams.GridNum = 20
+	arg.CreateParams.GridNumber = 20
 	_, err = e.CreateMarginGridBot(t.Context(), arg)
 	require.ErrorIs(t, err, errBotLeverageRequired)
 
@@ -168,9 +189,9 @@ func TestCreateFuturesGridBot(t *testing.T) {
 
 	arg.CreateParams.HighPrice = 110000
 	_, err = e.CreateFuturesGridBot(t.Context(), arg)
-	require.ErrorIs(t, err, errBotGridNumRequired)
+	require.ErrorIs(t, err, errBotGridNumberRequired)
 
-	arg.CreateParams.GridNum = 20
+	arg.CreateParams.GridNumber = 20
 	_, err = e.CreateFuturesGridBot(t.Context(), arg)
 	require.ErrorIs(t, err, errBotLeverageRequired)
 
@@ -255,7 +276,9 @@ func TestCreateSpotMartingaleBot(t *testing.T) {
 	_, err = e.CreateSpotMartingaleBot(t.Context(), arg)
 	require.ErrorIs(t, err, errBotTakeProfitRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.CreateParams.TakeProfitRatio = 0.05
 	result, err := e.CreateSpotMartingaleBot(t.Context(), arg)
 	require.NoError(t, err)
@@ -294,7 +317,9 @@ func TestCreateContractMartingaleBot(t *testing.T) {
 	_, err = e.CreateContractMartingaleBot(t.Context(), arg)
 	require.ErrorIs(t, err, errBotLeverageRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.CreateParams.Leverage = 5
 	result, err := e.CreateContractMartingaleBot(t.Context(), arg)
 	require.NoError(t, err)
@@ -303,11 +328,16 @@ func TestCreateContractMartingaleBot(t *testing.T) {
 
 func TestGetBotRunningStrategies(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 
 	result, err := e.GetBotRunningStrategies(t.Context(), BotStrategySpotGrid, "BTC_USDT", 1, 10)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetBotRunningStrategies must not error")
+	if mockTests {
+		require.Len(t, result.Items, 1, "GetBotRunningStrategies must return the mocked strategy")
+		assert.Equal(t, time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC), result.Items[0].CreatedAt, "created at should decode the API timestamp")
+	}
 }
 
 func TestGetBotStrategyDetail(t *testing.T) {
@@ -318,10 +348,15 @@ func TestGetBotStrategyDetail(t *testing.T) {
 	_, err = e.GetBotStrategyDetail(t.Context(), "sg_001", "")
 	require.ErrorIs(t, err, errBotStrategyTypeRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetBotStrategyDetail(t.Context(), "sg_001", BotStrategySpotGrid)
-	require.NoError(t, err)
-	assert.NotEmpty(t, result.StrategyID)
+	require.NoError(t, err, "GetBotStrategyDetail must not error")
+	if mockTests {
+		require.NotNil(t, result.BaseInfo, "GetBotStrategyDetail must return base information")
+		assert.Equal(t, time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC), result.BaseInfo.CreatedAt, "created at should decode the API timestamp")
+	}
 }
 
 func TestStopBotStrategy(t *testing.T) {
@@ -332,7 +367,9 @@ func TestStopBotStrategy(t *testing.T) {
 	_, err = e.StopBotStrategy(t.Context(), "sg_001", "")
 	require.ErrorIs(t, err, errBotStrategyTypeRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.StopBotStrategy(t.Context(), "sg_001", BotStrategySpotGrid)
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.StrategyID)

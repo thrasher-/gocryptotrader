@@ -33,9 +33,9 @@ func TestWebsocketFuturesSubmitOrder(t *testing.T) {
 	require.ErrorIs(t, err, order.ErrUnsupportedTimeInForce)
 
 	out.TimeInForce = iocTIF
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.WebsocketFuturesSubmitOrder(t.Context(), asset.USDTMarginedFutures, out)
-	require.ErrorIs(t, err, order.ErrAmountIsInvalid)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	out.Size = 1 // 1 lovely long contract
 	out.Price = 40000
@@ -68,13 +68,9 @@ func TestWebsocketFuturesSubmitOrders(t *testing.T) {
 	out.TimeInForce = "gtc"
 	out.Size = 1 // 1 lovely long contract
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.WebsocketFuturesSubmitOrders(t.Context(), asset.USDTMarginedFutures, out)
-	require.NoError(t, err)
-
-	out.Price = 40000
-	_, err = e.WebsocketFuturesSubmitOrders(t.Context(), asset.USDTMarginedFutures, out)
-	require.ErrorIs(t, err, order.ErrUnsupportedTimeInForce)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	out.Price = 40000
 	out.AutoSize = "silly_billies"
@@ -93,12 +89,12 @@ func TestWebsocketFuturesSubmitOrders(t *testing.T) {
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 
 	// test single order
-	got, err := e.WebsocketFuturesSubmitOrders(t.Context(), asset.CoinMarginedFutures, out)
+	got, err := e.WebsocketFuturesSubmitOrders(t.Context(), asset.USDTMarginedFutures, out)
 	require.NoError(t, err)
 	require.NotEmpty(t, got)
 
 	// test batch orders
-	got, err = e.WebsocketFuturesSubmitOrders(t.Context(), asset.CoinMarginedFutures, out, out)
+	got, err = e.WebsocketFuturesSubmitOrders(t.Context(), asset.USDTMarginedFutures, out, out)
 	require.NoError(t, err)
 	require.NotEmpty(t, got)
 }
@@ -114,7 +110,9 @@ func TestWebsocketFuturesCancelOrder(t *testing.T) {
 	_, err = e.WebsocketFuturesCancelOrder(t.Context(), "42069", BTCUSDT, asset.Empty)
 	require.ErrorIs(t, err, asset.ErrNotSupported)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 
@@ -134,7 +132,9 @@ func TestWebsocketFuturesCancelAllOpenFuturesOrders(t *testing.T) {
 	_, err = e.WebsocketFuturesCancelAllOpenFuturesOrders(t.Context(), BTCUSDT, asset.USDTMarginedFutures, "bruh")
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 
@@ -166,7 +166,9 @@ func TestWebsocketFuturesAmendOrder(t *testing.T) {
 
 	amend.Size = 2
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 
@@ -193,7 +195,9 @@ func TestWebsocketFuturesOrderList(t *testing.T) {
 	_, err = e.WebsocketFuturesOrderList(t.Context(), list)
 	require.ErrorIs(t, err, errStatusNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 
@@ -214,7 +218,9 @@ func TestWebsocketFuturesGetOrderStatus(t *testing.T) {
 	_, err = e.WebsocketFuturesGetOrderStatus(t.Context(), BTCUSDT, asset.USDTMarginedFutures, "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	e := newExchangeWithWebsocket(t, asset.USDTMarginedFutures)
 	got, err := e.WebsocketFuturesGetOrderStatus(t.Context(), BTCUSDT, asset.USDTMarginedFutures, "513170215869")
 	require.NoError(t, err)

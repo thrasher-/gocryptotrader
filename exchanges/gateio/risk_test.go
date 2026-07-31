@@ -1,6 +1,9 @@
 package gateio
 
 import (
+	"fmt"
+	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,9 +18,15 @@ import (
 func TestGetUnifiedUserRiskUnitDetails(t *testing.T) {
 	t.Parallel()
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 
-	got, err := e.GetUnifiedUserRiskUnitDetails(t.Context())
+	ex := e
+	if mockTests {
+		ex = newAuthenticatedHTTPRouteTestExchange(t, http.MethodGet, "/api/v4/unified/risk_units", `{"user_id":1,"risk_units":[]}`)
+	}
+	got, err := ex.GetUnifiedUserRiskUnitDetails(t.Context())
 	require.NoError(t, err)
 	assert.NotEmpty(t, got)
 }
@@ -121,8 +130,8 @@ func TestDeliveryUpdatePositionRiskLimit(t *testing.T) {
 
 	if !mockTests {
 		testexch.UpdatePairsOnce(t, e)
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	avail, err := e.GetAvailablePairs(asset.DeliveryFutures)
 	require.NoError(t, err)
 	require.NotEmpty(t, avail)
@@ -132,9 +141,20 @@ func TestDeliveryUpdatePositionRiskLimit(t *testing.T) {
 	require.NotEmpty(t, tiers)
 
 	lowestTierRiskLimit := float64(tiers[0].RiskLimit)
-	got, err := e.DeliveryUpdatePositionRiskLimit(request.WithVerbose(t.Context()), currency.USDT, avail[0], lowestTierRiskLimit)
+	ex := e
+	if mockTests {
+		riskLimit := strconv.FormatFloat(lowestTierRiskLimit, 'f', -1, 64)
+		ex = newAuthenticatedHTTPRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/delivery/usdt/positions/"+avail[0].Upper().String()+"/risk_limit?risk_limit="+riskLimit,
+			fmt.Sprintf(`{"contract":%q,"risk_limit":%q}`, avail[0].Upper().String(), riskLimit),
+		)
+	}
+	got, err := ex.DeliveryUpdatePositionRiskLimit(request.WithVerbose(t.Context()), currency.USDT, avail[0], lowestTierRiskLimit)
 	require.NoError(t, err)
 	require.NotEmpty(t, got)
+	assert.Equal(t, lowestTierRiskLimit, got.RiskLimit.Float64())
 }
 
 func TestFuturesUpdatePositionRiskLimit(t *testing.T) {
@@ -150,8 +170,8 @@ func TestFuturesUpdatePositionRiskLimit(t *testing.T) {
 
 	if !mockTests {
 		testexch.UpdatePairsOnce(t, e)
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	avail, err := e.GetAvailablePairs(asset.USDTMarginedFutures)
 	require.NoError(t, err)
 	require.NotEmpty(t, avail)
@@ -161,7 +181,17 @@ func TestFuturesUpdatePositionRiskLimit(t *testing.T) {
 	require.NotEmpty(t, tiers)
 
 	lowestTierRiskLimit := float64(tiers[0].RiskLimit)
-	got, err := e.FuturesUpdatePositionRiskLimit(request.WithVerbose(t.Context()), currency.USDT, avail[0], lowestTierRiskLimit)
+	ex := e
+	if mockTests {
+		riskLimit := strconv.FormatFloat(lowestTierRiskLimit, 'f', -1, 64)
+		ex = newAuthenticatedHTTPRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/futures/usdt/positions/"+avail[0].Upper().String()+"/risk_limit?risk_limit="+riskLimit,
+			fmt.Sprintf(`{"contract":%q,"risk_limit":%q}`, avail[0].Upper().String(), riskLimit),
+		)
+	}
+	got, err := ex.FuturesUpdatePositionRiskLimit(request.WithVerbose(t.Context()), currency.USDT, avail[0], lowestTierRiskLimit)
 	require.NoError(t, err)
 	require.NotEmpty(t, got)
 	assert.Equal(t, lowestTierRiskLimit, got.RiskLimit.Float64())
@@ -180,8 +210,8 @@ func TestFuturesUpdatePositionRiskLimitDualMode(t *testing.T) {
 
 	if !mockTests {
 		testexch.UpdatePairsOnce(t, e)
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	avail, err := e.GetAvailablePairs(asset.USDTMarginedFutures)
 	require.NoError(t, err)
 	require.NotEmpty(t, avail)
@@ -191,7 +221,17 @@ func TestFuturesUpdatePositionRiskLimitDualMode(t *testing.T) {
 	require.NotEmpty(t, tiers)
 
 	lowestTierRiskLimit := float64(tiers[0].RiskLimit)
-	got, err := e.FuturesUpdatePositionRiskLimitDualMode(t.Context(), currency.USDT, avail[0], lowestTierRiskLimit)
+	ex := e
+	if mockTests {
+		riskLimit := strconv.FormatFloat(lowestTierRiskLimit, 'f', -1, 64)
+		ex = newAuthenticatedHTTPRouteTestExchange(
+			t,
+			http.MethodPost,
+			"/api/v4/futures/usdt/dual_comp/positions/"+avail[0].Upper().String()+"/risk_limit?risk_limit="+riskLimit,
+			fmt.Sprintf(`[{"contract":%q,"risk_limit":%q}]`, avail[0].Upper().String(), riskLimit),
+		)
+	}
+	got, err := ex.FuturesUpdatePositionRiskLimitDualMode(t.Context(), currency.USDT, avail[0], lowestTierRiskLimit)
 	require.NoError(t, err)
 	require.NotEmpty(t, got)
 	assert.Equal(t, lowestTierRiskLimit, got.RiskLimit.Float64())

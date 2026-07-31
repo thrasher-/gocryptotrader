@@ -19,7 +19,7 @@ var (
 	errBotMoneyRequired          = errors.New("bot investment amount required")
 	errBotLowPriceRequired       = errors.New("bot low price required")
 	errBotHighPriceRequired      = errors.New("bot high price required")
-	errBotGridNumRequired        = errors.New("bot grid number must be greater than zero")
+	errBotGridNumberRequired     = errors.New("bot grid number must be greater than zero")
 	errBotPriceFloorRequired     = errors.New("bot price floor required")
 	errBotProfitPerGridRequired  = errors.New("bot profit per grid required")
 	errBotInvestAmountRequired   = errors.New("bot invest amount required")
@@ -33,7 +33,7 @@ var (
 
 // botResponseError converts a non-zero bot API response code into an error. The trace ID is
 // included so failures can be correlated with Gate support requests.
-func botResponseError(code int32, message, traceID string) error {
+func botResponseError(code uint64, message, traceID string) error {
 	if code != 0 && code != 200 {
 		return fmt.Errorf("bot api error code: %d message: %s trace id: %s", code, message, traceID)
 	}
@@ -63,13 +63,13 @@ func (e *Exchange) GetBotStrategyRecommendations(ctx context.Context, arg *GetBo
 			params.Set("refresh_recommendation_id", arg.RefreshRecommendationID)
 		}
 		if arg.Limit > 0 {
-			params.Set("limit", strconv.FormatUint(uint64(arg.Limit), 10))
+			params.Set("limit", strconv.FormatUint(arg.Limit, 10))
 		}
-		if arg.MaxDrawdownLTE != "" {
-			params.Set("max_drawdown_lte", arg.MaxDrawdownLTE)
+		if arg.MaximumDrawdownLessThanOrEqual != "" {
+			params.Set("max_drawdown_lte", arg.MaximumDrawdownLessThanOrEqual)
 		}
-		if arg.BacktestAPRGTE != "" {
-			params.Set("backtest_apr_gte", arg.BacktestAPRGTE)
+		if arg.BacktestAPRGreaterThanOrEqual != "" {
+			params.Set("backtest_apr_gte", arg.BacktestAPRGreaterThanOrEqual)
 		}
 	}
 	var resp BotDiscoverResponse
@@ -93,8 +93,8 @@ func (e *Exchange) CreateSpotGridBot(ctx context.Context, arg *SpotGridCreateReq
 	if arg.CreateParams.HighPrice <= 0 {
 		return nil, errBotHighPriceRequired
 	}
-	if arg.CreateParams.GridNumber <= 0 {
-		return nil, errBotGridNumRequired
+	if arg.CreateParams.GridNumber == 0 {
+		return nil, errBotGridNumberRequired
 	}
 	if arg.CreateParams.PriceType > BotPriceTypeGeometric {
 		return nil, errBotPriceTypeInvalid
@@ -121,8 +121,8 @@ func (e *Exchange) CreateMarginGridBot(ctx context.Context, arg *MarginGridCreat
 	if arg.CreateParams.HighPrice <= 0 {
 		return nil, errBotHighPriceRequired
 	}
-	if arg.CreateParams.GridNum <= 0 {
-		return nil, errBotGridNumRequired
+	if arg.CreateParams.GridNumber == 0 {
+		return nil, errBotGridNumberRequired
 	}
 	if arg.CreateParams.PriceType > BotPriceTypeGeometric {
 		return nil, errBotPriceTypeInvalid
@@ -177,8 +177,8 @@ func (e *Exchange) CreateFuturesGridBot(ctx context.Context, arg *FuturesGridCre
 	if arg.CreateParams.HighPrice <= 0 {
 		return nil, errBotHighPriceRequired
 	}
-	if arg.CreateParams.GridNum <= 0 {
-		return nil, errBotGridNumRequired
+	if arg.CreateParams.GridNumber == 0 {
+		return nil, errBotGridNumberRequired
 	}
 	if arg.CreateParams.PriceType > BotPriceTypeGeometric {
 		return nil, errBotPriceTypeInvalid
@@ -248,7 +248,7 @@ func (e *Exchange) CreateContractMartingaleBot(ctx context.Context, arg *Contrac
 }
 
 // GetBotRunningStrategies queries the list of AIHub strategies currently running by the user. Supports filtering by strategy type, trading pair, and paging.
-func (e *Exchange) GetBotRunningStrategies(ctx context.Context, strategyType, market string, page, pageSize int32) (*BotPortfolioRunningData, error) {
+func (e *Exchange) GetBotRunningStrategies(ctx context.Context, strategyType, market string, page, pageSize uint64) (*BotPortfolioRunningData, error) {
 	params := url.Values{}
 	if strategyType != "" {
 		params.Set("strategy_type", strategyType)
@@ -257,10 +257,10 @@ func (e *Exchange) GetBotRunningStrategies(ctx context.Context, strategyType, ma
 		params.Set("market", market)
 	}
 	if page > 0 {
-		params.Set("page", strconv.Itoa(int(page)))
+		params.Set("page", strconv.FormatUint(page, 10))
 	}
 	if pageSize > 0 {
-		params.Set("page_size", strconv.Itoa(int(pageSize)))
+		params.Set("page_size", strconv.FormatUint(pageSize, 10))
 	}
 	var resp BotPortfolioRunningResponse
 	return &resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, botPortfolioRunningEPL, http.MethodGet, "bot/portfolio/running", params, nil, &resp)

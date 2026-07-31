@@ -16,7 +16,7 @@ type WebsocketAPIResponse struct {
 // Header defines a websocket header
 type Header struct {
 	ResponseTime types.Time `json:"response_time"`
-	Status       int64      `json:"status,string"`
+	Status       uint64     `json:"status,string"`
 	Channel      string     `json:"channel"`
 	Event        string     `json:"event"`
 	ClientID     string     `json:"client_id"`
@@ -26,8 +26,8 @@ type Header struct {
 
 // WebsocketRequest defines a websocket request
 type WebsocketRequest struct {
-	Time    int64            `json:"time,omitempty"`
-	ID      int64            `json:"id,omitempty"`
+	Time    uint64           `json:"time,omitempty"`
+	ID      uint64           `json:"id,omitempty"`
 	Channel string           `json:"channel"`
 	Event   string           `json:"event"`
 	Payload WebsocketPayload `json:"payload"`
@@ -72,8 +72,8 @@ type WebsocketOrderResponse struct {
 	FilledTotal               types.Number  `json:"filled_total"`
 	ID                        string        `json:"id"`
 	FillPrice                 types.Number  `json:"fill_price"`
-	UpdateTimeMs              types.Time    `json:"update_time_ms"`
-	CreateTimeMs              types.Time    `json:"create_time_ms"`
+	UpdateTimeMilliseconds    types.Time    `json:"update_time_ms"`
+	CreateTimeMilliseconds    types.Time    `json:"create_time_ms"`
 	Fee                       types.Number  `json:"fee"`
 	FeeCurrency               currency.Code `json:"fee_currency"`
 	PointFee                  types.Number  `json:"point_fee"`
@@ -83,7 +83,7 @@ type WebsocketOrderResponse struct {
 	GTDiscount                bool          `json:"gt_discount"`
 	RebatedFee                types.Number  `json:"rebated_fee"`
 	RebatedFeeCurrency        currency.Code `json:"rebated_fee_currency"`
-	SelfTradePreventionID     int           `json:"stp_id"`
+	SelfTradePreventionID     uint64        `json:"stp_id"`
 	SelfTradePreventionAction string        `json:"stp_act"`
 	AverageDealPrice          types.Number  `json:"avg_deal_price"`
 	Label                     string        `json:"label"`
@@ -92,8 +92,8 @@ type WebsocketOrderResponse struct {
 
 // WebsocketFuturesOrderResponse defines a websocket futures order response
 type WebsocketFuturesOrderResponse struct {
-	ID                        int64         `json:"id"`
-	User                      int64         `json:"user"`
+	ID                        uint64        `json:"id"`
+	User                      uint64        `json:"user"`
 	CreateTime                types.Time    `json:"create_time"`
 	FinishTime                types.Time    `json:"finish_time"`
 	FinishAs                  string        `json:"finish_as"`
@@ -111,11 +111,11 @@ type WebsocketFuturesOrderResponse struct {
 	Text                      string        `json:"text"`
 	TakerFee                  types.Number  `json:"tkfr"`
 	MakerFee                  types.Number  `json:"mkfr"`
-	ReferenceUserID           int64         `json:"refu"`
-	SelfTradePreventionID     int64         `json:"stp_id"`
+	ReferenceUserID           uint64        `json:"refu"`
+	SelfTradePreventionID     uint64        `json:"stp_id"`
 	SelfTradePreventionAction string        `json:"stp_act"`
 	AmendText                 string        `json:"amend_text"`
-	BizInfo                   string        `json:"biz_info"`
+	BusinessInformation       string        `json:"biz_info"`
 	BestBidOffer              string        `json:"bbo"`
 	MarketOrderSlipRatio      types.Number  `json:"market_order_slip_ratio"`
 	UpdateTime                types.Time    `json:"update_time"`
@@ -176,7 +176,7 @@ type WebsocketFutureOrdersList struct {
 	Contract currency.Pair `json:"contract,omitzero"`
 	Asset    asset.Item    `json:"-"` // Only used internally for routing
 	Status   string        `json:"status"`
-	Limit    int64         `json:"limit,omitempty"`
-	Offset   int64         `json:"offset,omitempty"`
+	Limit    uint64        `json:"limit,omitempty"`
+	Offset   uint64        `json:"offset,omitempty"`
 	LastID   string        `json:"last_id,omitempty"`
 }

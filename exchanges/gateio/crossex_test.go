@@ -2,6 +2,7 @@ package gateio
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,7 +104,10 @@ func TestGetCrossExchangeSymbols(t *testing.T) {
 		newCrossExchangeSymbol("BINANCE", asset.Futures, currency.NewBTCUSDT()),
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NotEmpty(t, result, "GetCrossExchangeSymbols must return symbol data")
+	if mockTests {
+		assert.True(t, result[0].SupportRPI.Bool(), "symbol should support RPI orders")
+	}
 }
 
 func TestGetCrossExchangeRiskLimits(t *testing.T) {
@@ -134,6 +138,11 @@ func TestGetCrossExchangeTransferCoins(t *testing.T) {
 
 func TestGetCrossExchangeTransferHistory(t *testing.T) {
 	t.Parallel()
+	_, err := e.GetCrossExchangeTransferHistory(t.Context(), &GetCrossExchangeTransferHistoryRequest{
+		From: time.Unix(2, 0),
+		To:   time.Unix(1, 0),
+	})
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetCrossExchangeTransferHistory must reject an invalid time range")
 	if !mockTests {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	}
@@ -159,12 +168,14 @@ func TestCrossExchangeFundTransfer(t *testing.T) {
 	_, err = e.CrossExchangeFundTransfer(t.Context(), &CrossExchangeTransferRequest{Coin: currency.BTC, Amount: 0.001, From: "spot"})
 	require.ErrorIs(t, err, errCrossExchangeToAccountRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.CrossExchangeFundTransfer(t.Context(), &CrossExchangeTransferRequest{
 		Coin: currency.BTC, Amount: 0.001, From: "spot", To: "crossex",
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, result.TxID)
+	assert.NotEmpty(t, result.TransactionID)
 }
 
 func TestCreateCrossExchangeOrder(t *testing.T) {
@@ -226,7 +237,9 @@ func TestModifyCrossExchangeOrder(t *testing.T) {
 	_, err = e.ModifyCrossExchangeOrder(t.Context(), "20491522002333905922", nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.ModifyCrossExchangeOrder(t.Context(), "20491522002333905922", &CrossExchangeOrderUpdateRequest{Price: 64000})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.OrderID)
@@ -237,7 +250,9 @@ func TestCancelCrossExchangeOrder(t *testing.T) {
 	_, err := e.CancelCrossExchangeOrder(t.Context(), "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.CancelCrossExchangeOrder(t.Context(), "20491522002333905922")
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.OrderID)
@@ -303,6 +318,9 @@ func TestGetCrossExchangeConvertQuote(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.QuoteID)
+	if mockTests {
+		assert.Equal(t, int64(1715864152378), result.ValidMilliseconds.Time().UnixMilli(), "quote validity should decode from Unix milliseconds")
+	}
 }
 
 func TestExecuteCrossExchangeConvertOrder(t *testing.T) {
@@ -311,7 +329,7 @@ func TestExecuteCrossExchangeConvertOrder(t *testing.T) {
 	require.ErrorIs(t, err, errQuoteIDRequired)
 
 	if !mockTests {
-		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
 	result, err := e.ExecuteCrossExchangeConvertOrder(t.Context(), "CTH46487058372")
 	require.NoError(t, err)
@@ -343,7 +361,9 @@ func TestUpdateCrossExchangeAccount(t *testing.T) {
 	_, err := e.UpdateCrossExchangeAccount(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	result, err := e.UpdateCrossExchangeAccount(t.Context(), &CrossExchangeAccountUpdateRequest{
 		PositionMode: "SINGLE",
 		AccountMode:  "CROSS_EXCHANGE",
@@ -490,8 +510,14 @@ func TestGetCrossExchangeUserFeeRates(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	}
 	result, err := e.GetCrossExchangeUserFeeRates(t.Context())
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetCrossExchangeUserFeeRates must not error")
+	require.NotEmpty(t, result, "GetCrossExchangeUserFeeRates must return fee data")
+	if mockTests {
+		assert.Equal(t, types.Number(0.00005), result[0].SpotRPIMakerFee, "spot RPI maker fee should match")
+		assert.Equal(t, types.Number(0.0001), result[0].FutureRPIMakerFee, "future RPI maker fee should match")
+		require.Len(t, result[0].SpecialFeeList, 1, "special fee list must contain the mocked symbol")
+		assert.Equal(t, types.Number(0.0001), result[0].SpecialFeeList[0].RPIFeeRate, "special RPI fee should match")
+	}
 }
 
 func TestGetCrossExchangeContractPositions(t *testing.T) {
@@ -529,7 +555,8 @@ func TestGetCrossExchangeMarginPositions(t *testing.T) {
 		result, err := e.GetCrossExchangeMarginPositions(t.Context(), tc.symbol, tc.exchangeType)
 		require.NoError(t, err, "GetCrossExchangeMarginPositions must not error")
 		if mockTests {
-			assert.NotEmpty(t, result, "GetCrossExchangeMarginPositions should return positions")
+			require.NotEmpty(t, result, "GetCrossExchangeMarginPositions must return positions")
+			assert.Equal(t, types.Number(10), result[0].MaxLeverage, "maximum leverage should match")
 		}
 	}
 }
@@ -599,7 +626,9 @@ func TestGetCrossExchangeContractPositionHistory(t *testing.T) {
 		result, err := e.GetCrossExchangeContractPositionHistory(t.Context(), arg)
 		require.NoError(t, err, "GetCrossExchangeContractPositionHistory must not error")
 		if mockTests {
-			assert.NotEmpty(t, result, "GetCrossExchangeContractPositionHistory should return positions")
+			require.NotEmpty(t, result, "GetCrossExchangeContractPositionHistory must return positions")
+			assert.Equal(t, types.Number(2), result[0].ClosedQuantity, "closed quantity should match")
+			assert.Equal(t, "FUTURE", result[0].BusinessType, "business type should match")
 		}
 	}
 }
@@ -653,7 +682,12 @@ func TestGetCrossExchangeTradeHistory(t *testing.T) {
 		result, err := e.GetCrossExchangeTradeHistory(t.Context(), arg)
 		require.NoError(t, err, "GetCrossExchangeTradeHistory must not error")
 		if mockTests {
-			assert.NotEmpty(t, result, "GetCrossExchangeTradeHistory should return trades")
+			require.NotEmpty(t, result, "GetCrossExchangeTradeHistory must return trades")
+			assert.Equal(t, types.Number(0.0001), result[0].FeeRate, "fee rate should match")
+			assert.Equal(t, "MAKER", result[0].MatchRole, "match role should match")
+			assert.Equal(t, types.Number(150), result[0].RealizedPNL, "realized PNL should match")
+			assert.Equal(t, "SINGLE", result[0].PositionMode, "position mode should match")
+			assert.Equal(t, "LONG", result[0].PositionSide, "position side should match")
 		}
 	}
 }
@@ -664,8 +698,12 @@ func TestGetCrossExchangeAccountBook(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	}
 	result, err := e.GetCrossExchangeAccountBook(t.Context(), nil)
-	require.NoError(t, err)
-	assert.NotEmpty(t, result)
+	require.NoError(t, err, "GetCrossExchangeAccountBook must not error")
+	require.NotEmpty(t, result, "GetCrossExchangeAccountBook must return account records")
+	if mockTests {
+		assert.Equal(t, currency.USDT, result[0].Coin, "account book coin should match")
+		assert.Equal(t, "BINANCE_FUTURE_BTC_USDT", result[0].Symbol, "account book symbol should match")
+	}
 }
 
 func TestGetCrossExchangeCoinDiscountRates(t *testing.T) {
@@ -676,6 +714,58 @@ func TestGetCrossExchangeCoinDiscountRates(t *testing.T) {
 	result, err := e.GetCrossExchangeCoinDiscountRates(t.Context(), currency.ETH, "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, result)
+}
+
+func TestGetCrossExchangeMarketTickers(t *testing.T) {
+	t.Parallel()
+	_, err := e.GetCrossExchangeMarketTickers(t.Context(), []CrossExchangeSymbolIdentifier{
+		newCrossExchangeSymbol("GATE", asset.Margin, currency.NewBTCUSDT()),
+	})
+	require.ErrorIs(t, err, asset.ErrNotSupported, "GetCrossExchangeMarketTickers must reject margin symbols")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	result, err := e.GetCrossExchangeMarketTickers(t.Context(), nil)
+	require.NoError(t, err, "GetCrossExchangeMarketTickers must not error")
+	require.NotEmpty(t, result, "GetCrossExchangeMarketTickers must return ticker data")
+	if !mockTests {
+		return
+	}
+	assert.Equal(t, types.Number(64052.4), result[0].LastPrice, "last price should match")
+	assert.Equal(t, int64(1785168000000), result[0].Timestamp.Time().UnixMilli(), "ticker timestamp should decode from Unix milliseconds")
+
+	result, err = e.GetCrossExchangeMarketTickers(t.Context(), []CrossExchangeSymbolIdentifier{
+		newCrossExchangeSymbol("GATE", asset.Futures, currency.NewBTCUSDT()),
+		newCrossExchangeSymbol("GATE", asset.Spot, currency.NewBTCUSDT()),
+	})
+	require.NoError(t, err, "GetCrossExchangeMarketTickers must support symbol filters")
+	require.Len(t, result, 2, "GetCrossExchangeMarketTickers must return the filtered mock tickers")
+}
+
+func TestGetCrossExchangeMarketFundingInfo(t *testing.T) {
+	t.Parallel()
+	_, err := e.GetCrossExchangeMarketFundingInfo(t.Context(), []CrossExchangeSymbolIdentifier{
+		newCrossExchangeSymbol("GATE", asset.Spot, currency.NewBTCUSDT()),
+	})
+	require.ErrorIs(t, err, asset.ErrNotSupported, "GetCrossExchangeMarketFundingInfo must reject spot symbols")
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
+	result, err := e.GetCrossExchangeMarketFundingInfo(t.Context(), nil)
+	require.NoError(t, err, "GetCrossExchangeMarketFundingInfo must not error")
+	require.NotEmpty(t, result, "GetCrossExchangeMarketFundingInfo must return funding data")
+	if !mockTests {
+		return
+	}
+	assert.Equal(t, types.Number(0.00006537), result[0].FundingRate, "funding rate should match")
+	assert.Equal(t, uint64(28800), result[0].FundingInterval, "funding interval should match")
+	assert.Equal(t, int64(1785168000000), result[0].FundingTime.Time().UnixMilli(), "funding time should decode from Unix milliseconds")
+
+	result, err = e.GetCrossExchangeMarketFundingInfo(t.Context(), []CrossExchangeSymbolIdentifier{
+		newCrossExchangeSymbol("BINANCE", asset.Futures, currency.NewBTCUSDT()),
+	})
+	require.NoError(t, err, "GetCrossExchangeMarketFundingInfo must support symbol filters")
+	require.Len(t, result, 1, "GetCrossExchangeMarketFundingInfo must return the filtered mock funding data")
 }
 
 func TestCrossExchangeOrderCreateRequestMarshalJSON(t *testing.T) {

@@ -23,6 +23,17 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
+func TestConvertNonNegativeInt64ToUint64(t *testing.T) {
+	t.Parallel()
+
+	value, err := convertNonNegativeInt64ToUint64(42, "test value")
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), value)
+
+	_, err = convertNonNegativeInt64ToUint64(-1, "test value")
+	require.ErrorIs(t, err, common.ErrMalformedData)
+}
+
 func TestGetWSPingHandler(t *testing.T) {
 	t.Parallel()
 

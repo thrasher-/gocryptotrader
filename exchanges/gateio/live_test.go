@@ -5,19 +5,39 @@
 package gateio
 
 import (
-	"context"
 	"log"
 	"os"
 	"testing"
 
-	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
+	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/livetest"
 )
 
-var mockTests = false
+var (
+	mockTests = false
+	// apiCredentials holds the credentials used for due diligence testing; please supply your own.
+	apiCredentials = &accounts.Credentials{
+		Key:    "",
+		Secret: "",
+	}
+	// Supply existing test-only sub-account resources to exercise the corresponding live tests.
+	subAccountUserID            uint64
+	subAccountKeyIdentifier     string
+	subAccountLoginName         string
+	subAccountAPIKeyName        string
+	subAccountUpdatedAPIKeyName string
+)
+
+const tradFiOrderLogID uint64 = 0
 
 func TestMain(m *testing.M) {
+	if livetest.ShouldSkip() {
+		log.Printf(livetest.LiveTestingSkipped, "GateIO")
+		os.Exit(0)
+	}
+
 	e = new(Exchange)
 	if err := testexch.Setup(e); err != nil {
 		log.Fatalf("Gateio Setup error: %s", err)
@@ -28,28 +48,6 @@ func TestMain(m *testing.M) {
 		e.API.AuthenticatedWebsocketSupport = true
 		e.SetCredentials(apiCredentials)
 	}
-	if err := e.populateTradablePairs(); err != nil {
-		log.Fatal(err)
-	}
+	log.Printf(sharedtestvalues.LiveTesting, e.Name)
 	os.Exit(m.Run())
-}
-
-func (e *Exchange) populateTradablePairs() error {
-	if err := e.UpdateTradablePairs(context.Background()); err != nil {
-		return err
-	}
-	enabledAssetPair = make(map[asset.Item]currency.Pair, 7)
-	for _, a := range e.GetAssetTypes(true) {
-		tradablePairs, err := e.GetEnabledPairs(a)
-		if err != nil {
-			return err
-		} else if len(tradablePairs) == 0 {
-			return currency.ErrCurrencyPairsEmpty
-		}
-		enabledAssetPair[a], err = e.FormatExchangeCurrency(tradablePairs[0], a)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

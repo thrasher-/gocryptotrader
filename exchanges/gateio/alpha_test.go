@@ -16,10 +16,15 @@ import (
 
 func TestGetAlphaAccounts(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetAlphaAccounts(t.Context())
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetAlphaAccounts must not error")
+	if mockTests {
+		require.Len(t, result, 1, "GetAlphaAccounts must return the mocked account")
+		assert.Equal(t, currency.USDT, result[0].Currency, "account currency should match")
+	}
 }
 
 func TestGetAlphaAccountTransactionHistory(t *testing.T) {
@@ -31,10 +36,15 @@ func TestGetAlphaAccountTransactionHistory(t *testing.T) {
 	_, err = e.GetAlphaAccountTransactionHistory(t.Context(), endTime, startTime, 1, 10)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetAlphaAccountTransactionHistory(t.Context(), startTime, endTime, 1, 10)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetAlphaAccountTransactionHistory must not error")
+	if mockTests {
+		require.Len(t, result, 1, "GetAlphaAccountTransactionHistory must return the mocked transaction")
+		assert.Equal(t, uint64(123456), result[0].ID, "transaction ID should decode from a JSON integer")
+	}
 }
 
 func TestCreateAlphaCurrencyQuoteID(t *testing.T) {
@@ -57,11 +67,15 @@ func TestCreateAlphaCurrencyQuoteID(t *testing.T) {
 	_, err = e.CreateAlphaCurrencyQuoteID(t.Context(), arg)
 	require.ErrorIs(t, err, errGasModeRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.GasMode = "custom"
 	result, err := e.CreateAlphaCurrencyQuoteID(t.Context(), arg)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "CreateAlphaCurrencyQuoteID must not error")
+	if mockTests {
+		assert.Equal(t, "quote-123", result.QuoteID, "quote ID should match")
+	}
 }
 
 func TestPlaceAlphaTradeOrder(t *testing.T) {
@@ -88,11 +102,15 @@ func TestPlaceAlphaTradeOrder(t *testing.T) {
 	_, err = e.PlaceAlphaTradeOrder(t.Context(), arg)
 	require.ErrorIs(t, err, errQuoteIDRequired)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	}
 	arg.QuoteID = "123345678"
 	result, err := e.PlaceAlphaTradeOrder(t.Context(), arg)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "PlaceAlphaTradeOrder must not error")
+	if mockTests {
+		assert.Equal(t, "alpha-order-123", result.OrderID, "order ID should match")
+	}
 }
 
 func TestGetAlphaOrders(t *testing.T) {
@@ -101,10 +119,15 @@ func TestGetAlphaOrders(t *testing.T) {
 	_, err := e.GetAlphaOrders(t.Context(), currency.ETH, order.Sell, 0, endTime, startTime, 0, 10)
 	require.ErrorIs(t, err, common.ErrStartAfterEnd)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetAlphaOrders(t.Context(), currency.ETH, order.Sell, 1, startTime, endTime, 0, 10)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetAlphaOrders must not error")
+	if mockTests {
+		require.Len(t, result, 1, "GetAlphaOrders must return the mocked order")
+		assert.Equal(t, "alpha-order-123", result[0].OrderID, "order ID should match")
+	}
 }
 
 func TestGetAlphaOrderByID(t *testing.T) {
@@ -112,10 +135,14 @@ func TestGetAlphaOrderByID(t *testing.T) {
 	_, err := e.GetAlphaOrderByID(t.Context(), "")
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	if !mockTests {
+		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	}
 	result, err := e.GetAlphaOrderByID(t.Context(), "123345678")
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	require.NoError(t, err, "GetAlphaOrderByID must not error")
+	if mockTests {
+		assert.Equal(t, "123345678", result.OrderID, "order ID should match")
+	}
 }
 
 func TestGetAlphaCurrenciesDetail(t *testing.T) {

@@ -2,6 +2,7 @@ package gateio
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,16 +13,35 @@ import (
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 )
 
+const (
+	rebateMaximumHistoryPeriod = 30 * 24 * time.Hour
+	rebateMaximumPageSize      = 100
+	rebateMaximumBusinessType  = 8
+)
+
+var rebateTimeZone = time.FixedZone("UTC+8", 8*60*60)
+
+func validateRebateHistoryTimeRange(from, to time.Time) error {
+	if from.IsZero() || to.IsZero() {
+		return nil
+	}
+	if err := common.StartEndTimeCheck(from, to); err != nil {
+		return err
+	}
+	if to.Sub(from) > rebateMaximumHistoryPeriod {
+		return fmt.Errorf("%w: rebate history time range cannot exceed 30 days", errNoValidParameterPassed)
+	}
+	return nil
+}
+
 // rebateTransactionHistoryParams builds the shared query parameters used by the agency and partner transaction history endpoints.
 func rebateTransactionHistoryParams(arg *RebateTransactionHistoryRequest) (url.Values, error) {
 	params := url.Values{}
 	if arg == nil {
 		return params, nil
 	}
-	if !arg.From.IsZero() && !arg.To.IsZero() {
-		if err := common.StartEndTimeCheck(arg.From, arg.To); err != nil {
-			return nil, err
-		}
+	if err := validateRebateHistoryTimeRange(arg.From, arg.To); err != nil {
+		return nil, err
 	}
 	if !arg.CurrencyPair.IsEmpty() {
 		params.Set("currency_pair", arg.CurrencyPair.String())
@@ -50,10 +70,8 @@ func rebateCommissionHistoryParams(arg *RebateCommissionHistoryRequest) (url.Val
 	if arg == nil {
 		return params, nil
 	}
-	if !arg.From.IsZero() && !arg.To.IsZero() {
-		if err := common.StartEndTimeCheck(arg.From, arg.To); err != nil {
-			return nil, err
-		}
+	if err := validateRebateHistoryTimeRange(arg.From, arg.To); err != nil {
+		return nil, err
 	}
 	if !arg.Currency.IsEmpty() {
 		params.Set("currency", arg.Currency.String())
@@ -85,10 +103,8 @@ func rebateBrokerHistoryParams(arg *RebateBrokerHistoryRequest) (url.Values, err
 	if arg == nil {
 		return params, nil
 	}
-	if !arg.From.IsZero() && !arg.To.IsZero() {
-		if err := common.StartEndTimeCheck(arg.From, arg.To); err != nil {
-			return nil, err
-		}
+	if err := validateRebateHistoryTimeRange(arg.From, arg.To); err != nil {
+		return nil, err
 	}
 	if arg.UserID != 0 {
 		params.Set("user_id", strconv.FormatUint(arg.UserID, 10))
@@ -152,6 +168,9 @@ func (e *Exchange) GetPartnerCommissionHistory(ctx context.Context, arg *RebateC
 func (e *Exchange) GetPartnerSubordinateList(ctx context.Context, arg *PartnerSubordinateListRequest) (*PartnerSubordinateListResponse, error) {
 	params := url.Values{}
 	if arg != nil {
+		if arg.Limit > rebateMaximumPageSize {
+			return nil, fmt.Errorf("%w: limit cannot exceed %d", errNoValidParameterPassed, rebateMaximumPageSize)
+		}
 		if arg.UserID != 0 {
 			params.Set("user_id", strconv.FormatUint(arg.UserID, 10))
 		}
@@ -207,19 +226,24 @@ func (e *Exchange) GetUserSubordinateRelationship(ctx context.Context, userIDLis
 
 // GetRecentPartnerApplicationRecords retrieves the current user's recent partner application records.
 func (e *Exchange) GetRecentPartnerApplicationRecords(ctx context.Context) (*RecentPartnerApplicationRecords, error) {
-	var resp *RecentPartnerApplicationRecords
-	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerApplicationsRecentEPL, http.MethodGet, "rebate/partner/applications/recent", nil, nil, &resp)
+	var resp gateioAPIResponse[*RecentPartnerApplicationRecords]
+	err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerApplicationsRecentEPL, http.MethodGet, "rebate/partner/applications/recent", nil, nil, &resp)
+	return resp.Data, err
 }
 
 // CheckPartnerApplicationEligibility check partner application eligibility
-func (e *Exchange) CheckPartnerApplicationEligibility(ctx context.Context) (*RebaseEligibilityResponse, error) {
-	var resp *RebaseEligibilityResponse
-	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerEligibilityEPL, http.MethodGet, "rebate/partner/eligibility", nil, nil, &resp)
+func (e *Exchange) CheckPartnerApplicationEligibility(ctx context.Context) (*RebateEligibilityResponse, error) {
+	var resp gateioAPIResponse[*RebateEligibilityResponse]
+	err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerEligibilityEPL, http.MethodGet, "rebate/partner/eligibility", nil, nil, &resp)
+	return resp.Data, err
 }
 
 // GetAggregatedPartnerAgentStatistics retrieves aggregated partner agent statistics
 // Business type filter: - 0: All (default) - 1: Spot - 2: Futures - 3: Alpha - 4: Web3 - 5: Perps (DEX) - 6: Exchange All - 7: Web3 All - 8: TradFi
 func (e *Exchange) GetAggregatedPartnerAgentStatistics(ctx context.Context, startTime, endTime time.Time, businessType uint64) (*RebateAgentStatisticsResponse, error) {
+	if businessType > rebateMaximumBusinessType {
+		return nil, fmt.Errorf("%w: business type must be between 0 and %d", errNoValidParameterPassed, rebateMaximumBusinessType)
+	}
 	if !startTime.IsZero() && !endTime.IsZero() {
 		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
 			return nil, err
@@ -227,14 +251,15 @@ func (e *Exchange) GetAggregatedPartnerAgentStatistics(ctx context.Context, star
 	}
 	params := url.Values{}
 	if !startTime.IsZero() {
-		params.Set("start_date", startTime.Format("2006-01-02 15:04:05"))
+		params.Set("start_date", startTime.In(rebateTimeZone).Format(time.DateTime))
 	}
 	if !endTime.IsZero() {
-		params.Set("end_date", endTime.Format("2006-01-02 15:04:05"))
+		params.Set("end_date", endTime.In(rebateTimeZone).Format(time.DateTime))
 	}
 	if businessType > 0 {
 		params.Set("business_type", strconv.FormatUint(businessType, 10))
 	}
-	var resp *RebateAgentStatisticsResponse
-	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerDataAggregatedEPL, http.MethodGet, "rebate/partner/data/aggregated", params, nil, &resp)
+	var resp gateioAPIResponse[*RebateAgentStatisticsResponse]
+	err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, rebatePartnerDataAggregatedEPL, http.MethodGet, "rebate/partner/data/aggregated", params, nil, &resp)
+	return resp.Data, err
 }

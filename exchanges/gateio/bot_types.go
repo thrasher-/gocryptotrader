@@ -1,6 +1,8 @@
 package gateio
 
 import (
+	"time"
+
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
@@ -15,7 +17,7 @@ const (
 )
 
 // BotPriceType denotes the grid spacing mode used by AIHub grid strategies
-type BotPriceType uint8
+type BotPriceType uint64
 
 // Grid spacing modes accepted by the bot grid creation endpoints
 const (
@@ -33,15 +35,15 @@ const (
 
 // GetBotStrategyRecommendationsRequest holds parameters for the AIHub strategy recommendation endpoint.
 type GetBotStrategyRecommendationsRequest struct {
-	Market                  string       `json:"market,omitempty"`
-	StrategyType            string       `json:"strategy_type,omitempty"`
-	Direction               string       `json:"direction,omitempty"`
-	InvestAmount            types.Number `json:"invest_amount,omitempty"`
-	Scene                   string       `json:"scene,omitempty"`
-	RefreshRecommendationID string       `json:"refresh_recommendation_id,omitempty"`
-	Limit                   int32        `json:"limit,omitempty"`
-	MaxDrawdownLTE          string       `json:"max_drawdown_lte,omitempty"`
-	BacktestAPRGTE          string       `json:"backtest_apr_gte,omitempty"`
+	Market                         string       `json:"market,omitempty"`
+	StrategyType                   string       `json:"strategy_type,omitempty"`
+	Direction                      string       `json:"direction,omitempty"`
+	InvestAmount                   types.Number `json:"invest_amount,omitempty"`
+	Scene                          string       `json:"scene,omitempty"`
+	RefreshRecommendationID        string       `json:"refresh_recommendation_id,omitempty"`
+	Limit                          uint64       `json:"limit,omitempty"`
+	MaximumDrawdownLessThanOrEqual string       `json:"max_drawdown_lte,omitempty"`
+	BacktestAPRGreaterThanOrEqual  string       `json:"backtest_apr_gte,omitempty"`
 }
 
 // BotRecommendation holds a single strategy recommendation.
@@ -65,7 +67,7 @@ type BotDiscoverData struct {
 
 // BotDiscoverResponse is the unified response for the strategy recommendation endpoint.
 type BotDiscoverResponse struct {
-	Code    int32            `json:"code"`
+	Code    uint64           `json:"code"`
 	Message string           `json:"message"`
 	Data    *BotDiscoverData `json:"data"`
 	TraceID string           `json:"trace_id"`
@@ -85,7 +87,7 @@ type BotCreateData struct {
 
 // BotCreateResponse is the unified response returned when a strategy is created.
 type BotCreateResponse struct {
-	Code    int32         `json:"code"`
+	Code    uint64        `json:"code"`
 	Message string        `json:"message"`
 	Data    BotCreateData `json:"data"`
 	TraceID string        `json:"trace_id"`
@@ -99,7 +101,7 @@ type SpotGridCreateParams struct {
 	Money              types.Number `json:"money"`
 	LowPrice           types.Number `json:"low_price"`
 	HighPrice          types.Number `json:"high_price"`
-	GridNumber         int32        `json:"grid_num"`
+	GridNumber         uint64       `json:"grid_num"`
 	PriceType          BotPriceType `json:"price_type"`
 	TriggerPrice       types.Number `json:"trigger_price,omitempty"`
 	StopProfit         types.Number `json:"stop_profit,omitempty"`
@@ -120,7 +122,7 @@ type MarginGridCreateParams struct {
 	Money              types.Number `json:"money"`
 	LowPrice           types.Number `json:"low_price"`
 	HighPrice          types.Number `json:"high_price"`
-	GridNum            int32        `json:"grid_num"`
+	GridNumber         uint64       `json:"grid_num"`
 	PriceType          BotPriceType `json:"price_type"`
 	Leverage           types.Number `json:"leverage"`
 	Direction          string       `json:"direction,omitempty"` // possible values: 'long', 'short', and 'neutral'
@@ -143,7 +145,7 @@ type InfiniteGridCreateParams struct {
 	Money              types.Number  `json:"money"`
 	PriceFloor         types.Number  `json:"price_floor"`
 	ProfitPerGrid      types.Number  `json:"profit_per_grid"`
-	GridNum            int32         `json:"grid_num,omitempty"`
+	GridNumber         uint64        `json:"grid_num,omitempty"`
 	PriceType          *BotPriceType `json:"price_type,omitempty"`
 	TriggerPrice       types.Number  `json:"trigger_price,omitempty"`
 	StopProfit         types.Number  `json:"stop_profit,omitempty"`
@@ -164,7 +166,7 @@ type FuturesGridCreateParams struct {
 	Money              types.Number `json:"money"`
 	LowPrice           types.Number `json:"low_price"`
 	HighPrice          types.Number `json:"high_price"`
-	GridNum            int32        `json:"grid_num"`
+	GridNumber         uint64       `json:"grid_num"`
 	PriceType          BotPriceType `json:"price_type"`
 	Leverage           types.Number `json:"leverage"`
 	Direction          string       `json:"direction,omitempty"` // possible values: 'long', 'short', and 'neutral'
@@ -186,7 +188,7 @@ type FuturesGridCreateRequest struct {
 type SpotMartingaleCreateParams struct {
 	InvestAmount       types.Number `json:"invest_amount"`
 	PriceDeviation     types.Number `json:"price_deviation"`
-	MaxOrders          int32        `json:"max_orders"`
+	MaxOrders          uint64       `json:"max_orders"`
 	TakeProfitRatio    types.Number `json:"take_profit_ratio"`
 	StopLossPerCycle   types.Number `json:"stop_loss_per_cycle,omitempty"`
 	TriggerPrice       types.Number `json:"trigger_price,omitempty"`
@@ -204,7 +206,7 @@ type SpotMartingaleCreateRequest struct {
 type ContractMartingaleCreateParams struct {
 	InvestAmount       types.Number `json:"invest_amount"`
 	PriceDeviation     types.Number `json:"price_deviation"`
-	MaxOrders          int32        `json:"max_orders"`
+	MaxOrders          uint64       `json:"max_orders"`
 	TakeProfitRatio    types.Number `json:"take_profit_ratio"`
 	Direction          string       `json:"direction"`
 	Leverage           types.Number `json:"leverage"`
@@ -229,20 +231,20 @@ type BotPortfolioRunningItem struct {
 	PNL          types.Number `json:"pnl"`
 	PNLRate      types.Number `json:"pnl_rate"`
 	InvestAmount types.Number `json:"invest_amount"`
-	CreatedAt    types.Time   `json:"created_at"`
+	CreatedAt    time.Time    `json:"created_at"`
 }
 
 // BotPortfolioRunningData holds the running policy list data.
 type BotPortfolioRunningData struct {
 	Items    []*BotPortfolioRunningItem `json:"items"`
-	Page     int32                      `json:"page"`
-	PageSize int32                      `json:"page_size"`
-	Total    int32                      `json:"total"`
+	Page     uint64                     `json:"page"`
+	PageSize uint64                     `json:"page_size"`
+	Total    uint64                     `json:"total"`
 }
 
 // BotPortfolioRunningResponse is the unified response for querying the running policy list.
 type BotPortfolioRunningResponse struct {
-	Code    int32                   `json:"code"`
+	Code    uint64                  `json:"code"`
 	Message string                  `json:"message"`
 	Data    BotPortfolioRunningData `json:"data"`
 	TraceID string                  `json:"trace_id"`
@@ -256,7 +258,7 @@ func (b *BotPortfolioRunningResponse) AsError() error {
 // BotPortfolioBaseInfo holds base information about a portfolio strategy.
 type BotPortfolioBaseInfo struct {
 	StrategyName    string       `json:"strategy_name"`
-	CreatedAt       types.Time   `json:"created_at"`
+	CreatedAt       time.Time    `json:"created_at"`
 	RunningDuration uint64       `json:"running_duration"`
 	InvestAmount    types.Number `json:"invest_amount"`
 	TotalProfit     types.Number `json:"total_profit"`
@@ -304,7 +306,7 @@ type BotPortfolioDetailData struct {
 
 // BotPortfolioDetailResponse is the unified response for querying strategy details.
 type BotPortfolioDetailResponse struct {
-	Code    int32                  `json:"code"`
+	Code    uint64                 `json:"code"`
 	Message string                 `json:"message"`
 	Data    BotPortfolioDetailData `json:"data"`
 	TraceID string                 `json:"trace_id"`
@@ -331,7 +333,7 @@ type BotPortfolioStopData struct {
 
 // BotPortfolioStopResponse is the unified response for terminating a running strategy.
 type BotPortfolioStopResponse struct {
-	Code    int32                 `json:"code"`
+	Code    uint64                `json:"code"`
 	Message string                `json:"message"`
 	Data    *BotPortfolioStopData `json:"data"`
 	TraceID string                `json:"trace_id"`

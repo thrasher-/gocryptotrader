@@ -1,5 +1,129 @@
 {
  "routes": {
+  "/api/v4/alpha/accounts": {
+   "GET": [
+    {
+     "data": [
+      {
+       "currency": "USDT",
+       "available": "100",
+       "locked": "5",
+       "token_address": "0x1234",
+       "chain": "ETH"
+      }
+     ],
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/alpha/account_book": {
+   "GET": [
+    {
+     "data": [
+      {
+       "id": 123456,
+       "time": "1744103854",
+       "currency": "USDT",
+       "change": "10",
+       "balance": "100"
+      }
+     ],
+     "queryString": "from=1744103854\u0026limit=10\u0026page=1\u0026to=1744190254",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/alpha/quote": {
+   "POST": [
+    {
+     "data": {
+      "quote_id": "quote-123",
+      "min_amount": "0.1",
+      "max_amount": "10",
+      "price": "65000",
+      "slippage": "0.01",
+      "estimate_gas_fee_amount_usdt": "1",
+      "order_fee": "0.1",
+      "target_token_min_amount": "0.00001",
+      "target_token_max_amount": "0.001",
+      "error_type": 0
+     },
+     "queryString": "",
+     "bodyParams": "{\"amount\":\"1\",\"currency\":\"BTC\",\"gas_mode\":\"custom\",\"side\":\"sell\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/alpha/orders": {
+   "GET": [
+    {
+     "data": [
+      {
+       "order_id": "alpha-order-123",
+       "tx_hash": "0xabc",
+       "side": "sell",
+       "usdt_amount": "100",
+       "currency": "ETH",
+       "currency_amount": "0.05",
+       "status": 2,
+       "gas_mode": "custom",
+       "chain": "ETH",
+       "gas_fee": "1",
+       "transaction_fee": "0.1",
+       "create_time": "1744103854",
+       "failed_reason": ""
+      }
+     ],
+     "queryString": "currency=ETH\u0026from=1744103854\u0026limit=10\u0026side=sell\u0026status=1\u0026to=1744190254",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ],
+   "POST": [
+    {
+     "data": {
+      "order_id": "alpha-order-123",
+      "status": 1,
+      "side": "sell",
+      "gas_mode": "custom",
+      "create_time": "1744103854",
+      "amount": "1",
+      "token_address": "0x1234",
+      "chain": "ETH"
+     },
+     "queryString": "",
+     "bodyParams": "{\"amount\":\"1\",\"currency\":\"BTC\",\"gas_mode\":\"custom\",\"quote_id\":\"123345678\",\"side\":\"sell\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/alpha/order": {
+   "GET": [
+    {
+     "data": {
+      "order_id": "123345678",
+      "tx_hash": "0xabc",
+      "side": "sell",
+      "usdt_amount": "100",
+      "currency": "ETH",
+      "currency_amount": "0.05",
+      "status": 2,
+      "gas_mode": "custom",
+      "chain": "ETH",
+      "gas_fee": "1",
+      "transaction_fee": "0.1",
+      "create_time": "1744103854",
+      "failed_reason": ""
+     },
+     "queryString": "order_id=123345678",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
   "/api/v4/alpha/currencies": {
    "GET": [
     {
@@ -184,7 +308,7 @@
       "trace_id": "trace_007"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"strategy_type\":\"contract_martingale\",\"market\":\"BTC_USDT\",\"create_params\":\"{\\\"direction\\\":\\\"buy\\\",\\\"invest_amount\\\":\\\"1000\\\",\\\"leverage\\\":\\\"5\\\",\\\"max_orders\\\":5,\\\"price_deviation\\\":\\\"0.02\\\",\\\"take_profit_ratio\\\":\\\"0.05\\\"}\"}",
      "headers": null
     }
    ]
@@ -298,7 +422,7 @@
       },
       "trace_id": "trace_009"
      },
-     "queryString": "",
+     "queryString": "strategy_id=sg_001\u0026strategy_type=spot_grid",
      "bodyParams": "",
      "headers": null
     }
@@ -330,7 +454,7 @@
       },
       "trace_id": "trace_008"
      },
-     "queryString": "",
+     "queryString": "market=BTC_USDT\u0026page=1\u0026page_size=10\u0026strategy_type=spot_grid",
      "bodyParams": "",
      "headers": null
     }
@@ -351,7 +475,7 @@
       "trace_id": "trace_010"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"strategy_id\":\"sg_001\",\"strategy_type\":\"spot_grid\"}",
      "headers": null
     }
    ]
@@ -372,7 +496,7 @@
       "trace_id": "trace_002"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"strategy_type\":\"spot_grid\",\"market\":\"BTC_USDT\",\"create_params\":\"{\\\"grid_num\\\":20,\\\"high_price\\\":\\\"110000\\\",\\\"low_price\\\":\\\"90000\\\",\\\"money\\\":\\\"1000\\\",\\\"price_type\\\":1}\"}",
      "headers": null
     }
    ]
@@ -393,7 +517,7 @@
       "trace_id": "trace_006"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"strategy_type\":\"spot_martingale\",\"market\":\"BTC_USDT\",\"create_params\":\"{\\\"invest_amount\\\":\\\"1000\\\",\\\"max_orders\\\":5,\\\"price_deviation\\\":\\\"0.02\\\",\\\"take_profit_ratio\\\":\\\"0.05\\\"}\"}",
      "headers": null
     }
    ]
@@ -425,6 +549,58 @@
      "queryString": "",
      "bodyParams": "",
      "headers": null
+    },
+    {
+     "data": {
+      "code": 200,
+      "message": "success",
+      "data": {
+       "scene": "top1",
+       "recommendations": [
+        {
+         "recommendation_id": "rec_001",
+         "market": "BTC_USDT",
+         "strategy_type": "spot_grid",
+         "strategy_name": "BTC_USDT Spot Grid",
+         "backtest_apr": "0.35",
+         "max_drawdown": "0.12",
+         "summary": "Recommended spot grid for BTC_USDT",
+         "strategy_params_preview": "{\"low_price\":\"90000\",\"high_price\":\"110000\",\"grid_num\":20}"
+        }
+       ],
+       "unsupported_filters": []
+      },
+      "trace_id": "trace_001"
+     },
+     "queryString": "market=BTC_USDT\u0026scene=top1\u0026strategy_type=spot_grid",
+     "bodyParams": "",
+     "headers": null
+    },
+    {
+     "data": {
+      "code": 200,
+      "message": "success",
+      "data": {
+       "scene": "top1",
+       "recommendations": [
+        {
+         "recommendation_id": "rec_001",
+         "market": "BTC_USDT",
+         "strategy_type": "spot_grid",
+         "strategy_name": "BTC_USDT Spot Grid",
+         "backtest_apr": "0.35",
+         "max_drawdown": "0.12",
+         "summary": "Recommended spot grid for BTC_USDT",
+         "strategy_params_preview": "{\"low_price\":\"90000\",\"high_price\":\"110000\",\"grid_num\":20}"
+        }
+       ],
+       "unsupported_filters": []
+      },
+      "trace_id": "trace_001"
+     },
+     "queryString": "backtest_apr_gte=0.3\u0026direction=long\u0026invest_amount=1000\u0026limit=10\u0026market=BTC_USDT\u0026max_drawdown_lte=0.2\u0026refresh_recommendation_id=rec_001\u0026scene=top1\u0026strategy_type=spot_grid",
+     "bodyParams": "",
+     "headers": null
     }
    ]
   },
@@ -438,6 +614,8 @@
        "business_id": "biz-001",
        "statement_type": "TRADE_FEE",
        "exchange_type": "BINANCE",
+       "coin": "USDT",
+       "symbol": "BINANCE_FUTURE_BTC_USDT",
        "change": "-6.5",
        "balance": "993.5",
        "create_time": "1715864142400"
@@ -532,7 +710,7 @@
       "exchange_type": "BINANCE"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"account_mode\":\"CROSS_EXCHANGE\",\"exchange_type\":\"BINANCE\",\"position_mode\":\"SINGLE\"}",
      "headers": {}
     }
    ]
@@ -606,6 +784,116 @@
     }
    ]
   },
+  "/api/v4/crossex/market/tickers": {
+   "GET": [
+    {
+     "data": [
+      {
+       "symbol": "GATE_FUTURE_BTC_USDT",
+       "last_price": "64052.4",
+       "open_24h": "65144.7",
+       "low_24h": "64375",
+       "high_24h": "65734.8",
+       "volume_24h_base": "31705",
+       "volume_24h_quote": "2063128626",
+       "mark_price": "65148.9",
+       "index_price": "65174.38",
+       "open_interest": "65568.2144",
+       "open_interest_quote": "4271697043.12416",
+       "timestamp": "1785168000000"
+      },
+      {
+       "symbol": "GATE_SPOT_BTC_USDT",
+       "last_price": "65179.4",
+       "open_24h": "64322.1",
+       "low_24h": "64001.2",
+       "high_24h": "65999.9",
+       "volume_24h_base": "12050.3",
+       "volume_24h_quote": "782112000.5",
+       "mark_price": "0",
+       "index_price": "0",
+       "open_interest": "0",
+       "open_interest_quote": "0",
+       "timestamp": "1785168000000"
+      }
+     ],
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": [
+      {
+       "symbol": "GATE_FUTURE_BTC_USDT",
+       "last_price": "64052.4",
+       "open_24h": "65144.7",
+       "low_24h": "64375",
+       "high_24h": "65734.8",
+       "volume_24h_base": "31705",
+       "volume_24h_quote": "2063128626",
+       "mark_price": "65148.9",
+       "index_price": "65174.38",
+       "open_interest": "65568.2144",
+       "open_interest_quote": "4271697043.12416",
+       "timestamp": "1785168000000"
+      },
+      {
+       "symbol": "GATE_SPOT_BTC_USDT",
+       "last_price": "65179.4",
+       "open_24h": "64322.1",
+       "low_24h": "64001.2",
+       "high_24h": "65999.9",
+       "volume_24h_base": "12050.3",
+       "volume_24h_quote": "782112000.5",
+       "mark_price": "0",
+       "index_price": "0",
+       "open_interest": "0",
+       "open_interest_quote": "0",
+       "timestamp": "1785168000000"
+      }
+     ],
+     "queryString": "symbols=GATE_FUTURE_BTC_USDT%2CGATE_SPOT_BTC_USDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/crossex/market/funding_info": {
+   "GET": [
+    {
+     "data": [
+      {
+       "symbol": "BINANCE_FUTURE_BTC_USDT",
+       "funding_rate": "0.00006537",
+       "funding_time": "1785168000000",
+       "funding_interval": "28800"
+      },
+      {
+       "symbol": "OKX_FUTURE_BTC_USDT",
+       "funding_rate": "0.0000543885374247",
+       "funding_time": "1785168000000",
+       "funding_interval": "28800"
+      }
+     ],
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": [
+      {
+       "symbol": "BINANCE_FUTURE_BTC_USDT",
+       "funding_rate": "0.00006537",
+       "funding_time": "1785168000000",
+       "funding_interval": "28800"
+      }
+     ],
+     "queryString": "symbols=BINANCE_FUTURE_BTC_USDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
   "/api/v4/crossex/convert/orders": {
    "POST": [
     {
@@ -645,9 +933,18 @@
        "exchange_type": "BINANCE",
        "spot_maker_fee": "0.0001",
        "spot_taker_fee": "0.0025",
+       "spot_rpi_maker_fee": "0.00005",
        "future_maker_fee": "0.0002",
        "future_taker_fee": "0.0005",
-       "special_fee_list": []
+       "future_rpi_maker_fee": "0.0001",
+       "special_fee_list": [
+        {
+         "symbol": "BINANCE_FUTURE_BTC_USDT",
+         "maker_fee_rate": "0.0002",
+         "taker_fee_rate": "0.0005",
+         "rpi_fee_rate": "0.0001"
+        }
+       ]
       }
      ],
      "queryString": "",
@@ -835,7 +1132,9 @@
        "open_avg_price": "64000",
        "closed_avg_price": "65500",
        "max_position_qty": "2",
+       "closed_qty": "2",
        "exchange_type": "BINANCE",
+       "business_type": "FUTURE",
        "create_time": "1715864142378",
        "update_time": "1715864142400"
       }
@@ -857,7 +1156,9 @@
        "open_avg_price": "64000",
        "closed_avg_price": "65500",
        "max_position_qty": "2",
+       "closed_qty": "2",
        "exchange_type": "BINANCE",
+       "business_type": "FUTURE",
        "create_time": "1715864142378",
        "update_time": "1715864142400"
       }
@@ -886,6 +1187,11 @@
        "price": "65000",
        "fee": "6.5",
        "fee_coin": "USDT",
+       "fee_rate": "0.0001",
+       "match_role": "MAKER",
+       "rpnl": "150",
+       "position_mode": "SINGLE",
+       "position_side": "LONG",
        "create_time": "1715864142400"
       }
      ],
@@ -909,6 +1215,11 @@
        "price": "65000",
        "fee": "6.5",
        "fee_coin": "USDT",
+       "fee_rate": "0.0001",
+       "match_role": "MAKER",
+       "rpnl": "150",
+       "position_mode": "SINGLE",
+       "position_side": "LONG",
        "create_time": "1715864142400"
       }
      ],
@@ -969,6 +1280,7 @@
        "asset_coin": "BTC",
        "position_value": "65000",
        "leverage": "5",
+       "max_leverage": "10",
        "exchange_type": "BINANCE",
        "create_time": "1715864142378",
        "update_time": "1715864142378"
@@ -991,6 +1303,7 @@
        "asset_coin": "BTC",
        "position_value": "65000",
        "leverage": "5",
+       "max_leverage": "10",
        "exchange_type": "BINANCE",
        "create_time": "1715864142378",
        "update_time": "1715864142378"
@@ -1191,7 +1504,7 @@
       "text": "crossex-test-1"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"price\":\"64000\"}",
      "headers": {}
     }
    ]
@@ -1392,6 +1705,7 @@
        "min_notional": "50",
        "min_size": "0.001",
        "state": "live",
+       "support_rpi": "true",
        "symbol": "BINANCE_FUTURE_BTC_USDT",
        "tick_size": "0.10"
       }
@@ -1427,7 +1741,7 @@
       "tx_id": "transfer-001"
      },
      "queryString": "",
-     "bodyParams": "",
+     "bodyParams": "{\"amount\":\"0.001\",\"coin\":\"BTC\",\"from\":\"spot\",\"text\":\"\",\"to\":\"crossex\"}",
      "headers": {}
     }
    ]
@@ -3144,14 +3458,15 @@
          "product_id": 11,
          "asset": "USDT",
          "amount": "100",
-         "type": 1,
-         "status": "finished",
+         "status": 0,
+         "create_time": "2024-12-17T00:00:00Z",
+         "create_at": 1734393600,
          "lock_up_period": 7,
-         "uts_time": 1734393600
+         "detail": "subscription"
         }
-       ]
+       ],
+       "total": 1
       },
-      "total": 1,
       "timestamp": 1736419846
      },
      "queryString": "limit=10\u0026page=1\u0026type=1",
@@ -3173,21 +3488,20 @@
          "product_id": 11,
          "user_id": 30001,
          "asset": "USDT",
-         "amount": "100",
-         "status": "finished",
+         "principal": "100",
+         "year_rate": "0.05",
+         "status": 1,
          "lock_up_period": 7,
-         "annual_rate": "0.05",
-         "start_time": 1734393600,
-         "end_time": 1735003200,
-         "create_time": 1734393600,
+         "create_time": "2024-12-17T00:00:00Z",
+         "create_at": 1734393600,
          "interest": "0.96"
         }
-       ]
+       ],
+       "total": 1
       },
-      "total": 1,
       "timestamp": 1736419846
      },
-     "queryString": "limit=10\u0026page=1\u0026product_id=11",
+     "queryString": "limit=10\u0026order_type=1\u0026page=1\u0026product_id=11",
      "bodyParams": "",
      "headers": {}
     },
@@ -10926,14 +11240,270 @@
     }
    ]
   },
+  "/api/v4/otc/quote": {
+   "POST": [
+    {
+     "data": {
+      "code": 0,
+      "message": "success",
+      "timestamp": 1744103854,
+      "data": {
+       "type": "STABLECOIN",
+       "pay_coin": "USD",
+       "get_coin": "USDT",
+       "pay_amount": "100",
+       "get_amount": "99.9",
+       "rate": "0.999",
+       "rate_reci": "1.001",
+       "side": "PAY",
+       "quote_token": "some_token",
+       "validity_period": "60",
+       "refresh_limit": 3,
+       "refresh_limit_msg": ""
+      }
+     },
+     "queryString": "",
+     "bodyParams": "{\"get_coin\":\"USDT\",\"pay_amount\":\"100\",\"pay_coin\":\"USD\",\"side\":\"PAY\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/order/create": {
+   "POST": [
+    {
+     "data": {"code": 0, "message": "success", "timestamp": 1744103854},
+     "queryString": "",
+     "bodyParams": "{\"bank_id\":\"72\",\"crypto_amount\":\"100\",\"crypto_currency\":\"USDT\",\"fiat_amount\":\"100\",\"fiat_currency\":\"USD\",\"quote_token\":\"some_token\",\"side\":\"FIAT\",\"type\":\"BUY\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/stable_coin/order/create": {
+   "POST": [
+    {
+     "data": {"code": 0, "message": "success", "timestamp": 1744103854},
+     "queryString": "",
+     "bodyParams": "{\"get_amount\":\"100\",\"get_coin\":\"USDT\",\"pay_amount\":\"100\",\"pay_coin\":\"USD\",\"quote_token\":\"some_token\",\"side\":\"PAY\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/list": {
+   "GET": [
+    {
+     "data": {
+      "code": 0,
+      "data": {
+       "lists": [
+        {
+         "id": "123",
+         "bank_account_name": "Test User",
+         "bank_name": "Test Bank",
+         "bank_country": "US",
+         "bank_address": "123 Test Street",
+         "iban": "GB33BUKB20201555555555",
+         "swift": "BUKBGB22",
+         "submit_time": "2025-09-09 10:00:00",
+         "update_time": "2025-09-09 11:00:00",
+         "status": "approved",
+         "is_default": 1
+        }
+       ]
+      }
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/create": {
+   "POST": [
+    {
+     "data": {"code": 0, "data": {"bank_id": 123, "status": 1}},
+     "queryString": "",
+     "bodyParams": "{\"agent_bank_name\":\"\",\"agent_bank_swift\":\"\",\"bank_account_name\":\"John Doe\",\"bank_address\":\"123 Test Street\",\"bank_country\":\"US\",\"bank_name\":\"Bank of Test\",\"documentation_file\":\"base64encodeddocument\",\"iban\":\"GB33BUKB20201555555555\",\"remittance_line_number\":\"\",\"swift\":\"BUKBGB22\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/delete": {
+   "POST": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "{\"bank_id\":\"123\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/set_default": {
+   "POST": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "{\"bank_id\":\"123\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/bank_supplement_checklist": {
+   "GET": [
+    {
+     "data": {"code": 0, "data": {"user_type": "personal", "items": [{"description": "Proof of address"}]}},
+     "queryString": "bank_id=123",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/personal/bank_supplement": {
+   "POST": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "{\"address_proof\":\"base64addressproof\",\"bank_id\":\"123\",\"id_document_back\":\"base64backdocument\",\"id_document_front\":\"base64frontdocument\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/bank/enterprise/bank_supplement": {
+   "POST": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "{\"additional\":\"\",\"bank_id\":\"123\",\"certificate\":\"base64certificate\",\"funds_statement\":\"\",\"passport\":\"base64passport\",\"share_holders\":\"base64shareholders\",\"share_holding_structure\":\"base64structure\",\"uid\":\"\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/order/paid": {
+   "POST": [
+    {
+     "data": {"code": 0, "message": "success", "timestamp": 1744103854},
+     "queryString": "",
+     "bodyParams": "{\"client_order_id\":\"client-order-id-here\",\"order_id\":\"203\",\"payment_receipt\":\"payment-receipt\",\"payment_receipt_file_key\":\"payment-receipt-file-key\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/order/cancel": {
+   "POST": [
+    {
+     "data": {"code": 0, "message": "success", "timestamp": 1744103854},
+     "queryString": "order_id=203",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/stable_coin/order/list": {
+   "GET": [
+    {
+     "data": {
+      "code": 0,
+      "data": {
+       "total": 1,
+       "page_size": 10,
+       "page_number": 1,
+       "total_page": 1,
+       "list": [
+        {
+         "id": 123,
+         "trade_no": "stable-123",
+         "pay_coin": "USD",
+         "pay_amount": "100",
+         "get_coin": "USDT",
+         "get_amount": "99.9",
+         "pay_icon": "https://example.com/usd.png",
+         "get_icon": "https://example.com/usdt.png",
+         "rate": "1.001",
+         "rate_reci": "0.999",
+         "status": "completed",
+         "create_time": "2025-09-09 10:00:00",
+         "create_timest": 1757392800
+        }
+       ]
+      }
+     },
+     "queryString": "coin_name=USDT\u0026end_time=1744190254\u0026page_number=1\u0026page_size=10\u0026start_time=1744103854",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/otc/order/detail": {
+   "GET": [
+    {
+     "data": {
+      "code": 0,
+      "data": {
+       "id": "203",
+       "uid": "100001",
+       "order_id": "203",
+       "trade_no": "trade-203",
+       "type": "BUY",
+       "side": "FIAT",
+       "crypto_currency": "USDT",
+       "crypto_amount": "100",
+       "fiat_currency": "USD",
+       "fiat_amount": "100",
+       "rate": "1",
+       "status": "completed",
+       "create_time": "2025-09-09 10:00:00",
+       "bank_account_name": "Test User",
+       "bank_name": "Test Bank",
+       "bank_country": "US",
+       "bank_address": "123 Test Street",
+       "bank_account_number_iban": "GB33BUKB20201555555555",
+       "swift_code": "BUKBGB22",
+       "intermediate_bank_name": "",
+       "intermediary_bank_swift_code": "",
+       "gate_bank_account_name": "Gate Account",
+       "gate_bank_name": "Gate Bank",
+       "gate_bank_country": "US",
+       "gate_bank_address": "Gate Street",
+       "gate_bank_account_number_iban": "US123",
+       "gate_swift_code": "GATEUS01",
+       "gate_intermediary_bank_name": "",
+       "gate_intermediary_bank_swift_code": "",
+       "transfer_remark": "remark-203",
+       "reference_code": "reference-203",
+       "gate_transfer_remark": "remark-203",
+       "gate_reference_code": "reference-203"
+      }
+     },
+     "queryString": "order_id=203",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
   "/api/v4/otc/order/list": {
    "GET": [
     {
      "data": {
       "code": 0,
       "data": {
-       "count": 0,
-       "lists": [],
+       "count": 1,
+       "list": [
+        {
+         "time": "2025-02-11 07:45:06",
+         "timestamp": 1739259906,
+         "order_id": "203",
+         "trade_no": "trade-203",
+         "type": "BUY",
+         "status": "completed",
+         "fiat_currency": "USD",
+         "fiat_currency_info": {"name": "US Dollar", "icon": "https://example.com/usd.png"},
+         "fiat_amount": "100",
+         "crypto_currency": "USDT",
+         "crypto_currency_info": {"name": "Tether", "icon": "https://example.com/usdt.png"},
+         "crypto_amount": "100",
+         "rate": "1",
+         "promotion_code": "promo-203"
+        }
+       ],
        "pn": 1,
        "ps": 10,
        "total_pn": 0
@@ -10965,8 +11535,25 @@
      "data": {
       "code": 0,
       "data": {
-       "count": 0,
-       "lists": [],
+       "count": 1,
+       "list": [
+        {
+         "time": "2025-02-11 07:45:06",
+         "timestamp": 1739259906,
+         "order_id": "203",
+         "trade_no": "trade-203",
+         "type": "BUY",
+         "status": "completed",
+         "fiat_currency": "USD",
+         "fiat_currency_info": {"name": "US Dollar", "icon": "https://example.com/usd.png"},
+         "fiat_amount": "100",
+         "crypto_currency": "USDT",
+         "crypto_currency_info": {"name": "Tether", "icon": "https://example.com/usdt.png"},
+         "crypto_amount": "100",
+         "rate": "1",
+         "promotion_code": "promo-203"
+        }
+       ],
        "pn": 1,
        "ps": 10,
        "total_pn": 0
@@ -12601,7 +13188,7 @@
         }
        ],
        "ip_whitelist": [],
-       "key": "test-api-key-001",
+       "key": "mock-subaccount-key-id",
        "state": 1,
        "created_at": 1682899200,
        "updated_at": 1682899200
@@ -12629,7 +13216,7 @@
        }
       ],
       "ip_whitelist": [],
-      "key": "test-api-key-001",
+      "key": "mock-subaccount-key-id",
       "secret": "test-api-secret-001",
       "state": 1,
       "created_at": 1682899200,
@@ -12641,7 +13228,7 @@
     }
    ]
   },
-  "/api/v4/sub_accounts/12345678/keys/test-api-key-001": {
+  "/api/v4/sub_accounts/12345678/keys/mock-subaccount-key-id": {
    "DELETE": [
     {
      "data": null,
@@ -12683,7 +13270,7 @@
        }
       ],
       "ip_whitelist": [],
-      "key": "test-api-key-001",
+      "key": "mock-subaccount-key-id",
       "state": 1,
       "created_at": 1682899200,
       "updated_at": 1682899200
@@ -12733,6 +13320,445 @@
       }
      ],
      "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/users/mt5-account": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "mt5_uid": 10122,
+       "leverage": 100,
+       "stop_out_level": "50%",
+       "status": 3
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/users": {
+   "POST": [
+    {
+     "data": {
+      "data": {
+       "status": 3,
+       "leverage": 100,
+       "mt5_uid": "10122"
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/users/assets": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "equity": "1000.00",
+       "margin_level": "250.00",
+       "balance": "900.00",
+       "margin": "100.00",
+       "margin_free": "800.00",
+       "unrealized_pnl": "100.00",
+       "mt5_uid": "10122"
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/transactions": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "total": 1,
+       "total_page": 1,
+       "list": [
+        {
+         "asset": "USDT",
+         "type": "deposit",
+         "type_desc": "Transfer in",
+         "change": "100",
+         "balance": "1000",
+         "time": 1769398039
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": {
+      "data": {
+       "total": 1,
+       "total_page": 1,
+       "list": [
+        {
+         "asset": "USDT",
+         "type": "deposit",
+         "type_desc": "Transfer in",
+         "change": "100",
+         "balance": "1000",
+         "time": 1769398039
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "page=1\u0026page_size=10\u0026type=deposit",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ],
+   "POST": [
+    {
+     "data": {
+      "data": {},
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "{\"asset\":\"USDT\",\"change\":\"100\",\"type\":\"deposit\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/symbols/detail": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "list": [
+        {
+         "symbol": "EURUSD",
+         "symbol_desc": "Euro vs United States Dollar",
+         "category_name": "Forex",
+         "contract_volume": "100000",
+         "settlement_currency": "USD",
+         "max_order_volume": "100",
+         "min_order_volume": "0.01",
+         "leverage": "100",
+         "price_precision": 5,
+         "price_sl_level": "0.0001",
+         "swap_cost_type": "1",
+         "buy_swap_cost_rate": "-3.5",
+         "sell_swap_cost_rate": "1.2",
+         "swap_cost_3day": "3",
+         "trade_timezone": "GMT+2",
+         "trade_mode": "4",
+         "icon_link": ""
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "symbols=EURUSD",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/orders": {
+   "GET": [
+    {
+     "data": {
+      "code": 0,
+      "data": {
+       "list": [
+        {
+         "order_id": 1223,
+         "symbol": "EURUSD",
+         "symbol_desc": "Euro / US Dollar",
+         "price_type": "trigger",
+         "state": 1,
+         "state_desc": "pending",
+         "finished": 0,
+         "side": 2,
+         "volume": "0.1",
+         "price": "1.09",
+         "price_tp": "1.1",
+         "price_sl": "1.08",
+         "time_setup": 1744103854
+        }
+       ]
+      }
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ],
+   "POST": [
+    {
+     "data": {
+      "data": {
+       "id": "117"
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "{\"price\":\"1.09\",\"price_type\":\"trigger\",\"side\":2,\"symbol\":\"EURUSD\",\"volume\":\"0.1\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/orders/1223": {
+   "PUT": [
+    {
+     "data": {
+      "data": {
+       "order_id": 1223,
+       "symbol": "EURUSD",
+       "state": "pending",
+       "volume": "0.1",
+       "price": "1.091",
+       "price_tp": "1.1",
+       "price_sl": "1.08"
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "{\"price\":\"1.09100\"}",
+     "headers": {}
+    }
+   ],
+   "DELETE": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/orders/history": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "list": [
+        {
+         "order_id": 1223,
+         "symbol": "EURUSD",
+         "symbol_desc": "Euro / US Dollar",
+         "price_type": "market",
+         "order_opt_type": 2,
+         "state": 4,
+         "state_desc": "filled",
+         "side": 2,
+         "volume": "0.1",
+         "fill_volume": "0.1",
+         "close_pnl": "2.5",
+         "price": "1.09",
+         "trigger_price": "0",
+         "price_tp": "1.1",
+         "price_sl": "1.08",
+         "time_setup": 1769398039,
+         "time_done": 1769398040
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": {
+      "data": {
+       "list": [
+        {
+         "order_id": 1223,
+         "symbol": "EURUSD",
+         "symbol_desc": "Euro / US Dollar",
+         "price_type": "market",
+         "order_opt_type": 2,
+         "state": 4,
+         "state_desc": "filled",
+         "side": 2,
+         "volume": "0.1",
+         "fill_volume": "0.1",
+         "close_pnl": "2.5",
+         "price": "1.09",
+         "trigger_price": "0",
+         "price_tp": "1.1",
+         "price_sl": "1.08",
+         "time_setup": 1769398039,
+         "time_done": 1769398040
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "side=2\u0026symbol=EURUSD",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/orders/log/1223": {
+   "GET": [
+    {
+     "data": {
+      "timestamp": 1715769600000,
+      "data": {
+       "order_id": 13950884,
+       "log_id": 1223,
+       "symbol": "AUDUSD",
+       "price_type": "market",
+       "state": 4,
+       "side": 2,
+       "volume": "0.01",
+       "price": "0.72221"
+      }
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/positions": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "list": [
+        {
+         "position_id": 1223,
+         "symbol": "EURUSD",
+         "symbol_desc": "Euro / US Dollar",
+         "margin": "100",
+         "unrealized_pnl": "2.5",
+         "unrealized_pnl_rate": "0.025",
+         "volume": "0.1",
+         "price_open": "1.09",
+         "position_dir": "Long"
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/positions/1223": {
+   "PUT": [
+    {
+     "data": {
+      "data": {},
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "{\"price_tp\":\"1.1\",\"price_sl\":\"1.08\"}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/positions/1223/close": {
+   "POST": [
+    {
+     "data": {"code": 0, "data": {}},
+     "queryString": "",
+     "bodyParams": "{\"close_type\":2}",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v4/tradfi/positions/history": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "total": 1,
+       "total_page": 1,
+       "list": [
+        {
+         "position_id": 1223,
+         "symbol": "EURUSD",
+         "realized_pnl": "10",
+         "realized_pnl_rate": "0.1",
+         "volume": "0.1",
+         "volume_closed": "0.1",
+         "price_open": "1.09",
+         "position_dir": "Long",
+         "price_tp": "1.1",
+         "price_sl": "1.08",
+         "counterparty_price": "1.1",
+         "close_price": "1.1",
+         "time_create": 1769398039,
+         "time_close": 1769398040,
+         "position_status": "1",
+         "close_detail": null,
+         "realized_pnl_detail": {
+          "closed_pnl": "10",
+          "swap": "0",
+          "fee": "0.1"
+         }
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": {
+      "data": {
+       "total": 1,
+       "total_page": 1,
+       "list": [
+        {
+         "position_id": 1223,
+         "symbol": "EURUSD",
+         "realized_pnl": "10",
+         "realized_pnl_rate": "0.1",
+         "volume": "0.1",
+         "volume_closed": "0.1",
+         "price_open": "1.09",
+         "position_dir": "Long",
+         "price_tp": "1.1",
+         "price_sl": "1.08",
+         "counterparty_price": "1.1",
+         "close_price": "1.1",
+         "time_create": 1769398039,
+         "time_close": 1769398040,
+         "position_status": "1",
+         "close_detail": null,
+         "realized_pnl_detail": {
+          "closed_pnl": "10",
+          "swap": "0",
+          "fee": "0.1"
+         }
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "page=1\u0026page_size=10\u0026position_dir=LONG\u0026symbol=EURUSD",
      "bodyParams": "",
      "headers": {}
     }
@@ -12983,6 +14009,27 @@
     }
    ]
   },
+  "/api/v4/tradfi/symbols/commissions": {
+   "GET": [
+    {
+     "data": {
+      "data": {
+       "list": [
+        {
+         "category_code": "forex",
+         "symbol": "EURUSD",
+         "fee_per_lot": "6"
+        }
+       ]
+      },
+      "timestamp": 1769426795464
+     },
+     "queryString": "category_code=forex\u0026symbols=EURUSD",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
   "/api/v4/unified/collateral_currencies": {
    "POST": [
     {
@@ -13014,7 +14061,7 @@
     }
    ]
   },
-  "/api/v4/unified/estimate_quick_repayment": {
+  "/api/v4/unified/estimated_quick_repayment": {
    "GET": [
     {
      "data": {

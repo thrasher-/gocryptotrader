@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
-	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 )
@@ -19,8 +20,12 @@ var (
 	errP2PAdIDRequired      = errors.New("P2P advertisement ID required")
 	errP2PFiatUnitRequired  = errors.New("P2P fiat unit required")
 	errP2PTradeTypeRequired = errors.New("P2P trade type required")
-	errP2PPriceTypeInvalid  = errors.New("P2P price type must be 1 (floating) or 2 (fixed)")
+	errP2PLimitBasisInvalid = errors.New("P2P limit basis must be 0 (crypto) or 1 (fiat)")
 	errP2PMinAmountRequired = errors.New("P2P minimum trade amount required")
+	errP2PMaxAmountRequired = errors.New("P2P maximum trade amount required")
+	errP2PUnitPriceRequired = errors.New("P2P unit price required")
+	errP2PAdAmountRequired  = errors.New("P2P advertisement amount required")
+	errP2PPayTypeRequired   = errors.New("P2P payment type required")
 	errP2PAdStatusInvalid   = errors.New("P2P ad status must be 1 (listed), 3 (delisted), or 4 (closed)")
 	errP2PMessageRequired   = errors.New("P2P chat message required")
 	errP2PImageTypeRequired = errors.New("P2P image content type required")
@@ -39,7 +44,7 @@ func (e *Exchange) GetP2PCounterpartyInfo(ctx context.Context, arg *GetCounterpa
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.BizUID == "" {
+	if arg.BusinessUID == "" {
 		return nil, errBizUIDRequired
 	}
 	var resp gateioAPIResponse[P2PCounterpartyInfo]
@@ -62,8 +67,28 @@ func (e *Exchange) SetMerchantWorkingStatusAndCustomWorking(ctx context.Context,
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.WorkStatus < 0 || arg.WorkStatus > 2 {
+	if arg.WorkStatus > 2 {
 		return nil, errP2PWorkStatusInvalid
+	}
+	if arg.WorkStatus == 2 {
+		if arg.CycleType != "Weekly" && arg.CycleType != "Daily" {
+			return nil, fmt.Errorf("%w: cycle_type must be Weekly or Daily", errNoValidParameterPassed)
+		}
+		if arg.CycleType == "Weekly" && arg.DayOfWeek == "" {
+			return nil, fmt.Errorf("%w: day_of_week is required for a weekly cycle", errNoValidParameterPassed)
+		}
+		timeZone, err := strconv.Atoi(strings.TrimPrefix(arg.TimeZone, "+"))
+		if err != nil || timeZone < -12 || timeZone > 14 {
+			return nil, errInvalidTimezone
+		}
+		start, err := time.Parse("15:04", arg.StartTime)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid start_time", errNoValidParameterPassed)
+		}
+		end, err := time.Parse("15:04", arg.EndTime)
+		if err != nil || start.After(end) {
+			return nil, fmt.Errorf("%w: invalid end_time", errNoValidParameterPassed)
+		}
 	}
 	var resp gateioAPIResponse[*WorkStatusResponse]
 	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pSetWorkHoursEPL, http.MethodPost, "p2p/merchant/account/set_merchant_work_hours", nil, arg, &resp)
@@ -80,8 +105,11 @@ func (e *Exchange) GetPendingP2POrders(ctx context.Context, arg *PendingP2POrder
 	if arg.FiatCurrency.IsEmpty() {
 		return nil, fmt.Errorf("%w fiat currency is missing", currency.ErrCurrencyCodeEmpty)
 	}
+	if err := validateP2POrderTimeRange(arg.StartTime, arg.EndTime); err != nil {
+		return nil, err
+	}
 	var resp gateioAPIResponse[*P2POrderList]
-	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pPendingTransactionsEPL, http.MethodPost, "p2p/merchant/transaction/get_pending_transaction_list", nil, arg, &resp)
+	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pPendingTransactionsEPL, http.MethodPost, "p2p/merchant/transaction/get_pending_transaction_list", nil, arg.payload(), &resp)
 }
 
 // GetHistoricalP2POrders retrieves a list of completed p2p orders
@@ -95,36 +123,24 @@ func (e *Exchange) GetHistoricalP2POrders(ctx context.Context, arg *P2PCompleted
 	if arg.FiatCurrency.IsEmpty() {
 		return nil, fmt.Errorf("%w fiat currency is missing", currency.ErrCurrencyCodeEmpty)
 	}
+	if err := validateP2POrderTimeRange(arg.StartTime, arg.EndTime); err != nil {
+		return nil, err
+	}
 	var resp gateioAPIResponse[*P2POrderList]
-	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pCompletedTransactionsEPL, http.MethodPost, "p2p/merchant/transaction/get_completed_transaction_list", nil, arg, &resp)
+	return resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pCompletedTransactionsEPL, http.MethodPost, "p2p/merchant/transaction/get_completed_transaction_list", nil, arg.payload(), &resp)
 }
 
-// GetP2PPendingOrders retrieves the current user's active (pending) P2P orders.
-func (e *Exchange) GetP2PPendingOrders(ctx context.Context, arg *GetP2POrdersRequest) (*P2POrdersData, error) {
-	var resp gateioAPIResponse[P2POrdersData]
-	return &resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pMyListEPL, http.MethodPost, "p2p/merchant/transaction/my_list", nil, arg, &resp)
-}
-
-// GetP2PHistoricalOrders retrieves the current user's historical P2P orders.
-func (e *Exchange) GetP2PHistoricalOrders(ctx context.Context, from, to time.Time, page, limit uint64, statusList []int64) (*P2POrdersData, error) {
-	if !from.IsZero() && !to.IsZero() {
-		if err := common.StartEndTimeCheck(from, to); err != nil {
-			return nil, err
-		}
+func validateP2POrderTimeRange(startTime, endTime time.Time) error {
+	if startTime.IsZero() && endTime.IsZero() {
+		return nil
 	}
-	arg := &GetP2PHistoricalOrdersRequest{
-		StatusList: statusList,
-		Page:       page,
-		Limit:      limit,
+	if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
+		return err
 	}
-	if !from.IsZero() {
-		arg.From = from.UnixMilli()
+	if startTime.Unix() < 0 || endTime.Unix() < 0 {
+		return common.ErrDateUnset
 	}
-	if !to.IsZero() {
-		arg.To = to.UnixMilli()
-	}
-	var resp gateioAPIResponse[P2POrdersData]
-	return &resp.Data, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pMyHistoryListEPL, http.MethodPost, "p2p/merchant/transaction/my_history_list", nil, arg, &resp)
+	return nil
 }
 
 // GetP2POrderDetails retrieves detailed information for a specific P2P order.
@@ -165,7 +181,7 @@ func (e *Exchange) ConfirmP2PReceipt(ctx context.Context, arg *ConfirmP2PReceipt
 }
 
 // CancelP2POrder cancels a P2P order.
-// ReasonID and ReasonMemo are optional; ReasonMemo is required when ReasonID is 0.
+// ReasonID and ReasonMemo are optional; ReasonMemo is required when ReasonID is "9".
 func (e *Exchange) CancelP2POrder(ctx context.Context, arg *CancelP2POrderRequest) error {
 	if err := common.NilGuard(arg); err != nil {
 		return err
@@ -183,41 +199,56 @@ func (e *Exchange) PublishP2PAdOrder(ctx context.Context, arg *PublishP2PAdReque
 	if err := common.NilGuard(arg); err != nil {
 		return err
 	}
-	if arg.Asset.IsEmpty() {
+	if arg.CurrencyType.IsEmpty() {
 		return fmt.Errorf("%w P2P asset required", currency.ErrCurrencyCodeEmpty)
 	}
-	if arg.FiatUnit == "" {
+	if arg.ExchangeType == "" {
 		return errP2PFiatUnitRequired
 	}
-	if arg.TradeType == "" {
+	if arg.Type == "" {
 		return errP2PTradeTypeRequired
 	}
-	if arg.PayIDs == "" {
-		return fmt.Errorf("%w P2P payment method IDs required", order.ErrOrderIDNotSet)
+	if arg.UnitPrice <= 0 {
+		return errP2PUnitPriceRequired
 	}
-	if arg.PriceType != 1 && arg.PriceType != 2 {
-		return errP2PPriceTypeInvalid
+	if arg.Number <= 0 {
+		return errP2PAdAmountRequired
 	}
-	if arg.MaxAmount <= 0 {
-		return fmt.Errorf("%w P2P maximum trade amount required", limits.ErrAmountBelowMin)
+	if arg.PaymentType == "" {
+		return errP2PPayTypeRequired
 	}
-	if arg.MinAmount <= 0 {
-		return errP2PMinAmountRequired
+	switch arg.LimitBasis {
+	case 0:
+		if arg.MinAmount <= 0 {
+			return errP2PMinAmountRequired
+		}
+		if arg.MaxAmount <= 0 {
+			return errP2PMaxAmountRequired
+		}
+	case 1:
+		if arg.FiatMinAmount <= 0 {
+			return errP2PMinAmountRequired
+		}
+		if arg.FiatMaxAmount <= 0 {
+			return errP2PMaxAmountRequired
+		}
+	default:
+		return errP2PLimitBasisInvalid
 	}
 	var resp gateioAPIResponse[struct{}]
 	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, p2pPublishAdEPL, http.MethodPost, "p2p/merchant/books/place_biz_push_order", nil, arg, &resp)
 }
 
 // UpdateP2PAdStatus updates the status of a P2P advertisement.
-// AdvStatus: 1=listed, 3=delisted, 4=closed.
+// AdvertisementStatus: 1=listed, 3=delisted, 4=closed.
 func (e *Exchange) UpdateP2PAdStatus(ctx context.Context, arg *UpdateP2PAdStatusRequest) (*P2PUpdateAdStatusResult, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.AdvNo == 0 {
+	if arg.AdvertisementNumber == 0 {
 		return nil, fmt.Errorf("%w: adv_no is required", errP2PAdIDRequired)
 	}
-	if arg.AdvStatus != 1 && arg.AdvStatus != 3 && arg.AdvStatus != 4 {
+	if arg.AdvertisementStatus != 1 && arg.AdvertisementStatus != 3 && arg.AdvertisementStatus != 4 {
 		return nil, errP2PAdStatusInvalid
 	}
 	var resp gateioAPIResponse[P2PUpdateAdStatusResult]
@@ -229,7 +260,7 @@ func (e *Exchange) GetP2PAdDetails(ctx context.Context, arg *GetP2PAdDetailsRequ
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.AdvNo == "" {
+	if arg.AdvertisementNumber == "" {
 		return nil, errP2PAdIDRequired
 	}
 	var resp gateioAPIResponse[P2PAdDetail]
@@ -261,8 +292,8 @@ func (e *Exchange) GetP2PAdList(ctx context.Context, arg *GetP2PAdsListRequest) 
 }
 
 // GetP2PChatHistory retrieves the chat history for a P2P order.
-func (e *Exchange) GetP2PChatHistory(ctx context.Context, transactionID, lastReceived, firstReceived int64) (*P2PChatMessagesResponse, error) {
-	arg := make(map[string]int64)
+func (e *Exchange) GetP2PChatHistory(ctx context.Context, transactionID, lastReceived, firstReceived uint64) (*P2PChatMessagesResponse, error) {
+	arg := make(map[string]uint64)
 	if transactionID > 0 {
 		arg["txid"] = transactionID
 	}
@@ -300,7 +331,7 @@ func (e *Exchange) UploadP2PChatFile(ctx context.Context, arg *UploadP2PChatFile
 	if arg.ImageContentType == "" {
 		return nil, errP2PImageTypeRequired
 	}
-	if arg.Base64Img == "" {
+	if arg.Base64Image == "" {
 		return nil, errP2PImageDataRequired
 	}
 	var resp gateioAPIResponse[*P2PUploadFileResult]

@@ -9,14 +9,13 @@ import (
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
 
 // ListSubAccounts retrieves all sub-accounts for the main account.
-func (e *Exchange) ListSubAccounts(ctx context.Context, subAccountType int64) ([]*SubAccount, error) {
+func (e *Exchange) ListSubAccounts(ctx context.Context, subAccountType uint64) ([]*SubAccount, error) {
 	params := url.Values{}
-	if subAccountType >= 0 {
-		params.Set("type", strconv.FormatInt(subAccountType, 10))
+	if subAccountType > 0 {
+		params.Set("type", strconv.FormatUint(subAccountType, 10))
 	}
 	var resp []*SubAccount
 	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, subAccountEPL, http.MethodGet, "sub_accounts", params, nil, &resp)
@@ -84,7 +83,10 @@ func (e *Exchange) UpdateSubAccountAPIKey(ctx context.Context, userID uint64, ke
 	if key == "" {
 		return errMissingAPIKey
 	}
-	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, subAccountEPL, http.MethodPatch, "sub_accounts/"+strconv.FormatUint(userID, 10)+"/keys/"+key, nil, arg, nil)
+	if err := common.NilGuard(arg); err != nil {
+		return err
+	}
+	return e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, subAccountEPL, http.MethodPut, "sub_accounts/"+strconv.FormatUint(userID, 10)+"/keys/"+key, nil, arg, nil)
 }
 
 // DeleteSubAccountAPIKey removes an API key pair from a sub-account.
@@ -118,5 +120,5 @@ func (e *Exchange) UnlockSubAccount(ctx context.Context, userID uint64) error {
 // Unified account mode values: classic, multi_currency, portfolio, single_currency.
 func (e *Exchange) GetSubAccountMode(ctx context.Context) ([]*SubAccountMode, error) {
 	var resp []*SubAccountMode
-	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, request.Auth, http.MethodGet, "sub_accounts/unified_mode", nil, nil, &resp)
+	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, subAccountEPL, http.MethodGet, "sub_accounts/unified_mode", nil, nil, &resp)
 }

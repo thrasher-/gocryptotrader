@@ -100,21 +100,21 @@ func (e *Exchange) PlaceAlphaTradeOrder(ctx context.Context, arg *AlphaCurrencyQ
 
 // GetAlphaOrders retrieves alpha orders
 // possible state values are: 0 : All 1 : Processing 2 : Successful 3 : Failed 4 : Cancelled 5 : Buy order placed but transfer not completed 6 : Order cancelled but transfer not completed
-func (e *Exchange) GetAlphaOrders(ctx context.Context, memeCcy currency.Code, orderSide order.Side, state uint8, from, to time.Time, page, limit uint64) ([]*AlphaOrderDetail, error) {
+func (e *Exchange) GetAlphaOrders(ctx context.Context, memeCurrency currency.Code, orderSide order.Side, state uint64, from, to time.Time, page, limit uint64) ([]*AlphaOrderDetail, error) {
 	if !from.IsZero() && !to.IsZero() {
 		if err := common.StartEndTimeCheck(from, to); err != nil {
 			return nil, err
 		}
 	}
 	params := url.Values{}
-	if !memeCcy.IsEmpty() {
-		params.Set("currency", memeCcy.String())
+	if !memeCurrency.IsEmpty() {
+		params.Set("currency", memeCurrency.String())
 	}
 	if orderSide != order.UnknownSide {
 		params.Set("side", orderSide.Lower())
 	}
 	if state != 0 {
-		params.Set("status", strconv.FormatUint(uint64(state), 10))
+		params.Set("status", strconv.FormatUint(state, 10))
 	}
 	if !from.IsZero() {
 		params.Set("from", strconv.FormatInt(from.Unix(), 10))
@@ -144,10 +144,10 @@ func (e *Exchange) GetAlphaOrderByID(ctx context.Context, orderID string) (*Alph
 }
 
 // GetAlphaCurrenciesDetail retrieves currency details
-func (e *Exchange) GetAlphaCurrenciesDetail(ctx context.Context, memeCcy currency.Code, limit, page uint64) ([]*AlphaCurrencyDetail, error) {
+func (e *Exchange) GetAlphaCurrenciesDetail(ctx context.Context, memeCurrency currency.Code, limit, page uint64) ([]*AlphaCurrencyDetail, error) {
 	params := url.Values{}
-	if !memeCcy.IsEmpty() {
-		params.Set("currency", memeCcy.String())
+	if !memeCurrency.IsEmpty() {
+		params.Set("currency", memeCurrency.String())
 	}
 	if page > 0 {
 		params.Set("page", strconv.FormatUint(page, 10))
@@ -160,10 +160,10 @@ func (e *Exchange) GetAlphaCurrenciesDetail(ctx context.Context, memeCcy currenc
 }
 
 // GetAlphaCurrencyTicker retrieves currency ticker information
-func (e *Exchange) GetAlphaCurrencyTicker(ctx context.Context, memeCcy currency.Code, limit, page uint64) ([]*AlphaCurrencyTickerInfo, error) {
+func (e *Exchange) GetAlphaCurrencyTicker(ctx context.Context, memeCurrency currency.Code, limit, page uint64) ([]*AlphaCurrencyTickerInfo, error) {
 	params := url.Values{}
-	if !memeCcy.IsEmpty() {
-		params.Set("currency", memeCcy.String())
+	if !memeCurrency.IsEmpty() {
+		params.Set("currency", memeCurrency.String())
 	}
 	if page > 0 {
 		params.Set("page", strconv.FormatUint(page, 10))

@@ -92,7 +92,7 @@ func (e *Exchange) GenerateOptionsDefaultSubscriptions() (subscription.List, err
 		}
 		return nil, err
 	}
-	var userID int64
+	var userID uint64
 	if e.Websocket.CanUseAuthenticatedEndpoints() {
 		if _, err = e.GetCredentials(ctx); err != nil {
 			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
@@ -165,6 +165,11 @@ func (e *Exchange) generateOptionsPayload(ctx context.Context, event string, cha
 		}
 		var auth *WsAuthInput
 		timestamp := time.Now()
+		var unixTimestamp uint64
+		unixTimestamp, err = convertNonNegativeInt64ToUint64(timestamp.Unix(), "options websocket timestamp")
+		if err != nil {
+			return nil, err
+		}
 		var params []string
 		switch channelsToSubscribe[i].Channel {
 		case optionsUnderlyingTickersChannel,
@@ -205,18 +210,18 @@ func (e *Exchange) generateOptionsPayload(ctx context.Context, event string, cha
 			optionsUserSettlementChannel,
 			optionsPositionCloseChannel,
 			optionsPositionsChannel:
-			userID, ok := channelsToSubscribe[i].Params["user_id"].(int64)
+			userID, ok := channelsToSubscribe[i].Params["user_id"].(uint64)
 			if !ok {
 				continue
 			}
-			params = append([]string{strconv.FormatInt(userID, 10)}, params...)
+			params = append([]string{strconv.FormatUint(userID, 10)}, params...)
 			var creds *accounts.Credentials
 			creds, err = e.GetCredentials(ctx)
 			if err != nil {
 				return nil, err
 			}
 			var sigTemp string
-			sigTemp, err = e.generateWsSignature(creds.Secret, event, channelsToSubscribe[i].Channel, timestamp.Unix())
+			sigTemp, err = e.generateWsSignature(creds.Secret, event, channelsToSubscribe[i].Channel, unixTimestamp)
 			if err != nil {
 				return nil, err
 			}
@@ -254,13 +259,17 @@ func (e *Exchange) generateOptionsPayload(ctx context.Context, event string, cha
 				params...,
 			)
 		}
+		messageID, err := convertNonNegativeInt64ToUint64(e.MessageSequence(), "options websocket message sequence")
+		if err != nil {
+			return nil, err
+		}
 		payloads[i] = &WsInput{
-			ID:      e.MessageSequence(),
+			ID:      messageID,
 			Event:   event,
 			Channel: channelsToSubscribe[i].Channel,
 			Payload: params,
 			Auth:    auth,
-			Time:    timestamp.Unix(),
+			Time:    unixTimestamp,
 		}
 	}
 	return payloads, nil
@@ -291,22 +300,22 @@ func (e *Exchange) WsHandleOptionsData(ctx context.Context, conn websocket.Conne
 	case optionsContractTickersChannel:
 		return e.processOptionsContractTickers(ctx, push.Result)
 	case optionsUnderlyingTickersChannel:
-		var data *WsOptionUnderlyingTicker
+		var data WsOptionUnderlyingTicker
 		return e.processResponse(ctx, push.Result, &data)
 	case optionsTradesChannel,
 		optionsUnderlyingTradesChannel:
 		return e.processOptionsTradesPushData(respRaw)
 	case optionsUnderlyingPriceChannel:
-		var data *WsOptionsUnderlyingPrice
-		return e.processResponse(ctx, respRaw, &data)
+		var data WsOptionsUnderlyingPrice
+		return e.processResponse(ctx, push.Result, &data)
 	case optionsMarkPriceChannel:
-		var data *WsOptionsMarkPrice
+		var data WsOptionsMarkPrice
 		return e.processResponse(ctx, push.Result, &data)
 	case optionsSettlementChannel:
-		var data *WsOptionsSettlement
+		var data WsOptionsSettlement
 		return e.processResponse(ctx, push.Result, &data)
 	case optionsContractsChannel:
-		var data *WsOptionsContract
+		var data WsOptionsContract
 		return e.processResponse(ctx, push.Result, &data)
 	case optionsContractCandlesticksChannel,
 		optionsUnderlyingCandlesticksChannel:
@@ -314,8 +323,8 @@ func (e *Exchange) WsHandleOptionsData(ctx context.Context, conn websocket.Conne
 	case optionsOrderbookChannel:
 		return e.processOptionsOrderbookSnapshotPushData(push.Event, push.Result, push.Time)
 	case optionsOrderbookTickerChannel:
-		var data *WsOptionsOrderbookTicker
-		return e.processResponse(ctx, respRaw, &data)
+		var data WsOptionsOrderbookTicker
+		return e.processResponse(ctx, push.Result, &data)
 	case optionsOrderbookUpdateChannel:
 		return e.processOptionsOrderbookUpdate(ctx, push.Result, asset.Options, push.Time)
 	case optionsOrdersChannel:
@@ -323,7 +332,7 @@ func (e *Exchange) WsHandleOptionsData(ctx context.Context, conn websocket.Conne
 	case optionsUserTradesChannel:
 		return e.processOptionsUserTradesPushData(respRaw)
 	case optionsLiquidatesChannel:
-		var data websocketResponse[[]*WsOptionsLiquidates]
+		var data websocketResponse[[]*WsOptionsLiquidation]
 		return e.processResponse(ctx, respRaw, &data)
 	case optionsUserSettlementChannel:
 		var data websocketResponse[[]*WsOptionsUserSettlement]
@@ -386,7 +395,7 @@ func (e *Exchange) processOptionsTradesPushData(data []byte) error {
 			Exchange:     e.Name,
 			Price:        resp.Result[x].Price.Float64(),
 			Amount:       resp.Result[x].Size.Float64(),
-			TID:          strconv.FormatInt(resp.Result[x].ID, 10),
+			TID:          strconv.FormatUint(resp.Result[x].ID, 10),
 		}
 	}
 	return e.Websocket.Trade.Update(saveTradeData, trades...)
@@ -409,7 +418,7 @@ func (e *Exchange) processOptionsCandlestickPushData(ctx context.Context, data [
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return err
 	}
-	klineDatas := make([]kline.Item, len(resp.Result))
+	klineData := make([]kline.Item, len(resp.Result))
 	for x := range resp.Result {
 		icp := strings.Split(resp.Result[x].NameOfSubscription, currency.UnderscoreDelimiter)
 		if len(icp) < 3 {
@@ -423,7 +432,7 @@ func (e *Exchange) processOptionsCandlestickPushData(ctx context.Context, data [
 		if err != nil {
 			return err
 		}
-		klineDatas[x] = kline.Item{
+		klineData[x] = kline.Item{
 			Pair:     currencyPair,
 			Asset:    asset.Options,
 			Exchange: e.Name,
@@ -438,7 +447,7 @@ func (e *Exchange) processOptionsCandlestickPushData(ctx context.Context, data [
 			}},
 		}
 	}
-	return e.Websocket.DataHandler.Send(ctx, klineDatas)
+	return e.Websocket.DataHandler.Send(ctx, klineData)
 }
 
 func (e *Exchange) processOptionsOrderbookUpdate(ctx context.Context, incoming []byte, a asset.Item, pushTime time.Time) error {
@@ -456,9 +465,17 @@ func (e *Exchange) processOptionsOrderbookUpdate(ctx context.Context, incoming [
 		bids[x].Price = data.Bids[x].Price.Float64()
 		bids[x].Amount = data.Bids[x].Size.Float64()
 	}
-	return e.wsOBUpdateMgr.ProcessOrderbookUpdate(ctx, data.FirstUpdatedID, &orderbook.Update{
+	firstUpdateID, err := convertOrderbookIDToInt64(data.FirstUpdatedID)
+	if err != nil {
+		return err
+	}
+	lastUpdateID, err := convertOrderbookIDToInt64(data.LastUpdatedID)
+	if err != nil {
+		return err
+	}
+	return e.wsOBUpdateMgr.ProcessOrderbookUpdate(ctx, firstUpdateID, &orderbook.Update{
 		Asset:      a,
-		UpdateID:   data.LastUpdatedID,
+		UpdateID:   lastUpdateID,
 		UpdateTime: data.Timestamp.Time(),
 		LastPushed: pushTime,
 		Pair:       data.ContractName,
@@ -565,7 +582,7 @@ func (e *Exchange) processOptionsOrderPushData(ctx context.Context, data []byte)
 		orderDetails[x] = order.Detail{
 			Amount:         resp.Result[x].Size.Float64(),
 			Exchange:       e.Name,
-			OrderID:        strconv.FormatInt(resp.Result[x].ID, 10),
+			OrderID:        strconv.FormatUint(resp.Result[x].ID, 10),
 			Status:         status,
 			Pair:           resp.Result[x].Contract,
 			Date:           resp.Result[x].CreationTime.Time(),

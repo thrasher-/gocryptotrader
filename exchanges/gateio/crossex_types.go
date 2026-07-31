@@ -2,6 +2,7 @@ package gateio
 
 import (
 	"strings"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
@@ -89,21 +90,22 @@ func (c CrossExchangeSymbolIdentifier) businessType() string {
 
 // CrossExchangeSymbol holds symbol information for a CrossEx trading pair.
 type CrossExchangeSymbol struct {
-	ExchangeType    string       `json:"exchange_type"`
-	BusinessType    string       `json:"business_type"`
-	State           string       `json:"state"`
-	TickSize        types.Number `json:"tick_size"`
-	LotSize         types.Number `json:"lot_size"`
-	MinNotional     types.Number `json:"min_notional"`
-	MinSize         types.Number `json:"min_size"`
-	MaxNumOrders    types.Number `json:"max_num_orders"`
-	ContractSize    types.Number `json:"contract_size"`
-	DefaultLeverage types.Number `json:"default_leverage"`
-	DelistTime      types.Time   `json:"delist_time"`
-	LiquidationFee  types.Number `json:"liquidation_fee"`
-	MaxLimitSize    types.Number `json:"max_limit_size"`
-	MaxMarketSize   types.Number `json:"max_market_size"`
-	Symbol          string       `json:"symbol"`
+	ExchangeType      string        `json:"exchange_type"`
+	BusinessType      string        `json:"business_type"`
+	State             string        `json:"state"`
+	TickSize          types.Number  `json:"tick_size"`
+	LotSize           types.Number  `json:"lot_size"`
+	MinNotional       types.Number  `json:"min_notional"`
+	MinSize           types.Number  `json:"min_size"`
+	MaximumOrderCount types.Number  `json:"max_num_orders"`
+	ContractSize      types.Number  `json:"contract_size"`
+	DefaultLeverage   types.Number  `json:"default_leverage"`
+	DelistTime        types.Time    `json:"delist_time"`
+	LiquidationFee    types.Number  `json:"liquidation_fee"`
+	MaxLimitSize      types.Number  `json:"max_limit_size"`
+	MaxMarketSize     types.Number  `json:"max_market_size"`
+	Symbol            string        `json:"symbol"`
+	SupportRPI        types.Boolean `json:"support_rpi"`
 }
 
 // CrossExchangeRiskLimitTier holds a single risk limit tier for a CrossEx symbol.
@@ -124,19 +126,19 @@ type CrossExchangeRiskLimit struct {
 
 // CrossExchangeTransferCoin holds information about a currency supported for CrossEx transfers.
 type CrossExchangeTransferCoin struct {
-	Coin           currency.Code `json:"coin"`
-	MinTransAmount types.Number  `json:"min_trans_amount"`
-	EstimatedFee   types.Number  `json:"est_fee"`
-	Precision      uint64        `json:"precision"`
-	IsDisabled     uint64        `json:"is_disabled"`
+	Coin                  currency.Code `json:"coin"`
+	MinimumTransferAmount types.Number  `json:"min_trans_amount"`
+	EstimatedFee          types.Number  `json:"est_fee"`
+	Precision             uint64        `json:"precision"`
+	IsDisabled            uint64        `json:"is_disabled"`
 }
 
 // GetCrossExchangeTransferHistoryRequest holds query parameters for the transfer history endpoint.
 type GetCrossExchangeTransferHistoryRequest struct {
 	Coin       currency.Code
 	OrderID    string // OrderID matches either a transfer tx_id or client-defined text ID.
-	To         uint64
-	From       uint64
+	To         time.Time
+	From       time.Time
 	PageNumber uint64
 	Limit      uint64
 }
@@ -167,8 +169,8 @@ type CrossExchangeTransferRequest struct {
 
 // CrossExchangeTransferResponse holds the result of a CrossEx fund transfer.
 type CrossExchangeTransferResponse struct {
-	TxID string `json:"tx_id"`
-	Text string `json:"text"`
+	TransactionID string `json:"tx_id"`
+	Text          string `json:"text"`
 }
 
 // CrossExchangeOrderCreateRequest is the request body for creating a CrossEx order.
@@ -232,13 +234,13 @@ type CrossExchangeOrder struct {
 	Fee                  types.Number      `json:"fee"`
 	TimeInForce          order.TimeInForce `json:"time_in_force"`
 	Leverage             types.Number      `json:"leverage"`
-	LastExecutedQty      types.Number      `json:"last_executed_qty"`
+	LastExecutedQuantity types.Number      `json:"last_executed_qty"`
 	LastExecutedPrice    types.Number      `json:"last_executed_price"`
 	PositionSide         string            `json:"position_side"`
 	ReduceOnly           types.Boolean     `json:"reduce_only"`
 	CreateTime           types.Time        `json:"create_time"`
 	UpdateTime           types.Time        `json:"update_time"`
-	QuoteQty             types.Number      `json:"quote_qty"`
+	QuoteQuantity        types.Number      `json:"quote_qty"`
 	ExecutedAveragePrice types.Number      `json:"executed_avg_price"`
 	FeeCoin              currency.Code     `json:"fee_coin"`
 	Reason               string            `json:"reason"`
@@ -282,13 +284,13 @@ type CrossExchangeConvertQuoteRequest struct {
 
 // CrossExchangeConvertQuoteResponse holds the quote returned from a flash swap inquiry.
 type CrossExchangeConvertQuoteResponse struct {
-	QuoteID    string        `json:"quote_id"`
-	ValidMs    string        `json:"valid_ms"`
-	FromCoin   currency.Code `json:"from_coin"`
-	ToCoin     currency.Code `json:"to_coin"`
-	FromAmount types.Number  `json:"from_amount"`
-	ToAmount   types.Number  `json:"to_amount"`
-	Price      types.Number  `json:"price"`
+	QuoteID           string        `json:"quote_id"`
+	ValidMilliseconds types.Time    `json:"valid_ms"`
+	FromCoin          currency.Code `json:"from_coin"`
+	ToCoin            currency.Code `json:"to_coin"`
+	FromAmount        types.Number  `json:"from_amount"`
+	ToAmount          types.Number  `json:"to_amount"`
+	Price             types.Number  `json:"price"`
 }
 
 // CrossExchangeConvertOrderRequest is the request body for executing a CrossEx flash swap.
@@ -381,16 +383,19 @@ type CrossExchangeSpecialFee struct {
 	Symbol       string       `json:"symbol"`
 	MakerFeeRate types.Number `json:"maker_fee_rate"`
 	TakerFeeRate types.Number `json:"taker_fee_rate"`
+	RPIFeeRate   types.Number `json:"rpi_fee_rate"`
 }
 
 // CrossExchangeFee holds the fee rate information for a CrossEx exchange type.
 type CrossExchangeFee struct {
-	ExchangeType   string                     `json:"exchange_type"`
-	SpotMakerFee   types.Number               `json:"spot_maker_fee"`
-	SpotTakerFee   types.Number               `json:"spot_taker_fee"`
-	FutureMakerFee types.Number               `json:"future_maker_fee"`
-	FutureTakerFee types.Number               `json:"future_taker_fee"`
-	SpecialFeeList []*CrossExchangeSpecialFee `json:"special_fee_list"`
+	ExchangeType      string                     `json:"exchange_type"`
+	SpotMakerFee      types.Number               `json:"spot_maker_fee"`
+	SpotTakerFee      types.Number               `json:"spot_taker_fee"`
+	SpotRPIMakerFee   types.Number               `json:"spot_rpi_maker_fee"`
+	FutureMakerFee    types.Number               `json:"future_maker_fee"`
+	FutureTakerFee    types.Number               `json:"future_taker_fee"`
+	FutureRPIMakerFee types.Number               `json:"future_rpi_maker_fee"`
+	SpecialFeeList    []*CrossExchangeSpecialFee `json:"special_fee_list"`
 }
 
 // CrossExchangePosition holds a CrossEx contract position.
@@ -407,7 +412,7 @@ type CrossExchangePosition struct {
 	UnrealizedPNL               types.Number `json:"upnl"`
 	Leverage                    types.Number `json:"leverage"`
 	MaxLeverage                 types.Number `json:"max_leverage"`
-	OpenAvgPrice                types.Number `json:"open_avg_price"`
+	OpenAveragePrice            types.Number `json:"open_avg_price"`
 	IndexPrice                  types.Number `json:"index_price"`
 	MarkPrice                   types.Number `json:"mark_price"`
 	LastPrice                   types.Number `json:"last_price"`
@@ -445,6 +450,7 @@ type CrossExchangeMarginPosition struct {
 	IndexPrice          types.Number  `json:"index_price"`
 	UnrealizedPNL       types.Number  `json:"upnl"`
 	UnrealizedPNLRate   types.Number  `json:"upnl_rate"`
+	MaxLeverage         types.Number  `json:"max_leverage"`
 }
 
 // CrossExchangeADLRank holds the ADL position reduction ranking for a CrossEx position.
@@ -467,8 +473,8 @@ type GetCrossExchangeOrderHistoryRequest struct {
 	Page      uint64
 	Limit     uint64
 	Symbol    CrossExchangeSymbolIdentifier
-	From      uint64
-	To        uint64
+	From      time.Time
+	To        time.Time
 	Attribute string
 }
 
@@ -477,31 +483,33 @@ type GetCrossExchangePositionHistoryRequest struct {
 	Page   uint64
 	Limit  uint64
 	Symbol CrossExchangeSymbolIdentifier
-	From   uint64
-	To     uint64
+	From   time.Time
+	To     time.Time
 }
 
 // CrossExchangeHistoricalPosition holds a closed CrossEx contract position record.
 type CrossExchangeHistoricalPosition struct {
-	PositionID     string        `json:"position_id"`
-	UserID         string        `json:"user_id"`
-	Symbol         string        `json:"symbol"`
-	PositionSide   currency.Code `json:"position_side"`
-	ClosedType     string        `json:"closed_type"`
-	ClosedPNL      string        `json:"closed_pnl"`
-	ClosedPNLRate  types.Number  `json:"closed_pnl_rate"`
-	OpenAvgPrice   types.Number  `json:"open_avg_price"`
-	ClosedAvgPrice types.Number  `json:"closed_avg_price"`
-	MaxPositionQty types.Number  `json:"max_position_qty"`
-	ExchangeType   string        `json:"exchange_type"`
-	CreateTime     types.Time    `json:"create_time"`
-	UpdateTime     types.Time    `json:"update_time"`
-	ClosedValue    types.Number  `json:"closed_value"`
-	Fee            types.Number  `json:"fee"`
-	LiqFee         types.Number  `json:"liq_fee"`
-	FundingFee     types.Number  `json:"funding_fee"`
-	PositionMode   string        `json:"position_mode"`
-	Leverage       types.Number  `json:"leverage"`
+	PositionID              string        `json:"position_id"`
+	UserID                  string        `json:"user_id"`
+	Symbol                  string        `json:"symbol"`
+	PositionSide            currency.Code `json:"position_side"`
+	ClosedType              string        `json:"closed_type"`
+	ClosedPNL               string        `json:"closed_pnl"`
+	ClosedPNLRate           types.Number  `json:"closed_pnl_rate"`
+	OpenAveragePrice        types.Number  `json:"open_avg_price"`
+	ClosedAveragePrice      types.Number  `json:"closed_avg_price"`
+	MaximumPositionQuantity types.Number  `json:"max_position_qty"`
+	ClosedQuantity          types.Number  `json:"closed_qty"`
+	ExchangeType            string        `json:"exchange_type"`
+	CreateTime              types.Time    `json:"create_time"`
+	UpdateTime              types.Time    `json:"update_time"`
+	ClosedValue             types.Number  `json:"closed_value"`
+	Fee                     types.Number  `json:"fee"`
+	LiquidationFee          types.Number  `json:"liq_fee"`
+	FundingFee              types.Number  `json:"funding_fee"`
+	PositionMode            string        `json:"position_mode"`
+	Leverage                types.Number  `json:"leverage"`
+	BusinessType            string        `json:"business_type"`
 }
 
 // CrossExchangeHistoricalMarginPosition holds a closed CrossEx leveraged position record.
@@ -514,14 +522,14 @@ type CrossExchangeHistoricalMarginPosition struct {
 	ClosedPNL           types.Number `json:"closed_pnl"`
 	ClosedPNLRate       types.Number `json:"closed_pnl_rate"`
 	OpenAveragePrice    types.Number `json:"open_avg_price"`
-	ClosedAvgPrice      types.Number `json:"closed_avg_price"`
+	ClosedAveragePrice  types.Number `json:"closed_avg_price"`
 	MaxPositionQuantity types.Number `json:"max_position_qty"`
 	ExchangeType        string       `json:"exchange_type"`
 	CreateTime          types.Time   `json:"create_time"`
 	UpdateTime          types.Time   `json:"update_time"`
 	ClosedQuantity      types.Number `json:"closed_qty"`
 	ClosedValue         types.Number `json:"closed_value"`
-	LiquidiationFee     types.Number `json:"liq_fee"`
+	LiquidationFee      types.Number `json:"liq_fee"`
 	Leverage            types.Number `json:"leverage"`
 	Interest            types.Number `json:"interest"`
 	BusinessType        string       `json:"business_type"`
@@ -530,8 +538,8 @@ type CrossExchangeHistoricalMarginPosition struct {
 // GetCrossExchangeMarginInterestHistoryRequest holds query parameters for the margin interest history endpoint.
 type GetCrossExchangeMarginInterestHistoryRequest struct {
 	Symbol       CrossExchangeSymbolIdentifier
-	From         uint64
-	To           uint64
+	From         time.Time
+	To           time.Time
 	Page         uint64
 	Limit        uint64
 	ExchangeType string
@@ -557,8 +565,8 @@ type GetCrossExchangeTradeHistoryRequest struct {
 	Page   uint64
 	Limit  uint64
 	Symbol CrossExchangeSymbolIdentifier
-	From   uint64
-	To     uint64
+	From   time.Time
+	To     time.Time
 }
 
 // CrossExchangeTrade holds a single CrossEx trade record.
@@ -576,6 +584,11 @@ type CrossExchangeTrade struct {
 	Price          types.Number  `json:"price"`
 	Fee            types.Number  `json:"fee"`
 	FeeCoin        currency.Code `json:"fee_coin"`
+	FeeRate        types.Number  `json:"fee_rate"`
+	MatchRole      string        `json:"match_role"`
+	RealizedPNL    types.Number  `json:"rpnl"`
+	PositionMode   string        `json:"position_mode"`
+	PositionSide   string        `json:"position_side"`
 	CreateTime     types.Time    `json:"create_time"`
 }
 
@@ -585,20 +598,22 @@ type GetCrossExchangeAccountBookRequest struct {
 	Limit         uint64
 	Coin          currency.Code
 	StatementType string
-	From          uint64
-	To            uint64
+	From          time.Time
+	To            time.Time
 }
 
 // CrossExchangeAccountBookRecord holds a single account asset change record.
 type CrossExchangeAccountBookRecord struct {
-	ID            string       `json:"id"`
-	UserID        string       `json:"user_id"`
-	BusinessID    string       `json:"business_id"`
-	StatementType string       `json:"statement_type"`
-	ExchangeType  string       `json:"exchange_type"`
-	Change        string       `json:"change"`
-	Balance       types.Number `json:"balance"`
-	CreateTime    types.Time   `json:"create_time"`
+	ID            string        `json:"id"`
+	UserID        string        `json:"user_id"`
+	BusinessID    string        `json:"business_id"`
+	StatementType string        `json:"statement_type"`
+	ExchangeType  string        `json:"exchange_type"`
+	Coin          currency.Code `json:"coin"`
+	Symbol        string        `json:"symbol"`
+	Change        string        `json:"change"`
+	Balance       types.Number  `json:"balance"`
+	CreateTime    types.Time    `json:"create_time"`
 }
 
 // CrossExchangeCoinDiscountRate holds the currency discount rate information for a CrossEx asset.
@@ -609,4 +624,28 @@ type CrossExchangeCoinDiscountRate struct {
 	MinValue     types.Number  `json:"min_value"`
 	MaxValue     types.Number  `json:"max_value"`
 	DiscountRate types.Number  `json:"discount_rate"`
+}
+
+// CrossExchangeMarketTicker holds market ticker information for a CrossEx symbol.
+type CrossExchangeMarketTicker struct {
+	Symbol            string       `json:"symbol"`
+	LastPrice         types.Number `json:"last_price"`
+	Open24H           types.Number `json:"open_24h"`
+	Low24H            types.Number `json:"low_24h"`
+	High24H           types.Number `json:"high_24h"`
+	Volume24HBase     types.Number `json:"volume_24h_base"`
+	Volume24HQuote    types.Number `json:"volume_24h_quote"`
+	MarkPrice         types.Number `json:"mark_price"`
+	IndexPrice        types.Number `json:"index_price"`
+	OpenInterest      types.Number `json:"open_interest"`
+	OpenInterestQuote types.Number `json:"open_interest_quote"`
+	Timestamp         types.Time   `json:"timestamp"`
+}
+
+// CrossExchangeMarketFundingInfo holds funding information for a CrossEx futures symbol.
+type CrossExchangeMarketFundingInfo struct {
+	Symbol          string       `json:"symbol"`
+	FundingRate     types.Number `json:"funding_rate"`
+	FundingTime     types.Time   `json:"funding_time"`
+	FundingInterval uint64       `json:"funding_interval,string"`
 }

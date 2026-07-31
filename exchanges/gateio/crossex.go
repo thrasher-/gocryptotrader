@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -65,6 +66,21 @@ func formatCrossExchangeSymbols(symbols []CrossExchangeSymbolIdentifier, allowed
 	return strings.Join(formatted, ","), nil
 }
 
+func setCrossExchangeTimeRange(params url.Values, from, to time.Time) error {
+	if !from.IsZero() && !to.IsZero() {
+		if err := common.StartEndTimeCheck(from, to); err != nil {
+			return err
+		}
+	}
+	if !from.IsZero() {
+		params.Set("from", strconv.FormatInt(from.Unix(), 10))
+	}
+	if !to.IsZero() {
+		params.Set("to", strconv.FormatInt(to.Unix(), 10))
+	}
+	return nil
+}
+
 // GetCrossExchangeSymbols retrieves symbol information for CrossEx trading pairs.
 func (e *Exchange) GetCrossExchangeSymbols(ctx context.Context, symbols []CrossExchangeSymbolIdentifier) ([]*CrossExchangeSymbol, error) {
 	params := url.Values{}
@@ -114,11 +130,8 @@ func (e *Exchange) GetCrossExchangeTransferHistory(ctx context.Context, arg *Get
 		if arg.OrderID != "" {
 			params.Set("order_id", arg.OrderID)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 		if arg.PageNumber > 0 {
 			params.Set("page", strconv.FormatUint(arg.PageNumber, 10))
@@ -456,11 +469,8 @@ func (e *Exchange) GetCrossExchangeOrderHistory(ctx context.Context, arg *GetCro
 			}
 			params.Set("symbol", formatted)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 		if arg.Attribute != "" {
 			params.Set("attributes", arg.Attribute)
@@ -487,11 +497,8 @@ func (e *Exchange) GetCrossExchangeContractPositionHistory(ctx context.Context, 
 			}
 			params.Set("symbol", formatted)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 	}
 	var resp []*CrossExchangeHistoricalPosition
@@ -515,11 +522,8 @@ func (e *Exchange) GetCrossExchangeMarginPositionHistory(ctx context.Context, ar
 			}
 			params.Set("symbol", formatted)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 	}
 	var resp []*CrossExchangeHistoricalMarginPosition
@@ -537,11 +541,8 @@ func (e *Exchange) GetCrossExchangeMarginInterestHistory(ctx context.Context, ar
 			}
 			params.Set("symbol", formatted)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 		if arg.Page > 0 {
 			params.Set("page", strconv.FormatUint(arg.Page, 10))
@@ -574,11 +575,8 @@ func (e *Exchange) GetCrossExchangeTradeHistory(ctx context.Context, arg *GetCro
 			}
 			params.Set("symbol", formatted)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 	}
 	var resp []*CrossExchangeTrade
@@ -601,11 +599,8 @@ func (e *Exchange) GetCrossExchangeAccountBook(ctx context.Context, arg *GetCros
 		if arg.StatementType != "" {
 			params.Set("statement_type", arg.StatementType)
 		}
-		if arg.From > 0 {
-			params.Set("from", strconv.FormatUint(arg.From, 10))
-		}
-		if arg.To > 0 {
-			params.Set("to", strconv.FormatUint(arg.To, 10))
+		if err := setCrossExchangeTimeRange(params, arg.From, arg.To); err != nil {
+			return nil, err
 		}
 	}
 	var resp []*CrossExchangeAccountBookRecord
@@ -623,4 +618,32 @@ func (e *Exchange) GetCrossExchangeCoinDiscountRates(ctx context.Context, coin c
 	}
 	var resp []*CrossExchangeCoinDiscountRate
 	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, crossexCoinDiscountRateEPL, http.MethodGet, "crossex/coin_discount_rate", params, nil, &resp)
+}
+
+// GetCrossExchangeMarketTickers retrieves market ticker information for CrossEx spot and futures symbols.
+func (e *Exchange) GetCrossExchangeMarketTickers(ctx context.Context, symbols []CrossExchangeSymbolIdentifier) ([]*CrossExchangeMarketTicker, error) {
+	params := url.Values{}
+	if len(symbols) > 0 {
+		formatted, err := formatCrossExchangeSymbols(symbols, asset.Spot, asset.Futures)
+		if err != nil {
+			return nil, err
+		}
+		params.Set("symbols", formatted)
+	}
+	var resp []*CrossExchangeMarketTicker
+	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, crossexMarketTickersEPL, http.MethodGet, "crossex/market/tickers", params, nil, &resp)
+}
+
+// GetCrossExchangeMarketFundingInfo retrieves funding information for CrossEx futures symbols.
+func (e *Exchange) GetCrossExchangeMarketFundingInfo(ctx context.Context, symbols []CrossExchangeSymbolIdentifier) ([]*CrossExchangeMarketFundingInfo, error) {
+	params := url.Values{}
+	if len(symbols) > 0 {
+		formatted, err := formatCrossExchangeSymbols(symbols, asset.Futures)
+		if err != nil {
+			return nil, err
+		}
+		params.Set("symbols", formatted)
+	}
+	var resp []*CrossExchangeMarketFundingInfo
+	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, crossexMarketFundingInfoEPL, http.MethodGet, "crossex/market/funding_info", params, nil, &resp)
 }

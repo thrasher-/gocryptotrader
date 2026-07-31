@@ -160,6 +160,12 @@ func (e *Exchange) SetDefaults() {
 	if err != nil {
 		log.Errorln(log.ExchangeSys, err)
 	}
+	if err := e.DisableAssetWebsocketSupport(asset.Margin); err != nil {
+		log.Errorln(log.ExchangeSys, err)
+	}
+	if err := e.DisableAssetWebsocketSupport(asset.CrossMargin); err != nil {
+		log.Errorln(log.ExchangeSys, err)
+	}
 	e.API.Endpoints = e.NewEndpoints()
 	if err := e.API.Endpoints.SetDefaultEndpoints(map[exchange.URL]string{
 		exchange.RestSpot:              gateioTradeURL,
@@ -168,7 +174,6 @@ func (e *Exchange) SetDefaults() {
 		exchange.WebsocketSpot:         gateioWebsocketEndpoint,
 		exchange.WebsocketUSDTMargined: usdtFuturesWebsocketURL,
 		exchange.WebsocketCoinMargined: btcFuturesWebsocketURL,
-		exchange.WebsocketFutures:      deliveryRealBTCTradingURL,
 		exchange.WebsocketTrade:        deliveryRealUSDTTradingURL,
 		exchange.WebsocketOptions:      optionsWebsocketURL,
 	}); err != nil {
@@ -273,31 +278,6 @@ func (e *Exchange) Setup(exch *config.Exchange) error {
 		},
 		Connector:     e.WsFuturesConnect,
 		MessageFilter: asset.CoinMarginedFutures,
-	}); err != nil {
-		return err
-	}
-
-	// Futures connection - Delivery - BTC margined
-	wsDeliveryFuturesURL, err := e.API.Endpoints.GetURL(exchange.WebsocketFutures)
-	if err != nil {
-		return err
-	}
-	if err := e.Websocket.SetupNewConnection(&websocket.ConnectionSetup{
-		URL:                  wsDeliveryFuturesURL,
-		ResponseCheckTimeout: exch.WebsocketResponseCheckTimeout,
-		ResponseMaxLimit:     exch.WebsocketResponseMaxLimit,
-		Handler: func(ctx context.Context, conn websocket.Connection, incoming []byte) error {
-			return e.WsHandleFuturesData(ctx, conn, incoming, asset.BTCMarginedDeliveryFutures)
-		},
-		Subscriber:   e.DeliveryFuturesSubscribe,
-		Unsubscriber: e.DeliveryFuturesUnsubscribe,
-		GenerateSubscriptions: func() (subscription.List, error) {
-			return e.GenerateDeliveryFuturesDefaultSubscriptions(asset.BTCMarginedDeliveryFutures)
-		},
-		Connector: func(ctx context.Context, conn websocket.Connection) error {
-			return e.WsDeliveryFuturesConnect(ctx, conn, asset.BTCMarginedDeliveryFutures)
-		},
-		MessageFilter: asset.BTCMarginedDeliveryFutures,
 	}); err != nil {
 		return err
 	}
@@ -503,8 +483,16 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 			return nil, err
 		}
 		pairs := make([]currency.Pair, 0, len(contracts))
+		now := time.Now()
 		for _, fContract := range contracts {
-			if fContract.Name.IsEmpty() || (fContract.Type == "inverse" && a != asset.CoinMarginedFutures) || (fContract.Type == "linear" && a != asset.USDTMarginedFutures) {
+			status := strings.ToLower(fContract.Status)
+			if fContract.Name.IsEmpty() ||
+				fContract.Delisting ||
+				status == "delisting" ||
+				status == "delisted" ||
+				(!fContract.DelistedTime.Time().IsZero() && fContract.DelistedTime.Time().Before(now)) ||
+				(fContract.Type == "inverse" && a != asset.CoinMarginedFutures) ||
+				(fContract.Type == "direct" && a != asset.USDTMarginedFutures) {
 				continue
 			}
 			pairs = append(pairs, fContract.Name)
@@ -723,13 +711,17 @@ func (e *Exchange) fetchOrderbook(ctx context.Context, p currency.Pair, a asset.
 	if err != nil {
 		return nil, err
 	}
+	lastUpdateID, err := convertOrderbookIDToInt64(o.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	return &orderbook.Book{
 		Exchange:          e.Name,
 		Asset:             a,
 		ValidateOrderbook: e.ValidateOrderbook,
 		Pair:              p,
-		LastUpdateID:      o.ID,
+		LastUpdateID:      lastUpdateID,
 		LastUpdated:       o.Update.Time(),
 		LastPushed:        o.Current.Time(),
 		Bids:              o.Bids.Levels(),
@@ -922,7 +914,7 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, a asset
 		resp = make([]trade.Data, len(futuresTrades))
 		for i, tradeH := range futuresTrades {
 			resp[i] = trade.Data{
-				TID:          strconv.FormatInt(tradeH.ID, 10),
+				TID:          strconv.FormatUint(tradeH.ID, 10),
 				Exchange:     e.Name,
 				CurrencyPair: p,
 				AssetType:    a,
@@ -939,7 +931,7 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, a asset
 		resp = make([]trade.Data, len(trades))
 		for i, td := range trades {
 			resp[i] = trade.Data{
-				TID:          strconv.FormatInt(td.ID, 10),
+				TID:          strconv.FormatUint(td.ID, 10),
 				Exchange:     e.Name,
 				CurrencyPair: p,
 				AssetType:    a,
@@ -1022,7 +1014,7 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 		if err != nil {
 			return nil, err
 		}
-		resp, err := s.DeriveSubmitResponse(strconv.FormatInt(o.ID, 10))
+		resp, err := s.DeriveSubmitResponse(strconv.FormatUint(o.ID, 10))
 		if err != nil {
 			return nil, err
 		}
@@ -1052,7 +1044,7 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 		if err != nil {
 			return nil, err
 		}
-		resp, err := s.DeriveSubmitResponse(strconv.FormatInt(o.ID, 10))
+		resp, err := s.DeriveSubmitResponse(strconv.FormatUint(o.ID, 10))
 		if err != nil {
 			return nil, err
 		}
@@ -1079,7 +1071,7 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 		if err != nil {
 			return nil, err
 		}
-		response, err := s.DeriveSubmitResponse(strconv.FormatInt(optionOrder.OptionOrderID, 10))
+		response, err := s.DeriveSubmitResponse(strconv.FormatUint(optionOrder.OptionOrderID, 10))
 		if err != nil {
 			return nil, err
 		}
@@ -1198,7 +1190,7 @@ func (e *Exchange) CancelBatchOrders(ctx context.Context, o []order.Cancel) (*or
 				return nil, err
 			}
 			for _, ord := range resp {
-				response.Status[strconv.FormatInt(ord.ID, 10)] = ord.Status
+				response.Status[strconv.FormatUint(ord.ID, 10)] = ord.Status
 			}
 		}
 	case asset.Options:
@@ -1208,7 +1200,7 @@ func (e *Exchange) CancelBatchOrders(ctx context.Context, o []order.Cancel) (*or
 				return nil, err
 			}
 			for _, optionOrd := range cancel {
-				response.Status[strconv.FormatInt(optionOrd.OptionOrderID, 10)] = optionOrd.Status
+				response.Status[strconv.FormatUint(optionOrd.OptionOrderID, 10)] = optionOrd.Status
 			}
 		}
 	default:
@@ -1267,7 +1259,7 @@ func (e *Exchange) CancelAllOrders(ctx context.Context, o *order.Cancel) (order.
 			return resp, err
 		}
 		for _, cancelResp := range cancel {
-			resp.Add(strconv.FormatInt(cancelResp.ID, 10), cancelResp.FinishAs)
+			resp.Add(strconv.FormatUint(cancelResp.ID, 10), cancelResp.FinishAs)
 		}
 	case asset.Options:
 		var underlying currency.Pair
@@ -1282,7 +1274,7 @@ func (e *Exchange) CancelAllOrders(ctx context.Context, o *order.Cancel) (order.
 			return resp, err
 		}
 		for _, oResp := range optionOrderResponse {
-			resp.Add(strconv.FormatInt(oResp.OptionOrderID, 10), oResp.FinishAs)
+			resp.Add(strconv.FormatUint(oResp.OptionOrderID, 10), oResp.FinishAs)
 		}
 	default:
 		return resp, fmt.Errorf("%w asset type: %v", asset.ErrNotSupported, o.AssetType)
@@ -1577,9 +1569,9 @@ func (e *Exchange) GetActiveOrders(ctx context.Context, req *order.MultiOrderReq
 				Amount:               amount,
 				ContractAmount:       amount,
 				Pair:                 fOrder.Contract.Format(format),
-				OrderID:              strconv.FormatInt(fOrder.ID, 10),
+				OrderID:              strconv.FormatUint(fOrder.ID, 10),
 				ClientOrderID:        getClientOrderIDFromText(fOrder.Text),
-				Price:                fOrder.FillPrice.Float64(),
+				Price:                fOrder.Price.Float64(),
 				ExecutedAmount:       amount - remaining,
 				RemainingAmount:      remaining,
 				LastUpdated:          fOrder.FinishTime.Time(),
@@ -1613,10 +1605,9 @@ func (e *Exchange) GetActiveOrders(ctx context.Context, req *order.MultiOrderReq
 			orders = append(orders, order.Detail{
 				Status:               status,
 				Amount:               optOrd.Size.Float64(),
-				AverageExecutedPrice: optOrd.Price.Float64(),
-				QuoteAmount:          optOrd.Price.Float64() * optOrd.Size.Float64(),
+				AverageExecutedPrice: optOrd.FillPrice.Float64(),
 				Pair:                 currencyPair,
-				OrderID:              strconv.FormatInt(optOrd.OptionOrderID, 10),
+				OrderID:              strconv.FormatUint(optOrd.OptionOrderID, 10),
 				Price:                optOrd.Price.Float64(),
 				ExecutedAmount:       optOrd.Size.Float64() - optOrd.RemainingAmount.Float64(),
 				RemainingAmount:      optOrd.RemainingAmount.Float64(),
@@ -1656,7 +1647,7 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, req *order.MultiOrderReq
 			if fp.IsPopulated() {
 				fp = pairs[i].Format(format)
 			}
-			o, err := e.GetMySpotTradingHistory(ctx, fp, req.FromOrderID, 0, 1000, req.MarginType == margin.Multi, req.StartTime, req.EndTime)
+			o, err := e.GetMySpotTradingHistory(ctx, fp, req.FromOrderID, 0, 1000, req.AssetType == asset.CrossMargin, req.StartTime, req.EndTime)
 			if err != nil {
 				return nil, err
 			}
@@ -1719,7 +1710,7 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, req *order.MultiOrderReq
 					return nil, err
 				}
 				od := order.Detail{
-					OrderID:   strconv.FormatInt(fOrder.ID, 10),
+					OrderID:   strconv.FormatUint(fOrder.ID, 10),
 					Amount:    fOrder.Size.Float64(),
 					Price:     fOrder.Price.Float64(),
 					Date:      fOrder.CreateTime.Time(),
@@ -1926,6 +1917,10 @@ func (e *Exchange) GetFuturesContractDetails(ctx context.Context, a asset.Item) 
 		}
 		resp := make([]futures.Contract, len(contracts))
 		for i, fContract := range contracts {
+			fundingInterval, err := durationFromSeconds(fContract.FundingInterval)
+			if err != nil {
+				return nil, fmt.Errorf("invalid funding interval for %s: %w", fContract.Name, err)
+			}
 			contractSettlementType := futures.Linear
 			switch {
 			case fContract.Name.Base.Equal(currency.BTC) && settle.Equal(currency.BTC):
@@ -1946,7 +1941,7 @@ func (e *Exchange) GetFuturesContractDetails(ctx context.Context, a asset.Item) 
 				MaxLeverage:        fContract.LeverageMax.Float64(),
 			}
 			c.LatestRate = fundingrate.Rate{
-				Time: fContract.FundingNextApply.Time().Add(-time.Duration(fContract.FundingInterval) * time.Second),
+				Time: fContract.FundingNextApply.Time().Add(-fundingInterval),
 				Rate: fContract.FundingRate.Decimal(),
 			}
 			resp[i] = c
@@ -2024,16 +2019,24 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 			if cpDetail.TradeStatus == "untradable" {
 				continue
 			}
+			amountIncrement, err := decimalIncrementFromPrecision(cpDetail.AmountPrecision)
+			if err != nil {
+				return fmt.Errorf("invalid amount precision for %s: %w", cpDetail.ID, err)
+			}
+			priceIncrement, err := decimalIncrementFromPrecision(cpDetail.PricePrecision)
+			if err != nil {
+				return fmt.Errorf("invalid price precision for %s: %w", cpDetail.ID, err)
+			}
 			// Minimum base amounts are not always provided this will default to
 			// precision for base deployment. This can't be done for quote.
 			minBaseAmount := cpDetail.MinBaseAmount.Float64()
 			if minBaseAmount == 0 {
-				minBaseAmount = math.Pow10(-int(cpDetail.AmountPrecision))
+				minBaseAmount = amountIncrement
 			}
 			l = append(l, limits.MinMaxLevel{
 				Key:                     key.NewExchangeAssetPair(e.Name, a, currency.NewPair(cpDetail.Base, cpDetail.Quote)),
-				PriceStepIncrementSize:  math.Pow10(-int(cpDetail.PricePrecision)),
-				AmountStepIncrementSize: math.Pow10(-int(cpDetail.AmountPrecision)),
+				PriceStepIncrementSize:  priceIncrement,
+				AmountStepIncrementSize: amountIncrement,
 				MinimumBaseAmount:       minBaseAmount,
 				MinimumQuoteAmount:      cpDetail.MinQuoteAmount.Float64(),
 				MaximumBaseAmount:       cpDetail.MaxBaseAmount.Float64(),
@@ -2073,14 +2076,22 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 				continue
 			}
 			delete(unsupported, pairsData[i].ID) // Remove ids returned by the API. Any remaining will trigger a warning
+			amountIncrement, err := decimalIncrementFromPrecision(pairsData[i].AmountPrecision)
+			if err != nil {
+				return fmt.Errorf("invalid amount precision for %s: %w", pairsData[i].ID, err)
+			}
+			priceIncrement, err := decimalIncrementFromPrecision(pairsData[i].PricePrecision)
+			if err != nil {
+				return fmt.Errorf("invalid price precision for %s: %w", pairsData[i].ID, err)
+			}
 			minBaseAmount := pairsData[i].MinBaseAmount.Float64()
 			if minBaseAmount == 0 {
-				minBaseAmount = math.Pow10(-int(pairsData[i].AmountPrecision))
+				minBaseAmount = amountIncrement
 			}
 			l = append(l, limits.MinMaxLevel{
 				Key:                      key.NewExchangeAssetPair(e.Name, a, pairsData[i].ID),
-				PriceStepIncrementSize:   math.Pow10(-int(pairsData[i].PricePrecision)),
-				AmountStepIncrementSize:  math.Pow10(-int(pairsData[i].AmountPrecision)),
+				PriceStepIncrementSize:   priceIncrement,
+				AmountStepIncrementSize:  amountIncrement,
 				MinimumBaseAmount:        minBaseAmount,
 				MinimumQuoteAmount:       pairsData[i].MinQuoteAmount.Float64(),
 				Delisted:                 pairsData[i].DelistingTime.Time(),
@@ -2112,14 +2123,22 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 			if !baseOK || !quoteOK {
 				continue
 			}
+			amountIncrement, err := decimalIncrementFromPrecision(pairsData[i].AmountPrecision)
+			if err != nil {
+				return fmt.Errorf("invalid amount precision for %s: %w", pairsData[i].ID, err)
+			}
+			priceIncrement, err := decimalIncrementFromPrecision(pairsData[i].PricePrecision)
+			if err != nil {
+				return fmt.Errorf("invalid price precision for %s: %w", pairsData[i].ID, err)
+			}
 			minBaseAmount := pairsData[i].MinBaseAmount.Float64()
 			if minBaseAmount == 0 {
-				minBaseAmount = math.Pow10(-int(pairsData[i].AmountPrecision))
+				minBaseAmount = amountIncrement
 			}
 			l = append(l, limits.MinMaxLevel{
 				Key:                      key.NewExchangeAssetPair(e.Name, a, pairsData[i].ID),
-				PriceStepIncrementSize:   math.Pow10(-int(pairsData[i].PricePrecision)),
-				AmountStepIncrementSize:  math.Pow10(-int(pairsData[i].AmountPrecision)),
+				PriceStepIncrementSize:   priceIncrement,
+				AmountStepIncrementSize:  amountIncrement,
 				MinimumBaseAmount:        minBaseAmount,
 				MinimumQuoteAmount:       pairsData[i].MinQuoteAmount.Float64(),
 				Delisted:                 pairsData[i].DelistingTime.Time(),
@@ -2360,9 +2379,11 @@ func (e *Exchange) GetLatestFundingRates(ctx context.Context, r *fundingrate.Lat
 		if err != nil {
 			return nil, err
 		}
-		return []fundingrate.LatestRateResponse{
-			contractToFundingRate(e.Name, r.Asset, fPair, contract, r.IncludePredictedRate),
-		}, nil
+		rate, err := contractToFundingRate(e.Name, r.Asset, fPair, contract, r.IncludePredictedRate)
+		if err != nil {
+			return nil, err
+		}
+		return []fundingrate.LatestRateResponse{rate}, nil
 	}
 
 	pairs, err := e.GetEnabledPairs(r.Asset)
@@ -2379,19 +2400,27 @@ func (e *Exchange) GetLatestFundingRates(ctx context.Context, r *fundingrate.Lat
 		if !pairs.Contains(fContract.Name, true) {
 			continue
 		}
-		resp = append(resp, contractToFundingRate(e.Name, r.Asset, fContract.Name, fContract, r.IncludePredictedRate))
+		rate, err := contractToFundingRate(e.Name, r.Asset, fContract.Name, fContract, r.IncludePredictedRate)
+		if err != nil {
+			return nil, err
+		}
+		resp = append(resp, rate)
 	}
 
 	return slices.Clip(resp), nil
 }
 
-func contractToFundingRate(name string, item asset.Item, fPair currency.Pair, contract *FuturesContract, includeUpcomingRate bool) fundingrate.LatestRateResponse {
+func contractToFundingRate(name string, item asset.Item, fPair currency.Pair, contract *FuturesContract, includeUpcomingRate bool) (fundingrate.LatestRateResponse, error) {
+	fundingInterval, err := durationFromSeconds(contract.FundingInterval)
+	if err != nil {
+		return fundingrate.LatestRateResponse{}, fmt.Errorf("invalid funding interval for %s: %w", fPair, err)
+	}
 	resp := fundingrate.LatestRateResponse{
 		Exchange: name,
 		Asset:    item,
 		Pair:     fPair,
 		LatestRate: fundingrate.Rate{
-			Time: contract.FundingNextApply.Time().Add(-time.Duration(contract.FundingInterval) * time.Second),
+			Time: contract.FundingNextApply.Time().Add(-fundingInterval),
 			Rate: contract.FundingRate.Decimal(),
 		},
 		TimeOfNextRate: contract.FundingNextApply.Time(),
@@ -2403,7 +2432,28 @@ func contractToFundingRate(name string, item asset.Item, fPair currency.Pair, co
 			Rate: contract.FundingRateIndicative.Decimal(),
 		}
 	}
-	return resp
+	return resp, nil
+}
+
+func durationFromSeconds(seconds uint64) (time.Duration, error) {
+	const (
+		nanosecondsPerSecond   = 1_000_000_000
+		maximumDurationSeconds = math.MaxInt64 / nanosecondsPerSecond
+	)
+	if seconds > maximumDurationSeconds {
+		return 0, fmt.Errorf("%w: %d seconds exceeds maximum time.Duration", common.ErrMalformedData, seconds)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
+func decimalIncrementFromPrecision(precision uint64) (float64, error) {
+	// math.Pow10(-324) underflows to zero; reject precision values that cannot
+	// produce a usable increment before narrowing to int.
+	const maximumDecimalPrecision = 323
+	if precision > maximumDecimalPrecision {
+		return 0, fmt.Errorf("%w: decimal precision %d exceeds maximum %d", common.ErrMalformedData, precision, maximumDecimalPrecision)
+	}
+	return math.Pow10(-int(precision)), nil
 }
 
 // SetLeverage sets the account's initial leverage for the asset type and pair
@@ -2866,8 +2916,8 @@ func (e *Exchange) deriveSpotWebsocketOrderResponses(responses []*WebsocketOrder
 			AssetType:            resp.Account,
 			Pair:                 resp.CurrencyPair,
 			ClientOrderID:        resp.Text,
-			Date:                 resp.CreateTimeMs.Time(),
-			LastUpdated:          resp.UpdateTimeMs.Time(),
+			Date:                 resp.CreateTimeMilliseconds.Time(),
+			LastUpdated:          resp.UpdateTimeMilliseconds.Time(),
 			RemainingAmount:      resp.Left.Float64(),
 			Amount:               resp.Amount.Float64(),
 			Price:                resp.Price.Float64(),
@@ -2930,7 +2980,7 @@ func (e *Exchange) deriveFuturesWebsocketOrderResponses(responses []*WebsocketFu
 		}
 		out = append(out, &order.SubmitResponse{
 			Exchange:             e.Name,
-			OrderID:              strconv.FormatInt(resp.ID, 10),
+			OrderID:              strconv.FormatUint(resp.ID, 10),
 			AssetType:            asset.Futures,
 			Pair:                 resp.Contract,
 			ClientOrderID:        clientOrderID,

@@ -16,15 +16,15 @@ type SubAccount struct {
 	LoginName  string     `json:"login_name"`
 	Password   string     `json:"password"`
 	Email      string     `json:"email"`
-	State      int64      `json:"state"`
-	Type       int64      `json:"type"`
+	State      uint64     `json:"state"`
+	Type       uint64     `json:"type"`
 	UserID     uint64     `json:"user_id"`
 	CreateTime types.Time `json:"create_time"`
 }
 
 // SubAccountKeyRequest holds parameters for creating or updating a sub-account API key.
 type SubAccountKeyRequest struct {
-	Mode        int64                `json:"mode,omitempty"`
+	Mode        uint64               `json:"mode,omitempty"`
 	Name        string               `json:"name,omitempty"`
 	Permissions []*SubAccountKeyPerm `json:"perms,omitempty"`
 	IPWhitelist []string             `json:"ip_whitelist,omitempty"`
@@ -39,16 +39,16 @@ type SubAccountKeyPerm struct {
 // SubAccountAPIKey holds detailed information about a sub-account API key.
 type SubAccountAPIKey struct {
 	UserID      uint64               `json:"user_id"`
-	Mode        int64                `json:"mode"`
+	Mode        uint64               `json:"mode"`
 	Name        string               `json:"name"`
 	Permissions []*SubAccountKeyPerm `json:"perms"`
 	IPWhitelist []string             `json:"ip_whitelist"`
 	Key         string               `json:"key"`
 	Secret      string               `json:"secret,omitempty"`
-	State       int64                `json:"state"`
+	State       uint64               `json:"state"`
 	CreatedAt   types.Time           `json:"created_at"`
 	UpdatedAt   types.Time           `json:"updated_at"`
-	LastAccess  int64                `json:"last_access"`
+	LastAccess  types.Time           `json:"last_access"`
 	UpdateAt    types.Time           `json:"update_at"`
 }
 

@@ -14,15 +14,19 @@ import (
 
 var mockTests = true
 
+const (
+	tradFiOrderLogID            uint64 = 1223
+	subAccountUserID            uint64 = 12345678
+	subAccountKeyIdentifier            = "mock-subaccount-key-id"
+	subAccountLoginName                = "test_sub_account_001"
+	subAccountAPIKeyName               = "test_key"
+	subAccountUpdatedAPIKeyName        = "updated_key"
+)
+
 func TestMain(m *testing.M) {
 	e = new(Exchange)
 	if err := testexch.Setup(e); err != nil {
 		log.Fatal(err)
-	}
-	if apiCredentials.Key != "" && apiCredentials.Secret != "" {
-		e.API.AuthenticatedSupport = true
-		e.API.AuthenticatedWebsocketSupport = true
-		e.SetCredentials(apiCredentials)
 	}
 	if err := testexch.MockHTTPInstance(e, ""); err != nil {
 		log.Fatalf("MockHTTPInstance error: %s", err)

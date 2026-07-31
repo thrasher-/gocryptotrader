@@ -9,13 +9,13 @@ import (
 
 // OTCBankSupplementChecklistItem represents a bank supplement check list item
 type OTCBankSupplementChecklistItem struct {
-	UserType string `json:"user_type"`
-	Items    []struct {
-		Code     string `json:"code"`
-		EN       string `json:"en"`
-		ZH       string `json:"zh"`
-		Required bool   `json:"required"`
-	} `json:"items"`
+	UserType string                             `json:"user_type"`
+	Items    []*OTCBankSupplementChecklistEntry `json:"items"`
+}
+
+// OTCBankSupplementChecklistEntry contains a required bank supplement document description.
+type OTCBankSupplementChecklistEntry struct {
+	Description string `json:"description"`
 }
 
 // OTCBankPersonalSupplementMultipartRequest represents bank personal
@@ -26,7 +26,7 @@ type OTCBankPersonalSupplementMultipartRequest struct {
 	AddressProof    string `json:"address_proof"`
 }
 
-// OTCBankEnterpriseSupplementMultipartRequest represents an enterprise suppelement request
+// OTCBankEnterpriseSupplementMultipartRequest represents an enterprise supplement request
 type OTCBankEnterpriseSupplementMultipartRequest struct {
 	UID                   string `json:"uid"`
 	BankID                string `json:"bank_id"`
@@ -40,7 +40,7 @@ type OTCBankEnterpriseSupplementMultipartRequest struct {
 
 // OTCActionResponse holds the response for OTC action operations such as cancel or mark paid.
 type OTCActionResponse struct {
-	Code      int64      `json:"code"`
+	Code      uint64     `json:"code"`
 	Message   string     `json:"message"`
 	Timestamp types.Time `json:"timestamp"`
 }
@@ -86,8 +86,8 @@ type OTCQuoteData struct {
 	GateBankName           string        `json:"gate_bank_name"`
 	OrderType              string        `json:"order_type"`
 	QuoteToken             string        `json:"quote_token"`
-	RefreshLimit           types.Number  `json:"refresh_limit"`
-	RefreshLimitMsg        string        `json:"refresh_limit_msg"`
+	RefreshLimit           uint64        `json:"refresh_limit"`
+	RefreshLimitMessage    string        `json:"refresh_limit_msg"`
 }
 
 // OTCFiatOrderRequest holds request parameters for creating a fiat order.
@@ -116,25 +116,20 @@ type OTCStablecoinOrderRequest struct {
 
 // OTCBankCard holds a single bank card entry.
 type OTCBankCard struct {
-	ID                    string     `json:"id"`
-	BankAccountName       string     `json:"bank_account_name"`
-	BankName              string     `json:"bank_name"`
-	BankCountry           string     `json:"bank_country"`
-	BankAddress           string     `json:"bank_address"`
-	BranchCode            string     `json:"branch_code"`
-	BankCode              string     `json:"bank_code"`
-	IBAN                  string     `json:"iban"`
-	Swift                 string     `json:"swift"`
-	RemittanceLineNumber  string     `json:"remittance_line_number"`
-	AgentBankName         string     `json:"agent_bank_name"`
-	AgentBankSwift        string     `json:"agent_bank_swift"`
-	SubmitTime            types.Time `json:"submit_time"`
-	UpdateTime            types.Time `json:"update_time"`
-	Status                string     `json:"status"`
-	DocumentationFileType string     `json:"documentation_file_type"`
-	Memo                  string     `json:"memo"`
-	IsDefault             string     `json:"is_default"`
-	DocumentationFileKey  string     `json:"documentation_file_key_url"`
+	ID                   string         `json:"id"`
+	BankAccountName      string         `json:"bank_account_name"`
+	BankName             string         `json:"bank_name"`
+	BankCountry          string         `json:"bank_country"`
+	BankAddress          string         `json:"bank_address"`
+	IBAN                 string         `json:"iban"`
+	SWIFT                string         `json:"swift"`
+	RemittanceLineNumber string         `json:"remittance_line_number"`
+	AgentBankName        string         `json:"agent_bank_name"`
+	AgentBankSWIFT       string         `json:"agent_bank_swift"`
+	SubmitTime           types.DateTime `json:"submit_time"`
+	UpdateTime           types.DateTime `json:"update_time"`
+	Status               string         `json:"status"`
+	IsDefault            uint64         `json:"is_default"`
 }
 
 // OTCBankCardRequestResponse represents a bank-card request response
@@ -155,35 +150,29 @@ type OTCBankCreateMultipartRequest struct {
 	BankCountry          string `json:"bank_country"`
 	BankAddress          string `json:"bank_address"`
 	IBAN                 string `json:"iban"`
-	Swift                string `json:"swift"`
+	SWIFT                string `json:"swift"`
 	RemittanceLineNumber string `json:"remittance_line_number"`
 	AgentBankName        string `json:"agent_bank_name"`
-	AgentBankSwift       string `json:"agent_bank_swift"`
+	AgentBankSWIFT       string `json:"agent_bank_swift"`
 	DocumentationFile    string `json:"documentation_file"`
 }
 
 // OTCOrderListItem holds a single fiat order list item.
 type OTCOrderListItem struct {
-	CreateAt            types.Time      `json:"create_at"`
-	TradeNumber         string          `json:"trade_no"`
-	DBStatus            string          `json:"db_status"`
-	Type                string          `json:"type"`
-	CryptoCurrency      currency.Code   `json:"crypto_currency"`
-	CreateAt2           types.Time      `json:"create_at2"`
-	BankAccountIBM      string          `json:"bank_account_ibm"`
-	Rate                types.Number    `json:"rate"`
-	CreateBankIBAM      string          `json:"create_bank_ibam"`
-	PromotionCode       string          `json:"promotion_code"`
-	Time                types.Time      `json:"time"`
-	Timestamp           types.Time      `json:"timestamp"`
-	OrderID             string          `json:"order_id"`
-	Status              string          `json:"status"`
-	FiatCurrency        currency.Code   `json:"fiat_currency"`
-	FiatCurrencyInfo    *NameAndIconURL `json:"fiat_currency_info"`
-	FiatAmount          types.Number    `json:"fiat_amount"`
-	CryptoCurrencyInfo  *NameAndIconURL `json:"crypto_currency_info"`
-	CryptoAmount        types.Number    `json:"crypto_amount"`
-	GateBankAccountIBAN string          `json:"gate_bank_account_iban"`
+	Time               types.DateTime  `json:"time"`
+	Timestamp          types.Time      `json:"timestamp"`
+	OrderID            string          `json:"order_id"`
+	TradeNumber        string          `json:"trade_no"`
+	Type               string          `json:"type"`
+	Status             string          `json:"status"`
+	FiatCurrency       currency.Code   `json:"fiat_currency"`
+	FiatCurrencyInfo   *NameAndIconURL `json:"fiat_currency_info"`
+	FiatAmount         types.Number    `json:"fiat_amount"`
+	CryptoCurrency     currency.Code   `json:"crypto_currency"`
+	CryptoCurrencyInfo *NameAndIconURL `json:"crypto_currency_info"`
+	CryptoAmount       types.Number    `json:"crypto_amount"`
+	Rate               types.Number    `json:"rate"`
+	PromotionCode      string          `json:"promotion_code"`
 }
 
 // NameAndIconURL represents a name and asset icon URL.
@@ -194,54 +183,75 @@ type NameAndIconURL struct {
 
 // OTCOrderListData holds the fiat order list response data.
 type OTCOrderListData struct {
-	PageNumber      int64               `json:"pn"`
-	PageSize        int64               `json:"ps"`
-	TotalPageNumber int64               `json:"total_pn"`
-	Count           int64               `json:"count"`
+	PageNumber      uint64              `json:"pn"`
+	PageSize        uint64              `json:"ps"`
+	TotalPageNumber uint64              `json:"total_pn"`
+	Count           uint64              `json:"count"`
 	List            []*OTCOrderListItem `json:"list"`
 }
 
 // OTCStableCoinOrder holds a single stablecoin order item.
 type OTCStableCoinOrder struct {
-	ID           uint64        `json:"id"`
-	TradeNo      string        `json:"trade_no"`
-	PayCoin      currency.Code `json:"pay_coin"`
-	PayAmount    types.Number  `json:"pay_amount"`
-	GetCoin      currency.Code `json:"get_coin"`
-	GetAmount    types.Number  `json:"get_amount"`
-	Rate         types.Number  `json:"rate"`
-	Status       string        `json:"status"`
-	CreateTime   types.Time    `json:"create_time"`
-	CreateTimest int64         `json:"create_timest"`
+	ID              uint64         `json:"id"`
+	TradeNumber     string         `json:"trade_no"`
+	PayCoin         currency.Code  `json:"pay_coin"`
+	PayAmount       types.Number   `json:"pay_amount"`
+	GetCoin         currency.Code  `json:"get_coin"`
+	GetAmount       types.Number   `json:"get_amount"`
+	Rate            types.Number   `json:"rate"`
+	Status          string         `json:"status"`
+	PayIcon         string         `json:"pay_icon"`
+	GetIcon         string         `json:"get_icon"`
+	ReciprocalRate  types.Number   `json:"rate_reci"`
+	CreateTime      types.DateTime `json:"create_time"`
+	CreateTimestamp types.Time     `json:"create_timest"`
 }
 
 // OTCStablecoinOrderListData holds the stablecoin order list response data.
 type OTCStablecoinOrderListData struct {
-	Total      int64                 `json:"total"`
-	PageSize   int64                 `json:"page_size"`
-	PageNumber int64                 `json:"page_number"`
-	TotalPage  int64                 `json:"total_page"`
+	Total      uint64                `json:"total"`
+	PageSize   uint64                `json:"page_size"`
+	PageNumber uint64                `json:"page_number"`
+	TotalPage  uint64                `json:"total_page"`
 	List       []*OTCStableCoinOrder `json:"list"`
 }
 
 // OTCOrderDetailData holds the fiat order detail data.
 type OTCOrderDetailData struct {
-	ID             string        `json:"id"`
-	UID            string        `json:"uid"`
-	Type           string        `json:"type"`
-	CryptoCurrency currency.Code `json:"crypto_currency"`
-	CryptoAmount   types.Number  `json:"crypto_amount"`
-	CreateTime     types.Time    `json:"create_time"`
-	Rate           types.Number  `json:"rate"`
-	PromotionCode  string        `json:"promotion_code"`
-	TradeNo        string        `json:"trade_no"`
-	Status         string        `json:"status"`
-	TransferRemark string        `json:"transfer_remark"`
-	OrderID        string        `json:"order_id"`
-	FiatCurrency   currency.Code `json:"fiat_currency"`
-	FiatAmount     types.Number  `json:"fiat_amount"`
-	ReferenceCode  string        `json:"reference_code"`
-	DBStatus       string        `json:"db_status"`
-	Memo           string        `json:"memo"`
-	Side           string        `json:"side"`
+	ID                            string         `json:"id"`
+	UID                           string         `json:"uid"`
+	Type                          string         `json:"type"`
+	CryptoCurrency                currency.Code  `json:"crypto_currency"`
+	CryptoAmount                  types.Number   `json:"crypto_amount"`
+	CreateTime                    types.DateTime `json:"create_time"`
+	Rate                          types.Number   `json:"rate"`
+	PromotionCode                 string         `json:"promotion_code"`
+	TradeNumber                   string         `json:"trade_no"`
+	Status                        string         `json:"status"`
+	OrderID                       string         `json:"order_id"`
+	FiatCurrency                  currency.Code  `json:"fiat_currency"`
+	FiatAmount                    types.Number   `json:"fiat_amount"`
+	DBStatus                      string         `json:"db_status"`
+	Memo                          string         `json:"memo"`
+	Side                          string         `json:"side"`
+	BankAccountName               string         `json:"bank_account_name"`
+	BankName                      string         `json:"bank_name"`
+	BankCountry                   string         `json:"bank_country"`
+	BankAddress                   string         `json:"bank_address"`
+	BankAccountNumberIBAN         string         `json:"bank_account_number_iban"`
+	SWIFTCode                     string         `json:"swift_code"`
+	IntermediateBankName          string         `json:"intermediate_bank_name"`
+	IntermediaryBankSWIFTCode     string         `json:"intermediary_bank_swift_code"`
+	GateBankAccountName           string         `json:"gate_bank_account_name"`
+	GateBankName                  string         `json:"gate_bank_name"`
+	GateBankCountry               string         `json:"gate_bank_country"`
+	GateBankAddress               string         `json:"gate_bank_address"`
+	GateBankAccountNumberIBAN     string         `json:"gate_bank_account_number_iban"`
+	GateSWIFTCode                 string         `json:"gate_swift_code"`
+	GateIntermediaryBankName      string         `json:"gate_intermediary_bank_name"`
+	GateIntermediaryBankSWIFTCode string         `json:"gate_intermediary_bank_swift_code"`
+	TransferRemark                string         `json:"transfer_remark"`
+	ReferenceCode                 string         `json:"reference_code"`
+	GateTransferRemark            string         `json:"gate_transfer_remark"`
+	GateReferenceCode             string         `json:"gate_reference_code"`
 }

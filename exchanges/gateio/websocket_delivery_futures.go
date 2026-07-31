@@ -130,6 +130,11 @@ func (e *Exchange) generateDeliveryFuturesPayload(ctx context.Context, event str
 		}
 		var auth *WsAuthInput
 		timestamp := time.Now()
+		var unixTimestamp uint64
+		unixTimestamp, err = convertNonNegativeInt64ToUint64(timestamp.Unix(), "delivery futures websocket timestamp")
+		if err != nil {
+			return nil, err
+		}
 		var params []string
 		params = []string{channelsToSubscribe[i].Pairs[0].String()}
 		if e.Websocket.CanUseAuthenticatedEndpoints() {
@@ -144,7 +149,7 @@ func (e *Exchange) generateDeliveryFuturesPayload(ctx context.Context, event str
 					params = append([]string{value}, params...)
 				}
 				var sigTemp string
-				sigTemp, err = e.generateWsSignature(creds.Secret, event, channelsToSubscribe[i].Channel, timestamp.Unix())
+				sigTemp, err = e.generateWsSignature(creds.Secret, event, channelsToSubscribe[i].Channel, unixTimestamp)
 				if err != nil {
 					return nil, err
 				}
@@ -193,13 +198,17 @@ func (e *Exchange) generateDeliveryFuturesPayload(ctx context.Context, event str
 				params = append(params, intervalString)
 			}
 		}
+		messageID, err := convertNonNegativeInt64ToUint64(e.MessageSequence(), "delivery futures websocket message sequence")
+		if err != nil {
+			return nil, err
+		}
 		outbound[i] = &WsInput{
-			ID:      e.MessageSequence(),
+			ID:      messageID,
 			Event:   event,
 			Channel: channelsToSubscribe[i].Channel,
 			Payload: params,
 			Auth:    auth,
-			Time:    timestamp.Unix(),
+			Time:    unixTimestamp,
 		}
 	}
 	return outbound, nil
