@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
@@ -61,19 +62,13 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 	t.Parallel()
 	testTable := map[string]request.EndpointLimit{
 		"Default":           spotDefaultRate,
-		"Historical Trades": spotHistoricalTradesRate,
 		"All Price Changes": spotTickerAllRate,
 		"All Orders":        spotAllOrdersRate,
 
-		"aggTradesRate":                                          aggTradesRate,
-		"listenKeyRate":                                          listenKeyRate,
 		"sapiDefaultRate":                                        sapiDefaultRate,
 		"allCoinInfoRate":                                        allCoinInfoRate,
 		"dailyAccountSnapshotRate":                               dailyAccountSnapshotRate,
-		"fundWithdrawalRate":                                     fundWithdrawalRate,
-		"withdrawalHistoryRate":                                  withdrawalHistoryRate,
 		"spotExchangeInfo":                                       spotExchangeInfo,
-		"spotHistoricalTradesRate":                               spotHistoricalTradesRate,
 		"spotOrderbookDepth100Rate":                              spotOrderbookDepth100Rate,
 		"spotOrderbookDepth500Rate":                              spotOrderbookDepth500Rate,
 		"spotOrderbookDepth1000Rate":                             spotOrderbookDepth1000Rate,
@@ -82,9 +77,7 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"getOldTradeLookupRate":                                  getOldTradeLookupRate,
 		"spotOrderbookTickerAllRate":                             spotOrderbookTickerAllRate,
 		"spotBookTickerRate":                                     spotBookTickerRate,
-		"spotSymbolPriceAllRate":                                 spotSymbolPriceAllRate,
 		"spotSymbolPriceRate":                                    spotSymbolPriceRate,
-		"getAggregateTradeListRate":                              getAggregateTradeListRate,
 		"getKlineRate":                                           getKlineRate,
 		"getCurrentAveragePriceRate":                             getCurrentAveragePriceRate,
 		"get24HrTickerPriceChangeStatisticsRate":                 get24HrTickerPriceChangeStatisticsRate,
@@ -105,16 +98,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"busdConvertRate":                                        busdConvertRate,
 		"cloudMiningPaymentAndRefundHistoryRate":                 cloudMiningPaymentAndRefundHistoryRate,
 		"autoConvertingStableCoinsRate":                          autoConvertingStableCoinsRate,
-		"getMinersListRate":                                      getMinersListRate,
-		"getEarningsListRate":                                    getEarningsListRate,
-		"extraBonusListRate":                                     extraBonusListRate,
-		"getHashrateRescaleRate":                                 getHashrateRescaleRate,
-		"getHashrateRescaleDetailRate":                           getHashrateRescaleDetailRate,
-		"getHasrateRescaleRequestRate":                           getHasrateRescaleRequestRate,
-		"cancelHashrateResaleConfigurationRate":                  cancelHashrateResaleConfigurationRate,
-		"statisticsListRate":                                     statisticsListRate,
-		"miningAccountListRate":                                  miningAccountListRate,
-		"miningAccountEarningRate":                               miningAccountEarningRate,
 		"getDepositAddressListInNetworkRate":                     getDepositAddressListInNetworkRate,
 		"getUserWalletBalanceRate":                               getUserWalletBalanceRate,
 		"getUserDelegationHistoryRate":                           getUserDelegationHistoryRate,
@@ -134,8 +117,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"marginAccountInformationRate":                           marginAccountInformationRate,
 		"subAccountMarginAccountDetailRate":                      subAccountMarginAccountDetailRate,
 		"getSubAccountSummaryOfMarginAccountRate":                getSubAccountSummaryOfMarginAccountRate,
-		"getDetailSubAccountFuturesAccountRate":                  getDetailSubAccountFuturesAccountRate,
-		"getFuturesPositionRiskOfSubAccountV1Rate":               getFuturesPositionRiskOfSubAccountV1Rate,
 		"getFuturesSubAccountSummaryV2Rate":                      getFuturesSubAccountSummaryV2Rate,
 		"ipRestrictionForSubAccountAPIKeyRate":                   ipRestrictionForSubAccountAPIKeyRate,
 		"deleteIPListForSubAccountAPIKeyRate":                    deleteIPListForSubAccountAPIKeyRate,
@@ -210,8 +191,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"getCollateralAssetDataRate":                             getCollateralAssetDataRate,
 		"getApplicationStatusRate":                               getApplicationStatusRate,
 		"getVIPBorrowInterestRate":                               getVIPBorrowInterestRate,
-		"fiatDepositWithdrawHistRate":                            fiatDepositWithdrawHistRate,
-		"getAllConvertPairsRate":                                 getAllConvertPairsRate,
 		"getOrderQuantityPrecisionPerAssetRate":                  getOrderQuantityPrecisionPerAssetRate,
 		"testNewOrderWithCommissionRate":                         testNewOrderWithCommissionRate,
 		"payTradeEndpointsRate":                                  payTradeEndpointsRate,
@@ -227,7 +206,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"repayFuturesNegativeBalanceRate":                        repayFuturesNegativeBalanceRate,
 		"spotTwapNewOrderRate":                                   spotTwapNewOrderRate,
 		"subscribeETHStakingRate":                                subscribeETHStakingRate,
-		"placeVPOrderRate":                                       placeVPOrderRate,
 		"placeTWAveragePriceNewOrderRate":                        placeTWAveragePriceNewOrderRate,
 		"spotOpenOrdersSpecificRate":                             spotOpenOrdersSpecificRate,
 		"spotOrderRate":                                          spotOrderRate,
@@ -247,8 +225,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"adjustCrossMarginMaxLeverageRate":                       adjustCrossMarginMaxLeverageRate,
 		"uFuturesDefaultRate":                                    uFuturesDefaultRate,
 		"uFuturesHistoricalTradesRate":                           uFuturesHistoricalTradesRate,
-		"uFuturesSymbolOrdersRate":                               uFuturesSymbolOrdersRate,
-		"uFuturesPairOrdersRate":                                 uFuturesPairOrdersRate,
 		"uFuturesCurrencyForceOrdersRate":                        uFuturesCurrencyForceOrdersRate,
 		"uFuturesAllForceOrdersRate":                             uFuturesAllForceOrdersRate,
 		"uFuturesIncomeHistoryRate":                              uFuturesIncomeHistoryRate,
@@ -291,11 +267,8 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"cFuturesAccountInformationRate":                         cFuturesAccountInformationRate,
 		"cFuturesOrderbookTickerAllRate":                         cFuturesOrderbookTickerAllRate,
 		"cFuturesOrdersDefaultRate":                              cFuturesOrdersDefaultRate,
-		"uFuturesMultiAssetMarginRate":                           uFuturesMultiAssetMarginRate,
-		"uFuturesSetMultiAssetMarginRate":                        uFuturesSetMultiAssetMarginRate,
 		"optionsDefaultRate":                                     optionsDefaultRate,
 		"optionsRecentTradesRate":                                optionsRecentTradesRate,
-		"optionsHistoricalTradesRate":                            optionsHistoricalTradesRate,
 		"optionsMarkPriceRate":                                   optionsMarkPriceRate,
 		"optionsAllTickerPriceStatistics":                        optionsAllTickerPriceStatistics,
 		"optionsHistoricalExerciseRecordsRate":                   optionsHistoricalExerciseRecordsRate,
@@ -310,7 +283,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"optionsDownloadIDForOptionTrasactionHistoryRate":        optionsDownloadIDForOptionTrasactionHistoryRate,
 		"optionsGetTransHistoryDownloadLinkByIDRate":             optionsGetTransHistoryDownloadLinkByIDRate,
 		"optionsMarginAccountInfoRate":                           optionsMarginAccountInfoRate,
-		"optionsAutoCancelAllOpenOrdersHeartbeatRate":            optionsAutoCancelAllOpenOrdersHeartbeatRate,
 		"pmDefaultRate":                                          pmDefaultRate,
 		"pmMarginAccountLoanAndRepayRate":                        pmMarginAccountLoanAndRepayRate,
 		"pmCancelMarginAccountOpenOrdersOnSymbolRate":            pmCancelMarginAccountOpenOrdersOnSymbolRate,
@@ -324,7 +296,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"pmAllUMConditionalOrdersWithoutSymbolRate":              pmAllUMConditionalOrdersWithoutSymbolRate,
 		"pmAllCMOpenConditionalOrdersWithoutSymbolRate":          pmAllCMOpenConditionalOrdersWithoutSymbolRate,
 		"pmAllCMConditionalOrderWithoutSymbolRate":               pmAllCMConditionalOrderWithoutSymbolRate,
-		"pmGetMarginAccountOrderRate":                            pmGetMarginAccountOrderRate,
 		"pmCurrentMarginOpenOrderRate":                           pmCurrentMarginOpenOrderRate,
 		"pmAllMarginAccountOrdersRate":                           pmAllMarginAccountOrdersRate,
 		"pmGetMarginAccountOCORate":                              pmGetMarginAccountOCORate,
@@ -356,7 +327,6 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 		"pmBNBTransferRate":                                      pmBNBTransferRate,
 		"pmGetUMIncomeHistoryRate":                               pmGetUMIncomeHistoryRate,
 		"pmGetCMIncomeHistoryRate":                               pmGetCMIncomeHistoryRate,
-		"pmGetUMAccountDetailRate":                               pmGetUMAccountDetailRate,
 		"pmGetCMAccountDetailRate":                               pmGetCMAccountDetailRate,
 		"pmChangeAutoRepayFuturesStatusRate":                     pmChangeAutoRepayFuturesStatusRate,
 		"pmGetAutoRepayFuturesStatusRate":                        pmGetAutoRepayFuturesStatusRate,
@@ -414,5 +384,13 @@ func TestRateLimit_LimitStatic(t *testing.T) {
 				t.Fatalf("error applying rate limit: %v", err)
 			}
 		})
+	}
+}
+
+func TestRateLimitDefinitionsAreComplete(t *testing.T) {
+	t.Parallel()
+	limits := GetRateLimits()
+	for limit := range endpointLimitSentinel {
+		assert.Containsf(t, limits, limit, "every declared endpoint limit should have a rate limiter defined, missing for limit %d", int(limit))
 	}
 }

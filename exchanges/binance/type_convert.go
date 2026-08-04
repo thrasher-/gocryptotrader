@@ -12,7 +12,7 @@ func timeString(t time.Time) string {
 	return strconv.FormatInt(t.UnixMilli(), 10)
 }
 
-// UnmarshalJSON deserialises the data to unmarshal into WsTickerPriceChange or []WsTickerPriceChange
+// UnmarshalJSON deserialises either a single PriceChangeStats object or an array of them.
 func (a *PriceChanges) UnmarshalJSON(data []byte) error {
 	var resp []*PriceChangeStats
 	err := json.Unmarshal(data, &resp)
@@ -63,29 +63,13 @@ func (a *WsOrderbookTickers) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalJSON decerializes byte data into PriceChanceWrapper instance.
-func (a *PriceChangesWrapper) UnmarshalJSON(data []byte) error {
-	var singlePriceChange *PriceChangeStats
-	if err := json.Unmarshal(data, &singlePriceChange); err != nil {
-		var resp []*PriceChangeStats
-		err = json.Unmarshal(data, &resp)
-		if err != nil {
-			return err
-		}
-		*a = resp
-		return nil
-	}
-	*a = []*PriceChangeStats{singlePriceChange}
-	return nil
-}
-
-// UnmarshalJSON deserialises incoming object or slice into WsOptionIncomingResps([]WsOptionIncomingResp) instance.
-func (a *WsOptionIncomingResps) UnmarshalJSON(data []byte) error {
-	var resp []*WsOptionIncomingResp
+// UnmarshalJSON deserialises incoming object or slice into WsOptionIncomingResponses([]WsOptionIncomingResponse) instance.
+func (a *WsOptionIncomingResponses) UnmarshalJSON(data []byte) error {
+	var resp []*WsOptionIncomingResponse
 	isSlice := true
 	if err := json.Unmarshal(data, &resp); err != nil {
 		isSlice = false
-		var newResp *WsOptionIncomingResp
+		var newResp *WsOptionIncomingResponse
 		err = json.Unmarshal(data, &newResp)
 		if err != nil {
 			return err
@@ -121,6 +105,22 @@ func (a *AccountBalanceResponse) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return err
 		}
+	}
+	*a = resp
+	return nil
+}
+
+// UnmarshalJSON deserialises either a single insurance fund object, which is what the endpoint
+// returns when a symbol is supplied, or an array of them when it is not.
+func (a *UFuturesInsuranceBalances) UnmarshalJSON(data []byte) error {
+	var resp []*UFuturesInsuranceBalance
+	if err := json.Unmarshal(data, &resp); err != nil {
+		var single *UFuturesInsuranceBalance
+		if err := json.Unmarshal(data, &single); err != nil {
+			return err
+		}
+		*a = []*UFuturesInsuranceBalance{single}
+		return nil
 	}
 	*a = resp
 	return nil

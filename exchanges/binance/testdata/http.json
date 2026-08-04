@@ -179,6 +179,43 @@
      "queryString": "limit=5\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
+    },
+    {
+     "data": [
+      {
+       "a": 3928736206,
+       "p": "67907.52000000",
+       "q": "0.00009000",
+       "f": 6193302387,
+       "l": 6193302387,
+       "T": 1744190254000,
+       "m": true,
+       "M": true
+      },
+      {
+       "a": 3928736207,
+       "p": "67907.44000000",
+       "q": "0.00008000",
+       "f": 6193302388,
+       "l": 6193302388,
+       "T": 1744190254100,
+       "m": true,
+       "M": true
+      },
+      {
+       "a": 3928736208,
+       "p": "67907.43000000",
+       "q": "0.00016000",
+       "f": 6193302389,
+       "l": 6193302390,
+       "T": 1744190254200,
+       "m": false,
+       "M": true
+      }
+     ],
+     "queryString": "endTime=1744190254944\u0026limit=1000\u0026symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
     }
    ]
   },
@@ -5283,6 +5320,27 @@
      "queryString": "endTime=1744190254944\u0026interval=5m\u0026limit=24\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
+    },
+    {
+     "data": [
+      [
+       1744104000000,
+       "1.00000000",
+       "2.00000000",
+       "0.50000000",
+       "1.50000000",
+       "3.00000000",
+       1744104299999,
+       "4.00000000",
+       7,
+       "5.00000000",
+       "6.00000000",
+       "0"
+      ]
+     ],
+     "queryString": "endTime=1744190254944\u0026interval=5m\u0026limit=24\u0026startTime=1744103854944\u0026symbol=BTCUSDT\u0026timeZone=%2B08%3A00",
+     "bodyParams": "",
+     "headers": {}
     }
    ]
   },
@@ -8114,11 +8172,11 @@
     },
     {
      "data": {
-      "contractType": "PERPETUAL",
-      "openInterest": "11797941",
-      "pair": "BTCUSD",
       "symbol": "BTCUSD_PERP",
-      "time": 1775571563981
+      "pair": "BTCUSD",
+      "openInterest": "11507297",
+      "contractType": "PERPETUAL",
+      "time": 1785726434700
      },
      "queryString": "symbol=BTCUSD_PERP",
      "bodyParams": "",
@@ -9881,7 +9939,7 @@
        "timestamp": "1668754020000"
       }
      ],
-     "queryString": "expiration=180326\u0026underlyingAsset=ETH",
+     "queryString": "expiration=260318\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     },
@@ -9890,7 +9948,7 @@
       "code": -6010,
       "msg": "open interest error data."
      },
-     "queryString": "expiration=090425\u0026underlyingAsset=ETH",
+     "queryString": "expiration=250409\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     },
@@ -9899,7 +9957,7 @@
       "code": -6010,
       "msg": "open interest error data."
      },
-     "queryString": "expiration=161228\u0026underlyingAsset=ETH",
+     "queryString": "expiration=281216\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     },
@@ -9908,7 +9966,7 @@
       "code": -6010,
       "msg": "open interest error data."
      },
-     "queryString": "expiration=300626\u0026underlyingAsset=ETH",
+     "queryString": "expiration=260630\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     },
@@ -9917,7 +9975,7 @@
       "code": -6010,
       "msg": "open interest error data."
      },
-     "queryString": "expiration=221226\u0026underlyingAsset=ETH",
+     "queryString": "expiration=261222\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     },
@@ -9981,7 +10039,7 @@
        "timestamp": "1775571540000"
       }
      ],
-     "queryString": "expiration=270326\u0026underlyingAsset=ETH",
+     "queryString": "expiration=260327\u0026underlyingAsset=ETH",
      "bodyParams": "",
      "headers": {}
     }
@@ -10446,6 +10504,65 @@
       "time": 1773684245524
      },
      "queryString": "symbol=BTCUSD",
+     "bodyParams": "",
+     "headers": {}
+    },
+    {
+     "data": {
+      "symbol": "BTCUSDT",
+      "time": 1785726390107,
+      "constituents": [
+       {
+        "exchange": "binance",
+        "symbol": "BTCUSDT",
+        "price": "63157.50000000",
+        "weight": "0.43478261"
+       },
+       {
+        "exchange": "okex",
+        "symbol": "BTC-USDT",
+        "price": "63155.60000000",
+        "weight": "0.13043478"
+       },
+       {
+        "exchange": "coinbase",
+        "symbol": "BTC-USDT",
+        "price": "63149.85000000",
+        "weight": "0.13043478"
+       },
+       {
+        "exchange": "gateio",
+        "symbol": "BTC_USDT",
+        "price": "63153.40000000",
+        "weight": "0.04347826"
+       },
+       {
+        "exchange": "kucoin",
+        "symbol": "BTC-USDT",
+        "price": "63154.70000000",
+        "weight": "0.06521739"
+       },
+       {
+        "exchange": "mexc",
+        "symbol": "BTCUSDT",
+        "price": "63161.81000000",
+        "weight": "0.06521739"
+       },
+       {
+        "exchange": "bitget",
+        "symbol": "BTCUSDT",
+        "price": "63157.05000000",
+        "weight": "0.06521739"
+       },
+       {
+        "exchange": "bybit",
+        "symbol": "BTCUSDT",
+        "price": "63154.30000000",
+        "weight": "0.06521739"
+       }
+      ]
+     },
+     "queryString": "symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     }
@@ -12778,7 +12895,7 @@
        "0"
       ]
      ],
-     "queryString": "endTime=1744190254944\u0026interval=1d\u0026pair=BTCUSDT\u0026startTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026interval=1d\u0026limit=100\u0026pair=BTCUSDT\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -18950,7 +19067,7 @@
        "timestamp": 1773670500000
       }
      ],
-     "queryString": "contractType=CURRENT_QUARTER\u0026eTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026sTime=1744103854944",
+     "queryString": "contractType=CURRENT_QUARTER\u0026endTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     },
@@ -19007,7 +19124,7 @@
        "timestamp": 1773670500000
       }
      ],
-     "queryString": "contractType=NEXT_QUARTER\u0026eTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026sTime=1744103854944",
+     "queryString": "contractType=NEXT_QUARTER\u0026endTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     },
@@ -19081,7 +19198,7 @@
        "timestamp": 1775556000000
       }
      ],
-     "queryString": "contractType=PERPETUAL\u0026eTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026sTime=1744103854944",
+     "queryString": "contractType=PERPETUAL\u0026endTime=1744190254944\u0026limit=20\u0026pair=BTCUSDT\u0026period=15m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     },
@@ -19353,15 +19470,6 @@
      "headers": {}
     },
     {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026limit=3\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
      "data": [
       {
        "longAccount": "0.4666",
@@ -19385,16 +19493,7 @@
        "timestamp": 1773681300000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=3\u0026period=5m\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026limit=3\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
@@ -19436,7 +19535,7 @@
        "timestamp": 1773680700000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     },
@@ -19478,13 +19577,13 @@
        "timestamp": 1775203200000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026period=4h\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026period=4h\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
     {
      "data": null,
-     "queryString": "eTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -19591,15 +19690,6 @@
      "headers": {}
     },
     {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026limit=1\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
      "data": [
       {
        "CMCCirculatingSupply": "20002546.00000000",
@@ -19609,16 +19699,7 @@
        "timestamp": 1773681300000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=1\u0026period=5m\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "contractType=CURRENT_QUARTER\u0026endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026limit=1\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
@@ -19660,7 +19741,7 @@
        "timestamp": 1775088000000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=10\u0026period=1d\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026limit=10\u0026period=1d\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
@@ -19702,7 +19783,7 @@
        "timestamp": 1775563500000
       }
      ],
-     "queryString": "contractType=CURRENT_QUARTER\u0026eTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "contractType=CURRENT_QUARTER\u0026endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -19764,7 +19845,7 @@
     },
     {
      "data": null,
-     "queryString": "contractType=ALL\u0026eTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "contractType=ALL\u0026endTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -19842,7 +19923,7 @@
        "timestamp": 1775569200000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=10\u0026period=5m\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026limit=10\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     }
@@ -19956,24 +20037,6 @@
      "headers": {}
     },
     {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026limit=2\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
      "data": [
       {
        "longAccount": "0.6432",
@@ -20011,7 +20074,7 @@
        "timestamp": 1773681000000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026pair=BTCUSD\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     },
@@ -20032,13 +20095,13 @@
        "timestamp": 1775571000000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=2\u0026period=5m\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026limit=2\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
     {
      "data": null,
-     "queryString": "eTime=1744190254944\u0026pair=BTCUSDT\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026pair=BTCUSDT\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -20159,15 +20222,6 @@
      "headers": {}
     },
     {
-     "data": {
-      "code": -1130,
-      "msg": "parameter 'startTime' is invalid."
-     },
-     "queryString": "endTime=1744190254944\u0026limit=3\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
-     "bodyParams": "",
-     "headers": {}
-    },
-    {
      "data": [
       {
        "longAccount": "0.5685",
@@ -20205,7 +20259,7 @@
        "timestamp": 1771632000000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026period=1d\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026period=1d\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
@@ -20242,13 +20296,13 @@
        "timestamp": 1775571000000
       }
      ],
-     "queryString": "eTime=1744190254944\u0026limit=3\u0026period=5m\u0026sTime=1744103854944\u0026symbol=BTCUSDT",
+     "queryString": "endTime=1744190254944\u0026limit=3\u0026period=5m\u0026startTime=1744103854944\u0026symbol=BTCUSDT",
      "bodyParams": "",
      "headers": {}
     },
     {
      "data": null,
-     "queryString": "eTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026sTime=1744103854944",
+     "queryString": "endTime=1744190254944\u0026pair=BTCUSD_PERP\u0026period=5m\u0026startTime=1744103854944",
      "bodyParams": "",
      "headers": {}
     }
@@ -26758,6 +26812,2347 @@
   },
   "/sapi/v4/sub-account/assets": {
    "GET": []
+  },
+  "/fapi/v1/ping": {
+   "GET": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/fapi/v1/convert/exchangeInfo": {
+   "GET": [
+    {
+     "data": [
+      {
+       "fromAsset": "BTC",
+       "toAsset": "USDT",
+       "fromAssetMinAmount": "0.0001",
+       "fromAssetMaxAmount": "50",
+       "toAssetMinAmount": "10",
+       "toAssetMaxAmount": "5000000"
+      }
+     ],
+     "queryString": "fromAsset=BTC\u0026toAsset=USDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/fapi/v1/insuranceBalance": {
+   "GET": [
+    {
+     "data": [
+      {
+       "symbols": [
+        "ARUSDT",
+        "EIGENUSDT",
+        "KAITOUSDT",
+        "ZKCUSDT",
+        "ZKUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3046146.4931871",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DYDXUSDT",
+        "ETHFIUSDT",
+        "MOVEUSDT",
+        "NEOUSDT",
+        "STRKUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3098497.49326983",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000FLOKIUSDT",
+        "GALAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3094997.62400075",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BNBUSDT",
+        "BTCUSDT",
+        "BTCUSDT_260925",
+        "BTCUSDT_261225",
+        "ETHBTC",
+        "ETHUSDT",
+        "ETHUSDT_260925",
+        "ETHUSDT_261225"
+       ],
+       "assets": [
+        {
+         "asset": "LDUSDT",
+         "marginBalance": "0.00000001",
+         "updateTime": 1785715201000
+        },
+        {
+         "asset": "USDC",
+         "marginBalance": "499980383.5818181",
+         "updateTime": 1785715201000
+        },
+        {
+         "asset": "USDT",
+         "marginBalance": "749756191.0734586",
+         "updateTime": 1785715201000
+        },
+        {
+         "asset": "BTC",
+         "marginBalance": "67.50022077",
+         "updateTime": 1785715201000
+        },
+        {
+         "asset": "BNB",
+         "marginBalance": "0.00000145",
+         "updateTime": 1785715201000
+        },
+        {
+         "asset": "BNFCR",
+         "marginBalance": "1878905.97770326",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AUSDT",
+        "CRVUSDT",
+        "GRTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3056113.48309964",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "LYNUSDT",
+        "MUBARAKUSDT",
+        "NEWTUSDT",
+        "SAGAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3050689.153783",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "APEUSDT",
+        "COMPUSDT",
+        "MIRAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3076299.69620353",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BLUAIUSDT",
+        "DEEPUSDT",
+        "MAVIAUSDT",
+        "NOMUSDT",
+        "SKYAIUSDT",
+        "TRADOORUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3062138.53801955",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000SATSUSDT",
+        "CVCUSDT",
+        "SLPUSDT",
+        "SOPHUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3092161.8400638",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "IOTAUSDT",
+        "PYTHUSDT",
+        "XTZUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3084208.92342121",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ATHUSDT",
+        "MORPHOUSDT",
+        "MUSDT",
+        "POPCATUSDT",
+        "SPKUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "1756397.17844563",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CAKEUSDT",
+        "IMXUSDT",
+        "JTOUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3008570.63753866",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "NOTUSDT",
+        "PNUTUSDT",
+        "PROVEUSDT",
+        "ZROUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3005540.67807258",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000000MOGUSDT",
+        "MOCAUSDT",
+        "PTBUSDT",
+        "TUSDT",
+        "XVGUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "1067960.6512704",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "GUAUSDT",
+        "METUSDT",
+        "TRIAUSDT",
+        "ZKPUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3045870.15925922",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "COWUSDT",
+        "NEIROUSDT",
+        "ORDIUSDT",
+        "SUSHIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3090077.58363165",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "IOTXUSDT",
+        "QTUMUSDT",
+        "ROSEUSDT",
+        "SKYUSDT",
+        "ZILUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3091102.39867174",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AEVOUSDT",
+        "BTWUSDT",
+        "CARVUSDT",
+        "DODOXUSDT",
+        "PUNDIXUSDT",
+        "ZESTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "1525113.54248848",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AIXBTUSDT",
+        "ARKMUSDT",
+        "BABYUSDT",
+        "BOMEUSDT",
+        "GMTUSDT",
+        "IOUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2915070.69605248",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BARDUSDT",
+        "HOTUSDT",
+        "KAVAUSDT",
+        "RAVEUSDT",
+        "SIRENUSDT",
+        "UAIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2107015.42469438",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CELOUSDT",
+        "IDUSDT",
+        "YFIUSDT",
+        "ZENUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3006142.80023445",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ASTRUSDT",
+        "BATUSDT",
+        "BLURUSDT",
+        "OPENUSDT",
+        "ZRXUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3096565.38512952",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1MBABYDOGEUSDT",
+        "AVNTUSDT",
+        "GLMUSDT",
+        "HOLOUSDT",
+        "SFPUSDT",
+        "SNXUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3005824.3745142",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1INCHUSDT",
+        "AXLUSDT",
+        "DASHUSDT",
+        "KSMUSDT",
+        "MINAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3011740.45565015",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ASRUSDT",
+        "CFGUSDT",
+        "EGLDUSDT",
+        "LINEAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2937254.17138724",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000LUNCUSDT",
+        "BEAMXUSDT",
+        "JSTUSDT",
+        "TWTUSDT",
+        "XPINUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3096252.85235233",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "IRYSUSDT",
+        "NIGHTUSDT",
+        "SPORTFUNUSDT",
+        "TRUSTUSDT",
+        "WETUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3090724.47834491",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CFXUSDT",
+        "RONINUSDT",
+        "SUNUSDT",
+        "SUPERUSDT",
+        "UBUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3041857.03390292",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BASEDUSDT",
+        "BSBUSDT",
+        "EDGEUSDT",
+        "FARTCOINUSDT",
+        "PRLUSDT",
+        "RIVERUSDT",
+        "XPLUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3100766.36085607",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000CHEEMSUSDT",
+        "BERAUSDT",
+        "SOMIUSDT",
+        "TURBOUSDT",
+        "WUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3021168.31427617",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BANANAUSDT",
+        "CGPTUSDT",
+        "CVXUSDT",
+        "FIDAUSDT",
+        "FLUXUSDT",
+        "NXPCUSDT",
+        "POWRUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3096451.2639352",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ACHUSDT",
+        "BREVUSDT",
+        "CKBUSDT",
+        "GASUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3014367.40704274",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BEATUSDT",
+        "CLOUSDT",
+        "CYSUSDT",
+        "FOLKSUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3166307.81894799",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000CATUSDT",
+        "EPICUSDT",
+        "GRAMUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3051808.65149788",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CHIPUSDT",
+        "DOGSUSDT",
+        "TOWNSUSDT",
+        "TREEUSDT",
+        "TURTLEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3008401.59757573",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AIGENSYNUSDT",
+        "AIOTUSDT",
+        "AVAAIUSDT",
+        "DOODUSDT",
+        "GENIUSUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3083960.85430254",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BNTUSDT",
+        "DUSKUSDT",
+        "ELSAUSDT",
+        "LUMIAUSDT",
+        "OGNUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3060818.78164278",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ACTUSDT",
+        "BICOUSDT",
+        "CELRUSDT",
+        "CTKUSDT",
+        "DIAUSDT",
+        "JOEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3017833.86941445",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AKTUSDT",
+        "ETHWUSDT",
+        "SAFEUSDT",
+        "TAKEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3032771.61790019",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BILLUSDT",
+        "BLESSUSDT",
+        "CROSSUSDT",
+        "CTRUSDT",
+        "SOONUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3129538.64460071",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DATAIPUSDT",
+        "PHAROSUSDT",
+        "RECALLUSDT",
+        "SLXUSDT",
+        "VANAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3005483.34910003",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALICEUSDT",
+        "COOKIEUSDT",
+        "ENSOUSDT",
+        "EVAAUSDT",
+        "MEGAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3035937.47112786",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ARCUSDT",
+        "AZTECUSDT",
+        "GRVTUSDT",
+        "ROBOUSDT",
+        "USELESSUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3061119.80952098",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ARKUSDT",
+        "INITUSDT",
+        "PORTALUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3021056.61102244",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "HMSTRUSDT",
+        "PIXELUSDT",
+        "REUSDT",
+        "SCRUSDT",
+        "SHELLUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3085522.76221871",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ACEUSDT",
+        "FIGHTUSDT",
+        "FLOCKUSDT",
+        "POLYXUSDT",
+        "SPACEUSDT",
+        "VELODROMEUSDT",
+        "VTHOUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3001182.71743373",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ARXUSDT",
+        "CAPUSDT",
+        "MYXUSDT",
+        "OUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3033074.67469426",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "FLOWUSDT",
+        "GUSDT",
+        "HIVEUSDT",
+        "LSKUSDT",
+        "PHAUSDT",
+        "RPLUSDT",
+        "SKRUSDT",
+        "SPELLUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3078684.88206293",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000XECUSDT",
+        "COLLECTUSDT",
+        "ICNTUSDT",
+        "MAGMAUSDT",
+        "TAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3019047.51605352",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000RATSUSDT",
+        "BTRUSDT",
+        "GRIFFAINUSDT",
+        "ONUSDT",
+        "PLAYUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3309497.41360313",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "API3USDT",
+        "BBUSDT",
+        "KNCUSDT",
+        "MOVRUSDT",
+        "MTLUSDT",
+        "SOLVUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3077093.98623612",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "KAIAUSDT",
+        "RSRUSDT",
+        "SENTUSDT",
+        "ZAMAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3046940.87957283",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BIOUSDT",
+        "HUMAUSDT",
+        "NILUSDT",
+        "SIGNUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3042797.49317583",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "HYPERUSDT",
+        "KERNELUSDT",
+        "THEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3011067.52874264",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AXSUSDT",
+        "PENDLEUSDT",
+        "XVSUSDT",
+        "龙虾USDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3038004.13850267",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "LISTAUSDT",
+        "MAGICUSDT",
+        "STOUSDT",
+        "TACUSDT",
+        "TRUTHUSDT",
+        "XNYUSDT",
+        "我踏马来了USDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3009234.79618445",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALPINEUSDT",
+        "BANANAS31USDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3040536.78045726",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALCHUSDT",
+        "BANUSDT",
+        "ONGUSDT",
+        "SAHARAUSDT",
+        "SAPIENUSDT",
+        "ZBTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2772313.66337717",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CTSIUSDT",
+        "EDUUSDT",
+        "KATUSDT",
+        "OGUSDT",
+        "PARTIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3079513.27293797",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ESPUSDT",
+        "FOGOUSDT",
+        "MANTRAUSDT",
+        "OPNUSDT",
+        "REZUSDT",
+        "STGUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3018137.17813502",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "HEIUSDT",
+        "MAVUSDT",
+        "RESOLVUSDT",
+        "TSTUSDT",
+        "WIFUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3011035.86614081",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "MANAUSDT",
+        "RAREUSDT",
+        "SUSDT",
+        "THETAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3049461.45010032",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CYBERUSDT",
+        "RIFUSDT",
+        "币安人生USDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3042767.52240569",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "NMRUSDT",
+        "USTCUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2448535.01371226",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000PEPEUSDT",
+        "1000SHIBUSDT",
+        "AAOIUSDT",
+        "AAPLUSDT",
+        "ADBEUSDT",
+        "ALABUSDT",
+        "ALGOUSDT",
+        "AMATUSDT",
+        "AMDUSDT",
+        "AMZNUSDT",
+        "APPUSDT",
+        "APTUSDT",
+        "ARBUSDT",
+        "ARMUSDT",
+        "ASMLUSDT",
+        "ASTERUSDT",
+        "ASTSUSDT",
+        "ATOMUSDT",
+        "AVAXUSDT",
+        "AVGOUSDT",
+        "AXTIUSDT",
+        "BABAUSDT",
+        "BBXUSDT",
+        "BEUSDT",
+        "BITOUSDT",
+        "BMNRUSDT",
+        "BNCUSDT",
+        "BOTUSDT",
+        "BRKBUSDT",
+        "BSPUSDT",
+        "BXUSDT",
+        "BZUSDT",
+        "CATUSDT",
+        "CBRSUSDT",
+        "CIENUSDT",
+        "CLUSDT",
+        "COHRUSDT",
+        "COINUSDT",
+        "COPPERUSDT",
+        "COSTUSDT",
+        "CRCLUSDT",
+        "CRDOUSDT",
+        "CRMUSDT",
+        "CRWDUSDT",
+        "CRWVUSDT",
+        "CSCOUSDT",
+        "DELLUSDT",
+        "DISUSDT",
+        "DKNGUSDT",
+        "DOGEUSDT",
+        "DRAMUSDT",
+        "EBAYUSDT",
+        "ENAUSDT",
+        "EWJUSDT",
+        "EWTUSDT",
+        "EWYUSDT",
+        "EWZUSDT",
+        "FILUSDT",
+        "FLEXUSDT",
+        "FLNCUSDT",
+        "FWDIUSDT",
+        "GEVUSDT",
+        "GIGADEVUSDT",
+        "GLWUSDT",
+        "GMEUSDT",
+        "GOOGLUSDT",
+        "GSUSDT",
+        "HBARUSDT",
+        "HDUSDT",
+        "HIMSUSDT",
+        "HK0700USDT",
+        "HK1810USDT",
+        "HOODUSDT",
+        "HPEUSDT",
+        "HYPEUSDT",
+        "HYUNDAIUSDT",
+        "IBMUSDT",
+        "INTCUSDT",
+        "INTWUSDT",
+        "IRENUSDT",
+        "IWMUSDT",
+        "JPMUSDT",
+        "KLACUSDT",
+        "KORUUSDT",
+        "KSTRUSDT",
+        "LITEUSDT",
+        "LLYUSDT",
+        "LRCXUSDT",
+        "METAUSDT",
+        "MINIMAXUSDT",
+        "MRVLUSDT",
+        "MSFTUSDT",
+        "MSTRUSDT",
+        "MUUSDT",
+        "MUUUSDT",
+        "MVLLUSDT",
+        "NATGASUSDT",
+        "NBISUSDT",
+        "NEARUSDT",
+        "NFLXUSDT",
+        "NOKUSDT",
+        "NOWUSDT",
+        "NVDAUSDT",
+        "NVOUSDT",
+        "ONDOUSDT",
+        "ONDSUSDT",
+        "ORCLUSDT",
+        "PANWUSDT",
+        "PAXGUSDT",
+        "PAYPUSDT",
+        "PENGUSDT",
+        "PLTRUSDT",
+        "POLUSDT",
+        "POPMARTUSDT",
+        "PYPLUSDT",
+        "QCOMUSDT",
+        "QNTXUSDT",
+        "QQQUSDT",
+        "RIVNUSDT",
+        "RKLBUSDT",
+        "SAMSUNGUSDT",
+        "SHAZUSDT",
+        "SKHYNIXUSDT",
+        "SKHYUSDT",
+        "SMCIUSDT",
+        "SMHUSDT",
+        "SNDKUSDT",
+        "SNOWUSDT",
+        "SNXXUSDT",
+        "SOFIUSDT",
+        "SOLUSDT",
+        "SONYUSDT",
+        "SOXLUSDT",
+        "SOXSUSDT",
+        "SPCXUSDT",
+        "SPYUSDT",
+        "SQQQUSDT",
+        "STRCUSDT",
+        "STXXUSDT",
+        "SUIUSDT",
+        "TAOUSDT",
+        "TBTUSDT",
+        "TENCENTUSDT",
+        "TERUSDT",
+        "TMFUSDT",
+        "TQQQUSDT",
+        "TRUMPUSDT",
+        "TSLAUSDT",
+        "TSMUSDT",
+        "TTWOUSDT",
+        "TXNUSDT",
+        "TZAUSDT",
+        "UBERUSDT",
+        "UNIUSDT",
+        "URNMUSDT",
+        "USARUSDT",
+        "USDCUSDT",
+        "UVXYUSDT",
+        "VRTUSDT",
+        "VUSDT",
+        "WDCUSDT",
+        "WENUSDT",
+        "WLDUSDT",
+        "WLFIUSDT",
+        "WMTUSDT",
+        "XAGUSDT",
+        "XAUTUSDT",
+        "XAUUSDT",
+        "XBIUSDT",
+        "XLEUSDT",
+        "XPDUSDT",
+        "XPTUSDT",
+        "ZECUSDT",
+        "ZHIPUUSDT",
+        "ZMUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDC",
+         "marginBalance": "250000000",
+         "updateTime": 1785715202000
+        },
+        {
+         "asset": "USDT",
+         "marginBalance": "211498289.13713184",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CHRUSDT",
+        "RLCUSDT",
+        "STEEMUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2980482.57982965",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DYMUSDT",
+        "IOSTUSDT",
+        "MEMEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3038024.01157861",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "0GUSDT",
+        "SKLUSDT",
+        "SSVUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3048723.4855703",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ANKRUSDT",
+        "GMXUSDT",
+        "MMTUSDT",
+        "RVNUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3372813.17212799",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "2ZUSDT",
+        "ENJUSDT",
+        "ICXUSDT",
+        "SXTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3046584.45190656",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BANDUSDT",
+        "KMNOUSDT",
+        "STORJUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3025843.18706398",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "KITEUSDT",
+        "ORCAUSDT",
+        "WOOUSDT",
+        "YBUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3045176.41281937",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BIGTIMEUSDT",
+        "LUNA2USDT",
+        "ONTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3021557.93691893",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ACXUSDT",
+        "HFTUSDT",
+        "USUSDT",
+        "VANRYUSDT",
+        "VICUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "1071234.41269006",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "EDENUSDT",
+        "FFUSDT",
+        "PEOPLEUSDT",
+        "UMAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3031903.35841819",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALTUSDT",
+        "MANTAUSDT",
+        "XAIUSDT",
+        "YGGUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3058135.1480966",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ADAUSDT",
+        "BCHUSDT",
+        "DOTUSDT",
+        "ETCUSDT",
+        "LINKUSDT",
+        "LTCUSDT",
+        "TRXUSDT",
+        "XLMUSDT",
+        "XMRUSDT",
+        "XRPUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "87254582.78243946",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AEROUSDT",
+        "BRETTUSDT",
+        "GRASSUSDT",
+        "PLUMEUSDT",
+        "SPXUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3061630.0073541",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "LQTYUSDT",
+        "PROMUSDT",
+        "REDUSDT",
+        "WAXPUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3095553.48490514",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DEXEUSDT",
+        "HEMIUSDT",
+        "PUMPBTCUSDT",
+        "RAYSOLUSDT",
+        "STBLUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "1969678.27424645",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ANIMEUSDT",
+        "LPTUSDT",
+        "MASKUSDT",
+        "WCTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3047313.60887472",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DRIFTUSDT",
+        "PIPPINUSDT",
+        "SONICUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3024122.00567141",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BSVUSDT",
+        "FLUIDUSDT",
+        "KASUSDT",
+        "ORDERUSDT",
+        "WALUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3053706.61404204",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BANKUSDT",
+        "BULLAUSDT",
+        "HANAUSDT",
+        "LABUSDT",
+        "LIGHTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3119708.40617653",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "APRUSDT",
+        "ATUSDT",
+        "CLANKERUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3012823.09492063",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "C98USDT",
+        "COTIUSDT",
+        "LAUSDT",
+        "USUALUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2029652.02939255",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BTCU",
+        "ETHU"
+       ],
+       "assets": [
+        {
+         "asset": "U",
+         "marginBalance": "10000630.7097471",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALLOUSDT",
+        "IDOLUSDT",
+        "ONEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2025991.33731852",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BTCUSD1",
+        "ETHUSD1",
+        "SPCXUSD1"
+       ],
+       "assets": [
+        {
+         "asset": "USD1",
+         "marginBalance": "10010365.47442232",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AAVEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "80072380.08595316",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "PENGUUSDT",
+        "PUMPUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "20025432.60471158",
+         "updateTime": 1785715201000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ANTHROPICUSDT",
+        "OPENAIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "10002247.76534385",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "STARUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "533486.52422264",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ERAUSDT",
+        "EULUSDT",
+        "METISUSDT",
+        "MEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2005548.48707399",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AGLDUSDT",
+        "ARIAUSDT",
+        "AUCTIONUSDT",
+        "GIGGLEUSDT",
+        "NAORISUSDT",
+        "SCRTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3164431.2279137",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "MONUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "10058559.95156195",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CHZUSDT",
+        "RUNEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3008240.94800749",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "INJUSDT",
+        "STXUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3053050.46335851",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ICPUSDT",
+        "JUPUSDT",
+        "TIAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3100738.34645056",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ALLUSDT",
+        "BTCDOMUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3069041.06517547",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "FETUSDT",
+        "QNTUSDT",
+        "RENDERUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3056375.34842603",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CUSDT",
+        "TOSHIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3093779.55625578",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000BONKUSDT",
+        "SEIUSDT",
+        "VETUSDT",
+        "VIRTUALUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3010565.66731135",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AVAUSDT",
+        "CETUSUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3023211.57428065",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "FORMUSDT",
+        "LAYERUSDT",
+        "SYRUPUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3073888.36610277",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BELUSDT",
+        "FHEUSDT",
+        "MITOUSDT",
+        "SANTOSUSDT",
+        "TRBUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3068160.71008459",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000BONKUSDC",
+        "1000PEPEUSDC",
+        "1000SHIBUSDC",
+        "AAVEUSDC",
+        "ADAUSDC",
+        "ARBUSDC",
+        "AVAXUSDC",
+        "BCHUSDC",
+        "BIOUSDC",
+        "BNBUSDC",
+        "BOMEUSDC",
+        "BTCUSDC",
+        "CRVUSDC",
+        "DATAIPUSDC",
+        "DOGEUSDC",
+        "ENAUSDC",
+        "ETHFIUSDC",
+        "ETHUSDC",
+        "FILUSDC",
+        "HBARUSDC",
+        "KAITOUSDC",
+        "LINKUSDC",
+        "LTCUSDC",
+        "NEARUSDC",
+        "NEOUSDC",
+        "ORDIUSDC",
+        "PENGUUSDC",
+        "PNUTUSDC",
+        "SOLUSDC",
+        "SUIUSDC",
+        "TIAUSDC",
+        "TRUMPUSDC",
+        "UNIUSDC",
+        "WIFUSDC",
+        "WLDUSDC",
+        "WLFIUSDC",
+        "XRPUSDC",
+        "ZECUSDC"
+       ],
+       "assets": [
+        {
+         "asset": "USDC",
+         "marginBalance": "93498122.85620132",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AINUSDT",
+        "BIRBUSDT",
+        "BRUSDT",
+        "GWEIUSDT",
+        "LITUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3097611.16356161",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BMTUSDT",
+        "GUNUSDT",
+        "TLMUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3081742.96022257",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AWEUSDT",
+        "GPSUSDT",
+        "JASMYUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3058386.4257691",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AGTUSDT",
+        "AIAUSDT",
+        "ARPAUSDT",
+        "B2USDT",
+        "COAIUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3080651.63134416",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "DOLOUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3073880.65258846",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BROCCOLI714USDT",
+        "CATIUSDT",
+        "GTCUSDT",
+        "SYNUSDT",
+        "TNSRUSDT",
+        "TUTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3095020.85800113",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "1000000BOBUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "781363.64717627",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "ACUUSDT",
+        "FRAXUSDT",
+        "ILVUSDT",
+        "PROMPTUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "931385.75732927",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BUSDT",
+        "HUSDT",
+        "MEWUSDT",
+        "ZORAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3030481.17193544",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "CCUSDT",
+        "ENSUSDT",
+        "LDOUSDT",
+        "OPUSDT",
+        "SANDUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3020397.9629555",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "MELANIAUSDT",
+        "SQDUSDT",
+        "ZETAUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3089295.26020375",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "4USDT",
+        "HOMEUSDT",
+        "KGENUSDT",
+        "MOODENGUSDT",
+        "XANUSDT",
+        "ZEREBROUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3069369.14218381",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AKEUSDT",
+        "ESPORTSUSDT",
+        "TAIKOUSDT",
+        "VELVETUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3134853.28056081",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "GOATUSDT",
+        "MERLUSDT",
+        "TAGUSDT",
+        "VVVUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3039270.05647194",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "GAIBUSDT",
+        "INXUSDT",
+        "JCTUSDT",
+        "JELLYJELLYUSDT",
+        "PIEVERSEUSDT",
+        "POWERUSDT",
+        "STABLEUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3084196.85835131",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "AIOUSDT",
+        "BASUSDT",
+        "CHILLGUYUSDT",
+        "FUSDT",
+        "HAEDALUSDT",
+        "INUSDT",
+        "SWARMSUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "2979371.14202657",
+         "updateTime": 1785715202000
+        }
+       ]
+      },
+      {
+       "symbols": [
+        "BROCCOLIF3BUSDT",
+        "KOMAUSDT",
+        "OPGUSDT",
+        "QUSDT"
+       ],
+       "assets": [
+        {
+         "asset": "USDT",
+         "marginBalance": "3375273.33487875",
+         "updateTime": 1785715201000
+        }
+       ]
+      }
+     ],
+     "queryString": "symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/fapi/v1/symbolAdlRisk": {
+   "GET": [
+    {
+     "data": {
+      "symbol": "BTCUSDT",
+      "adlRisk": "LOW",
+      "updateTime": 1785726000434
+     },
+     "queryString": "symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/dapi/v1/ping": {
+   "GET": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/dapi/v1/time": {
+   "GET": [
+    {
+     "data": {
+      "serverTime": 1745401553408
+     },
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/eapi/v1/ping": {
+   "GET": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/eapi/v1/blockTrades": {
+   "GET": [
+    {
+     "data": [
+      {
+       "id": 2422936741751130218,
+       "tradeId": 1280,
+       "symbol": "ETH-260807-1850-C",
+       "price": "48.6",
+       "qty": "0.01",
+       "quoteQty": "0.486",
+       "side": -1,
+       "time": 1785725756076
+      },
+      {
+       "id": 2422936741749450863,
+       "tradeId": 1278,
+       "symbol": "ETH-260807-1850-C",
+       "price": "50.4",
+       "qty": "0.01",
+       "quoteQty": "0.504",
+       "side": -1,
+       "time": 1785725311628
+      }
+     ],
+     "queryString": "limit=10\u0026symbol=BTC-260410-72000-P",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v3/ping": {
+   "GET": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v3/executionRules": {
+   "GET": [
+    {
+     "data": {
+      "symbolRules": [
+       {
+        "symbol": "BTCUSDT",
+        "rules": [
+         {
+          "ruleType": "PRICE_RANGE",
+          "bidLimitMultUp": "1.1500",
+          "bidLimitMultDown": "0.8500",
+          "askLimitMultUp": "1.1500",
+          "askLimitMultDown": "0.8500"
+         }
+        ]
+       }
+      ]
+     },
+     "queryString": "symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v3/referencePrice": {
+   "GET": [
+    {
+     "data": {
+      "symbol": "BTCUSDT",
+      "referencePrice": "63148.95228004",
+      "timestamp": 1785726447001
+     },
+     "queryString": "symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v3/referencePrice/calculation": {
+   "GET": [
+    {
+     "data": {
+      "symbol": "BTCUSDT",
+      "calculationType": "ARITHMETIC_MEAN",
+      "bucketCount": 80,
+      "bucketWidthMs": 3750
+     },
+     "queryString": "symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/api/v3/historicalBlockTrades": {
+   "GET": [
+    {
+     "data": [
+      {
+       "id": 1,
+       "price": "62284.35000000",
+       "qty": "0.00000010",
+       "quoteQty": "0.00622843",
+       "time": 1780573138447,
+       "isBuyerMaker": true
+      },
+      {
+       "id": 2,
+       "price": "62847.99000000",
+       "qty": "0.00000010",
+       "quoteQty": "0.00628479",
+       "time": 1780974802794,
+       "isBuyerMaker": true
+      }
+     ],
+     "queryString": "fromId=1\u0026limit=10\u0026symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/papi/v1/ping": {
+   "GET": [
+    {
+     "data": {},
+     "queryString": "",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
   }
  }
 }

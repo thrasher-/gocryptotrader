@@ -67,7 +67,12 @@ func (e *Exchange) GetEOptionsRecentTrades(ctx context.Context, symbol currency.
 }
 
 // GetEOptionsCandlesticks retrieves kline/candlestick bars for an option symbol. Klines are uniquely identified by their open time.
-func (e *Exchange) GetEOptionsCandlesticks(ctx context.Context, symbol currency.Pair, interval kline.Interval, startTime, endTime time.Time, limit uint64) ([]*EOptionsCandlestick, error) {
+func (e *Exchange) GetEOptionsCandlesticks(ctx context.Context, arg *GetEOptionsCandlesticksRequest) ([]*EOptionsCandlestick, error) {
+	if err := common.NilGuard(arg); err != nil {
+		return nil, err
+	}
+	symbol, interval, startTime := arg.Symbol, arg.Interval, arg.StartTime
+	endTime, limit := arg.EndTime, arg.Limit
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -160,9 +165,9 @@ func (e *Exchange) GetEOptionsOpenInterests(ctx context.Context, underlyingAsset
 	}
 	params := url.Values{}
 	params.Set("underlyingAsset", underlyingAsset.String())
-	params.Set("expiration", expiration.Format("020106"))
+	params.Set("expiration", expiration.Format("060102")) // Binance expects YYMMDD
 	var resp []*OpenInterest
-	return resp, e.SendHTTPRequest(ctx, exchange.RestOptions, common.EncodeURLValues("/eapi/v1/openInterest", params), optionsDefaultRate, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestOptions, common.EncodeURLValues("/eapi/v1/openInterest", params), optionsOpenInterestRate, &resp)
 }
 
 // ----------------------------------------------------------- Account trade endpoints ---------------------------------------------------------------------
@@ -174,7 +179,7 @@ func (e *Exchange) GetOptionsAccountInformation(ctx context.Context) (*EOptionsA
 }
 
 // NewOptionsOrder places a new european options order instance.
-func (e *Exchange) NewOptionsOrder(ctx context.Context, arg *OptionsOrderParams) (*OptionOrder, error) {
+func (e *Exchange) NewOptionsOrder(ctx context.Context, arg *OptionsOrderRequest) (*OptionOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -191,11 +196,14 @@ func (e *Exchange) NewOptionsOrder(ctx context.Context, arg *OptionsOrderParams)
 		return nil, limits.ErrAmountBelowMin
 	}
 	params := url.Values{}
+	// Normalise before sending: Binance's enums are upper case, and the price check
+	// below compares against the upper-case form.
+	arg.OrderType = strings.ToUpper(arg.OrderType)
+	arg.Side = strings.ToUpper(arg.Side)
 	params.Set("symbol", arg.Symbol.String())
 	params.Set("side", arg.Side)
 	params.Set("type", arg.OrderType)
 	params.Set("quantity", strconv.FormatFloat(arg.Amount, 'f', -1, 64))
-	arg.OrderType = strings.ToUpper(arg.OrderType)
 	if arg.OrderType == order.Limit.String() && arg.Price <= 0 {
 		return nil, fmt.Errorf("%w, price is required for limit orders", limits.ErrPriceBelowMin)
 	}
@@ -221,11 +229,11 @@ func (e *Exchange) NewOptionsOrder(ctx context.Context, arg *OptionsOrderParams)
 		params.Set("isMmp", "true")
 	}
 	var resp *OptionOrder
-	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/order", params, optionsDefaultOrderRate, nil, &resp)
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/order", params, optionsOrderRate, nil, &resp)
 }
 
 // PlaceBatchEOptionsOrder send multiple option orders.
-func (e *Exchange) PlaceBatchEOptionsOrder(ctx context.Context, args []*OptionsOrderParams) ([]*OptionOrder, error) {
+func (e *Exchange) PlaceBatchEOptionsOrder(ctx context.Context, args []*OptionsOrderRequest) ([]*OptionOrder, error) {
 	if len(args) == 0 {
 		return nil, common.ErrEmptyParams
 	}
@@ -257,7 +265,7 @@ func (e *Exchange) PlaceBatchEOptionsOrder(ctx context.Context, args []*OptionsO
 }
 
 // GetSingleEOptionsOrder retrieves a single order status.
-func (e *Exchange) GetSingleEOptionsOrder(ctx context.Context, symbol currency.Pair, clientOrderID string, orderID int64) (*OptionOrder, error) {
+func (e *Exchange) GetSingleEOptionsOrder(ctx context.Context, symbol currency.Pair, clientOrderID string, orderID uint64) (*OptionOrder, error) {
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -270,7 +278,7 @@ func (e *Exchange) GetSingleEOptionsOrder(ctx context.Context, symbol currency.P
 		params.Set("clientOrderId", clientOrderID)
 	}
 	if orderID > 0 {
-		params.Set("orderId", strconv.FormatInt(orderID, 10))
+		params.Set("orderId", strconv.FormatUint(orderID, 10))
 	}
 	var resp *OptionOrder
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodGet, "/eapi/v1/order", params, optionsDefaultOrderRate, nil, &resp)
@@ -321,7 +329,7 @@ func (e *Exchange) CancelBatchOptionsOrders(ctx context.Context, symbol currency
 		params.Set("clientOrderIds", string(vals))
 	}
 	var resp []*OptionOrder
-	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodDelete, "/eapi/v1/batchOrders", params, optionsDefaultOrderRate, nil, &resp)
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodDelete, "/eapi/v1/batchOrders", params, optionsBatchOrdersRate, nil, &resp)
 }
 
 // CancelAllOptionOrdersOnSpecificSymbol cancels all active order on a symbol
@@ -340,21 +348,31 @@ func (e *Exchange) CancelAllOptionsOrdersByUnderlying(ctx context.Context, under
 		params.Set("underlying", underlying)
 	}
 	var resp int64
-	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodDelete, "/eapi/v1/allOpenOrdersByUnderlying", params, optionsDefaultOrderRate, nil, &resp)
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodDelete, "/eapi/v1/allOpenOrdersByUnderlying", params, optionsAllOpenOrdersByUnderlyingRate, nil, &resp)
 }
 
 // GetCurrentOpenOptionsOrders retrieves all open orders. Status: ACCEPTED PARTIALLY_FILLED
-func (e *Exchange) GetCurrentOpenOptionsOrders(ctx context.Context, symbol currency.Pair, startTime, endTime time.Time, orderID, limit int64) ([]*OptionOrder, error) {
+func (e *Exchange) GetCurrentOpenOptionsOrders(ctx context.Context, arg *GetCurrentOpenOptionsOrdersRequest) ([]*OptionOrder, error) {
+	if err := common.NilGuard(arg); err != nil {
+		return nil, err
+	}
+	symbol, startTime, endTime := arg.Symbol, arg.StartTime, arg.EndTime
+	orderID, limit := arg.OrderID, arg.Limit
 	return e.getOptionsOrders(ctx, "/eapi/v1/openOrders", symbol, startTime, endTime, orderID, limit)
 }
 
 // GetOptionsOrdersHistory retrieves all finished orders within 5 days.
 // Possible finished status values: CANCELLED, FILLED, REJECTED
-func (e *Exchange) GetOptionsOrdersHistory(ctx context.Context, symbol currency.Pair, startTime, endTime time.Time, orderID, limit int64) ([]*OptionOrder, error) {
+func (e *Exchange) GetOptionsOrdersHistory(ctx context.Context, arg *GetOptionsOrdersHistoryRequest) ([]*OptionOrder, error) {
+	if err := common.NilGuard(arg); err != nil {
+		return nil, err
+	}
+	symbol, startTime, endTime := arg.Symbol, arg.StartTime, arg.EndTime
+	orderID, limit := arg.OrderID, arg.Limit
 	return e.getOptionsOrders(ctx, "/eapi/v1/historyOrders", symbol, startTime, endTime, orderID, limit)
 }
 
-func (e *Exchange) getOptionsOrders(ctx context.Context, path string, symbol currency.Pair, startTime, endTime time.Time, orderID, limit int64) ([]*OptionOrder, error) {
+func (e *Exchange) getOptionsOrders(ctx context.Context, path string, symbol currency.Pair, startTime, endTime time.Time, orderID uint64, limit int64) ([]*OptionOrder, error) {
 	if !startTime.IsZero() && !endTime.IsZero() {
 		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
 			return nil, err
@@ -376,7 +394,7 @@ func (e *Exchange) getOptionsOrders(ctx context.Context, path string, symbol cur
 		params.Set("endTime", strconv.FormatInt(endTime.UnixMilli(), 10))
 	}
 	if orderID != 0 {
-		params.Set("orderId", strconv.FormatInt(orderID, 10))
+		params.Set("orderId", strconv.FormatUint(orderID, 10))
 	}
 	if limit > 0 {
 		params.Set("limit", strconv.FormatInt(limit, 10))
@@ -396,7 +414,12 @@ func (e *Exchange) GetOptionPositionInformation(ctx context.Context, symbol curr
 }
 
 // GetEOptionsAccountTradeList retrieves trades for a specific account and symbol
-func (e *Exchange) GetEOptionsAccountTradeList(ctx context.Context, symbol currency.Pair, fromID, limit int64, startTime, endTime time.Time) ([]*OptionsAccountTradeItem, error) {
+func (e *Exchange) GetEOptionsAccountTradeList(ctx context.Context, arg *GetEOptionsAccountTradeListRequest) ([]*OptionsAccountTradeItem, error) {
+	if err := common.NilGuard(arg); err != nil {
+		return nil, err
+	}
+	symbol, fromID, limit := arg.Symbol, arg.FromID, arg.Limit
+	startTime, endTime := arg.StartTime, arg.EndTime
 	if !startTime.IsZero() && !endTime.IsZero() {
 		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
 			return nil, err
@@ -447,7 +470,12 @@ func (e *Exchange) GetUserOptionsExerciseRecord(ctx context.Context, symbol curr
 }
 
 // GetAccountFundingFlow retrieves account funding flows
-func (e *Exchange) GetAccountFundingFlow(ctx context.Context, ccy currency.Code, recordID, limit int64, startTime, endTime time.Time) ([]*AccountFunding, error) {
+func (e *Exchange) GetAccountFundingFlow(ctx context.Context, arg *GetAccountFundingFlowRequest) ([]*AccountFunding, error) {
+	if err := common.NilGuard(arg); err != nil {
+		return nil, err
+	}
+	ccy, recordID, limit := arg.Currency, arg.RecordID, arg.Limit
+	startTime, endTime := arg.StartTime, arg.EndTime
 	if ccy.IsEmpty() {
 		return nil, currency.ErrCurrencyCodeEmpty
 	}
@@ -519,16 +547,17 @@ func (e *Exchange) SetOptionsMarketMakerProtectionConfig(ctx context.Context, ar
 		return nil, errUnderlyingIsRequired
 	}
 	if arg.WindowTimeInMilliseconds == 0 {
-		return nil, errors.New("windowTimeInMilliseconds is required")
+		return nil, errWindowTimeRequired
 	}
-	if arg.FrozenTimeInMilliseconds == 0 {
-		return nil, errors.New("frozenTimeInMilliseconds is required")
+	// Zero means the protection stays frozen until manually reset, so it is valid
+	if arg.FrozenTimeInMilliseconds < 0 {
+		return nil, errFrozenTimeRequired
 	}
 	if arg.QuantityLimit <= 0 {
-		return nil, errors.New("quantity limit is required")
+		return nil, errQuantityLimitRequired
 	}
 	if arg.NetDeltaLimit <= 0 {
-		return nil, errors.New("netDeltaLimit is required")
+		return nil, errNetDeltaLimitRequired
 	}
 	params := url.Values{}
 	params.Set("underlying", arg.Underlying)
@@ -574,14 +603,16 @@ func (e *Exchange) SetOptionsAutoCancelAllOpenOrders(ctx context.Context, underl
 	if underlying == "" {
 		return nil, errUnderlyingIsRequired
 	}
-	if countdownTime < 5000 {
-		return nil, errors.New("countdown time in milliseconds must be greater than 5000")
+	// Zero is the documented way to turn the auto-cancel feature off, so only a
+	// positive value below the minimum is rejected.
+	if countdownTime < 0 || (countdownTime > 0 && countdownTime < 5000) {
+		return nil, errCountdownTimeTooSmall
 	}
 	params := url.Values{}
 	params.Set("underlying", underlying)
 	params.Set("countdownTime", strconv.FormatInt(countdownTime, 10))
 	var resp *UnderlyingCountdown
-	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/countdownCancelAll", params, optionsAutoCancelAllOpenOrdersHeartbeatRate, nil, &resp)
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/countdownCancelAll", params, optionsCountdownCancelAllRate, nil, &resp)
 }
 
 // GetAutoCancelAllOpenOrdersConfig returns the auto-cancel parameters for each underlying symbol.
@@ -607,7 +638,7 @@ func (e *Exchange) GetOptionsAutoCancelAllOpenOrdersHeartbeat(ctx context.Contex
 	var resp struct {
 		Underlyings []*string `json:"underlyings"`
 	}
-	return resp.Underlyings, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/countdownCancelAllHeartBeat", params, optionsDefaultRate, nil, &resp)
+	return resp.Underlyings, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/countdownCancelAllHeartBeat", params, optionsCountdownCancelAllHeartBeatRate, nil, &resp)
 }
 
 // FetchOptionsExchangeLimits fetches options order execution limits
@@ -635,8 +666,8 @@ func (e *Exchange) FetchOptionsExchangeLimits(ctx context.Context) ([]limits.Min
 				mml.MaxPrice = f.MaxPrice.Float64()
 				mml.PriceStepIncrementSize = f.TickSize.Float64()
 			case "LOT_SIZE":
-				mml.MaximumBaseAmount = f.MaxQty.Float64()
-				mml.MinimumBaseAmount = f.MinQty.Float64()
+				mml.MaximumBaseAmount = f.MaxQuantity.Float64()
+				mml.MinimumBaseAmount = f.MinQuantity.Float64()
 				mml.AmountStepIncrementSize = f.StepSize.Float64()
 			default:
 				return nil, fmt.Errorf("filter type %s not supported", f.FilterType)
@@ -648,4 +679,119 @@ func (e *Exchange) FetchOptionsExchangeLimits(ctx context.Context) ([]limits.Min
 		l = append(l, mml)
 	}
 	return l, nil
+}
+
+// EOptionsPing tests connectivity to the European options REST API.
+func (e *Exchange) EOptionsPing(ctx context.Context) error {
+	return e.SendHTTPRequest(ctx, exchange.RestOptions, "/eapi/v1/ping", optionsDefaultRate, &struct{}{})
+}
+
+// GetEOptionsRecentBlockTrades returns recently executed block trades, optionally filtered by symbol.
+func (e *Exchange) GetEOptionsRecentBlockTrades(ctx context.Context, symbol currency.Pair, limit int64) ([]*EOptionsBlockTrade, error) {
+	params := url.Values{}
+	if !symbol.IsEmpty() {
+		params.Set("symbol", symbol.String())
+	}
+	if limit > 0 {
+		params.Set("limit", strconv.FormatInt(limit, 10))
+	}
+	var resp []*EOptionsBlockTrade
+	return resp, e.SendHTTPRequest(ctx, exchange.RestOptions, common.EncodeURLValues("/eapi/v1/blockTrades", params), optionsBlockTradesRate, &resp)
+}
+
+// NewEOptionsBlockTradeOrder creates a market maker block trade order.
+func (e *Exchange) NewEOptionsBlockTradeOrder(ctx context.Context, liquidity string, legs []EOptionsBlockTradeLeg) (*EOptionsBlockTradeOrder, error) {
+	if liquidity == "" {
+		return nil, errLiquidityRequired
+	}
+	if len(legs) == 0 {
+		return nil, common.ErrEmptyParams
+	}
+	legsJSON, err := json.Marshal(legs)
+	if err != nil {
+		return nil, err
+	}
+	params := url.Values{}
+	params.Set("liquidity", liquidity)
+	params.Set("legs", string(legsJSON))
+	var resp *EOptionsBlockTradeOrder
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/block/order/create", params, optionsBlockOrderCreateRate, nil, &resp)
+}
+
+// ExtendEOptionsBlockTradeOrder extends the expiry of a block trade order.
+func (e *Exchange) ExtendEOptionsBlockTradeOrder(ctx context.Context, blockOrderMatchingKey string) (*EOptionsBlockTradeOrder, error) {
+	return e.eOptionsBlockOrder(ctx, http.MethodPut, "/eapi/v1/block/order/create", blockOrderMatchingKey)
+}
+
+// CancelEOptionsBlockTradeOrder cancels a block trade order.
+func (e *Exchange) CancelEOptionsBlockTradeOrder(ctx context.Context, blockOrderMatchingKey string) (*EOptionsBlockTradeOrder, error) {
+	return e.eOptionsBlockOrder(ctx, http.MethodDelete, "/eapi/v1/block/order/create", blockOrderMatchingKey)
+}
+
+// AcceptEOptionsBlockTradeOrder accepts a block trade order as the taker.
+func (e *Exchange) AcceptEOptionsBlockTradeOrder(ctx context.Context, blockOrderMatchingKey string) (*EOptionsBlockTradeOrder, error) {
+	return e.eOptionsBlockOrder(ctx, http.MethodPost, "/eapi/v1/block/order/execute", blockOrderMatchingKey)
+}
+
+// GetEOptionsBlockTradeDetail returns the detail of a block trade order.
+func (e *Exchange) GetEOptionsBlockTradeDetail(ctx context.Context, blockOrderMatchingKey string) (*EOptionsBlockTradeOrder, error) {
+	return e.eOptionsBlockOrder(ctx, http.MethodGet, "/eapi/v1/block/order/execute", blockOrderMatchingKey)
+}
+
+func (e *Exchange) eOptionsBlockOrder(ctx context.Context, method, path, blockOrderMatchingKey string) (*EOptionsBlockTradeOrder, error) {
+	if blockOrderMatchingKey == "" {
+		return nil, errBlockOrderMatchingKeyRequired
+	}
+	params := url.Values{}
+	params.Set("blockOrderMatchingKey", blockOrderMatchingKey)
+	var resp *EOptionsBlockTradeOrder
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, method, path, params, optionsDefaultRate, nil, &resp)
+}
+
+// GetEOptionsBlockTradeOrders lists the account's block trade orders.
+func (e *Exchange) GetEOptionsBlockTradeOrders(ctx context.Context, blockOrderMatchingKey, underlying string, startTime, endTime time.Time) ([]*EOptionsBlockTradeOrder, error) {
+	params, err := eOptionsBlockTradeFilter(blockOrderMatchingKey, underlying, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	var resp []*EOptionsBlockTradeOrder
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodGet, "/eapi/v1/block/order/orders", params, optionsBlockOrderOrdersRate, nil, &resp)
+}
+
+// GetEOptionsBlockUserTrades lists the account's executed block trades.
+func (e *Exchange) GetEOptionsBlockUserTrades(ctx context.Context, underlying string, startTime, endTime time.Time) ([]*EOptionsAccountBlockTrade, error) {
+	params, err := eOptionsBlockTradeFilter("", underlying, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	var resp []*EOptionsAccountBlockTrade
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodGet, "/eapi/v1/block/user-trades", params, optionsBlockUserTradesRate, nil, &resp)
+}
+
+func eOptionsBlockTradeFilter(blockOrderMatchingKey, underlying string, startTime, endTime time.Time) (url.Values, error) {
+	if !startTime.IsZero() && !endTime.IsZero() {
+		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
+			return nil, err
+		}
+	}
+	params := url.Values{}
+	if blockOrderMatchingKey != "" {
+		params.Set("blockOrderMatchingKey", blockOrderMatchingKey)
+	}
+	if underlying != "" {
+		params.Set("underlying", underlying)
+	}
+	if !startTime.IsZero() {
+		params.Set("startTime", strconv.FormatInt(startTime.UnixMilli(), 10))
+	}
+	if !endTime.IsZero() {
+		params.Set("endTime", strconv.FormatInt(endTime.UnixMilli(), 10))
+	}
+	return params, nil
+}
+
+// GetEOptionsUserCommission returns the account's maker and taker fees per underlying.
+func (e *Exchange) GetEOptionsUserCommission(ctx context.Context) (*EOptionsUserCommission, error) {
+	var resp *EOptionsUserCommission
+	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodGet, "/eapi/v1/commission", nil, optionsCommissionRate, nil, &resp)
 }

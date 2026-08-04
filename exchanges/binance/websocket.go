@@ -35,8 +35,6 @@ const (
 	wsUnsubscribeMethod = "UNSUBSCRIBE"
 )
 
-var listenKey string
-
 var (
 	// maxWSUpdateBuffer defines max websocket updates to apply when an
 	// orderbook is initially fetched
@@ -47,6 +45,11 @@ var (
 	// maxWSOrderbookWorkers defines a max amount of workers allowed to execute
 	// jobs from the job channel
 	maxWSOrderbookWorkers = 10
+	// maxDefaultSubscriptionPairs bounds how many tradable pairs the default subscription
+	// generators cover. Binance allows 1024 streams per connection and options in
+	// particular has thousands of tradable contracts, so defaults are capped and the
+	// truncation is logged rather than applied silently.
+	maxDefaultSubscriptionPairs = 4
 )
 
 // WsConnect initiates a websocket connection
@@ -55,32 +58,15 @@ func (e *Exchange) WsConnect(ctx context.Context, conn websocket.Connection) err
 		return err
 	}
 
-	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		listenKey, err := e.GetWsAuthStreamKey(ctx)
-		if err != nil {
-			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys,
-				"%v unable to connect to authenticated Websocket. Error: %s",
-				e.Name,
-				err)
-		} else {
-			// cleans on failed connection
-			clean := strings.Split(conn.GetURL(), "?streams=")
-			authPayload := clean[0] + "?streams=" + listenKey
-			conn.SetURL(authPayload)
-		}
-	}
-
+	// Spot user data is no longer delivered on this market stream. Binance retired the
+	// /api/v3/userDataStream listen key endpoints on 2026-02-20; user data is now subscribed
+	// to on the websocket API connection, see WsConnectAPI.
 	dialer := gws.Dialer{
 		HandshakeTimeout: e.Config.HTTPTimeout,
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if err := conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
-	}
-
-	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		go e.KeepAuthKeyAlive(ctx)
+		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
 	}
 
 	conn.SetupPingHandler(request.Unset, websocket.PingHandler{
@@ -118,26 +104,6 @@ func (e *Exchange) setupOrderbookManager(ctx context.Context) {
 	}
 }
 
-// KeepAuthKeyAlive will continuously send messages to
-// keep the WS auth key active
-func (e *Exchange) KeepAuthKeyAlive(ctx context.Context) {
-	e.Websocket.Wg.Add(1)
-	defer e.Websocket.Wg.Done()
-	for {
-		select {
-		case <-e.Websocket.ShutdownC:
-			return
-		case <-time.After(time.Minute * 30):
-			if err := e.MaintainWsAuthStreamKey(ctx); err != nil {
-				if errSend := e.Websocket.DataHandler.Send(ctx, err); errSend != nil {
-					log.Errorf(log.WebsocketMgr, "%s %s: %s %s", e.Name, e.Websocket.Conn.GetURL(), errSend, err)
-				}
-				log.Warnf(log.ExchangeSys, "%s %s: Unable to renew auth websocket token, may experience shutdown", e.Name, e.Websocket.Conn.GetURL())
-			}
-		}
-	}
-}
-
 func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, respRaw []byte) error {
 	if id, err := jsonparser.GetString(respRaw, "id"); err == nil {
 		return conn.RequireMatchWithData(id, respRaw)
@@ -158,31 +124,25 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 			var data WsAccountPositionData
 			err = json.Unmarshal(jsonData, &data)
 			if err != nil {
-				return fmt.Errorf("%v - Could not convert to outboundAccountPosition structure %s",
-					e.Name,
-					err)
+				return fmt.Errorf("%s - could not convert to outboundAccountPosition structure: %w", e.Name, err)
 			}
 			return e.Websocket.DataHandler.Send(ctx, data)
 		case "balanceUpdate":
 			var data WsBalanceUpdateData
 			err = json.Unmarshal(jsonData, &data)
 			if err != nil {
-				return fmt.Errorf("%v - Could not convert to balanceUpdate structure %s",
-					e.Name,
-					err)
+				return fmt.Errorf("%s - could not convert to balanceUpdate structure: %w", e.Name, err)
 			}
 			return e.Websocket.DataHandler.Send(ctx, data)
 		case "executionReport":
 			var data WsOrderUpdateData
 			err = json.Unmarshal(jsonData, &data)
 			if err != nil {
-				return fmt.Errorf("%v - Could not convert to executionReport structure %s",
-					e.Name,
-					err)
+				return fmt.Errorf("%s - could not convert to executionReport structure: %w", e.Name, err)
 			}
 			avgPrice := 0.0
 			if data.CumulativeFilledQuantity != 0 {
-				avgPrice = data.CumulativeQuoteTransactedQuantity / data.CumulativeFilledQuantity
+				avgPrice = data.CumulativeQuoteTransactedQuantity.Float64() / data.CumulativeFilledQuantity.Float64()
 			}
 			remainingAmount := data.Quantity - data.CumulativeFilledQuantity
 			var pair currency.Pair
@@ -195,7 +155,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 			if data.CommissionAsset != "" {
 				feeAsset = currency.NewCode(data.CommissionAsset)
 			}
-			orderID := strconv.FormatInt(data.OrderID, 10)
+			orderID := strconv.FormatUint(data.OrderID, 10)
 			var orderStatus order.Status
 			orderStatus, err = stringToOrderStatus(data.OrderStatus)
 			if err != nil {
@@ -224,14 +184,14 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 				return err
 			}
 			return e.Websocket.DataHandler.Send(ctx, &order.Detail{
-				Price:                data.Price,
-				Amount:               data.Quantity,
+				Price:                data.Price.Float64(),
+				Amount:               data.Quantity.Float64(),
 				AverageExecutedPrice: avgPrice,
-				ExecutedAmount:       data.CumulativeFilledQuantity,
-				RemainingAmount:      remainingAmount,
-				Cost:                 data.CumulativeQuoteTransactedQuantity,
+				ExecutedAmount:       data.CumulativeFilledQuantity.Float64(),
+				RemainingAmount:      remainingAmount.Float64(),
+				Cost:                 data.CumulativeQuoteTransactedQuantity.Float64(),
 				CostAsset:            pair.Quote,
-				Fee:                  data.Commission,
+				Fee:                  data.Commission.Float64(),
 				FeeAsset:             feeAsset,
 				Exchange:             e.Name,
 				OrderID:              orderID,
@@ -248,15 +208,13 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 		case "listStatus":
 			var data WsListStatusData
 			if err := json.Unmarshal(jsonData, &data); err != nil {
-				return fmt.Errorf("%v - Could not convert to listStatus structure %s",
-					e.Name,
-					err)
+				return fmt.Errorf("%s - could not convert to listStatus structure: %w", e.Name, err)
 			}
 			return e.Websocket.DataHandler.Send(ctx, data)
 		case "outboundAccountInfo":
 			var data wsAccountInfo
 			if err := json.Unmarshal(respRaw, &data); err != nil {
-				return fmt.Errorf("%v - Could not convert to outboundAccountInfo structure %s", e.Name, err)
+				return fmt.Errorf("%s - could not convert to outboundAccountInfo structure: %w", e.Name, err)
 			}
 			return e.Websocket.DataHandler.Send(ctx, data)
 		}
@@ -346,9 +304,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 		"kline_6h", "kline_8h", "kline_12h", "kline_1d", "kline_3d", "kline_1w", "kline_1M":
 		var ks KlineStream
 		if err := json.Unmarshal(jsonData, &ks); err != nil {
-			return fmt.Errorf("%v - Could not convert to a KlineStream structure %s",
-				e.Name,
-				err)
+			return fmt.Errorf("%s - could not convert to KlineStream structure: %w", e.Name, err)
 		}
 		interval, err := formatToInterval(ks.Kline.Interval)
 		if err != nil {
@@ -371,9 +327,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 	case "depth":
 		var depth WebsocketDepthStream
 		if err := json.Unmarshal(jsonData, &depth); err != nil {
-			return fmt.Errorf("%v - Could not convert to depthStream structure %s",
-				e.Name,
-				err)
+			return fmt.Errorf("%s - could not convert to depthStream structure: %w", e.Name, err)
 		}
 		var init bool
 		init, err = e.UpdateLocalBuffer(&depth)
@@ -393,13 +347,17 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 
 func stringToOrderStatus(status string) (order.Status, error) {
 	switch status {
-	case "NEW":
+	case "NEW", "ACCEPTED":
+		// Options report ACCEPTED rather than NEW
 		return order.New, nil
+	case "PENDING_NEW":
+		return order.Pending, nil
 	case "PARTIALLY_FILLED":
 		return order.PartiallyFilled, nil
 	case "FILLED":
 		return order.Filled, nil
-	case "CANCELED":
+	case "CANCELED", "CANCELLED":
+		// Options and portfolio margin use the double-l spelling
 		return order.Cancelled, nil
 	case "PENDING_CANCEL":
 		return order.PendingCancel, nil
@@ -407,14 +365,23 @@ func stringToOrderStatus(status string) (order.Status, error) {
 		return order.Rejected, nil
 	case "EXPIRED":
 		return order.Expired, nil
+	case "EXPIRED_IN_MATCH":
+		// The order was expired by the matching engine due to self-trade prevention
+		return order.STP, nil
+	case "NEW_ADL":
+		// Counterparty liquidation
+		return order.AutoDeleverage, nil
+	case "NEW_INSURANCE":
+		// Liquidation covered by the insurance fund
+		return order.Liquidated, nil
 	default:
-		return order.UnknownStatus, errors.New(status + " not recognised as order status")
+		return order.UnknownStatus, fmt.Errorf("%w: %q", errUnrecognisedOrderStatus, status)
 	}
 }
 
 // SeedLocalCache seeds depth data
 func (e *Exchange) SeedLocalCache(ctx context.Context, p currency.Pair) error {
-	ob, err := e.GetOrderBook(ctx, OrderBookDataRequestParams{
+	ob, err := e.GetOrderBook(ctx, OrderBookDataRequest{
 		Symbol: p,
 		Limit:  1000,
 	})
@@ -914,10 +881,13 @@ bufferEmpty:
 	}
 	o.Unlock()
 	// disable rest orderbook synchronisation
-	_ = o.stopFetchingBook(pair)
-	_ = o.completeInitialSync(pair)
-	_ = o.stopNeedsFetchingBook(pair)
-	return nil
+	if err := o.stopFetchingBook(pair); err != nil {
+		return err
+	}
+	if err := o.completeInitialSync(pair); err != nil {
+		return err
+	}
+	return o.stopNeedsFetchingBook(pair)
 }
 
 // stopNeedsFetchingBook completes the book fetching initiation.

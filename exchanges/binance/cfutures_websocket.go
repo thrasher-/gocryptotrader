@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -15,6 +16,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
+	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
@@ -41,7 +43,7 @@ func (e *Exchange) WsCFutureConnect(ctx context.Context, conn websocket.Connecti
 	wsURL := binanceCFuturesWebsocketURL + "/stream"
 	conn.SetURL(wsURL)
 	if err := conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
+		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
 	}
 	conn.SetupPingHandler(request.UnAuth, websocket.PingHandler{
 		UseGorillaHandler: true,
@@ -58,8 +60,9 @@ func (e *Exchange) GenerateDefaultCFuturesSubscriptions() (subscription.List, er
 	if err != nil {
 		return nil, err
 	}
-	if len(pairs) > 4 {
-		pairs = pairs[:3]
+	if len(pairs) > maxDefaultSubscriptionPairs {
+		log.Warnf(log.ExchangeSys, "%s limiting default subscriptions to %d of %d tradable pairs", e.Name, maxDefaultSubscriptionPairs, len(pairs))
+		pairs = pairs[:maxDefaultSubscriptionPairs]
 	}
 	channels := defaultCFuturesSubscriptions
 	for z := range channels {
@@ -74,7 +77,8 @@ func (e *Exchange) GenerateDefaultCFuturesSubscriptions() (subscription.List, er
 			})
 		case aggTradeChan, depthChan, markPriceChan, tickerChan,
 			klineChan, miniTickerChan, forceOrderChan,
-			indexPriceCFuturesChan, bookTickerCFuturesChan:
+			indexPriceCFuturesChan, bookTickerCFuturesChan,
+			indexPriceKlineCFuturesChan, markPriceKlineCFuturesChan:
 			for y := range pairs {
 				lp := pairs[y].Lower()
 				lp.Delimiter = ""
@@ -93,12 +97,15 @@ func (e *Exchange) GenerateDefaultCFuturesSubscriptions() (subscription.List, er
 			}
 		case continuousKline:
 			for y := range pairs {
-				lp := pairs[y].Lower()
-				lp.Delimiter = ""
+				// COIN-M carries the contract in the quote (BTC/USD_PERP), but this stream
+				// wants the underlying pair plus a spelled-out lower-case contract type,
+				// e.g. btcusd_perpetual. Reusing the symbol yields btcusd_perp_PERPETUAL,
+				// which Binance accepts without ever sending data.
+				underlying := strings.ToLower(pairs[y].Base.String() + strings.Split(pairs[y].Quote.String(), "_")[0])
 				chSubscription = &subscription.Subscription{
-					// Contract types:""perpetual", "current_quarter", "next_quarter""
+					// Contract types: "perpetual", "current_quarter", "next_quarter"
 					Asset:            asset.CoinMarginedFutures,
-					QualifiedChannel: lp.String() + "_PERPETUAL@" + channels[z] + "_" + getKlineIntervalString(kline.FiveMin),
+					QualifiedChannel: underlying + "_perpetual@" + channels[z] + "_" + getKlineIntervalString(kline.FiveMin),
 				}
 				chSubscription.Channel = chSubscription.QualifiedChannel
 				subscriptions = append(subscriptions, chSubscription)
@@ -153,12 +160,11 @@ func (e *Exchange) wsHandleCFuturesData(ctx context.Context, conn websocket.Conn
 		return e.processOrderbookDepthUpdate(result.Data, asset.CoinMarginedFutures)
 	case continuousKline:
 		return e.processContinuousKlineUpdate(ctx, result.Data, asset.CoinMarginedFutures)
-	case klineChan:
+	case "kline":
 		return e.processKlineData(ctx, result.Data)
-	case indexPriceCFuturesChan:
+	case "indexPrice":
 		return e.processIndexPrice(ctx, result.Data)
-	case indexPriceKlineCFuturesChan,
-		markPriceKlineCFuturesChan:
+	case "indexPriceKline", "markPriceKline":
 		return e.processMarkPriceKline(ctx, result.Data)
 	}
 	return fmt.Errorf("unhandled stream data %s", string(respRaw))
@@ -185,12 +191,13 @@ func (e *Exchange) processCFuturesMarketTicker(ctx context.Context, respRaw []by
 		return err
 	}
 	return e.Websocket.DataHandler.Send(ctx, &ticker.Price{
-		Pair:         cp,
-		Last:         resp.LastPrice.Float64(),
-		High:         resp.HighPrice.Float64(),
-		Low:          resp.LowPrice.Float64(),
-		Volume:       resp.TotalTradedVolume.Float64(),
-		QuoteVolume:  resp.TotalQuoteAssetVolume.Float64(),
+		Pair: cp,
+		Last: resp.LastPrice.Float64(),
+		High: resp.HighPrice.Float64(),
+		Low:  resp.LowPrice.Float64(),
+		// On COIN-M "v" is a contract count and "q" is the base asset volume; the
+		// stream reports no quote volume.
+		Volume:       resp.TotalTradedBaseAssetVolume.Float64(),
 		Open:         resp.OpenPrice.Float64(),
 		ExchangeName: e.Name,
 		AssetType:    asset.CoinMarginedFutures,
@@ -210,8 +217,7 @@ func (e *Exchange) getCFuturesTickerInfos(marketTickers []CFuturesMarketTicker) 
 			Last:         marketTickers[a].LastPrice.Float64(),
 			High:         marketTickers[a].HighPrice.Float64(),
 			Low:          marketTickers[a].LowPrice.Float64(),
-			Volume:       marketTickers[a].TotalTradeBaseVolume.Float64(),
-			QuoteVolume:  marketTickers[a].TotalQuoteAssetVolume.Float64(),
+			Volume:       marketTickers[a].TotalTradedBaseAssetVolume.Float64(),
 			Open:         marketTickers[a].OpenPrice.Float64(),
 			ExchangeName: e.Name,
 			AssetType:    asset.CoinMarginedFutures,
@@ -260,9 +266,11 @@ func (e *Exchange) processIndexPrice(ctx context.Context, respRaw []byte) error 
 		return err
 	}
 	return e.Websocket.DataHandler.Send(ctx, &ticker.Price{
-		Pair:        cp,
-		Last:        resp.IndexPrice.Float64(),
-		LastUpdated: resp.EventTime.Time(),
+		Pair:         cp,
+		Last:         resp.IndexPrice.Float64(),
+		ExchangeName: e.Name,
+		AssetType:    asset.CoinMarginedFutures,
+		LastUpdated:  resp.EventTime.Time(),
 	})
 }
 
@@ -319,6 +327,7 @@ func (e *Exchange) processMarkPriceKline(ctx context.Context, respRaw []byte) er
 	}
 	return e.Websocket.DataHandler.Send(ctx, &kline.Item{
 		Pair:     cp,
+		Exchange: e.Name,
 		Asset:    asset.CoinMarginedFutures,
 		Interval: interval,
 		Candles: []kline.Candle{{

@@ -1,12 +1,14 @@
 package binance
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	gws "github.com/gorilla/websocket"
@@ -20,6 +22,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
@@ -51,7 +54,7 @@ func (e *Exchange) WsConnectAPI(ctx context.Context, conn websocket.Connection) 
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if err = conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
+		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
 	}
 
 	conn.SetupPingHandler(request.UnAuth, websocket.PingHandler{
@@ -59,6 +62,16 @@ func (e *Exchange) WsConnectAPI(ctx context.Context, conn websocket.Connection) 
 		MessageType:       gws.PongMessage,
 		Delay:             pingDelay,
 	})
+
+	// Spot user data is delivered on this connection since Binance retired the
+	// /api/v3/userDataStream listen keys. The signature variant is used because it works
+	// with HMAC keys, whereas userDataStream.subscribe requires an Ed25519 session logon.
+	if e.Websocket.CanUseAuthenticatedEndpoints() {
+		if _, err := e.WsSubscribeUserDataStreamWithSignature(); err != nil {
+			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
+			log.Errorf(log.ExchangeSys, "%s unable to subscribe to the user data stream: %s", e.Name, err)
+		}
+	}
 	return nil
 }
 
@@ -139,10 +152,10 @@ func (e *Exchange) SendWsRequest(method string, param, result any) error {
 
 // GetWsOrderbook returns full orderbook information
 //
-// OrderBookDataRequestParams contains the following members
+// OrderBookDataRequest contains the following members
 // symbol: string of currency pair
 // limit: returned limit amount
-func (e *Exchange) GetWsOrderbook(obd *OrderBookDataRequestParams) (*OrderBook, error) {
+func (e *Exchange) GetWsOrderbook(obd *OrderBookDataRequest) (*OrderBook, error) {
 	if err := common.NilGuard(obd); err != nil {
 		return nil, err
 	}
@@ -155,7 +168,7 @@ func (e *Exchange) GetWsOrderbook(obd *OrderBookDataRequestParams) (*OrderBook, 
 
 // GetWsMostRecentTrades returns recent trade activity through the websocket connection
 // limit: Up to 500 results returned
-func (e *Exchange) GetWsMostRecentTrades(rtr *RecentTradeRequestParams) ([]*RecentTrade, error) {
+func (e *Exchange) GetWsMostRecentTrades(rtr *RecentTradeRequest) ([]*RecentTrade, error) {
 	if err := common.NilGuard(rtr); err != nil {
 		return nil, err
 	}
@@ -167,26 +180,37 @@ func (e *Exchange) GetWsMostRecentTrades(rtr *RecentTradeRequestParams) ([]*Rece
 }
 
 // GetWsAggregatedTrades retrieves aggregated trade activity.
-func (e *Exchange) GetWsAggregatedTrades(arg *WsAggregateTradeRequestParams) ([]*AggregatedTrade, error) {
+func (e *Exchange) GetWsAggregatedTrades(arg *WsAggregateTradeRequest) ([]*AggregatedTrade, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
+	}
+	if !arg.StartTime.IsZero() && !arg.EndTime.IsZero() {
+		if err := common.StartEndTimeCheck(arg.StartTime, arg.EndTime); err != nil {
+			return nil, err
+		}
+	}
+	if !arg.StartTime.IsZero() {
+		arg.StartTimestamp = arg.StartTime.UnixMilli()
+	}
+	if !arg.EndTime.IsZero() {
+		arg.EndTimestamp = arg.EndTime.UnixMilli()
 	}
 	var resp []*AggregatedTrade
 	return resp, e.SendWsRequest("trades.aggregate", arg, &resp)
 }
 
 // GetWsCandlestick retrieves spot kline data through the websocket connection.
-func (e *Exchange) GetWsCandlestick(arg *KlinesRequestParams) ([]*CandleStick, error) {
+func (e *Exchange) GetWsCandlestick(arg *KlinesRequest) ([]*CandleStick, error) {
 	return e.getWsKlines("klines", arg)
 }
 
 // GetWsOptimizedCandlestick retrieves spot candlestick bars through the websocket connection.
-func (e *Exchange) GetWsOptimizedCandlestick(arg *KlinesRequestParams) ([]*CandleStick, error) {
+func (e *Exchange) GetWsOptimizedCandlestick(arg *KlinesRequest) ([]*CandleStick, error) {
 	return e.getWsKlines("uiKlines", arg)
 }
 
 // getWsKlines retrieves spot kline data through the websocket connection.
-func (e *Exchange) getWsKlines(method string, arg *KlinesRequestParams) ([]*CandleStick, error) {
+func (e *Exchange) getWsKlines(method string, arg *KlinesRequest) ([]*CandleStick, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -228,19 +252,19 @@ func (e *Exchange) GetWsCurrenctAveragePrice(symbol currency.Pair) (*SymbolAvera
 // GetWs24HourPriceChanges 24-hour rolling window price changes statistics through the websocket stream.
 // 'type': 'FULL' (default) or 'MINI'
 // 'timeZone' Default: 0 (UTC)
-func (e *Exchange) GetWs24HourPriceChanges(arg *PriceChangeRequestParam) ([]*PriceChangeStats, error) {
+func (e *Exchange) GetWs24HourPriceChanges(arg *PriceChangeRequest) ([]*PriceChangeStats, error) {
 	return e.tickerDataChange("ticker.24hr", arg)
 }
 
 // GetWsTradingDayTickers price change statistics for a trading day.
 // 'type': 'FULL' (default) or 'MINI'
 // 'timeZone' Default: 0 (UTC)
-func (e *Exchange) GetWsTradingDayTickers(arg *PriceChangeRequestParam) ([]*PriceChangeStats, error) {
+func (e *Exchange) GetWsTradingDayTickers(arg *PriceChangeRequest) ([]*PriceChangeStats, error) {
 	return e.tickerDataChange("ticker.tradingDay", arg)
 }
 
 // tickerDataChange unifying method to make price change requests through the websocket stream.
-func (e *Exchange) tickerDataChange(method string, arg *PriceChangeRequestParam) ([]*PriceChangeStats, error) {
+func (e *Exchange) tickerDataChange(method string, arg *PriceChangeRequest) ([]*PriceChangeStats, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -275,7 +299,7 @@ func (e *Exchange) GetSymbolPriceTicker(symbol currency.Pair) ([]*SymbolTickerIt
 
 // GetWsRollingWindowPriceChanges retrieves rolling window price change statistics with a custom window.
 // this request is similar to ticker.24hr, but statistics are computed on demand using the arbitrary window you specify
-func (e *Exchange) GetWsRollingWindowPriceChanges(arg *WsRollingWindowPriceParams) ([]*PriceChangeStats, error) {
+func (e *Exchange) GetWsRollingWindowPriceChanges(arg *WsRollingWindowPriceRequest) ([]*PriceChangeStats, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -331,21 +355,30 @@ func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string,
 	if !okay {
 		return "", "", errTimestampInfoRequired
 	}
-	timestampType := fmt.Sprintf("%T", timestampInfo)
-	switch timestampType {
-	case "float64", "int64", "float32", "int":
-	default:
-		return "", "", fmt.Errorf("invalid timestamp: %s %w", timestampType, errTimestampInfoRequired)
+	// Validate against the rendered form rather than the concrete type: values decoded
+	// from JSON arrive as json.Number, and anything that renders in exponent form would
+	// be signed differently from how it is transmitted.
+	if _, err := strconv.ParseInt(fmt.Sprintf("%v", timestampInfo), 10, 64); err != nil {
+		return "", "", fmt.Errorf("%w: invalid timestamp %v", errTimestampInfoRequired, timestampInfo)
 	}
 	params["apiKey"] = creds.Key
-	keys := SortMap(params)
-	payloadString := fmt.Sprintf("%s=%v", keys[0], params[keys[0]])
-	for i := 1; i < len(keys); i++ {
-		payloadString = fmt.Sprintf("%s&%s=%v", payloadString, keys[i], params[keys[i]])
+	// Binance signs every parameter except the signature itself. A struct reused for a
+	// second request still carries the previous signature, which would otherwise be
+	// signed and then overwritten, so the transmitted payload would not match.
+	delete(params, "signature")
+	keys := sortMapKeys(params)
+	var payload strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			payload.WriteByte('&')
+		}
+		payload.WriteString(k)
+		payload.WriteByte('=')
+		fmt.Fprintf(&payload, "%v", params[k])
 	}
 	var hmacSigned []byte
 	hmacSigned, err = crypto.GetHMAC(crypto.HashSHA256,
-		[]byte(payloadString),
+		[]byte(payload.String()),
 		[]byte(creds.Secret))
 	if err != nil {
 		return "", "", err
@@ -353,43 +386,33 @@ func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string,
 	return creds.Key, hex.EncodeToString(hmacSigned), nil
 }
 
-// SortMap gives a slice of sorted keys from the passed map
-func SortMap(params map[string]any) []string {
+// sortMapKeys returns the map's keys in ascending order, which is the order Binance
+// requires request parameters to be in before signing.
+func sortMapKeys(params map[string]any) []string {
 	keys := make([]string, 0, len(params))
-	for a := range params {
-		count := 0
-		added := false
-		for count < len(keys) {
-			if keys[count] >= a {
-				keys = append(keys[:count], append([]string{a}, keys[count:]...)...)
-				added = true
-				break
-			}
-			count++
-		}
-		if !added {
-			keys = append(keys, a)
-		}
+	for k := range params {
+		keys = append(keys, k)
 	}
+	slices.Sort(keys)
 	return keys
 }
 
 // GetQuerySessionStatus query the status of the WebSocket connection, inspecting which API key (if any) is used to authorize requests.
-func (e *Exchange) GetQuerySessionStatus() (*FuturesAuthenticationResp, error) {
-	var resp FuturesAuthenticationResp
-	return &resp, e.SendWsRequest("session.status", nil, &resp)
+func (e *Exchange) GetQuerySessionStatus() (*FuturesAuthenticationResponse, error) {
+	var resp *FuturesAuthenticationResponse
+	return resp, e.SendWsRequest("session.status", nil, &resp)
 }
 
 // GetLogOutOfSession forget the API key previously authenticated. If the connection is not authenticated, this request does nothing.
-func (e *Exchange) GetLogOutOfSession() (*FuturesAuthenticationResp, error) {
-	var resp FuturesAuthenticationResp
-	return &resp, e.SendWsRequest("session.logout", nil, &resp)
+func (e *Exchange) GetLogOutOfSession() (*FuturesAuthenticationResponse, error) {
+	var resp *FuturesAuthenticationResponse
+	return resp, e.SendWsRequest("session.logout", nil, &resp)
 }
 
 // ----------------------------------------------------------- Trading Requests ----------------------------------------------------
 
 // WsPlaceNewOrder place new order
-func (e *Exchange) WsPlaceNewOrder(arg *TradeOrderRequestParam) (*TradeOrderResponse, error) {
+func (e *Exchange) WsPlaceNewOrder(arg *TradeOrderRequest) (*TradeOrderResponse, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -409,12 +432,12 @@ func (e *Exchange) WsPlaceNewOrder(arg *TradeOrderRequestParam) (*TradeOrderResp
 	}
 	arg.APIKey = apiKey
 	arg.Signature = signature
-	var resp TradeOrderResponse
-	return &resp, e.SendWsRequest("order.place", arg, &resp)
+	var resp *TradeOrderResponse
+	return resp, e.SendWsRequest("order.place", arg, &resp)
 }
 
 // ValidatePlaceNewOrderRequest tests whether the request order is valid or not.
-func (e *Exchange) ValidatePlaceNewOrderRequest(arg *TradeOrderRequestParam) error {
+func (e *Exchange) ValidatePlaceNewOrderRequest(arg *TradeOrderRequest) error {
 	if err := common.NilGuard(arg); err != nil {
 		return err
 	}
@@ -438,7 +461,7 @@ func (e *Exchange) ValidatePlaceNewOrderRequest(arg *TradeOrderRequestParam) err
 }
 
 // WsQueryOrder to query a trade order
-func (e *Exchange) WsQueryOrder(arg *QueryOrderParam) (*TradeOrder, error) {
+func (e *Exchange) WsQueryOrder(arg *QueryOrderRequest) (*TradeOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -460,7 +483,7 @@ func (e *Exchange) WsQueryOrder(arg *QueryOrderParam) (*TradeOrder, error) {
 }
 
 // WsCancelOrder cancel an active order.
-func (e *Exchange) WsCancelOrder(arg *QueryOrderParam) (*TradeOrder, error) {
+func (e *Exchange) WsCancelOrder(arg *QueryOrderRequest) (*TradeOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -482,7 +505,7 @@ func (e *Exchange) WsCancelOrder(arg *QueryOrderParam) (*TradeOrder, error) {
 }
 
 // WsCancelAndReplaceTradeOrder cancel an existing order and immediately place a new order instead of the cancelled one.
-func (e *Exchange) WsCancelAndReplaceTradeOrder(arg *WsCancelAndReplaceParam) (*WsCancelAndReplaceTradeOrderResponse, error) {
+func (e *Exchange) WsCancelAndReplaceTradeOrder(arg *WsCancelAndReplaceRequest) (*WsCancelAndReplaceTradeOrderResponse, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -490,7 +513,7 @@ func (e *Exchange) WsCancelAndReplaceTradeOrder(arg *WsCancelAndReplaceParam) (*
 		return nil, currency.ErrCurrencyPairEmpty
 	}
 	if arg.CancelReplaceMode == "" {
-		return nil, errors.New("cancel replace mode is required")
+		return nil, errCancelReplaceModeRequired
 	}
 	if arg.CancelOrderID == "" {
 		return nil, fmt.Errorf("cancelOrderId missing, %w", order.ErrOrderIDNotSet)
@@ -567,7 +590,7 @@ func (e *Exchange) WsCancelOpenOrders(symbol currency.Pair, recvWindow int64) ([
 
 // WsPlaceOCOOrder send in a new one-cancels-the-other (OCO) pair: LIMIT_MAKER + STOP_LOSS/STOP_LOSS_LIMIT orders (called legs), where activation of one order immediately cancels the other.
 // Response format for orderReports is selected using the newOrderRespType parameter. The following example is for RESULT response type. See order.place for more examples.
-func (e *Exchange) WsPlaceOCOOrder(arg *PlaceOCOOrderParam) (*OCOOrder, error) {
+func (e *Exchange) WsPlaceOCOOrder(arg *PlaceOCOOrderRequest) (*OCOOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -584,7 +607,7 @@ func (e *Exchange) WsPlaceOCOOrder(arg *PlaceOCOOrderParam) (*OCOOrder, error) {
 		return nil, fmt.Errorf("stopPrice: %w", limits.ErrPriceBelowMin)
 	}
 	if arg.TrailingDelta <= 0 {
-		return nil, errors.New("invalid trailingDelta value")
+		return nil, errInvalidTrailingDelta
 	}
 	arg.Timestamp = time.Now().UnixMilli()
 	apiKey, signature, err := e.getSignature(arg)
@@ -631,10 +654,10 @@ func (e *Exchange) WsCancelOCOOrder(symbol currency.Pair, orderListID, listClien
 		return nil, fmt.Errorf("orderListID %w", order.ErrOrderIDNotSet)
 	}
 	params := make(map[string]any)
-	if listClientOrderID == "" {
+	if listClientOrderID != "" {
 		params["listClientOrderId"] = listClientOrderID
 	}
-	if newClientOrderID == "" {
+	if newClientOrderID != "" {
 		params["newClientOrderId"] = newClientOrderID
 	}
 	params["orderListId"] = orderListID
@@ -667,7 +690,7 @@ func (e *Exchange) WsCurrentOpenOCOOrders(recvWindow int64) ([]*OCOOrder, error)
 }
 
 // WsPlaceNewSOROrder places an order using smart order routing (SOR).
-func (e *Exchange) WsPlaceNewSOROrder(arg *WsOSRPlaceOrderParams) ([]*OSROrder, error) {
+func (e *Exchange) WsPlaceNewSOROrder(arg *WsOSRPlaceOrderRequest) ([]*OSROrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -696,7 +719,7 @@ func (e *Exchange) WsPlaceNewSOROrder(arg *WsOSRPlaceOrderParams) ([]*OSROrder, 
 
 // WsTestNewOrderUsingSOR test new order creation and signature/recvWindow using smart order routing (SOR).
 // Creates and validates a new order but does not send it into the matching engine.
-func (e *Exchange) WsTestNewOrderUsingSOR(arg *WsOSRPlaceOrderParams) error {
+func (e *Exchange) WsTestNewOrderUsingSOR(arg *WsOSRPlaceOrderRequest) error {
 	if err := common.NilGuard(arg); err != nil {
 		return err
 	}
@@ -728,8 +751,16 @@ func (e *Exchange) ToMap(input any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// UseNumber keeps the original numeric literal; decoding into float64 would
+	// render large values such as millisecond timestamps and order IDs in
+	// exponent form, so the signed payload would not match what is transmitted.
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	var resp map[string]any
-	return resp, json.Unmarshal(data, &resp)
+	if err := dec.Decode(&resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // ------------------------------------------- Account Requests --------------------------------
@@ -770,9 +801,20 @@ func (e *Exchange) WsQueryAccountOrderRateLimits(recvWindow int64) ([]*RateLimit
 
 // WsQueryAccountOrderHistory query information about all your orders – active, cancelled, filled – filtered by time range.
 // Status reports for orders are identical to order.status.
-func (e *Exchange) WsQueryAccountOrderHistory(arg *AccountOrderRequestParam) ([]*TradeOrder, error) {
+func (e *Exchange) WsQueryAccountOrderHistory(arg *AccountOrderRequest) ([]*TradeOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
+	}
+	if !arg.StartTime.IsZero() && !arg.EndTime.IsZero() {
+		if err := common.StartEndTimeCheck(arg.StartTime, arg.EndTime); err != nil {
+			return nil, err
+		}
+	}
+	if !arg.StartTime.IsZero() {
+		arg.StartTimestamp = arg.StartTime.UnixMilli()
+	}
+	if !arg.EndTime.IsZero() {
+		arg.EndTimestamp = arg.EndTime.UnixMilli()
 	}
 	if arg.Symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
@@ -824,9 +866,20 @@ func (e *Exchange) WsQueryAccountOCOOrderHistory(fromID, limit, recvWindow int64
 }
 
 // WsAccountTradeHistory query information about all your trades, filtered by time range.
-func (e *Exchange) WsAccountTradeHistory(arg *AccountOrderRequestParam) ([]*TradeHistory, error) {
+func (e *Exchange) WsAccountTradeHistory(arg *AccountOrderRequest) ([]*TradeHistory, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
+	}
+	if !arg.StartTime.IsZero() && !arg.EndTime.IsZero() {
+		if err := common.StartEndTimeCheck(arg.StartTime, arg.EndTime); err != nil {
+			return nil, err
+		}
+	}
+	if !arg.StartTime.IsZero() {
+		arg.StartTimestamp = arg.StartTime.UnixMilli()
+	}
+	if !arg.EndTime.IsZero() {
+		arg.EndTimestamp = arg.EndTime.UnixMilli()
 	}
 	if arg.Symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
@@ -947,53 +1000,50 @@ func (e *Exchange) WsAccountCommissionRates(symbol currency.Pair) (*CommissionRa
 
 // --------------------------------- User Data Stream requests ---------------------------------
 
-// WsStartUserDataStream start a new user data stream.
-// The response will output a listen key that can be subscribed through on the Websocket stream afterwards.
-func (e *Exchange) WsStartUserDataStream() (string, error) {
-	creds, err := e.GetCredentials(context.Background())
+// WsSessionLogon authenticates the websocket connection with the configured API key, so that
+// subsequent signed requests may omit apiKey and signature. Binance only permits one
+// authenticated key per connection; calling this again replaces it.
+func (e *Exchange) WsSessionLogon() (*FuturesAuthenticationResponse, error) {
+	params := map[string]any{"timestamp": time.Now().UnixMilli()}
+	apiKey, signature, err := e.SignRequest(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	params := map[string]any{
-		"apiKey": creds.Key,
-	}
-	resp := &struct {
-		ListenKey string `json:"listenKey,omitempty"`
-	}{}
-	return resp.ListenKey, e.SendWsRequest("userDataStream.start", params, &resp)
+	params["apiKey"] = apiKey
+	params["signature"] = signature
+	var resp *FuturesAuthenticationResponse
+	return resp, e.SendWsRequest("session.logon", params, &resp)
 }
 
-// WsPingUserDataStream ping a user data stream to keep it alive.
-// User data streams close automatically after 60 minutes, even if you're listening to them on WebSocket Streams.
-// In order to keep the stream open, you have to regularly send pings using the userDataStream.ping request.
-// It is recommended to send a ping once every 30 minutes.
-func (e *Exchange) WsPingUserDataStream(listenKey string) error {
-	if listenKey == "" {
-		return errListenKeyIsRequired
-	}
-	creds, err := e.GetCredentials(context.Background())
-	if err != nil {
-		return err
-	}
-	params := map[string]any{
-		"apiKey":    creds.Key,
-		"listenKey": listenKey,
-	}
-	return e.SendWsRequest("userDataStream.ping", params, struct{}{})
+// WsSubscribeUserDataStream subscribes to the user data stream on the current authenticated
+// connection. This requires a prior WsSessionLogon using Ed25519 keys; for HMAC keys use
+// WsSubscribeUserDataStreamWithSignature instead.
+//
+// This supersedes the listen key flow: Binance retired POST/PUT/DELETE /api/v3/userDataStream
+// and the userDataStream.start/ping/stop methods on 2026-02-20.
+func (e *Exchange) WsSubscribeUserDataStream() (*UserDataStreamSubscriptionResponse, error) {
+	var resp *UserDataStreamSubscriptionResponse
+	return resp, e.SendWsRequest("userDataStream.subscribe", nil, &resp)
 }
 
-// WsStopUserDataStream explicitly stop and close the user data stream.
-func (e *Exchange) WsStopUserDataStream(listenKey string) error {
-	if listenKey == "" {
-		return errListenKeyIsRequired
-	}
-	creds, err := e.GetCredentials(context.Background())
+// WsSubscribeUserDataStreamWithSignature subscribes to the user data stream by signing the
+// request, which works on any connection whether or not it has been authenticated with
+// WsSessionLogon, and works with HMAC as well as Ed25519 keys.
+func (e *Exchange) WsSubscribeUserDataStreamWithSignature() (*UserDataStreamSubscriptionResponse, error) {
+	params := map[string]any{"timestamp": time.Now().UnixMilli()}
+	apiKey, signature, err := e.SignRequest(params)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	params := map[string]any{
-		"apiKey":    creds.Key,
-		"listenKey": listenKey,
-	}
-	return e.SendWsRequest("userDataStream.stop", params, struct{}{})
+	params["apiKey"] = apiKey
+	params["signature"] = signature
+	var resp *UserDataStreamSubscriptionResponse
+	return resp, e.SendWsRequest("userDataStream.subscribe.signature", params, &resp)
+}
+
+// WsUnsubscribeUserDataStream stops listening to the user data stream on this connection.
+// Note that session.logout only closes a subscription opened by WsSubscribeUserDataStream,
+// not one opened by WsSubscribeUserDataStreamWithSignature.
+func (e *Exchange) WsUnsubscribeUserDataStream() error {
+	return e.SendWsRequest("userDataStream.unsubscribe", nil, &struct{}{})
 }

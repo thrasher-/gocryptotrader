@@ -25,6 +25,10 @@ func TestPriceChanges_UnmarshalJSON(t *testing.T) {
 	require.Len(t, single, 1, "single object input must unmarshal to one element")
 	assert.Equal(t, "BTCUSDT", single[0].Symbol, "symbol should match")
 
+	var null PriceChanges
+	require.NoError(t, json.Unmarshal([]byte(`null`), &null), "null input must not error")
+	assert.Empty(t, null, "null input should unmarshal to an empty slice, not a slice holding a nil element")
+
 	var bad PriceChanges
 	assert.Error(t, json.Unmarshal([]byte(`"not an object"`), &bad), "invalid input should error")
 }
@@ -61,37 +65,21 @@ func TestWsOrderbookTickers_UnmarshalJSON(t *testing.T) {
 	assert.Error(t, json.Unmarshal([]byte(`false`), &bad), "invalid input should error")
 }
 
-func TestPriceChangesWrapper_UnmarshalJSON(t *testing.T) {
-	t.Parallel()
-	var single PriceChangesWrapper
-	require.NoError(t, json.Unmarshal([]byte(`{"symbol":"BTCUSDT","lastPrice":"100.5"}`), &single))
-	require.Len(t, single, 1, "single object input must unmarshal to one element")
-	assert.Equal(t, "BTCUSDT", single[0].Symbol, "symbol should match")
-
-	var arr PriceChangesWrapper
-	require.NoError(t, json.Unmarshal([]byte(`[{"symbol":"BTCUSDT","lastPrice":"100.5"},{"symbol":"ETHUSDT","lastPrice":"50.25"}]`), &arr))
-	require.Len(t, arr, 2, "array input must unmarshal to two elements")
-	assert.Equal(t, "ETHUSDT", arr[1].Symbol, "second symbol should match")
-
-	var bad PriceChangesWrapper
-	assert.Error(t, json.Unmarshal([]byte(`"oops"`), &bad), "invalid input should error")
-}
-
 func TestWsOptionIncomingResps_UnmarshalJSON(t *testing.T) {
 	t.Parallel()
-	var arr WsOptionIncomingResps
+	var arr WsOptionIncomingResponses
 	require.NoError(t, json.Unmarshal([]byte(`[{"id":1,"e":"depth"},{"id":2,"e":"ticker"}]`), &arr))
 	require.Len(t, arr.Instances, 2, "array input must unmarshal to two instances")
 	assert.True(t, arr.IsSlice, "IsSlice should be true for array input")
 	assert.Equal(t, int64(2), arr.Instances[1].ID, "second instance id should match")
 
-	var single WsOptionIncomingResps
+	var single WsOptionIncomingResponses
 	require.NoError(t, json.Unmarshal([]byte(`{"id":1,"e":"depth"}`), &single))
 	require.Len(t, single.Instances, 1, "single object input must unmarshal to one instance")
 	assert.False(t, single.IsSlice, "IsSlice should be false for single object input")
 	assert.Equal(t, "depth", single.Instances[0].EventType, "event type should match")
 
-	var bad WsOptionIncomingResps
+	var bad WsOptionIncomingResponses
 	assert.Error(t, json.Unmarshal([]byte(`"oops"`), &bad), "invalid input should error")
 }
 

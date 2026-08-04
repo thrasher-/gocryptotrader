@@ -31,16 +31,10 @@ const (
 // Binance Spot rate limits
 const (
 	spotDefaultRate request.EndpointLimit = iota
-	aggTradesRate
-	listenKeyRate
 	sapiDefaultRate
-	getV3SubAccountAssetsRate
 	allCoinInfoRate
 	dailyAccountSnapshotRate
-	fundWithdrawalRate
-	withdrawalHistoryRate
 	spotExchangeInfo
-	spotHistoricalTradesRate
 	spotOrderbookDepth500Rate
 	spotOrderbookDepth100Rate
 	spotOrderbookDepth1000Rate
@@ -49,9 +43,7 @@ const (
 	getOldTradeLookupRate
 	spotOrderbookTickerAllRate
 	spotBookTickerRate
-	spotSymbolPriceAllRate
 	spotSymbolPriceRate
-	getAggregateTradeListRate
 	getKlineRate
 	getCurrentAveragePriceRate
 	get24HrTickerPriceChangeStatisticsRate
@@ -73,16 +65,6 @@ const (
 	busdConvertRate
 	cloudMiningPaymentAndRefundHistoryRate
 	autoConvertingStableCoinsRate
-	getMinersListRate
-	getEarningsListRate
-	extraBonusListRate
-	getHashrateRescaleRate
-	getHashrateRescaleDetailRate
-	getHasrateRescaleRequestRate
-	cancelHashrateResaleConfigurationRate
-	statisticsListRate
-	miningAccountListRate
-	miningAccountEarningRate
 	getDepositAddressListInNetworkRate
 	getUserWalletBalanceRate
 	getUserDelegationHistoryRate
@@ -102,8 +84,6 @@ const (
 	marginAccountInformationRate
 	subAccountMarginAccountDetailRate
 	getSubAccountSummaryOfMarginAccountRate
-	getDetailSubAccountFuturesAccountRate
-	getFuturesPositionRiskOfSubAccountV1Rate
 	getFuturesSubAccountSummaryV2Rate
 	ipRestrictionForSubAccountAPIKeyRate
 	deleteIPListForSubAccountAPIKeyRate
@@ -201,9 +181,6 @@ const (
 	getVIPBorrowInterestRate
 	vipLoanInterestRateHistoryRate
 
-	fiatDepositWithdrawHistRate
-
-	getAllConvertPairsRate
 	getOrderQuantityPrecisionPerAssetRate
 	testNewOrderWithCommissionRate
 	payTradeEndpointsRate
@@ -227,11 +204,15 @@ const (
 	subscribeETHStakingRate
 
 	// Futures Algo
-	placeVPOrderRate
 	placeTWAveragePriceNewOrderRate
 
 	spotOpenOrdersSpecificRate
 	spotOrderRate
+	spotOrderAmendmentsRate
+	spotMyFiltersRate
+	spotExecutionRulesRate
+	spotReferencePriceRate
+	spotHistoricalBlockTradesRate
 	spotOrderQueryRate
 	spotAllOrdersRate
 	spotAccountInformationRate
@@ -248,8 +229,6 @@ const (
 	adjustCrossMarginMaxLeverageRate
 	uFuturesDefaultRate
 	uFuturesHistoricalTradesRate
-	uFuturesSymbolOrdersRate
-	uFuturesPairOrdersRate
 	uFuturesCurrencyForceOrdersRate
 	uFuturesAllForceOrdersRate
 	uFuturesIncomeHistoryRate
@@ -270,7 +249,13 @@ const (
 	uFuturesCountdownCancelRate
 	uFuturesBatchOrdersRate
 	uFuturesGetAllOpenOrdersRate
+	uFuturesIndexConstituentsRate
+	uFuturesDownloadLinkRate
 	cFuturesDefaultRate
+	cFuturesCommissionRateRate
+	uFuturesCommissionRateRate
+	cFuturesPositionSideDualRate
+	cFuturesLeverageBracketAllRate
 	cFuturesHistoricalTradesRate
 	cFuturesTickerPriceHistoryRate
 	cFuturesIncomeHistoryRate
@@ -293,11 +278,9 @@ const (
 	cFuturesAccountInformationRate
 	cFuturesOrderbookTickerAllRate
 	cFuturesOrdersDefaultRate
-	uFuturesMultiAssetMarginRate
-	uFuturesSetMultiAssetMarginRate
 	optionsDefaultRate
+	optionsBlockTradesRate
 	optionsRecentTradesRate
-	optionsHistoricalTradesRate
 	optionsMarkPriceRate
 	optionsAllTickerPriceStatistics
 	optionsHistoricalExerciseRecordsRate
@@ -312,7 +295,6 @@ const (
 	optionsDownloadIDForOptionTrasactionHistoryRate
 	optionsGetTransHistoryDownloadLinkByIDRate
 	optionsMarginAccountInfoRate
-	optionsAutoCancelAllOpenOrdersHeartbeatRate
 
 	// the following are portfolio margin endpoint rates
 	pmDefaultRate
@@ -328,7 +310,6 @@ const (
 	pmAllUMConditionalOrdersWithoutSymbolRate
 	pmAllCMOpenConditionalOrdersWithoutSymbolRate
 	pmAllCMConditionalOrderWithoutSymbolRate
-	pmGetMarginAccountOrderRate
 	pmCurrentMarginOpenOrderRate
 	pmAllMarginAccountOrdersRate
 	pmGetMarginAccountOCORate
@@ -360,7 +341,7 @@ const (
 	pmBNBTransferRate
 	pmGetUMIncomeHistoryRate
 	pmGetCMIncomeHistoryRate
-	pmGetUMAccountDetailRate
+	pmGetUMAccountDetailV2Rate
 	pmGetCMAccountDetailRate
 	pmChangeAutoRepayFuturesStatusRate
 	pmGetAutoRepayFuturesStatusRate
@@ -392,6 +373,95 @@ const (
 	flexibleLoanAdjustLTVRate
 	flexibleLoanAssetDataRate
 	flexibleLoanCollateralAssetRate
+
+	// Per endpoint weights, verified against the values Binance publishes.
+	cFuturesTradesRate
+	optionsAllOpenOrdersByUnderlyingRate
+	optionsBatchOrdersRate
+	optionsBlockOrderCreateRate
+	optionsBlockOrderOrdersRate
+	optionsBlockUserTradesRate
+	optionsCommissionRate
+	optionsCountdownCancelAllHeartBeatRate
+	optionsCountdownCancelAllRate
+	optionsOpenInterestRate
+	optionsOrderRate
+	pmMarginOrderDeleteRate
+	pmMarginOrderGetRate
+	pmMarginRepayDebtRate
+	pmUmAccountConfigRate
+	pmUmAlgoAllAlgoOrdersRate
+	pmUmFeeBurnRate
+	pmUmSymbolConfigRate
+	sapiAlgoFuturesNewOrderVpRate
+	sapiAssetDustConvertConvertRate
+	sapiBfusdAccountRate
+	sapiCapitalWithdrawApplyRate
+	sapiCapitalWithdrawHistoryRate
+	sapiCapitalWithdrawQuotaRate
+	sapiConvertExchangeInfoRate
+	sapiEarnArenaActivitiesRate
+	sapiFiatOrdersRate
+	sapiLoanInterestRateHistoryRate
+	sapiLoanVipFixedBorrowRate
+	sapiLoanVipFixedMarketRate
+	sapiMarginExitSpecialKeyModeRate
+	sapiMarginLiquidationLoanRepayHistoryRate
+	sapiMarginLiquidationLoanRepayRate
+	sapiMarginListScheduleRate
+	sapiMarginListenKeyDeleteRate
+	sapiMarginListenKeyRate
+	sapiMarginMyPreventedMatchesRate
+	sapiMarginOrderOtoRate
+	sapiMarginOrderOtocoRate
+	sapiMiningHashTransferConfigCancelRate
+	sapiMiningHashTransferConfigDetailsListRate
+	sapiMiningHashTransferConfigRate
+	sapiMiningHashTransferProfitDetailsRate
+	sapiMiningPaymentListRate
+	sapiMiningPaymentOtherRate
+	sapiMiningPaymentUIDRate
+	sapiMiningStatisticsUserListRate
+	sapiMiningStatisticsUserStatusRate
+	sapiMiningWorkerDetailRate
+	sapiMiningWorkerListRate
+	sapiOnchainYieldsAccountRate
+	sapiOnchainYieldsLockedListRate
+	sapiOnchainYieldsLockedPersonalLeftQuotaRate
+	sapiOnchainYieldsLockedPositionRate
+	sapiOnchainYieldsLockedRedeemRate
+	sapiOnchainYieldsLockedSetAutoSubscribeRate
+	sapiOnchainYieldsLockedSetRedeemOptionRate
+	sapiOnchainYieldsLockedSubscribeRate
+	sapiOnchainYieldsLockedSubscriptionPreviewRate
+	sapiRwusdAccountRate
+	sapiSoftStakingListRate
+	sapiSoftStakingSetRate
+	sapiSpotOpenSymbolListRate
+	sapiSubAccountSubAccountAPIPermissionRate
+	sapiSubAccountSubAccountAPIRate
+	spotAggTradesRate
+	spotOrderAmendKeepPriorityRate
+	uFuturesAccountConfigRate
+	uFuturesBalanceRate
+	uFuturesConvertAcceptQuoteRate
+	uFuturesConvertExchangeInfoRate
+	uFuturesConvertGetQuoteRate
+	uFuturesConvertOrderStatusRate
+	uFuturesFeeBurnRate
+	uFuturesFundingInfoRate
+	uFuturesMultiAssetsMarginRate
+	uFuturesPmAccountInfoRate
+	uFuturesPositionRiskRate
+	uFuturesPositionSideDualRate
+	uFuturesSymbolConfigRate
+	uFuturesTickerBookTickerRate
+	uFuturesTradesRate
+	uFuturesTradingScheduleRate
+
+	// endpointLimitSentinel must remain last. It bounds the iota block so tests can
+	// assert every declared limit has a rate limiter defined for it.
+	endpointLimitSentinel
 )
 
 // GetRateLimits returns the rate limit for the exchange
@@ -433,22 +503,21 @@ func GetRateLimits() request.RateLimitDefinitions {
 
 	return request.RateLimitDefinitions{
 		spotDefaultRate:                        request.GetRateLimiterWithWeight(spotLimiter, 1),
+		spotOrderAmendmentsRate:                request.GetRateLimiterWithWeight(spotLimiter, 4),
+		spotMyFiltersRate:                      request.GetRateLimiterWithWeight(spotLimiter, 40),
+		spotExecutionRulesRate:                 request.GetRateLimiterWithWeight(spotLimiter, 40),
+		spotReferencePriceRate:                 request.GetRateLimiterWithWeight(spotLimiter, 2),
+		spotHistoricalBlockTradesRate:          request.GetRateLimiterWithWeight(spotLimiter, 25),
 		spotBookTickerRate:                     request.GetRateLimiterWithWeight(spotLimiter, 2),
 		spotSymbolPriceRate:                    request.GetRateLimiterWithWeight(spotLimiter, 2),
-		getAggregateTradeListRate:              request.GetRateLimiterWithWeight(spotLimiter, 2),
 		getKlineRate:                           request.GetRateLimiterWithWeight(spotLimiter, 2),
 		getCurrentAveragePriceRate:             request.GetRateLimiterWithWeight(spotLimiter, 2),
 		get24HrTickerPriceChangeStatisticsRate: request.GetRateLimiterWithWeight(spotLimiter, 2),
 		getTickers20Rate:                       request.GetRateLimiterWithWeight(spotLimiter, 2),
 		queryPreventedMatchsWithRate:           request.GetRateLimiterWithWeight(spotLimiter, 2),
-		aggTradesRate:                          request.GetRateLimiterWithWeight(spotLimiter, 2),
-		listenKeyRate:                          request.GetRateLimiterWithWeight(spotLimiter, 2),
 		spotOrderbookTickerAllRate:             request.GetRateLimiterWithWeight(spotLimiter, 4),
-		spotSymbolPriceAllRate:                 request.GetRateLimiterWithWeight(spotLimiter, 4),
 		getOCOListRate:                         request.GetRateLimiterWithWeight(spotLimiter, 4),
-		spotHistoricalTradesRate:               request.GetRateLimiterWithWeight(spotLimiter, 5),
 		spotOrderbookDepth100Rate:              request.GetRateLimiterWithWeight(spotLimiter, 5),
-		getHashrateRescaleRate:                 request.GetRateLimiterWithWeight(spotLimiter, 5),
 		spotOrderbookDepth500Rate:              request.GetRateLimiterWithWeight(spotLimiter, 25),
 		getRecentTradesListRate:                request.GetRateLimiterWithWeight(spotLimiter, 25),
 		getOldTradeLookupRate:                  request.GetRateLimiterWithWeight(spotLimiter, 25),
@@ -498,39 +567,128 @@ func GetRateLimits() request.RateLimitDefinitions {
 		uFuturesGetAllOrdersRate:        request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 5),
 		uFuturesCountdownCancelRate:     request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 10),
 		uFuturesCurrencyForceOrdersRate: request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 20),
-		uFuturesSymbolOrdersRate:        request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 20),
 		uFuturesIncomeHistoryRate:       request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 30),
-		uFuturesPairOrdersRate:          request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 40),
-		uFuturesGetAllOpenOrdersRate:    request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 40),
-		uFuturesAllForceOrdersRate:      request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 50),
-		cFuturesKline100Rate:            request.GetRateLimiterWithWeight(cFuturesLimiter, 1),
-		cFuturesKline500Rate:            request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
-		cFuturesOrderbookTickerAllRate:  request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
-		cFuturesKline1000Rate:           request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
-		cFuturesAccountInformationRate:  request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
-		cFuturesKlineMaxRate:            request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
-		cFuturesIndexMarkPriceRate:      request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
-		cFuturesHistoricalTradesRate:    request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
-		cFuturesCurrencyForceOrdersRate: request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
-		cFuturesTickerPriceHistoryRate:  request.GetRateLimiterWithWeight(cFuturesLimiter, 40),
-		cFuturesAllForceOrdersRate:      request.GetRateLimiterWithWeight(cFuturesLimiter, 50),
-		cFuturesOrdersDefaultRate:       request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 1),
-		cFuturesBatchOrdersRate:         request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 5),
-		cFuturesGetAllOpenOrdersRate:    request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 5),
-		cFuturesCancelAllOrdersRate:     request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 10),
-		cFuturesIncomeHistoryRate:       request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 20),
-		cFuturesSymbolOrdersRate:        request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 20),
-		cFuturesPairOrdersRate:          request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 40),
-		cFuturesOrderbook50Rate:         request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
-		cFuturesOrderbook100Rate:        request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
-		cFuturesOrderbook500Rate:        request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
-		cFuturesOrderbook1000Rate:       request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
-		cFuturesDefaultRate:             request.GetRateLimiterWithWeight(cFuturesLimiter, 1),
-		uFuturesMultiAssetMarginRate:    request.GetRateLimiterWithWeight(uFuturesLimiter, 30),
-		uFuturesSetMultiAssetMarginRate: request.GetRateLimiterWithWeight(uFuturesLimiter, 1),
+		uFuturesIndexConstituentsRate:   request.GetRateLimiterWithWeight(uFuturesLimiter, 2),
+		// Binance documents fundingInfo, options openInterest and the options order
+		// endpoint as weight 0. The request package requires a minimum of 1, so they
+		// are clamped here rather than left at a value it will reject.
+		uFuturesDownloadLinkRate:                       request.GetRateLimiterWithWeight(uFuturesLimiter, 10),
+		cFuturesTradesRate:                             request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
+		optionsAllOpenOrdersByUnderlyingRate:           request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 5),
+		optionsBatchOrdersRate:                         request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 5),
+		optionsBlockOrderCreateRate:                    request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
+		optionsBlockOrderOrdersRate:                    request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
+		optionsBlockUserTradesRate:                     request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
+		optionsCommissionRate:                          request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
+		optionsCountdownCancelAllHeartBeatRate:         request.GetRateLimiterWithWeight(eOptionsLimiter, 10),
+		optionsCountdownCancelAllRate:                  request.GetRateLimiterWithWeight(eOptionsLimiter, 1),
+		optionsOpenInterestRate:                        request.GetRateLimiterWithWeight(eOptionsLimiter, 1),
+		optionsOrderRate:                               request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 1),
+		pmMarginOrderDeleteRate:                        request.GetRateLimiterWithWeight(portfolioMarginLimiter, 2),
+		pmMarginOrderGetRate:                           request.GetRateLimiterWithWeight(portfolioMarginLimiter, 10),
+		pmMarginRepayDebtRate:                          request.GetRateLimiterWithWeight(portfolioMarginLimiter, 3000),
+		pmUmAccountConfigRate:                          request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
+		pmUmAlgoAllAlgoOrdersRate:                      request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
+		pmUmFeeBurnRate:                                request.GetRateLimiterWithWeight(portfolioMarginLimiter, 30),
+		pmUmSymbolConfigRate:                           request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
+		sapiAlgoFuturesNewOrderVpRate:                  request.GetRateLimiterWithWeight(placeVPOrderLimiter, 300),
+		sapiAssetDustConvertConvertRate:                request.GetRateLimiterWithWeight(sapiDefaultLimiter, 10),
+		sapiBfusdAccountRate:                           request.GetRateLimiterWithWeight(sapiDefaultLimiter, 150),
+		sapiCapitalWithdrawApplyRate:                   request.GetRateLimiterWithWeight(walletLimiter, 900),
+		sapiCapitalWithdrawHistoryRate:                 request.GetRateLimiterWithWeight(walletLimiter, 18000),
+		sapiCapitalWithdrawQuotaRate:                   request.GetRateLimiterWithWeight(sapiDefaultLimiter, 10),
+		sapiConvertExchangeInfoRate:                    request.GetRateLimiterWithWeight(convertLimiter, 3000),
+		sapiEarnArenaActivitiesRate:                    request.GetRateLimiterWithWeight(sapiDefaultLimiter, 150),
+		sapiFiatOrdersRate:                             request.GetRateLimiterWithWeight(fiatDepositWithdrawHistLimiter, 45000),
+		sapiLoanInterestRateHistoryRate:                request.GetRateLimiterWithWeight(sapiDefaultLimiter, 400),
+		sapiLoanVipFixedBorrowRate:                     request.GetRateLimiterWithWeight(sapiDefaultLimiter, 6000),
+		sapiLoanVipFixedMarketRate:                     request.GetRateLimiterWithWeight(sapiDefaultLimiter, 6000),
+		sapiMarginExitSpecialKeyModeRate:               request.GetRateLimiterWithWeight(sapiDefaultLimiter, 10),
+		sapiMarginLiquidationLoanRepayHistoryRate:      request.GetRateLimiterWithWeight(sapiDefaultLimiter, 100),
+		sapiMarginLiquidationLoanRepayRate:             request.GetRateLimiterWithWeight(sapiDefaultLimiter, 100),
+		sapiMarginListScheduleRate:                     request.GetRateLimiterWithWeight(sapiDefaultLimiter, 100),
+		sapiMarginListenKeyDeleteRate:                  request.GetRateLimiterWithWeight(sapiDefaultLimiter, 3000),
+		sapiMarginListenKeyRate:                        request.GetRateLimiterWithWeight(sapiDefaultLimiter, 1),
+		sapiMarginMyPreventedMatchesRate:               request.GetRateLimiterWithWeight(sapiDefaultLimiter, 10),
+		sapiMarginOrderOtoRate:                         request.GetRateLimiterWithWeight(sapiDefaultLimiter, 6),
+		sapiMarginOrderOtocoRate:                       request.GetRateLimiterWithWeight(sapiDefaultLimiter, 6),
+		sapiMiningHashTransferConfigCancelRate:         request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningHashTransferConfigDetailsListRate:    request.GetRateLimiterWithWeight(spotLimiter, 1),
+		sapiMiningHashTransferConfigRate:               request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningHashTransferProfitDetailsRate:        request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningPaymentListRate:                      request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningPaymentOtherRate:                     request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningPaymentUIDRate:                       request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningStatisticsUserListRate:               request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningStatisticsUserStatusRate:             request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningWorkerDetailRate:                     request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiMiningWorkerListRate:                       request.GetRateLimiterWithWeight(miningLimiter, 1),
+		sapiOnchainYieldsAccountRate:                   request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedListRate:                request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedPersonalLeftQuotaRate:   request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedPositionRate:            request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedRedeemRate:              request.GetRateLimiterWithWeight(sapiDefaultLimiter, 200),
+		sapiOnchainYieldsLockedSetAutoSubscribeRate:    request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedSetRedeemOptionRate:     request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiOnchainYieldsLockedSubscribeRate:           request.GetRateLimiterWithWeight(sapiDefaultLimiter, 200),
+		sapiOnchainYieldsLockedSubscriptionPreviewRate: request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiRwusdAccountRate:                           request.GetRateLimiterWithWeight(sapiDefaultLimiter, 150),
+		sapiSoftStakingListRate:                        request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiSoftStakingSetRate:                         request.GetRateLimiterWithWeight(sapiDefaultLimiter, 50),
+		sapiSpotOpenSymbolListRate:                     request.GetRateLimiterWithWeight(sapiDefaultLimiter, 100),
+		sapiSubAccountSubAccountAPIPermissionRate:      request.GetRateLimiterWithWeight(sapiDefaultLimiter, 3000),
+		sapiSubAccountSubAccountAPIRate:                request.GetRateLimiterWithWeight(sapiDefaultLimiter, 3000),
+		spotAggTradesRate:                              request.GetRateLimiterWithWeight(spotLimiter, 4),
+		spotOrderAmendKeepPriorityRate:                 request.GetRateLimiterWithWeight(spotOrdersLimiter, 4),
+		uFuturesAccountConfigRate:                      request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 5),
+		uFuturesBalanceRate:                            request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 5),
+		uFuturesConvertAcceptQuoteRate:                 request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 200),
+		uFuturesConvertExchangeInfoRate:                request.GetRateLimiterWithWeight(uFuturesLimiter, 20),
+		uFuturesConvertGetQuoteRate:                    request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 50),
+		uFuturesConvertOrderStatusRate:                 request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 50),
+		uFuturesFeeBurnRate:                            request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 30),
+		uFuturesFundingInfoRate:                        request.GetRateLimiterWithWeight(uFuturesLimiter, 1),
+		uFuturesMultiAssetsMarginRate:                  request.GetRateLimiterWithWeight(uFuturesLimiter, 30),
+		uFuturesPmAccountInfoRate:                      request.GetRateLimiterWithWeight(uFuturesLimiter, 5),
+		uFuturesPositionRiskRate:                       request.GetRateLimiterWithWeight(uFuturesLimiter, 5),
+		uFuturesPositionSideDualRate:                   request.GetRateLimiterWithWeight(uFuturesLimiter, 30),
+		uFuturesSymbolConfigRate:                       request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 5),
+		uFuturesTickerBookTickerRate:                   request.GetRateLimiterWithWeight(uFuturesLimiter, 2),
+		uFuturesTradesRate:                             request.GetRateLimiterWithWeight(uFuturesLimiter, 5),
+		uFuturesTradingScheduleRate:                    request.GetRateLimiterWithWeight(uFuturesLimiter, 5),
+		uFuturesGetAllOpenOrdersRate:                   request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 40),
+		uFuturesAllForceOrdersRate:                     request.GetRateLimiterWithWeight(uFuturesOrdersLimiter, 50),
+		cFuturesKline100Rate:                           request.GetRateLimiterWithWeight(cFuturesLimiter, 1),
+		cFuturesKline500Rate:                           request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
+		cFuturesOrderbookTickerAllRate:                 request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
+		cFuturesKline1000Rate:                          request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
+		cFuturesAccountInformationRate:                 request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
+		cFuturesKlineMaxRate:                           request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
+		cFuturesIndexMarkPriceRate:                     request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
+		cFuturesHistoricalTradesRate:                   request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
+		cFuturesCurrencyForceOrdersRate:                request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
+		cFuturesTickerPriceHistoryRate:                 request.GetRateLimiterWithWeight(cFuturesLimiter, 40),
+		cFuturesAllForceOrdersRate:                     request.GetRateLimiterWithWeight(cFuturesLimiter, 50),
+		cFuturesOrdersDefaultRate:                      request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 1),
+		cFuturesBatchOrdersRate:                        request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 5),
+		cFuturesGetAllOpenOrdersRate:                   request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 5),
+		cFuturesCancelAllOrdersRate:                    request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 10),
+		cFuturesIncomeHistoryRate:                      request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 20),
+		cFuturesSymbolOrdersRate:                       request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 20),
+		cFuturesPairOrdersRate:                         request.GetRateLimiterWithWeight(cFuturesOrdersLimiter, 40),
+		cFuturesOrderbook50Rate:                        request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
+		cFuturesOrderbook100Rate:                       request.GetRateLimiterWithWeight(cFuturesLimiter, 5),
+		cFuturesOrderbook500Rate:                       request.GetRateLimiterWithWeight(cFuturesLimiter, 10),
+		cFuturesOrderbook1000Rate:                      request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
+		cFuturesDefaultRate:                            request.GetRateLimiterWithWeight(cFuturesLimiter, 1),
+		cFuturesCommissionRateRate:                     request.GetRateLimiterWithWeight(cFuturesLimiter, 20),
+		uFuturesCommissionRateRate:                     request.GetRateLimiterWithWeight(uFuturesLimiter, 20),
+		cFuturesPositionSideDualRate:                   request.GetRateLimiterWithWeight(cFuturesLimiter, 30),
+		cFuturesLeverageBracketAllRate:                 request.GetRateLimiterWithWeight(cFuturesLimiter, 2),
 
 		// Options Rate Limits
 		optionsDefaultRate:                                     request.GetRateLimiterWithWeight(eOptionsLimiter, 1),
+		optionsBlockTradesRate:                                 request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
 		optionsRecentTradesRate:                                request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
 		optionsMarkPriceRate:                                   request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
 		optionsAllTickerPriceStatistics:                        request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
@@ -539,7 +697,6 @@ func GetRateLimits() request.RateLimitDefinitions {
 		optionsUserExerciseRecordRate:                          request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
 		optionsDownloadIDForOptionTrasactionHistoryRate:        request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
 		optionsGetTransHistoryDownloadLinkByIDRate:             request.GetRateLimiterWithWeight(eOptionsLimiter, 5),
-		optionsHistoricalTradesRate:                            request.GetRateLimiterWithWeight(eOptionsLimiter, 20),
 		optionsHistoricalExerciseRecordsRate:                   request.GetRateLimiterWithWeight(eOptionsLimiter, 3),
 		optionsMarginAccountInfoRate:                           request.GetRateLimiterWithWeight(eOptionsLimiter, 3),
 		optionsAccountInfoRate:                                 request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 5),
@@ -547,14 +704,13 @@ func GetRateLimits() request.RateLimitDefinitions {
 		optionsDefaultOrderRate:                                request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 1),
 		optionsAllQueryOpenOrdersRate:                          request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 40),
 		optionsGetOrderHistory:                                 request.GetRateLimiterWithWeight(eOptionsOrderLimiter, 3),
-		optionsAutoCancelAllOpenOrdersHeartbeatRate:            request.GetRateLimiterWithWeight(eOptionsLimiter, 10),
 		pmDefaultRate:                                          request.GetRateLimiterWithWeight(portfolioMarginLimiter, 1),
+		pmGetUMAccountDetailV2Rate:                             request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmMarginAccountLoanAndRepayRate:                        request.GetRateLimiterWithWeight(portfolioMarginLimiter, 100),
 		pmAllMarginAccountOrdersRate:                           request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 100),
 		pmGetMarginAccountsAllOCOOrdersRate:                    request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 100),
 		pmCancelMarginAccountOpenOrdersOnSymbolRate:            request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
 		pmGetAllUMOrdersRate:                                   request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
-		pmGetMarginAccountOrderRate:                            request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
 		pmCurrentMarginOpenOrderRate:                           request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
 		pmGetMarginAccountOCORate:                              request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
 		pmGetMarginAccountsOpenOCOOrdersRate:                   request.GetRateLimiterWithWeight(portfolioMarginOrderLimiter, 5),
@@ -563,7 +719,6 @@ func GetRateLimits() request.RateLimitDefinitions {
 		pmGetMarginMaxWithdrawalRate:                           request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmGetUMPositionInformationRate:                         request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmGetUMAccountTradeListRate:                            request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
-		pmGetUMAccountDetailRate:                               request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmGetCMAccountDetailRate:                               request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmGetUMPositionADLQuantileEstimationRate:               request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
 		pmGetCMPositionADLQuantileEstimationRate:               request.GetRateLimiterWithWeight(portfolioMarginLimiter, 5),
@@ -602,8 +757,7 @@ func GetRateLimits() request.RateLimitDefinitions {
 		pmRepayFuturesNegativeBalanceRate:                      request.GetRateLimiterWithWeight(portfolioMarginLimiter, 750),
 
 		// /sapi/* endpoints
-		sapiDefaultRate:           request.GetRateLimiterWithWeight(sapiDefaultLimiter, 1),
-		getV3SubAccountAssetsRate: request.GetRateLimiterWithWeight(sapiDefaultLimiter, 60),
+		sapiDefaultRate: request.GetRateLimiterWithWeight(sapiDefaultLimiter, 1),
 
 		// Wallet Endpoints
 		userAssetsRate:                         request.GetRateLimiterWithWeight(walletLimiter, 5),
@@ -618,20 +772,16 @@ func GetRateLimits() request.RateLimitDefinitions {
 		getUserWalletBalanceRate:               request.GetRateLimiterWithWeight(walletLimiter, 60),
 		getUserDelegationHistoryRate:           request.GetRateLimiterWithWeight(walletLimiter, 60),
 		symbolDelistScheduleForSpotRate:        request.GetRateLimiterWithWeight(walletLimiter, 100),
-		fundWithdrawalRate:                     request.GetRateLimiterWithWeight(walletLimiter, 600),
 		cloudMiningPaymentAndRefundHistoryRate: request.GetRateLimiterWithWeight(walletLimiter, 600),
 		autoConvertingStableCoinsRate:          request.GetRateLimiterWithWeight(walletLimiter, 600),
 		userUniversalTransferRate:              request.GetRateLimiterWithWeight(walletLimiter, 900),
 		dailyAccountSnapshotRate:               request.GetRateLimiterWithWeight(walletLimiter, 2400),
-		withdrawalHistoryRate:                  request.GetRateLimiterWithWeight(walletLimiter, 10),
 
 		// Sub-Account Rate
 		getSubAccountStatusOnMarginOrFuturesRate: request.GetRateLimiterWithWeight(subAccountLimiter, 10),
 		marginAccountInformationRate:             request.GetRateLimiterWithWeight(subAccountLimiter, 10),
 		subAccountMarginAccountDetailRate:        request.GetRateLimiterWithWeight(subAccountLimiter, 10),
 		getSubAccountSummaryOfMarginAccountRate:  request.GetRateLimiterWithWeight(subAccountLimiter, 10),
-		getDetailSubAccountFuturesAccountRate:    request.GetRateLimiterWithWeight(subAccountLimiter, 10),
-		getFuturesPositionRiskOfSubAccountV1Rate: request.GetRateLimiterWithWeight(subAccountLimiter, 10),
 		getFuturesSubAccountSummaryV2Rate:        request.GetRateLimiterWithWeight(subAccountLimiter, 10),
 		getSubAccountAssetRate:                   request.GetRateLimiterWithWeight(subAccountLimiter, 60),
 		managedSubAccountTransferLogRate:         request.GetRateLimiterWithWeight(subAccountLimiter, 60),
@@ -650,7 +800,6 @@ func GetRateLimits() request.RateLimitDefinitions {
 		spotRebateHistoryRate: request.GetRateLimiterWithWeight(spotRebateHistoryLimiter, 12000),
 
 		// Convert Rate
-		getAllConvertPairsRate:                request.GetRateLimiterWithWeight(convertLimiter, 20),
 		getOrderQuantityPrecisionPerAssetRate: request.GetRateLimiterWithWeight(convertLimiter, 100),
 		orderStatusRate:                       request.GetRateLimiterWithWeight(convertLimiter, 100),
 		sendQuoteRequestRate:                  request.GetRateLimiterWithWeight(convertLimiter, 200),
@@ -662,8 +811,6 @@ func GetRateLimits() request.RateLimitDefinitions {
 
 		// Pay Endpoints
 		payTradeEndpointsRate: request.GetRateLimiterWithWeight(payTradeEndpointsLimiter, 3000),
-
-		fiatDepositWithdrawHistRate: request.GetRateLimiterWithWeight(fiatDepositWithdrawHistLimiter, 90000),
 
 		// VIP Endpoints
 		getVIPLoanOngoingOrdersRate:              request.GetRateLimiterWithWeight(vipLoanEndpointsLimiter, 400),
@@ -696,19 +843,9 @@ func GetRateLimits() request.RateLimitDefinitions {
 		spotTwapNewOrderRate: request.GetRateLimiterWithWeight(spotAlgoLimiter, 3000),
 
 		// Futures-Algo Endpoints
-		placeVPOrderRate:                request.GetRateLimiterWithWeight(placeVPOrderLimiter, 3000),
 		placeTWAveragePriceNewOrderRate: request.GetRateLimiterWithWeight(placeVPOrderLimiter, 3000),
 
 		// Mining Endpoints
-		getMinersListRate:                     request.GetRateLimiterWithWeight(miningLimiter, 5),
-		getEarningsListRate:                   request.GetRateLimiterWithWeight(miningLimiter, 5),
-		extraBonusListRate:                    request.GetRateLimiterWithWeight(miningLimiter, 5),
-		getHashrateRescaleDetailRate:          request.GetRateLimiterWithWeight(miningLimiter, 5),
-		getHasrateRescaleRequestRate:          request.GetRateLimiterWithWeight(miningLimiter, 5),
-		cancelHashrateResaleConfigurationRate: request.GetRateLimiterWithWeight(miningLimiter, 5),
-		statisticsListRate:                    request.GetRateLimiterWithWeight(miningLimiter, 5),
-		miningAccountListRate:                 request.GetRateLimiterWithWeight(miningLimiter, 5),
-		miningAccountEarningRate:              request.GetRateLimiterWithWeight(miningLimiter, 5),
 
 		// Staking Endpoints
 		subscribeETHStakingRate:           request.GetRateLimiterWithWeight(stakingLimiter, 150),
@@ -787,9 +924,9 @@ func GetRateLimits() request.RateLimitDefinitions {
 		marginTokensAndSymbolsDelistScheduleRate: request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 100),
 		marginAccountsAllOrdersRate:              request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 200),
 		getMarginAccountAllOCORate:               request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 200),
-		deleteIsolatedMarginAccountRate:          request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 3000),
+		deleteIsolatedMarginAccountRate:          request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 300),
 		enableIsolatedMarginAccountRate:          request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 300),
-		marginAccountBorrowRepayRate:             request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 3000),
+		marginAccountBorrowRepayRate:             request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 1500),
 		adjustCrossMarginMaxLeverageRate:         request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 3000),
 		smallLiabilityExchangeCoinListRate:       request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 3000),
 		marginManualLiquidiationRate:             request.GetRateLimiterWithWeight(marginAccountTradeLimiter, 3000),

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/buger/jsonparser"
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
@@ -68,18 +69,21 @@ func (e *Exchange) WsUFuturesConnect(ctx context.Context, conn websocket.Connect
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if conn.GetURL() == fstreamPrivateURL {
-		listenKey, err = e.GetWsAuthStreamKey(context.TODO())
+		// The USD-M user data stream requires its own listen key from /fapi/v1/listenKey;
+		// the spot key is not valid here. The stream is addressed at /ws/<listenKey> and
+		// carries every user data event, so no event filter is applied.
+		resp, keyErr := e.CreateUFuturesListenKey(ctx)
 		switch {
-		case err != nil:
+		case keyErr != nil:
 			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, err)
+			log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, keyErr)
 		default:
-			conn.SetURL(fmt.Sprintf(conn.GetURL()+"/stream?listenKey=%s&events=%s", listenKey, "ORDER_TRADE_UPDATE/ACCOUNT_UPDATE"))
+			e.setListenKey(asset.USDTMarginedFutures, resp.ListenKey)
+			conn.SetURL(conn.GetURL() + "/ws/" + resp.ListenKey)
 		}
 	}
-	err = conn.Dial(ctx, &dialer, http.Header{}, nil)
-	if err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
+	if err := conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
+		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
 	}
 	conn.SetupPingHandler(request.UnAuth, websocket.PingHandler{
 		UseGorillaHandler: true,
@@ -100,6 +104,12 @@ func (e *Exchange) wsHandleFuturesData(ctx context.Context, conn websocket.Conne
 		return err
 	}
 	if result.Stream == "" || (result.ID != 0 && result.Result != nil) {
+		// The user data stream is served at /ws/<listenKey> and delivers the event object
+		// directly, with no "stream" wrapper; only market streams carry one. Route on the
+		// event type field so these are not mistaken for unmatched request responses.
+		if eventType, err := jsonparser.GetUnsafeString(respRaw, "e"); err == nil {
+			return e.wsHandleFuturesUserData(ctx, eventType, respRaw)
+		}
 		return conn.RequireMatchWithData(result.ID, respRaw)
 	}
 	var stream string
@@ -110,8 +120,6 @@ func (e *Exchange) wsHandleFuturesData(ctx context.Context, conn websocket.Conne
 		stream = extractStreamInfo(result.Stream)
 	}
 	switch stream {
-	case "ACCOUNT_UPDATE":
-		return e.processBalanceAndPositionUpdate(ctx, result.Data, asset.USDTMarginedFutures)
 	case assetIndexAllChan, "assetIndex":
 		return e.processMultiAssetModeAssetIndexes(ctx, result.Data, true)
 	case contractInfoAllChan:
@@ -142,6 +150,91 @@ func (e *Exchange) wsHandleFuturesData(ctx context.Context, conn websocket.Conne
 		return e.processContinuousKlineUpdate(ctx, result.Data, asset.USDTMarginedFutures)
 	}
 	return fmt.Errorf("unhandled stream data %s", string(respRaw))
+}
+
+// wsHandleFuturesUserData routes USD-M user data stream events. These arrive on the
+// authenticated /ws/<listenKey> connection as bare event objects.
+func (e *Exchange) wsHandleFuturesUserData(ctx context.Context, eventType string, respRaw []byte) error {
+	switch eventType {
+	case "ACCOUNT_UPDATE":
+		return e.processBalanceAndPositionUpdate(ctx, respRaw, asset.USDTMarginedFutures)
+	case "ORDER_TRADE_UPDATE":
+		return e.processFuturesOrderTradeUpdate(ctx, respRaw, asset.USDTMarginedFutures)
+	case "ACCOUNT_CONFIG_UPDATE":
+		var resp *FuturesAccountConfigUpdate
+		if err := json.Unmarshal(respRaw, &resp); err != nil {
+			return err
+		}
+		return e.Websocket.DataHandler.Send(ctx, resp)
+	case "listenKeyExpired":
+		var resp *FuturesListenKeyExpired
+		if err := json.Unmarshal(respRaw, &resp); err != nil {
+			return err
+		}
+		log.Warnf(log.ExchangeSys, "%s USD-M futures listen key expired; no further user data will arrive until it is renewed", e.Name)
+		return e.Websocket.DataHandler.Send(ctx, resp)
+	case "MARGIN_CALL", "TRADE_LITE", "STRATEGY_UPDATE", "GRID_UPDATE", "ALGO_UPDATE", "CONDITIONAL_ORDER_TRIGGER_REJECT":
+		// Surfaced untyped: these payloads are only published as rendered schema embeds in
+		// the current docs, so their field names could not be verified for a typed struct.
+		return e.Websocket.DataHandler.Send(ctx, json.RawMessage(respRaw))
+	default:
+		return fmt.Errorf("%s %s %s", e.Name, websocket.UnhandledMessage, string(respRaw))
+	}
+}
+
+// processFuturesOrderTradeUpdate converts an ORDER_TRADE_UPDATE event into an order detail.
+func (e *Exchange) processFuturesOrderTradeUpdate(ctx context.Context, respRaw []byte, assetType asset.Item) error {
+	var resp *FuturesOrderTradeUpdate
+	if err := json.Unmarshal(respRaw, &resp); err != nil {
+		return err
+	}
+	if resp.Order == nil {
+		return nil
+	}
+	o := resp.Order
+	status, err := stringToOrderStatus(o.OrderStatus)
+	if err != nil {
+		return err
+	}
+	side, err := order.StringToOrderSide(o.Side)
+	if err != nil {
+		return e.Websocket.DataHandler.Send(ctx, order.ClassificationError{
+			Exchange: e.Name,
+			OrderID:  strconv.FormatUint(o.OrderID, 10),
+			Err:      err,
+		})
+	}
+	oType, err := order.StringToOrderType(o.OrderType)
+	if err != nil {
+		return err
+	}
+	// Binance sends delimiter-less symbols, which currency.Pair cannot parse unaided.
+	pair, err := e.MatchSymbolWithAvailablePairs(o.Symbol, assetType, false)
+	if err != nil {
+		return err
+	}
+	return e.Websocket.DataHandler.Send(ctx, &order.Detail{
+		Exchange:             e.Name,
+		OrderID:              strconv.FormatUint(o.OrderID, 10),
+		ClientOrderID:        o.ClientOrderID,
+		Pair:                 pair,
+		AssetType:            assetType,
+		Side:                 side,
+		Type:                 oType,
+		Status:               status,
+		TimeInForce:          o.TimeInForce,
+		Price:                o.OriginalPrice.Float64(),
+		Amount:               o.OriginalQuantity.Float64(),
+		AverageExecutedPrice: o.AveragePrice.Float64(),
+		ExecutedAmount:       o.FilledAccumulatedQuantity.Float64(),
+		RemainingAmount:      o.OriginalQuantity.Float64() - o.FilledAccumulatedQuantity.Float64(),
+		Fee:                  o.Commission.Float64(),
+		FeeAsset:             o.CommissionAsset,
+		TriggerPrice:         o.StopPrice.Float64(),
+		ReduceOnly:           o.IsReduceOnly,
+		Date:                 resp.EventTime.Time(),
+		LastUpdated:          o.OrderTradeTime.Time(),
+	})
 }
 
 func (e *Exchange) processBalanceAndPositionUpdate(ctx context.Context, respRaw []byte, assetType asset.Item) error {
@@ -276,7 +369,7 @@ func (e *Exchange) processAggregateTrade(ctx context.Context, respRaw []byte, as
 	}
 	return e.Websocket.DataHandler.Send(ctx, []trade.Data{
 		{
-			TID:          strconv.FormatInt(resp.AggregateTradeID, 10),
+			TID:          strconv.FormatUint(resp.AggregateTradeID, 10),
 			Exchange:     e.Name,
 			CurrencyPair: cp,
 			AssetType:    assetType,
@@ -302,6 +395,14 @@ func extractStreamInfo(resultStream string) string {
 			return "depth"
 		case strings.HasPrefix(splitStream[1], "continuousKline"):
 			return "continuousKline"
+		// The interval-suffixed kline streams normalise to their base name so that
+		// handlers can match them; without this they fall through unrecognised.
+		case strings.HasPrefix(splitStream[1], "indexPriceKline"):
+			return "indexPriceKline"
+		case strings.HasPrefix(splitStream[1], "markPriceKline"):
+			return "markPriceKline"
+		case strings.HasPrefix(splitStream[1], "kline"):
+			return "kline"
 		case strings.HasPrefix(splitStream[0], "!markPrice"):
 			return "!markPrice@arr"
 		}
@@ -436,11 +537,11 @@ func (e *Exchange) processBookTicker(respRaw []byte, assetType asset.Item) error
 		bookTickerSymbolsMap[strings.ToUpper(resp.Symbol)] = struct{}{}
 		return e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
 			Bids: orderbook.Levels{{
-				Amount: resp.BestBidQty.Float64(),
+				Amount: resp.BestBidQuantity.Float64(),
 				Price:  resp.BestBidPrice.Float64(),
 			}},
 			Asks: []orderbook.Level{{
-				Amount: resp.BestAskQty.Float64(),
+				Amount: resp.BestAskQuantity.Float64(),
 				Price:  resp.BestAskPrice.Float64(),
 			}},
 			Pair:         cp,
@@ -456,11 +557,11 @@ func (e *Exchange) processBookTicker(respRaw []byte, assetType asset.Item) error
 		Asset:      assetType,
 		Action:     orderbook.UpdateAction,
 		Bids: []orderbook.Level{{
-			Amount: resp.BestBidQty.Float64(),
+			Amount: resp.BestBidQuantity.Float64(),
 			Price:  resp.BestBidPrice.Float64(),
 		}},
 		Asks: []orderbook.Level{{
-			Amount: resp.BestAskQty.Float64(),
+			Amount: resp.BestAskQuantity.Float64(),
 			Price:  resp.BestAskPrice.Float64(),
 		}},
 		Pair: cp,
@@ -592,8 +693,9 @@ func (e *Exchange) GenerateUFuturesDefaultSubscriptions(messageFilter string) (s
 	if err != nil {
 		return nil, err
 	}
-	if len(pairs) > 4 {
-		pairs = pairs[:3]
+	if len(pairs) > maxDefaultSubscriptionPairs {
+		log.Warnf(log.ExchangeSys, "%s limiting default subscriptions to %d of %d tradable pairs", e.Name, maxDefaultSubscriptionPairs, len(pairs))
+		pairs = pairs[:maxDefaultSubscriptionPairs]
 	}
 	var channels []string
 	for _, ch := range defaultSubscriptions {

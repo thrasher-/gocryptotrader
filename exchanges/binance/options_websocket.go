@@ -2,7 +2,6 @@ package binance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -67,18 +66,18 @@ func (e *Exchange) WsOptionsConnect(ctx context.Context, conn websocket.Connecti
 		Proxy:            http.ProxyFromEnvironment,
 	}
 	if conn.GetURL() == fstreamOptionsPrivateURL && e.Websocket.CanUseAuthenticatedEndpoints() && e.CanUseAuthenticatedWebsocketEndpoints() {
-		listenKey, err = e.GetEOptionsWsAuthStreamKey(ctx)
+		key, keyErr := e.GetEOptionsWsAuthStreamKey(ctx)
 		switch {
-		case err != nil:
+		case keyErr != nil:
 			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, err)
+			log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, keyErr)
 		default:
-			conn.SetURL(fstreamOptionsPrivateURL + "/ws/" + listenKey)
+			e.setListenKey(asset.Options, key)
+			conn.SetURL(fstreamOptionsPrivateURL + "/ws/" + key)
 		}
 	}
-	err = conn.Dial(ctx, &dialer, http.Header{}, nil)
-	if err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
+	if err := conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
+		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
 	}
 
 	conn.SetupPingHandler(request.UnAuth, websocket.PingHandler{
@@ -93,7 +92,7 @@ func (e *Exchange) handleEOptionsSubscriptions(ctx context.Context, conn websock
 	if len(subscs) == 0 {
 		return common.ErrEmptyParams
 	}
-	params := &EOptionSubscriptionParam{
+	params := &EOptionSubscriptionRequest{
 		Method: operation,
 		Params: make([]string, 0, len(subscs)),
 		ID:     e.MessageSequence(),
@@ -129,15 +128,25 @@ func (e *Exchange) handleEOptionsSubscriptions(ctx context.Context, conn websock
 					expirationTime = time.Now().Add(time.Hour * 24 * 5)
 				}
 			}
-			expirationTimeString := fmt.Sprintf("%2d%2d%2d", expirationTime.Year(), expirationTime.Month(), expirationTime.Day())
+			expirationTimeString := expirationTime.Format("060102")
 			for p := range subscs[s].Pairs {
 				params.Params = append(params.Params, subscs[s].Pairs[p].String()+subscs[s].Channel+expirationTimeString)
 			}
 		case cnlDepth:
-			level, okay := subscs[s].Params["level"].(string)
-			if !okay {
-				// deefault level set to 50
-				level = "10"
+			// The level may be configured as either a number or a string, so accept
+			// both rather than silently falling back to the smallest book.
+			level := "10"
+			switch v := subscs[s].Params["level"].(type) {
+			case string:
+				if v != "" {
+					level = v
+				}
+			case int:
+				level = strconv.Itoa(v)
+			case int64:
+				level = strconv.FormatInt(v, 10)
+			case float64:
+				level = strconv.FormatInt(int64(v), 10)
 			}
 			var intervalString string
 			if subscs[s].Interval != kline.Interval(0) {
@@ -149,7 +158,7 @@ func (e *Exchange) handleEOptionsSubscriptions(ctx context.Context, conn websock
 		case cnlOptionPair:
 			params.Params = append(params.Params, subscs[s].Channel)
 		default:
-			return errors.New("unsupported channel")
+			return errUnsupportedChannel
 		}
 	}
 
@@ -164,9 +173,7 @@ func (e *Exchange) handleEOptionsSubscriptions(ctx context.Context, conn websock
 		return fmt.Errorf("err: code: %d, msg: %s", resp.Error.Code, resp.Error.Message)
 	}
 	if operation == "SUBSCRIBE" {
-		if err := e.Websocket.AddSuccessfulSubscriptions(conn, subscs...); err != nil {
-			return err
-		}
+		return e.Websocket.AddSuccessfulSubscriptions(conn, subscs...)
 	}
 	return e.Websocket.RemoveSubscriptions(conn, subscs...)
 }
@@ -188,8 +195,9 @@ func (e *Exchange) GenerateEOptionsDefaultSubscriptions(filter string) (subscrip
 	if err != nil {
 		return nil, err
 	}
-	if len(pairs) > 4 {
-		pairs = pairs[:3]
+	if len(pairs) > maxDefaultSubscriptionPairs {
+		log.Warnf(log.ExchangeSys, "%s limiting default subscriptions to %d of %d tradable pairs", e.Name, maxDefaultSubscriptionPairs, len(pairs))
+		pairs = pairs[:maxDefaultSubscriptionPairs]
 	}
 	var channels []string
 	for _, ch := range defaultEOptionsSubscriptions {
@@ -204,7 +212,8 @@ func (e *Exchange) GenerateEOptionsDefaultSubscriptions(filter string) (subscrip
 			case cnlOptionSymbol, cnlMarkPrice, cnlIndex, cnlOptionPair, cnlOpenInterest:
 				channels = append(channels, ch)
 			}
-		case usdtmPrivateFilter:
+		case optionsPrivateFilter:
+			// The private connection carries user data events only; it takes no subscriptions.
 			return subscription.List{}, nil
 		}
 	}
@@ -248,7 +257,7 @@ func (e *Exchange) GenerateEOptionsDefaultSubscriptions(filter string) (subscrip
 				Channel: cnlOptionPair,
 			})
 		default:
-			return nil, errors.New("unsupported subscription")
+			return nil, errUnsupportedSubscription
 		}
 	}
 	return subscriptions, nil
@@ -285,15 +294,15 @@ func (e *Exchange) GetEOptionsWsAuthStreamKey(ctx context.Context) (string, erro
 }
 
 func (e *Exchange) wsHandleEOptionsData(ctx context.Context, conn websocket.Connection, respRaw []byte) error {
-	var result WsOptionIncomingResps
+	var result WsOptionIncomingResponses
 	if err := json.Unmarshal(respRaw, &result); err != nil {
 		return err
 	}
+	if len(result.Instances) == 0 {
+		return errEmptyWebsocketResponse
+	}
 	if result.Instances[0].EventType == "" || (result.Instances[0].ID != 0 && result.Instances[0].Result != nil) {
 		return conn.RequireMatchWithData(result.Instances[0].ID, respRaw)
-	}
-	if len(result.Instances) == 0 {
-		return errors.New("empty options websocket response instances")
 	}
 	switch result.Instances[0].Stream {
 	case cnlTrade:
@@ -321,9 +330,6 @@ func (e *Exchange) wsHandleEOptionsData(ctx context.Context, conn websocket.Conn
 	}
 }
 
-// orderbookSnapshotLoadedPairsMap used for validation of whether the symbol has snapshot orderbook data in the buffer or not.
-var orderbookSnapshotLoadedPairsMap = map[string]bool{}
-
 func (e *Exchange) processOptionsOrderbook(data []byte) error {
 	var resp WsOptionsOrderbook
 	if err := json.Unmarshal(data, &resp); err != nil {
@@ -336,25 +342,16 @@ func (e *Exchange) processOptionsOrderbook(data []byte) error {
 	if len(resp.Asks) == 0 && len(resp.Bids) == 0 {
 		return nil
 	}
-	okay := orderbookSnapshotLoadedPairsMap[resp.OptionSymbol]
-	if !okay {
-		return e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
-			Pair:         pair,
-			Exchange:     e.Name,
-			Asset:        asset.Options,
-			LastUpdated:  resp.TransactionTime.Time(),
-			LastUpdateID: resp.UpdateID,
-			Asks:         resp.Asks.Levels(),
-			Bids:         resp.Bids.Levels(),
-		})
-	}
-	return e.Websocket.Orderbook.Update(&orderbook.Update{
-		Pair:       pair,
-		Asks:       resp.Asks.Levels(),
-		Bids:       resp.Bids.Levels(),
-		Asset:      asset.Options,
-		UpdateID:   resp.UpdateID,
-		UpdateTime: resp.TransactionTime.Time(),
+	// This is a partial book depth stream: each message carries the top N levels in
+	// full, so it is loaded as a snapshot rather than applied as an incremental update.
+	return e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
+		Pair:         pair,
+		Exchange:     e.Name,
+		Asset:        asset.Options,
+		LastUpdated:  resp.TransactionTime.Time(),
+		LastUpdateID: resp.UpdateID,
+		Asks:         resp.Asks.Levels(),
+		Bids:         resp.Bids.Levels(),
 	})
 }
 

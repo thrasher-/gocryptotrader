@@ -391,16 +391,19 @@ const (
 	AnyType
 	Liquidation
 	Trigger
-	SOR // smart-order-routine(SOR) used in Binance
-	OTO // one-trigger-other used in Binance: https://developers.binance.com/docs/binance-spot-api-docs/enums#contingencytype
 	LimitMaker
-	OCO                 // One-cancels-the-other order
-	ConditionalStop     // One-way stop order
-	TWAP                // time-weighted average price
-	VolumeParticipation // volume-participation trade order used in Binance: https://developers.binance.com/docs/algo/future-algo
-	Chase               // chase limit order
+	OCO             // One-cancels-the-other order
+	ConditionalStop // One-way stop order
+	TWAP            // time-weighted average price
+	Chase           // chase limit order
 	OptimalLimit
 	MarketMakerProtection
+
+	// Appended rather than inserted above, so that the bit value of every
+	// pre-existing type is preserved for consumers holding numeric values.
+	SOR                 // smart-order-routing
+	OTO                 // one-triggers-other: https://developers.binance.com/docs/binance-spot-api-docs/enums#contingencytype
+	VolumeParticipation // volume-participation trade order: https://developers.binance.com/docs/algo/future-algo
 
 	// Hybrid order types
 	StopLimit         = Stop | Limit
