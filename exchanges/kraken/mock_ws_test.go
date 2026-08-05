@@ -1,7 +1,6 @@
 package kraken
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -13,64 +12,106 @@ import (
 
 func mockWsServer(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	event, err := jsonparser.GetUnsafeString(msg, "event")
+	method, err := jsonparser.GetUnsafeString(msg, "method")
 	if err != nil {
 		return err
 	}
-	switch event {
-	case krakenWsCancelOrder:
+	switch method {
+	case wsCancelOrder:
 		return mockWsCancelOrders(tb, msg, w)
-	case krakenWsAddOrder:
+	case wsAddOrder:
 		return mockWsAddOrder(tb, msg, w)
+	case wsCancelAll:
+		return mockWsCancelAllOrders(tb, msg, w)
 	}
 	return nil
 }
 
-func mockWsCancelOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
+func mockWsCancelAllOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	var req WsCancelOrderRequest
+	var req WebsocketRequest[WebsocketCancelAllParams]
 	if err := json.Unmarshal(msg, &req); err != nil {
 		return err
 	}
-	resp := WsCancelOrderResponse{
-		Event:     krakenWsCancelOrderStatus,
-		Status:    "ok",
+	success := true
+	resp := websocketResponse{
+		Method:    wsCancelAll,
 		RequestID: req.RequestID,
-		Count:     int64(len(req.TransactionIDs)),
+		Success:   &success,
+		Result:    websocketResponseResult{Count: 3},
 	}
-	if len(req.TransactionIDs) == 0 || strings.Contains(req.TransactionIDs[0], "FISH") { // Reject anything that smells suspicious
-		resp.Status = "error"
-		resp.ErrorMessage = "[EOrder:Unknown order]"
-	}
-	msg, err := json.Marshal(resp)
+	response, err := json.Marshal(resp)
 	if err != nil {
 		return err
 	}
-	return w.WriteMessage(gws.TextMessage, msg)
+	return w.WriteMessage(gws.TextMessage, response)
+}
+
+func mockWsCancelOrders(tb testing.TB, msg []byte, w *gws.Conn) error {
+	tb.Helper()
+	var req WebsocketRequest[WebsocketCancelOrderParams]
+	if err := json.Unmarshal(msg, &req); err != nil {
+		return err
+	}
+	if len(req.Params.OrderIDs) > 0 && req.Params.OrderIDs[0] == "GLOBAL" {
+		success := false
+		response, err := json.Marshal(websocketResponse{
+			Method:    wsCancelOrder,
+			RequestID: req.RequestID,
+			Success:   &success,
+			Error:     "EGeneral:Invalid arguments",
+		})
+		if err != nil {
+			return err
+		}
+		return w.WriteMessage(gws.TextMessage, response)
+	}
+	for _, orderID := range req.Params.OrderIDs {
+		success := !strings.Contains(orderID, "FISH")
+		resp := websocketResponse{
+			Method:    wsCancelOrder,
+			RequestID: req.RequestID,
+			Success:   &success,
+			Result:    websocketResponseResult{OrderID: orderID},
+		}
+		if !success {
+			resp.Error = "EOrder:Unknown order"
+		}
+		response, err := json.Marshal(resp)
+		if err != nil {
+			return err
+		}
+		if err := w.WriteMessage(gws.TextMessage, response); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func mockWsAddOrder(tb testing.TB, msg []byte, w *gws.Conn) error {
 	tb.Helper()
-	var req WsAddOrderRequest
+	var req WebsocketRequest[WebsocketAddOrderParams]
 	if err := json.Unmarshal(msg, &req); err != nil {
 		return err
 	}
 
-	assert.Equal(tb, "buy", req.OrderSide, "OrderSide should be correct")
-	assert.Equal(tb, "limit", req.OrderType, "OrderType should be correct")
-	assert.Equal(tb, "XBT/USD", req.Pair, "Pair should be correct")
-	assert.Equal(tb, 80000.0, req.Price, "Pair should be correct")
-
-	resp := WsAddOrderResponse{
-		Event:         krakenWsAddOrderStatus,
-		Status:        "ok",
-		RequestID:     req.RequestID,
-		TransactionID: "ONPNXH-KMKMU-F4MR5V",
-		Description:   fmt.Sprintf("%s %.f %s @ %s %.f", req.OrderSide, req.Volume, req.Pair, req.OrderSide, req.Price),
+	assert.Equal(tb, "buy", req.Params.Side, "req.Params.Side should match")
+	assert.Equal(tb, "limit", req.Params.OrderType, "req.Params.OrderType should match")
+	assert.Equal(tb, "BTC/USD", req.Params.Symbol, "req.Params.Symbol should match")
+	if assert.NotNil(tb, req.Params.LimitPrice, "req.Params.LimitPrice should be present") {
+		assert.Equal(tb, 80000.0, *req.Params.LimitPrice, "req.Params.LimitPrice should match")
 	}
-	msg, err := json.Marshal(resp)
+
+	success := true
+	resp := websocketResponse{
+		Method:    wsAddOrder,
+		RequestID: req.RequestID,
+		Success:   &success,
+		Result:    websocketResponseResult{OrderID: "ONPNXH-KMKMU-F4MR5V"},
+	}
+	response, err := json.Marshal(resp)
 	if err != nil {
 		return err
 	}
-	return w.WriteMessage(gws.TextMessage, msg)
+	return w.WriteMessage(gws.TextMessage, response)
 }

@@ -37,7 +37,12 @@ type Requester struct {
 	backoff            Backoff
 	retryPolicy        RetryPolicy
 	timedLock          *timedmutex.TimedMutex
+	// readBody clones request bodies for verbose logging.
+	readBody func(string, func() (io.ReadCloser, error)) ([]byte, error)
 }
+
+// RawResponse instructs Requester to preserve the response body without JSON decoding.
+type RawResponse []byte
 
 // Item is a temp item for requests
 type Item struct {

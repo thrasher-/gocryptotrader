@@ -46,10 +46,14 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 
 - Request structs must be named in the form `XRequest`.
 - Response structs must be named in the form `XResponse`.
-- All request and response structs should be used as pointers in implementations:
+- Request structs should be passed as pointers. Decode response structs into their zero value and return a pointer only after successful decoding:
 
 ```go
-    var x *XResponse
+	var x XResponse
+	if err := e.SendHTTPRequest(ctx, endpoint, path, &x); err != nil {
+		return nil, err
+	}
+	return &x, nil
 ```
 
 ### Parameter Handling
@@ -57,6 +61,22 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 - Use pointer structs for passing request parameters.
 - Use idiomatic Go types (e.g., `time.Time`) in the parameter definition and convert them within the method as needed when preparing the request.
 - Time related requests should default to UTC.
+
+#### Caller-oriented request parameters
+
+- Public request structs must model caller intent, not the exchange wire representation.
+- Fields must use the strongest established native or domain type available, such as `currency.Pair`, `currency.Code`, `asset.Item`, `order.Side`, `order.Type`, `kline.Interval`, `time.Time`, `time.Duration`, booleans, and fixed-width numeric types.
+- Absolute times must use `time.Time`. Durations and relative windows must use `time.Duration` or an existing semantic interval type. Endpoints must perform UTC normalisation, unit conversion, and formatting.
+- Non-negative whole values should use `uint64`. Signed types are appropriate only when negative values have documented meaning.
+- Fractional numeric inputs such as prices, quantities, volumes, fees, and amounts should use `float64`; they must not be strings merely because the exchange transmits quoted numbers. Endpoints must reject NaN, infinity, and invalid ranges and format values without scientific notation.
+- `types.Number` must not be used merely as a caller-facing request number. It is intended for flexible response decoding.
+- Numeric-looking IDs, cursors, tokens, transaction references, and account identifiers must remain strings when arithmetic is meaningless; their exact representation must be preserved.
+- Enumerated values must use existing domain types or exchange-local named types and constants where the mapping is stable. Free-form strings are acceptable only for genuinely open protocol values.
+- Repeated values must be slices or domain collections. CSV strings, JSON arrays, and other joined representations must be produced inside the endpoint.
+- A pointer scalar must be used when omission differs from an explicit zero, empty value, or `false`. Otherwise, prefer the value type. Every field's zero-value and omission behaviour must be defined.
+- A wire field accepting multiple concepts, such as absolute time, relative duration, or an opaque token, should be represented by separate typed fields with exactly-one validation or by a small dedicated validated type. Raw wire-expression strings are a documented escape hatch, not the default.
+- Endpoint methods must validate before credential lookup or network activity, convert into local `url.Values` or an unexported wire payload, and must not mutate the caller's request.
+- Every conversion and validation path must have direct tests asserting the exact outbound query or body, including omitted values, explicit zero or `false`, boundaries, UTC conversion, very small decimals, and polymorphic fields.
 
 ### Path Construction
 

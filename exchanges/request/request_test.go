@@ -30,6 +30,129 @@ var (
 	serverLimit *RateLimiterWithWeight
 )
 
+type requestTestRoundTripper func(*http.Request) (*http.Response, error)
+
+func (r requestTestRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return r(req)
+}
+
+type requestTestReadCloser struct {
+	reader   io.Reader
+	closeErr error
+}
+
+func (r *requestTestReadCloser) Read(p []byte) (int, error) {
+	return r.reader.Read(p)
+}
+
+func (r *requestTestReadCloser) Close() error {
+	return r.closeErr
+}
+
+type requestTestErrorReader struct {
+	err error
+}
+
+func (r requestTestErrorReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
+type requestTestReporter struct{}
+
+func (requestTestReporter) Latency(string, string, string, time.Duration) {}
+
+func TestRequestTestHelpers(t *testing.T) {
+	t.Parallel()
+	expectedRequest := new(http.Request)
+	expectedResponse := &http.Response{Body: http.NoBody}
+	roundTripErr := errors.New("round trip failure")
+	roundTripper := requestTestRoundTripper(func(req *http.Request) (*http.Response, error) {
+		assert.Same(t, expectedRequest, req, "RoundTrip should pass the request to the transport function")
+		return expectedResponse, roundTripErr
+	})
+	response, err := roundTripper.RoundTrip(expectedRequest)
+	require.ErrorIs(t, err, roundTripErr, "RoundTrip must return the transport error")
+	assert.Same(t, expectedResponse, response, "RoundTrip should return the transport response")
+	require.NoError(t, response.Body.Close(), "RoundTrip response body must close")
+
+	closeErr := errors.New("close failure")
+	readCloser := &requestTestReadCloser{reader: strings.NewReader("payload"), closeErr: closeErr}
+	payload := make([]byte, len("payload"))
+	n, err := readCloser.Read(payload)
+	require.NoError(t, err, "Read must return the wrapped reader result")
+	assert.Equal(t, len(payload), n, "Read should return the wrapped byte count")
+	assert.Equal(t, "payload", string(payload), "Read should return the wrapped payload")
+	require.ErrorIs(t, readCloser.Close(), closeErr, "Close must return the configured close error")
+
+	readErr := errors.New("read failure")
+	n, err = (requestTestErrorReader{err: readErr}).Read(payload)
+	require.ErrorIs(t, err, readErr, "Read must return the configured read error")
+	assert.Zero(t, n, "Read should return no bytes on error")
+
+	requestTestReporter{}.Latency("exchange", http.MethodGet, "/path", time.Second)
+}
+
+func TestReadRequestBody(t *testing.T) {
+	t.Parallel()
+	getErr := errors.New("get body failure")
+	readErr := errors.New("read body failure")
+	closeErr := errors.New("close body failure")
+
+	for _, tc := range []struct {
+		name        string
+		getBody     func() (io.ReadCloser, error)
+		expected    string
+		expectedErr error
+	}{
+		{
+			name: "success",
+			getBody: func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("payload")), nil
+			},
+			expected: "payload",
+		},
+		{
+			name: "get error",
+			getBody: func() (io.ReadCloser, error) {
+				return nil, getErr
+			},
+			expectedErr: getErr,
+		},
+		{
+			name: "nil body",
+			getBody: func() (io.ReadCloser, error) {
+				return nil, nil
+			},
+			expectedErr: common.ErrNilPointer,
+		},
+		{
+			name: "read error",
+			getBody: func() (io.ReadCloser, error) {
+				return &requestTestReadCloser{reader: requestTestErrorReader{err: readErr}}, nil
+			},
+			expectedErr: readErr,
+		},
+		{
+			name: "close error is logged",
+			getBody: func() (io.ReadCloser, error) {
+				return &requestTestReadCloser{reader: strings.NewReader("payload"), closeErr: closeErr}, nil
+			},
+			expected: "payload",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			payload, err := readRequestBody("test", tc.getBody)
+			if tc.expectedErr != nil {
+				require.ErrorIs(t, err, tc.expectedErr, "readRequestBody must return the expected error")
+				return
+			}
+			require.NoError(t, err, "readRequestBody must not error")
+			assert.Equal(t, tc.expected, string(payload), "readRequestBody should return the cloned payload")
+		})
+	}
+}
+
 func TestMain(m *testing.M) {
 	serverLimitInterval := time.Millisecond * 500
 	serverLimit = NewWeightedRateLimitByDuration(serverLimitInterval)
@@ -45,6 +168,12 @@ func TestMain(m *testing.M) {
 	sm.HandleFunc("/error", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, err := io.WriteString(w, `{"error":true}`)
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+	sm.HandleFunc("/bytes", func(w http.ResponseWriter, _ *http.Request) {
+		_, err := io.WriteString(w, `"cGF5bG9hZA=="`)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -308,6 +437,121 @@ func TestDoRequest(t *testing.T) {
 	}
 
 	require.NoError(t, ec.Collect(), "Collect must return no errors")
+}
+
+func TestDoRequestRawResult(t *testing.T) {
+	t.Parallel()
+	r, err := New("raw-result", new(http.Client))
+	require.NoError(t, err, "New must create a requester")
+	t.Cleanup(func() { assert.NoError(t, r.Shutdown(), "Shutdown should not error") })
+
+	var raw RawResponse
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL, Result: &raw}, nil
+	})
+	require.NoError(t, err, "doRequest must not error for a raw result")
+	assert.Equal(t, `{"response":true}`, string(raw), "doRequest should preserve raw response bytes")
+
+	var decodedBytes []byte
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL + "/bytes", Result: &decodedBytes}, nil
+	})
+	require.NoError(t, err, "doRequest must continue JSON-decoding ordinary byte slices")
+	assert.Equal(t, "payload", string(decodedBytes), "doRequest should reserve raw decoding for RawResponse")
+
+	var nilRaw *RawResponse
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL, Result: nilRaw}, nil
+	})
+	require.ErrorIs(t, err, common.ErrNilPointer, "doRequest must reject a nil raw result pointer")
+
+	var decoded struct {
+		Response bool `json:"response"`
+	}
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL, Result: &decoded}, nil
+	})
+	require.NoError(t, err, "doRequest must not error for a JSON result")
+	assert.True(t, decoded.Response, "doRequest should continue decoding JSON responses")
+
+	reporterRequester, err := New("raw-result-reporter", new(http.Client), WithReporter(requestTestReporter{}))
+	require.NoError(t, err, "New must create a requester with a reporter")
+	t.Cleanup(func() {
+		assert.NoError(t, reporterRequester.Shutdown(), "Reporter requester shutdown should not error")
+	})
+	err = reporterRequester.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodPost, Path: testURL, Body: strings.NewReader("payload"), Verbose: true}, nil
+	})
+	require.NoError(t, err, "doRequest must support verbose requests and latency reporting")
+
+	readErr := errors.New("response read failure")
+	readErrorClient := &http.Client{Transport: requestTestRoundTripper(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			Status:     "200 OK",
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       &requestTestReadCloser{reader: requestTestErrorReader{err: readErr}},
+			Request:    req,
+		}, nil
+	})}
+	readErrorRequester, err := New("raw-result-read-error", readErrorClient)
+	require.NoError(t, err, "New must create a requester with a response read error transport")
+	t.Cleanup(func() {
+		assert.NoError(t, readErrorRequester.Shutdown(), "Read error requester shutdown should not error")
+	})
+	err = readErrorRequester.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL}, nil
+	})
+	require.ErrorIs(t, err, readErr, "doRequest must surface response read errors")
+
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL, HTTPRecording: true}, nil
+	})
+	require.ErrorContains(t, err, "mock recording failure", "doRequest must surface mock recording errors")
+
+	err = r.doRequest(WithRetryNotAllowed(t.Context()), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL + "/error"}, nil
+	})
+	require.ErrorIs(t, err, ErrBadStatus, "doRequest must surface non-success HTTP status codes")
+
+	closeErr := errors.New("response close failure")
+	debugClient := &http.Client{Transport: requestTestRoundTripper(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			Status:           "200 OK",
+			StatusCode:       http.StatusOK,
+			Proto:            "HTTP/1.1",
+			ProtoMajor:       1,
+			ProtoMinor:       1,
+			Header:           http.Header{"X-Invalid": {"invalid\nvalue"}},
+			Body:             &requestTestReadCloser{reader: strings.NewReader(`{"response":true}`), closeErr: closeErr},
+			ContentLength:    17,
+			TransferEncoding: []string{"chunked"},
+			Trailer:          http.Header{"Content-Length": {"invalid"}},
+			Request:          req,
+		}, nil
+	})}
+	debugRequester, err := New("raw-result-debug", debugClient)
+	require.NoError(t, err, "New must create a requester with a debug transport")
+	t.Cleanup(func() { assert.NoError(t, debugRequester.Shutdown(), "Debug requester shutdown should not error") })
+	err = debugRequester.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodGet, Path: testURL, HTTPDebugging: true}, nil
+	})
+	require.NoError(t, err, "doRequest must tolerate response dump and close logging errors")
+}
+
+func TestDoRequestBodyReadError(t *testing.T) {
+	t.Parallel()
+	expectedErr := errors.New("request body clone failure")
+	r, err := New("request-body-read-error", new(http.Client))
+	require.NoError(t, err, "New must create a requester")
+	t.Cleanup(func() { assert.NoError(t, r.Shutdown(), "Shutdown should not error") })
+	r.readBody = func(string, func() (io.ReadCloser, error)) ([]byte, error) {
+		return nil, expectedErr
+	}
+	err = r.doRequest(t.Context(), Unset, func() (*Item, error) {
+		return &Item{Method: http.MethodPost, Path: testURL, Body: strings.NewReader("payload"), Verbose: true}, nil
+	})
+	require.ErrorIs(t, err, expectedErr, "doRequest must surface request body clone errors")
 }
 
 func TestDoRequest_NoContent(t *testing.T) {

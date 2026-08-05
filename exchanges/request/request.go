@@ -138,6 +138,24 @@ func (i *Item) validateRequest(ctx context.Context, r *Requester) (*http.Request
 	return req, nil
 }
 
+func readRequestBody(name string, getBody func() (io.ReadCloser, error)) ([]byte, error) {
+	bodyCopy, err := getBody()
+	if err != nil {
+		return nil, err
+	}
+	if bodyCopy == nil {
+		return nil, common.ErrNilPointer
+	}
+	payload, readErr := io.ReadAll(bodyCopy)
+	if err := bodyCopy.Close(); err != nil {
+		log.Errorf(log.RequestSys, "%s failed to close request body %s", name, err)
+	}
+	if readErr != nil {
+		return nil, readErr
+	}
+	return payload, nil
+}
+
 // doRequest performs a HTTP/HTTPS request with the supplied params
 func (r *Requester) doRequest(ctx context.Context, endpoint EndpointLimit, newRequest Generate) error {
 	for attempt := 1; ; attempt++ {
@@ -175,17 +193,13 @@ func (r *Requester) doRequest(ctx context.Context, endpoint EndpointLimit, newRe
 			}
 			log.Debugf(log.RequestSys, "%s request type: %s", r.name, p.Method)
 			if req.GetBody != nil {
-				bodyCopy, bodyErr := req.GetBody()
-				if bodyErr != nil {
-					return bodyErr
+				bodyReader := r.readBody
+				if bodyReader == nil {
+					bodyReader = readRequestBody
 				}
-				payload, bodyErr := io.ReadAll(bodyCopy)
-				err = bodyCopy.Close()
+				payload, err := bodyReader(r.name, req.GetBody)
 				if err != nil {
-					log.Errorf(log.RequestSys, "%s failed to close request body %s", r.name, err)
-				}
-				if bodyErr != nil {
-					return bodyErr
+					return err
 				}
 				log.Debugf(log.RequestSys, "%s request body: %s", r.name, payload)
 			}
@@ -214,7 +228,15 @@ func (r *Requester) doRequest(ctx context.Context, endpoint EndpointLimit, newRe
 		// (e.g. HTTP 204 No Content) to avoid a spurious syntax error.
 		var unmarshallError error
 		if p.Result != nil && resp.StatusCode != http.StatusNoContent {
-			unmarshallError = json.Unmarshal(contents, p.Result)
+			if rawResult, ok := p.Result.(*RawResponse); ok {
+				if rawResult == nil {
+					unmarshallError = common.ErrNilPointer
+				} else {
+					*rawResult = append((*rawResult)[:0], contents...)
+				}
+			} else {
+				unmarshallError = json.Unmarshal(contents, p.Result)
+			}
 		}
 
 		if p.HTTPRecording {

@@ -1,6 +1,6 @@
 {
  "name": "Skynet",
- "version": 13,
+ "version": 14,
  "dataDirectory": "",
  "encryptConfig": 0,
  "globalHTTPTimeout": 15000000000,
@@ -2527,8 +2527,8 @@
      "RestFuturesSupplementaryURL": "https://futures.kraken.com/api/",
      "RestFuturesURL": "https://futures.kraken.com/derivatives",
      "RestSpotURL": "https://api.kraken.com",
-     "WebsocketSpotSupplementaryURL": "wss://ws-auth.kraken.com",
-     "WebsocketSpotURL": "wss://ws.kraken.com"
+     "WebsocketSpotSupplementaryURL": "wss://ws-auth.kraken.com/v2",
+     "WebsocketSpotURL": "wss://ws.kraken.com/v2"
     }
    },
    "features": {
@@ -2573,12 +2573,7 @@
      },
      {
       "enabled": true,
-      "channel": "myOrders",
-      "authenticated": true
-     },
-     {
-      "enabled": true,
-      "channel": "myTrades",
+      "channel": "myAccount",
       "authenticated": true
      }
     ]
