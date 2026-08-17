@@ -151,13 +151,24 @@ func TestGetCurrentServerTime(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetCurrentServerTime(t.Context())
 	assert.NoError(t, err, "GetCurrentServerTime should not error")
+	result, err := newSpotNullResultExchange(t).GetCurrentServerTime(t.Context())
+	require.NoError(t, err, "GetCurrentServerTime must accept a null result")
+	assert.Nil(t, result, "GetCurrentServerTime should return nil for a null result")
+	result, err = newSpotErrorExchange(t).GetCurrentServerTime(t.Context())
+	require.ErrorIs(t, err, errSpotTransport, "GetCurrentServerTime must surface request errors")
+	assert.Nil(t, result, "GetCurrentServerTime should return nil after a request error")
 }
 
-func TestWrapperGetServerTime(t *testing.T) {
+func TestGetServerTime(t *testing.T) {
 	t.Parallel()
 	st, err := e.GetServerTime(t.Context(), asset.Spot)
 	require.NoError(t, err, "GetServerTime must not error")
 	assert.WithinRange(t, st, time.Now().Add(-24*time.Hour), time.Now().Add(24*time.Hour), "ServerTime should be within a day of now")
+
+	_, err = newSpotNullResultExchange(t).GetServerTime(t.Context(), asset.Spot)
+	require.ErrorIs(t, err, common.ErrNoResponse, "GetServerTime must reject a null response")
+	_, err = newSpotErrorExchange(t).GetServerTime(t.Context(), asset.Spot)
+	require.ErrorIs(t, err, errSpotTransport, "GetServerTime must surface request errors")
 }
 
 func TestUpdateOrderExecutionLimits(t *testing.T) {
@@ -533,6 +544,8 @@ func TestGetFee(t *testing.T) {
 	feeBuilder = setFeeBuilder()
 	_, err = newSpotErrorExchange(t).GetFee(t.Context(), feeBuilder)
 	require.ErrorIs(t, err, errSpotTransport, "GetFee must surface trade-volume request errors")
+	_, err = newSpotNullResultExchange(t).GetFee(t.Context(), feeBuilder)
+	require.ErrorIs(t, err, common.ErrNoResponse, "GetFee must reject a null trade-volume response")
 	feeBuilder.FeeType = exchange.InternationalBankDepositFee
 	_, err = newSpotErrorExchange(t).GetFee(t.Context(), feeBuilder)
 	require.ErrorIs(t, err, errSpotTransport, "GetFee must surface deposit-method request errors")
@@ -709,6 +722,8 @@ func TestWithdraw(t *testing.T) {
 	require.ErrorIs(t, err, withdraw.ErrRequestCannotBeNil, "WithdrawCryptocurrencyFunds must validate the request")
 	_, err = newSpotErrorExchange(t).WithdrawCryptocurrencyFunds(t.Context(), request)
 	require.ErrorIs(t, err, errSpotTransport, "WithdrawCryptocurrencyFunds must surface request errors")
+	_, err = newSpotNullResultExchange(t).WithdrawCryptocurrencyFunds(t.Context(), request)
+	require.ErrorIs(t, err, common.ErrNoResponse, "WithdrawCryptocurrencyFunds must reject a null response")
 }
 
 func TestWithdrawFiat(t *testing.T) {
@@ -735,6 +750,8 @@ func TestWithdrawFiat(t *testing.T) {
 	require.ErrorIs(t, err, withdraw.ErrRequestCannotBeNil, "WithdrawFiatFunds must validate the request")
 	_, err = newSpotErrorExchange(t).WithdrawFiatFunds(t.Context(), request)
 	require.ErrorIs(t, err, errSpotTransport, "WithdrawFiatFunds must surface request errors")
+	_, err = newSpotNullResultExchange(t).WithdrawFiatFunds(t.Context(), request)
+	require.ErrorIs(t, err, common.ErrNoResponse, "WithdrawFiatFunds must reject a null response")
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
@@ -761,6 +778,8 @@ func TestWithdrawInternationalBank(t *testing.T) {
 	require.ErrorIs(t, err, withdraw.ErrRequestCannotBeNil, "WithdrawFiatFundsToInternationalBank must validate the request")
 	_, err = newSpotErrorExchange(t).WithdrawFiatFundsToInternationalBank(t.Context(), request)
 	require.ErrorIs(t, err, errSpotTransport, "WithdrawFiatFundsToInternationalBank must surface request errors")
+	_, err = newSpotNullResultExchange(t).WithdrawFiatFundsToInternationalBank(t.Context(), request)
+	require.ErrorIs(t, err, common.ErrNoResponse, "WithdrawFiatFundsToInternationalBank must reject a null response")
 }
 
 func TestGetDepositAddress(t *testing.T) {
@@ -2099,6 +2118,8 @@ func TestGetHistoricCandles(t *testing.T) {
 	require.Error(t, err, "GetHistoricCandles must validate the request")
 	_, err = newSpotErrorExchange(t).GetHistoricCandles(t.Context(), spotTestPair, asset.Spot, kline.OneHour, start, end)
 	require.ErrorIs(t, err, errSpotTransport, "GetHistoricCandles must surface OHLC request errors")
+	_, err = newSpotNullResultExchange(t).GetHistoricCandles(t.Context(), spotTestPair, asset.Spot, kline.OneHour, start, end)
+	require.ErrorIs(t, err, common.ErrNoResponse, "GetHistoricCandles must reject a null OHLC response")
 	_, err = ex.GetHistoricCandles(t.Context(), futuresTestPair, asset.Futures, kline.OneHour, start, end)
 	require.ErrorIs(t, err, asset.ErrNotSupported, "GetHistoricCandles must reject unsupported assets")
 }
@@ -2145,6 +2166,13 @@ func TestGetRecentTrades(t *testing.T) {
 	require.ErrorIs(t, err, errSpotTransport, "GetRecentTrades must surface Spot request errors")
 	_, err = newSpotNullResultExchange(t).GetRecentTrades(t.Context(), spotTestPair, asset.Spot)
 	require.ErrorContains(t, err, "unable to find symbol", "GetRecentTrades must reject a missing Spot symbol")
+	emptyResultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"error":[],"result":{}}`))
+		assert.NoError(t, writeErr, "GetRecentTrades response writing should not error for an empty result")
+	}))
+	t.Cleanup(emptyResultServer.Close)
+	_, err = newAuthenticatedSpotExchange(t, emptyResultServer.URL).GetRecentTrades(t.Context(), spotTestPair, asset.Spot)
+	require.ErrorContains(t, err, "unable to find symbol", "GetRecentTrades must reject an empty Spot result")
 	_, err = newSpotErrorExchange(t).GetRecentTrades(t.Context(), futuresTestPair, asset.Futures)
 	require.ErrorIs(t, err, errSpotTransport, "GetRecentTrades must surface Futures request errors")
 	futuresServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

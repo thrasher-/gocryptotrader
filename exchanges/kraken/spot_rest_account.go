@@ -64,11 +64,8 @@ func (e *Exchange) GetCreditLines(ctx context.Context, req *GetCreditLinesReques
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result GetCreditLinesResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CreditLines", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GetCreditLinesResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CreditLines", params, &result)
 }
 
 // GetTradeBalance returns current collateral and margin balances with rebase control.
@@ -88,11 +85,8 @@ func (e *Exchange) GetTradeBalance(ctx context.Context, req *GetTradeBalanceRequ
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result TradeBalanceInfo
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradeBalance", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *TradeBalanceInfo
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradeBalance", params, &result)
 }
 
 // GetOpenOrders returns open orders with all current filters.
@@ -118,11 +112,8 @@ func (e *Exchange) GetOpenOrders(ctx context.Context, req *GetOpenOrdersRequest)
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result OpenOrders
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "OpenOrders", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *OpenOrders
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "OpenOrders", params, &result)
 }
 
 // GetClosedOrders returns closed orders with all current filters.
@@ -180,11 +171,8 @@ func (e *Exchange) GetClosedOrders(ctx context.Context, req *GetClosedOrdersRequ
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result ClosedOrders
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "ClosedOrders", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *ClosedOrders
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "ClosedOrders", params, &result)
 }
 
 // QueryOrdersInfo returns information for up to fifty orders with current options.
@@ -295,11 +283,8 @@ func (e *Exchange) GetTradesHistory(ctx context.Context, req *GetTradesHistoryRe
 		params.Set("limit", strconv.FormatUint(*req.Limit, 10))
 	}
 
-	var result TradesHistory
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradesHistory", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *TradesHistory
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradesHistory", params, &result)
 }
 
 // QueryTrades returns information for up to twenty trades with current options.
@@ -417,11 +402,8 @@ func (e *Exchange) GetLedgers(ctx context.Context, req *GetLedgersRequest) (*Led
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result Ledgers
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Ledgers", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *Ledgers
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Ledgers", params, &result)
 }
 
 // QueryLedgers returns information for up to twenty ledger entries with current options.
@@ -491,11 +473,8 @@ func (e *Exchange) GetTradeVolume(ctx context.Context, req *GetTradeVolumeReques
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result TradeVolumeResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradeVolume", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *TradeVolumeResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "TradeVolume", params, &result)
 }
 
 // GetOrderAmends returns amendment history for an order.
@@ -515,11 +494,8 @@ func (e *Exchange) GetOrderAmends(ctx context.Context, req *GetOrderAmendsReques
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result GetOrderAmendsResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "OrderAmends", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GetOrderAmendsResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "OrderAmends", params, &result)
 }
 
 // RequestExportReport creates an account data export.
@@ -580,11 +556,8 @@ func (e *Exchange) RequestExportReport(ctx context.Context, req *RequestExportRe
 		return nil, errTimeRangeInvalid
 	}
 
-	var result RequestExportReportResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddExport", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *RequestExportReportResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddExport", params, &result)
 }
 
 // GetExportReportStatus returns status for account data exports.
@@ -634,11 +607,8 @@ func (e *Exchange) DeleteExportReport(ctx context.Context, req *DeleteExportRepo
 	}
 
 	params := url.Values{"id": {req.ID}, "type": {string(req.Type)}}
-	var result DeleteExportReportResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "RemoveExport", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *DeleteExportReportResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "RemoveExport", params, &result)
 }
 
 // GetAPIKeyInfo returns metadata for the authenticated API key.
@@ -651,9 +621,6 @@ func (e *Exchange) GetAPIKeyInfo(ctx context.Context, req *GetAPIKeyInfoRequest)
 		params.Set("otp", req.OTP)
 	}
 
-	var result GetAPIKeyInfoResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "GetApiKeyInfo", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GetAPIKeyInfoResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "GetApiKeyInfo", params, &result)
 }

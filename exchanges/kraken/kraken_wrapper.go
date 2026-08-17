@@ -582,6 +582,9 @@ func (e *Exchange) GetWithdrawalsHistory(ctx context.Context, c currency.Code, _
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, common.ErrNoResponse
+	}
 	withdrawals := result.Withdrawals
 	resp := make([]exchange.WithdrawalHistory, len(withdrawals))
 	for i := range withdrawals {
@@ -613,6 +616,9 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, assetTy
 		tradeData, err := e.GetTrades(ctx, &GetTradesRequest{Pair: p, Count: 1000})
 		if err != nil {
 			return nil, err
+		}
+		if tradeData == nil {
+			return nil, fmt.Errorf("unable to find symbol %s in trade data", p.String())
 		}
 		trades, ok := tradeData.Trades[assetTranslator.LookupCurrency(p.String())]
 		if !ok {
@@ -817,6 +823,9 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 			response, err := e.AddOrder(ctx, req)
 			if err != nil {
 				return nil, err
+			}
+			if response == nil {
+				return nil, common.ErrNoResponse
 			}
 			if len(response.TransactionIDs) > 0 {
 				orderID = strings.Join(response.TransactionIDs, ", ")
@@ -1037,6 +1046,9 @@ func (e *Exchange) CancelAllOrders(ctx context.Context, req *order.Cancel) (orde
 		if err != nil {
 			return resp, err
 		}
+		if cancelled == nil {
+			return resp, common.ErrNoResponse
+		}
 		for i := range cancelled.Count {
 			resp.Add(fmt.Sprintf("Unknown:%d", i+1), "cancelled")
 		}
@@ -1220,6 +1232,9 @@ func (e *Exchange) WithdrawCryptocurrencyFunds(ctx context.Context, withdrawRequ
 	if err != nil {
 		return nil, err
 	}
+	if v == nil {
+		return nil, common.ErrNoResponse
+	}
 	return &withdraw.ExchangeResponse{
 		ID: v.ReferenceID,
 	}, nil
@@ -1239,6 +1254,9 @@ func (e *Exchange) WithdrawFiatFunds(ctx context.Context, withdrawRequest *withd
 	if err != nil {
 		return nil, err
 	}
+	if v == nil {
+		return nil, common.ErrNoResponse
+	}
 	return &withdraw.ExchangeResponse{
 		Status: v.ReferenceID,
 	}, nil
@@ -1257,6 +1275,9 @@ func (e *Exchange) WithdrawFiatFundsToInternationalBank(ctx context.Context, wit
 	})
 	if err != nil {
 		return nil, err
+	}
+	if v == nil {
+		return nil, common.ErrNoResponse
 	}
 	return &withdraw.ExchangeResponse{
 		Status: v.ReferenceID,
@@ -1287,6 +1308,9 @@ func (e *Exchange) GetActiveOrders(ctx context.Context, req *order.MultiOrderReq
 		resp, err := e.GetOpenOrders(ctx, new(GetOpenOrdersRequest))
 		if err != nil {
 			return nil, err
+		}
+		if resp == nil {
+			return nil, common.ErrNoResponse
 		}
 
 		avail, err := e.GetAvailablePairs(asset.Spot)
@@ -1413,6 +1437,9 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, getOrdersRequest *order.
 		resp, err := e.GetClosedOrders(ctx, &req)
 		if err != nil {
 			return nil, err
+		}
+		if resp == nil {
+			return nil, common.ErrNoResponse
 		}
 
 		for i := range resp.Closed {
@@ -1588,6 +1615,9 @@ func (e *Exchange) AuthenticateWebsocket(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if resp == nil {
+		return common.ErrNoResponse
+	}
 
 	e.setWebsocketAuthToken(resp.Token)
 	return nil
@@ -1629,6 +1659,9 @@ func (e *Exchange) GetHistoricCandles(ctx context.Context, pair currency.Pair, a
 		})
 		if err != nil {
 			return nil, err
+		}
+		if candles == nil {
+			return nil, common.ErrNoResponse
 		}
 
 		for _, series := range candles.Candles {
@@ -1719,6 +1752,9 @@ func (e *Exchange) GetServerTime(ctx context.Context, _ asset.Item) (time.Time, 
 	st, err := e.GetCurrentServerTime(ctx)
 	if err != nil {
 		return time.Time{}, err
+	}
+	if st == nil {
+		return time.Time{}, common.ErrNoResponse
 	}
 	return time.Parse("Mon, 02 Jan 06 15:04:05 -0700", st.Rfc1123)
 }

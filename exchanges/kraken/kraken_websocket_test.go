@@ -140,6 +140,15 @@ func TestWsConnect(t *testing.T) {
 		assert.False(t, ex.Websocket.CanUseAuthenticatedEndpoints(), "WsConnect should disable authenticated endpoints after a token error")
 	})
 
+	t.Run("NullAuthenticationResponse", func(t *testing.T) {
+		ex := newSpotNullResultExchange(t)
+		ex.Websocket.Conn = new(mockAuthSubConnection)
+		ex.API.AuthenticatedWebsocketSupport = true
+		require.NoError(t, ex.WsConnect(), "WsConnect must retain the public connection for a null token response")
+		ex.Websocket.Wg.Wait()
+		assert.False(t, ex.Websocket.CanUseAuthenticatedEndpoints(), "WsConnect should disable authenticated endpoints after a null token response")
+	})
+
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/0/private/GetWebSocketsToken", r.URL.Path, "WsConnect should request a current WebSocket token")
 		_, err := w.Write([]byte(`{"error":[],"result":{"token":"test-token"}}`))

@@ -95,11 +95,8 @@ func (e *Exchange) GetWithdrawalInformation(ctx context.Context, req *GetWithdra
 	}
 
 	params := url.Values{"asset": {req.Asset}, "key": {req.Key}, "amount": {amount}}
-	var result WithdrawalInformationResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WithdrawInfo", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *WithdrawalInformationResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WithdrawInfo", params, &result)
 }
 
 // WithdrawFunds submits a withdrawal with all current Spot REST controls.
@@ -151,11 +148,8 @@ func (e *Exchange) WithdrawFunds(ctx context.Context, req *WithdrawFundsRequest)
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result WithdrawFundsResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Withdraw", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *WithdrawFundsResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Withdraw", params, &result)
 }
 
 // GetRecentDepositsStatus returns recent Spot deposit statuses.
@@ -206,11 +200,8 @@ func (e *Exchange) GetRecentDepositsStatus(ctx context.Context, req *GetRecentDe
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result RecentDepositsStatusResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "DepositStatus", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *RecentDepositsStatusResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "DepositStatus", params, &result)
 }
 
 // GetRecentWithdrawalsStatus returns recent Spot withdrawal statuses.
@@ -261,11 +252,8 @@ func (e *Exchange) GetRecentWithdrawalsStatus(ctx context.Context, req *GetRecen
 		params.Set("rebase_multiplier", string(req.RebaseMultiplier))
 	}
 
-	var result RecentWithdrawalsStatusResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WithdrawStatus", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *RecentWithdrawalsStatusResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WithdrawStatus", params, &result)
 }
 
 // GetWithdrawalMethods returns available withdrawal methods.
@@ -380,11 +368,8 @@ func (e *Exchange) WalletTransfer(ctx context.Context, req *WalletTransferReques
 		"to":     {string(req.To)},
 		"amount": {amount},
 	}
-	var result WalletTransferResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WalletTransfer", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *WalletTransferResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "WalletTransfer", params, &result)
 }
 
 // CreateSubaccount creates a Kraken subaccount.
@@ -439,9 +424,6 @@ func (e *Exchange) AccountTransfer(ctx context.Context, req *AccountTransferRequ
 	if req.AssetClass != "" {
 		params.Set("asset_class", string(req.AssetClass))
 	}
-	var result AccountTransferResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AccountTransfer", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *AccountTransferResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AccountTransfer", params, &result)
 }

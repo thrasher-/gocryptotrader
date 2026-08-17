@@ -67,11 +67,8 @@ func (e *Exchange) GetEarnAllocationStatus(ctx context.Context, req *EarnOperati
 		return nil, errStrategyIDRequired
 	}
 
-	var result EarnOperationStatusResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/AllocateStatus", url.Values{"strategy_id": {req.StrategyID}}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *EarnOperationStatusResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/AllocateStatus", url.Values{"strategy_id": {req.StrategyID}}, &result)
 }
 
 // GetEarnDeallocationStatus returns the status of a deallocation operation.
@@ -83,11 +80,8 @@ func (e *Exchange) GetEarnDeallocationStatus(ctx context.Context, req *EarnOpera
 		return nil, errStrategyIDRequired
 	}
 
-	var result EarnOperationStatusResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/DeallocateStatus", url.Values{"strategy_id": {req.StrategyID}}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *EarnOperationStatusResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/DeallocateStatus", url.Values{"strategy_id": {req.StrategyID}}, &result)
 }
 
 // ListEarnStrategies returns Kraken Earn strategies, including staking-backed strategies.
@@ -118,11 +112,8 @@ func (e *Exchange) ListEarnStrategies(ctx context.Context, req *ListEarnStrategi
 		params.Set("lock_type", string(encodedLockTypes))
 	}
 
-	var result ListEarnStrategiesResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/Strategies", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *ListEarnStrategiesResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/Strategies", params, &result)
 }
 
 // ListEarnAllocations returns the account's current Earn allocations and rewards.
@@ -141,9 +132,6 @@ func (e *Exchange) ListEarnAllocations(ctx context.Context, req *ListEarnAllocat
 		params.Set("hide_zero_allocations", strconv.FormatBool(*req.HideZeroAllocations))
 	}
 
-	var result ListEarnAllocationsResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/Allocations", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *ListEarnAllocationsResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Earn/Allocations", params, &result)
 }

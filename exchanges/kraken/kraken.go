@@ -44,12 +44,8 @@ type Exchange struct {
 
 // GetCurrentServerTime returns current server time
 func (e *Exchange) GetCurrentServerTime(ctx context.Context) (*TimeResponse, error) {
-	var result TimeResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, "/0/public/Time", &result); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
+	var result *TimeResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, "/0/public/Time", &result)
 }
 
 // SeedAssets seeds Kraken's asset list and stores it in the
@@ -233,6 +229,9 @@ func (e *Exchange) GetFee(ctx context.Context, feeBuilder *exchange.FeeBuilder) 
 		if err != nil {
 			return 0, err
 		}
+		if feePair == nil {
+			return 0, common.ErrNoResponse
+		}
 		if feeBuilder.IsMaker {
 			fee = calculateTradingFee(feePair.Currency,
 				feePair.FeesMaker,
@@ -294,11 +293,8 @@ func calculateTradingFee(ccy string, feePair map[string]TradeVolumeFee, purchase
 
 // GetWebsocketToken returns the websocket token and its expiry.
 func (e *Exchange) GetWebsocketToken(ctx context.Context) (*WsTokenResponse, error) {
-	var response WsTokenResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "GetWebSocketsToken", url.Values{}, &response); err != nil {
-		return nil, err
-	}
-	return &response, nil
+	var response *WsTokenResponse
+	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "GetWebSocketsToken", url.Values{}, &response)
 }
 
 // LookupAltName converts a currency into its altName (ZUSD -> USD)

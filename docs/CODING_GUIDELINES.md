@@ -46,14 +46,11 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 
 - Request structs must be named in the form `XRequest`.
 - Response structs must be named in the form `XResponse`.
-- Request structs should be passed as pointers. Decode response structs into their zero value and return a pointer only after successful decoding:
+- Request and response structs should be used as pointers in implementations:
 
 ```go
-	var x XResponse
-	if err := e.SendHTTPRequest(ctx, endpoint, path, &x); err != nil {
-		return nil, err
-	}
-	return &x, nil
+	var x *XResponse
+	return x, e.SendHTTPRequest(ctx, endpoint, path, &x)
 ```
 
 ### Parameter Handling

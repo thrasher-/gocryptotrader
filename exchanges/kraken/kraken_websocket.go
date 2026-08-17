@@ -182,6 +182,9 @@ func (e *Exchange) WsConnect() error {
 		if authToken, err := e.GetWebsocketToken(ctx); err != nil {
 			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
 			log.Errorf(log.ExchangeSys, "%s - authentication failed: %v\n", e.Name, err)
+		} else if authToken == nil {
+			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
+			log.Errorf(log.ExchangeSys, "%s - authentication failed: %v\n", e.Name, common.ErrNoResponse)
 		} else {
 			if err := e.Websocket.AuthConn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
 				e.Websocket.SetCanUseAuthenticatedEndpoints(false)

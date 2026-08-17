@@ -13,11 +13,8 @@ import (
 
 // GetSystemStatus returns Kraken's current Spot system status.
 func (e *Exchange) GetSystemStatus(ctx context.Context) (*SystemStatusResponse, error) {
-	var result SystemStatusResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, "/0/public/SystemStatus", &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *SystemStatusResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, "/0/public/SystemStatus", &result)
 }
 
 // GetAssets returns current asset metadata with all supported query parameters.
@@ -178,11 +175,8 @@ func (e *Exchange) GetOHLC(ctx context.Context, req *GetOHLCRequest) (*OHLCRespo
 		params.Set("assetVersion", strconv.FormatUint(uint64(req.AssetVersion), 10))
 	}
 
-	var result OHLCResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/OHLC", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *OHLCResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/OHLC", params), &result)
 }
 
 // GetDepth returns the current L2 order book with all supported query parameters.
@@ -268,11 +262,8 @@ func (e *Exchange) GetTrades(ctx context.Context, req *GetTradesRequest) (*Recen
 		params.Set("assetVersion", strconv.FormatUint(uint64(req.AssetVersion), 10))
 	}
 
-	var result RecentTradesResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Trades", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *RecentTradesResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Trades", params), &result)
 }
 
 // GetSpread returns current spread data with all supported query parameters.
@@ -308,11 +299,8 @@ func (e *Exchange) GetSpread(ctx context.Context, req *GetSpreadRequest) (*Sprea
 		params.Set("assetVersion", strconv.FormatUint(uint64(req.AssetVersion), 10))
 	}
 
-	var result SpreadResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Spread", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *SpreadResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/Spread", params), &result)
 }
 
 // GetGroupedOrderBook returns grouped L2 order book data for a currency pair.
@@ -346,11 +334,8 @@ func (e *Exchange) GetGroupedOrderBook(ctx context.Context, req *GroupedOrderBoo
 		params.Set("grouping", strconv.FormatUint(uint64(req.Grouping), 10))
 	}
 
-	var result GroupedOrderBookResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/GroupedBook", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GroupedOrderBookResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/GroupedBook", params), &result)
 }
 
 // QueryLevel3OrderBook returns authenticated L3 order book data for a currency pair.
@@ -378,11 +363,8 @@ func (e *Exchange) QueryLevel3OrderBook(ctx context.Context, req *QueryLevel3Ord
 		params.Set("depth", strconv.FormatUint(uint64(*req.Depth), 10))
 	}
 
-	var result QueryLevel3OrderBookResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Level3", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *QueryLevel3OrderBookResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "Level3", params, &result)
 }
 
 // GetPreTradeData returns pre-trade transparency data for a symbol.
@@ -402,11 +384,8 @@ func (e *Exchange) GetPreTradeData(ctx context.Context, req *GetPreTradeDataRequ
 	}
 
 	params := url.Values{"symbol": {symbol}}
-	var result GetPreTradeDataResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/PreTrade", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GetPreTradeDataResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/PreTrade", params), &result)
 }
 
 // GetPostTradeData returns post-trade transparency data.
@@ -442,9 +421,6 @@ func (e *Exchange) GetPostTradeData(ctx context.Context, req *GetPostTradeDataRe
 		params.Set("count", strconv.FormatUint(req.Count, 10))
 	}
 
-	var result GetPostTradeDataResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/PostTrade", params), &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *GetPostTradeDataResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/PostTrade", params), &result)
 }

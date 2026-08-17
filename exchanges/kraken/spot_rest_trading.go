@@ -173,11 +173,8 @@ func (e *Exchange) AddOrder(ctx context.Context, req *AddOrderRequest) (*AddOrde
 		params.Set("broker", req.Broker)
 	}
 
-	var result AddOrderResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddOrder", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *AddOrderResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddOrder", params, &result)
 }
 
 // CancelExistingOrder cancels an order by Kraken ID, user reference, or client order ID.
@@ -213,11 +210,8 @@ func (e *Exchange) CancelExistingOrder(ctx context.Context, req *CancelOrderRequ
 		params.Set("cl_ord_id", req.ClientOrderID)
 	}
 
-	var result CancelOrderResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelOrder", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *CancelOrderResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelOrder", params, &result)
 }
 
 // AmendOrder amends an open order while retaining its queue priority where possible.
@@ -308,20 +302,14 @@ func (e *Exchange) AmendOrder(ctx context.Context, req *AmendOrderRequest) (*Ame
 		params.Set("deadline", deadline)
 	}
 
-	var result AmendOrderResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AmendOrder", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *AmendOrderResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AmendOrder", params, &result)
 }
 
 // CancelAllOpenOrders cancels all open Spot orders.
 func (e *Exchange) CancelAllOpenOrders(ctx context.Context) (*CancelOrderResponse, error) {
-	var result CancelOrderResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelAll", url.Values{}, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *CancelOrderResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelAll", url.Values{}, &result)
 }
 
 // CancelAllOrdersAfter configures Kraken's Spot dead-man switch. A timeout of zero disables it.
@@ -337,11 +325,8 @@ func (e *Exchange) CancelAllOrdersAfter(ctx context.Context, req *CancelAllOrder
 	}
 
 	params := url.Values{"timeout": {strconv.FormatInt(int64(req.Timeout/time.Second), 10)}}
-	var result CancelAllOrdersAfterResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelAllOrdersAfter", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *CancelAllOrdersAfterResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelAllOrdersAfter", params, &result)
 }
 
 type addOrderBatchWireClose struct {
@@ -508,11 +493,8 @@ func (e *Exchange) AddOrderBatch(ctx context.Context, req *AddOrderBatchRequest)
 		params.Set("broker", req.Broker)
 	}
 
-	var result AddOrderBatchResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddOrderBatch", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *AddOrderBatchResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "AddOrderBatch", params, &result)
 }
 
 // CancelOrderBatch cancels up to fifty Spot orders by transaction ID, user reference, or client order ID.
@@ -548,9 +530,6 @@ func (e *Exchange) CancelOrderBatch(ctx context.Context, req *CancelOrderBatchRe
 		params.Set("cl_ord_ids", string(encodedClientOrderIDs))
 	}
 
-	var result CancelOrderBatchResponse
-	if err := e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelOrderBatch", params, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+	var result *CancelOrderBatchResponse
+	return result, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, "CancelOrderBatch", params, &result)
 }

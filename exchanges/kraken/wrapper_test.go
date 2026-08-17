@@ -222,6 +222,8 @@ func TestAuthenticateWebsocket(t *testing.T) {
 
 	err := newSpotErrorExchange(t).AuthenticateWebsocket(t.Context())
 	require.ErrorIs(t, err, errSpotTransport, "AuthenticateWebsocket must surface token request errors")
+	err = newSpotNullResultExchange(t).AuthenticateWebsocket(t.Context())
+	require.ErrorIs(t, err, common.ErrNoResponse, "AuthenticateWebsocket must reject a null token response")
 }
 
 func TestGetAvailableTransferChains(t *testing.T) {
@@ -442,6 +444,8 @@ func TestGetWithdrawalsHistory(t *testing.T) {
 
 	_, err = newSpotErrorExchange(t).GetWithdrawalsHistory(t.Context(), currency.BTC, asset.Spot)
 	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalsHistory must surface request errors")
+	_, err = newSpotNullResultExchange(t).GetWithdrawalsHistory(t.Context(), currency.BTC, asset.Spot)
+	require.ErrorIs(t, err, common.ErrNoResponse, "GetWithdrawalsHistory must reject a null response")
 }
 
 func TestGetDepositAddressPaths(t *testing.T) {
@@ -737,6 +741,11 @@ func TestSubmitOrder(t *testing.T) {
 	unsupported.AssetType = asset.Options
 	_, err = ex.SubmitOrder(t.Context(), unsupported)
 	require.ErrorIs(t, err, asset.ErrNotSupported, "SubmitOrder must reject unsupported assets")
+
+	nullEx := newSpotNullResultExchange(t)
+	nullSubmit := validSubmit(nullEx, asset.Spot)
+	_, err = nullEx.SubmitOrder(t.Context(), nullSubmit)
+	require.ErrorIs(t, err, common.ErrNoResponse, "SubmitOrder must reject a null Spot response")
 }
 
 func TestGetActiveOrders(t *testing.T) {
@@ -822,6 +831,13 @@ func TestGetActiveOrders(t *testing.T) {
 		result, err := ex.GetActiveOrders(t.Context(), validRequest(asset.Spot))
 		require.ErrorContains(t, err, "Temporary lockout", "GetActiveOrders must return the Spot API error")
 		assert.Nil(t, result, "GetActiveOrders should not return Spot orders after an API error")
+	})
+
+	t.Run("SpotNullResponse", func(t *testing.T) {
+		ex := newSpot(t, `{"error":[],"result":null}`)
+		result, err := ex.GetActiveOrders(t.Context(), validRequest(asset.Spot))
+		require.ErrorIs(t, err, common.ErrNoResponse, "GetActiveOrders must reject a null Spot response")
+		assert.Nil(t, result, "GetActiveOrders should not return Spot orders for a null response")
 	})
 
 	t.Run("SpotPairsError", func(t *testing.T) {
@@ -978,6 +994,12 @@ func TestCancelAllOrders(t *testing.T) {
 		require.NoError(t, cancelErr, "CancelAllOrders must not error for a successful Spot cancellation")
 		assert.Equal(t, "cancelled", result.Status["Unknown:1"], "CancelAllOrders should report the first Spot cancellation")
 		assert.Equal(t, "cancelled", result.Status["Unknown:2"], "CancelAllOrders should report the second Spot cancellation")
+	})
+
+	t.Run("Spot REST null response", func(t *testing.T) {
+		result, cancelErr := newSpotNullResultExchange(t).CancelAllOrders(t.Context(), &order.Cancel{AssetType: asset.Spot})
+		require.ErrorIs(t, cancelErr, common.ErrNoResponse, "CancelAllOrders must reject a null Spot response")
+		assert.Empty(t, result.Status, "CancelAllOrders should not report cancellations for a null Spot response")
 	})
 
 	for _, tc := range []struct {
@@ -1268,6 +1290,11 @@ func TestGetOrderHistory(t *testing.T) {
 			name:        "APIError",
 			response:    `{"error":["EGeneral:Temporary lockout"],"result":{}}`,
 			errContains: "Temporary lockout",
+		},
+		{
+			name:        "NullResponse",
+			response:    `{"error":[],"result":null}`,
+			errContains: common.ErrNoResponse.Error(),
 		},
 		{
 			name:     "AvailablePairFormatError",

@@ -218,10 +218,10 @@ func TestGetWebsocketToken(t *testing.T) {
 	requireSpotRequest(t, requests, "/0/private/GetWebSocketsToken")
 }
 
-func TestGetWebsocketTokenZeroResult(t *testing.T) {
+func TestGetWebsocketTokenNullResult(t *testing.T) {
 	token, err := newSpotNullResultExchange(t).GetWebsocketToken(t.Context())
-	require.NoError(t, err, "GetWebsocketToken must accept a null REST result as a zero-value response")
-	require.Empty(t, token, "GetWebsocketToken must return the zero-value token for a null REST result")
+	require.NoError(t, err, "GetWebsocketToken must accept a null REST result")
+	require.Nil(t, token, "GetWebsocketToken must return nil for a null REST result")
 }
 
 func cloneSpotValues(values url.Values) url.Values {
@@ -1597,9 +1597,10 @@ func TestSpotResponseObjectResults(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name         string
-		call         func(*Exchange) (any, error)
-		expectedJSON string
+		name            string
+		call            func(*Exchange) (any, error)
+		expectedJSON    string
+		zeroValueOnNull bool
 	}{
 		{
 			name:         "GetWebsocketToken",
@@ -1630,6 +1631,11 @@ func TestSpotResponseObjectResults(t *testing.T) {
 			name:         "GetTradesHistory",
 			call:         func(ex *Exchange) (any, error) { return ex.GetTradesHistory(ctx, &GetTradesHistoryRequest{}) },
 			expectedJSON: `"trades":{"TRADE"`,
+		},
+		{
+			name:         "GetLedgers",
+			call:         func(ex *Exchange) (any, error) { return ex.GetLedgers(ctx, &GetLedgersRequest{}) },
+			expectedJSON: `"ledger":{"LEDGER"`,
 		},
 		{
 			name:         "GetTradeVolume",
@@ -1798,14 +1804,16 @@ func TestSpotResponseObjectResults(t *testing.T) {
 			expectedJSON: `"count":3`,
 		},
 		{
-			name: "AllocateEarnFunds",
+			name:            "AllocateEarnFunds",
+			zeroValueOnNull: true,
 			call: func(ex *Exchange) (any, error) {
 				return ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 			},
 			expectedJSON: `true`,
 		},
 		{
-			name: "DeallocateEarnFunds",
+			name:            "DeallocateEarnFunds",
+			zeroValueOnNull: true,
 			call: func(ex *Exchange) (any, error) {
 				return ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 			},
@@ -1846,8 +1854,12 @@ func TestSpotResponseObjectResults(t *testing.T) {
 
 			result, err = tc.call(nilResultEx)
 			require.NoError(t, err, tc.name+" must accept a null result")
-			require.NotNil(t, result, tc.name+" must return a zero-value response for a null result")
-			assert.True(t, reflect.ValueOf(result).Elem().IsZero(), tc.name+" should return the zero-value response for a null result")
+			if tc.zeroValueOnNull {
+				require.NotNil(t, result, tc.name+" must return a zero-value scalar for a null result")
+				assert.True(t, reflect.ValueOf(result).Elem().IsZero(), tc.name+" should return the zero-value scalar for a null result")
+			} else {
+				assert.Nil(t, result, tc.name+" should return nil for a null result")
+			}
 
 			result, err = tc.call(errorEx)
 			require.ErrorIs(t, err, errSpotTransport, tc.name+" must surface request errors")
