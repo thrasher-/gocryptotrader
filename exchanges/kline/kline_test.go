@@ -1429,6 +1429,81 @@ func TestGetIntervalResultLimit(t *testing.T) {
 	}
 }
 
+func TestIntervalUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected Interval
+		wantErr  bool
+	}{
+		{name: "BareNanoseconds", input: `720000000000`, expected: OneMin * 12},
+		{name: "BareMinimum", input: `-9223372036854775808`, expected: Interval(-1 << 63)},
+		{name: "BareMaximum", input: `9223372036854775807`, expected: Interval(1<<63 - 1)},
+		{name: "QuotedDuration", input: `"1M"`, expected: OneMonth},
+		{name: "QuotedRaw", input: `"raw"`, expected: Raw},
+		{name: "InvalidQuotedCode", input: `"60"`, wantErr: true},
+		{name: "BareIntegerOverflow", input: `9223372036854775808`, wantErr: true},
+		{name: "BareIntegerUnderflow", input: `-9223372036854775809`, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var i Interval
+			err := i.UnmarshalJSON([]byte(tc.input))
+			if tc.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidInterval, "Interval.UnmarshalJSON should error correctly")
+				return
+			}
+
+			require.NoError(t, err, "Interval.UnmarshalJSON must not error")
+			assert.Equal(t, tc.expected, i, "Interval.UnmarshalJSON should return the correct interval")
+		})
+	}
+}
+
+func TestIntervalParseDuration(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		input    string
+		expected Interval
+		wantErr  bool
+	}{
+		{name: "StandardDuration", input: "1h30m", expected: OneHour + ThirtyMin},
+		{name: "ZeroDays", input: "0d", expected: 0},
+		{name: "Seconds", input: "2seconds", expected: 2 * Interval(time.Second)},
+		{name: "Minutes", input: "3minutes", expected: 3 * OneMin},
+		{name: "Hours", input: "4hours", expected: FourHour},
+		{name: "Days", input: "5days", expected: 5 * OneDay},
+		{name: "LargestDayCount", input: "106751d", expected: 106751 * OneDay},
+		{name: "Weeks", input: "2weeks", expected: TwoWeek},
+		{name: "UppercaseMonth", input: "1M", expected: OneMonth},
+		{name: "Months", input: "2months", expected: 2 * OneMonth},
+		{name: "BareCount", input: "60", wantErr: true},
+		{name: "NoLeadingCount", input: "month", wantErr: true},
+		{name: "CountOverflow", input: "99999999999999999999d", wantErr: true},
+		{name: "InvalidUnit", input: "1fortnight", wantErr: true},
+		{name: "ScaleOverflow", input: "106752d", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var i Interval
+			err := i.parseDuration(tc.input)
+			if tc.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidInterval, "Interval.parseDuration should error correctly")
+				return
+			}
+
+			require.NoError(t, err, "Interval.parseDuration must not error")
+			assert.Equal(t, tc.expected, i, "Interval.parseDuration should return the correct interval")
+		})
+	}
+}
+
 func TestUnmarshalText(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
