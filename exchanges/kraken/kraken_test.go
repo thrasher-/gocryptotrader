@@ -46,7 +46,6 @@ import (
 
 var (
 	e               *Exchange
-	spotTestPair    = currency.NewPair(currency.XBT, currency.USD)
 	futuresTestPair = currency.NewPairWithDelimiter("PF", "XBTUSD", "_")
 )
 
@@ -146,18 +145,6 @@ func TestSetup(t *testing.T) {
 func TestUpdateTradablePairs(t *testing.T) {
 	t.Parallel()
 	testexch.UpdatePairsOnce(t, e)
-}
-
-func TestGetCurrentServerTime(t *testing.T) {
-	t.Parallel()
-	_, err := e.GetCurrentServerTime(t.Context())
-	assert.NoError(t, err, "GetCurrentServerTime should not error")
-	result, err := newSpotNullResultExchange(t).GetCurrentServerTime(t.Context())
-	require.NoError(t, err, "GetCurrentServerTime must accept a null result")
-	assert.Nil(t, result, "GetCurrentServerTime should return nil for a null result")
-	result, err = newSpotErrorExchange(t).GetCurrentServerTime(t.Context())
-	require.ErrorIs(t, err, errSpotTransport, "GetCurrentServerTime must surface request errors")
-	assert.Nil(t, result, "GetCurrentServerTime should return nil after a request error")
 }
 
 func TestGetServerTime(t *testing.T) {
@@ -411,74 +398,6 @@ func TestGetFuturesTradeHistory(t *testing.T) {
 	assert.NoError(t, err, "GetFuturesTradeHistory should not error")
 }
 
-func TestSeedAssetTranslator(t *testing.T) {
-	assetTranslator.l.Lock()
-	originalAssets := assetTranslator.Assets
-	assetTranslator.Assets = nil
-	assetTranslator.l.Unlock()
-	t.Cleanup(func() {
-		assetTranslator.l.Lock()
-		assetTranslator.Assets = originalAssets
-		assetTranslator.l.Unlock()
-	})
-
-	ex, _ := newSpotEndpointExchange(t)
-	err := ex.SeedAssets(t.Context())
-	require.NoError(t, err, "SeedAssets must not error")
-
-	assert.Equal(t, "XBT", assetTranslator.LookupAltName("BTC"), "LookupAltName should return the canonical asset alternate name")
-	assert.Equal(t, "XBT", assetTranslator.LookupAltName("XXBT"), "LookupAltName should return the legacy asset alternate name")
-	assert.Contains(t, []string{"BTC", "XXBT"}, assetTranslator.LookupCurrency("XBT"), "LookupCurrency should return an original asset for a shared alternate name")
-	assert.Equal(t, "XBTUSD", assetTranslator.LookupAltName("BTC/USD"), "LookupAltName should return the pair alternate name")
-	assert.Equal(t, "BTC/USD", assetTranslator.LookupCurrency("XBTUSD"), "LookupCurrency should return the original pair")
-
-	err = newSpotErrorExchange(t).SeedAssets(t.Context())
-	require.ErrorIs(t, err, errSpotTransport, "SeedAssets must surface asset request errors")
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/0/public/Assets" {
-			_, _ = w.Write([]byte(`{"error":[],"result":{"BTC":{"altname":"XBT"}}}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"error":["EGeneral:pair failure"],"result":{}}`))
-	}))
-	t.Cleanup(server.Close)
-	err = newAuthenticatedSpotExchange(t, server.URL).SeedAssets(t.Context())
-	require.ErrorContains(t, err, "pair failure", "SeedAssets must surface asset-pair request errors")
-}
-
-func TestSeedAssets(t *testing.T) {
-	t.Parallel()
-	var a assetTranslatorStore
-	assert.Empty(t, a.LookupAltName("ZUSD"), "LookupAltName on unseeded store should return empty")
-	a.Seed("ZUSD", "USD")
-	assert.Equal(t, "USD", a.LookupAltName("ZUSD"), "LookupAltName should return the correct value")
-	a.Seed("ZUSD", "BLA")
-	assert.Equal(t, "USD", a.LookupAltName("ZUSD"), "Store should ignore second reseed of existing currency")
-}
-
-func TestLookupCurrency(t *testing.T) {
-	t.Parallel()
-	var a assetTranslatorStore
-	assert.Empty(t, a.LookupCurrency("USD"), "LookupCurrency on unseeded store should return empty")
-	a.Seed("ZUSD", "USD")
-	assert.Equal(t, "ZUSD", a.LookupCurrency("USD"), "LookupCurrency should return the correct value")
-	assert.Empty(t, a.LookupCurrency("EUR"), "LookupCurrency should still not return an unseeded key")
-}
-
-func TestGetLedgers(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-
-	req := &GetLedgersRequest{
-		Start:  TimeOrTransactionID{TransactionID: "LRUHXI-IWECY-K4JYGO"},
-		End:    TimeOrTransactionID{TransactionID: "L5NIY7-JZQJD-3J4M2V"},
-		Offset: 15,
-	}
-	_, err := e.GetLedgers(t.Context(), req)
-	assert.ErrorContains(t, err, "EQuery:Unknown asset pair", "GetLedger should error on imaginary ledgers")
-}
-
 func setFeeBuilder() *exchange.FeeBuilder {
 	return &exchange.FeeBuilder{
 		Amount:              1,
@@ -505,7 +424,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 
 // TestGetFee exercises GetFee
 func TestGetFee(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	for _, tc := range []struct {
 		name      string
 		feeType   exchange.FeeType
@@ -707,7 +626,7 @@ func TestModifyOrder(t *testing.T) {
 }
 
 func TestWithdraw(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	request := &withdraw.Request{
 		Exchange:      ex.Name,
 		Currency:      currency.BTC,
@@ -729,7 +648,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestWithdrawFiat(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	request := &withdraw.Request{
 		Exchange:      ex.Name,
 		Currency:      currency.USD,
@@ -757,7 +676,7 @@ func TestWithdrawFiat(t *testing.T) {
 }
 
 func TestWithdrawInternationalBank(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	request := &withdraw.Request{
 		Exchange:      ex.Name,
 		Currency:      currency.USD,
@@ -797,24 +716,6 @@ func TestGetDepositAddress(t *testing.T) {
 			t.Error("GetDepositAddress() error can not be nil")
 		}
 	}
-}
-
-func TestCancelWithdrawal(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t)
-	_, err := ex.CancelWithdrawal(t.Context(), nil)
-	require.ErrorIs(t, err, common.ErrNilPointer, "CancelWithdrawal must reject a nil request")
-	_, err = ex.CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{ReferenceID: "REFERENCE"})
-	require.ErrorIs(t, err, errAssetRequired, "CancelWithdrawal must require an asset")
-	_, err = ex.CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{Asset: "BTC"})
-	require.ErrorIs(t, err, errReferenceIDRequired, "CancelWithdrawal must require a reference identifier")
-	cancelled, err := ex.CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{Asset: "BTC", ReferenceID: "REFERENCE"})
-	require.NoError(t, err, "CancelWithdrawal must not error")
-	assert.True(t, cancelled, "CancelWithdrawal should decode the cancellation result")
-	values := requireSpotRequest(t, requests, "/0/private/WithdrawCancel")
-	assert.Equal(t, "BTC", values.Get("asset"), "CancelWithdrawal should encode the asset")
-	assert.Equal(t, "REFERENCE", values.Get("refid"), "CancelWithdrawal should encode the reference identifier")
-	_, err = newSpotErrorExchange(t).CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{Asset: "BTC", ReferenceID: "REFERENCE"})
-	require.ErrorIs(t, err, errSpotTransport, "CancelWithdrawal must surface request errors")
 }
 
 // ---------------------------- Websocket tests -----------------------------------------
@@ -1156,16 +1057,6 @@ func TestGenerateSubscriptions(t *testing.T) {
 	subs, err = ex.generateSubscriptions()
 	require.ErrorIs(t, err, subscription.ErrExclusiveSubscription, "generateSubscriptions must reject conflicting Spot book depths")
 	assert.Nil(t, subs, "generateSubscriptions result should be nil when subscription validation fails")
-}
-
-func TestGetWSToken(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t)
-	resp, err := ex.GetWebsocketToken(t.Context())
-	require.NoError(t, err, "GetWebsocketToken must not error")
-	assert.Equal(t, &WsTokenResponse{Expires: 900, Token: "TOKEN"}, resp, "GetWebsocketToken should return the WebSocket token response")
-	requireSpotRequest(t, requests, "/0/private/GetWebSocketsToken")
-	_, err = newSpotErrorExchange(t).GetWebsocketToken(t.Context())
-	require.ErrorIs(t, err, errSpotTransport, "GetWebsocketToken must surface request errors")
 }
 
 // TestWsAddOrder exercises roundtrip of wsAddOrder; See also: mockWsAddOrder
@@ -2156,7 +2047,7 @@ func TestGetRecentTrades(t *testing.T) {
 		assetTranslator.l.Unlock()
 	})
 
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	assetTranslator.Seed("BTC/USD", "XBTUSD")
 	trades, err := ex.GetRecentTrades(t.Context(), spotTestPair, asset.Spot)
 	require.NoError(t, err, "GetRecentTrades must not error for Spot")
@@ -2585,82 +2476,6 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 		}
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
-	}
-}
-
-func TestErrorResponse(t *testing.T) {
-	var g genericRESTResponse
-
-	tests := []struct {
-		name          string
-		jsonStr       string
-		expectError   bool
-		errorMsg      string
-		warningMsg    string
-		requiresReset bool
-	}{
-		{
-			name:    "No errors or warnings",
-			jsonStr: `{"error":[],"result":{"unixtime":1721884425,"rfc1123":"Thu, 25 Jul 24 05:13:45 +0000"}}`,
-		},
-		{
-			name:        "Invalid error type int",
-			jsonStr:     `{"error":[69420],"result":{}}`,
-			expectError: true,
-			errorMsg:    "unable to convert 69420 to string",
-		},
-		{
-			name:        "Unhandled error type float64",
-			jsonStr:     `{"error":124,"result":{}}`,
-			expectError: true,
-			errorMsg:    "unhandled error response type float64",
-		},
-		{
-			name:     "Known error string",
-			jsonStr:  `{"error":["EQuery:Unknown asset pair"],"result":{}}`,
-			errorMsg: "EQuery:Unknown asset pair",
-		},
-		{
-			name:     "Known error string (single)",
-			jsonStr:  `{"error":"EService:Unavailable","result":{}}`,
-			errorMsg: "EService:Unavailable",
-		},
-		{
-			name:          "Warning string in array",
-			jsonStr:       `{"error":["WGeneral:Danger"],"result":{}}`,
-			warningMsg:    "WGeneral:Danger",
-			requiresReset: true,
-		},
-		{
-			name:          "Warning string",
-			jsonStr:       `{"error":"WGeneral:Unknown warning","result":{}}`,
-			warningMsg:    "WGeneral:Unknown warning",
-			requiresReset: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.requiresReset {
-				g = genericRESTResponse{}
-			}
-			err := json.Unmarshal([]byte(tt.jsonStr), &g)
-			if tt.expectError {
-				require.ErrorContains(t, err, tt.errorMsg, "Unmarshal must error")
-			} else {
-				require.NoError(t, err)
-				if tt.errorMsg != "" {
-					assert.ErrorContainsf(t, g.Error.Errors(), tt.errorMsg, "Errors should contain %s", tt.errorMsg)
-				} else {
-					assert.NoError(t, g.Error.Errors(), "Errors should not error")
-				}
-				if tt.warningMsg != "" {
-					assert.Containsf(t, g.Error.Warnings(), tt.warningMsg, "Warnings should contain %s", tt.warningMsg)
-				} else {
-					assert.Empty(t, g.Error.Warnings(), "Warnings should be empty")
-				}
-			}
-		})
 	}
 }
 

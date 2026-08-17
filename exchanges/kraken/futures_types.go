@@ -1,7 +1,6 @@
 package kraken
 
 import (
-	"sync"
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
@@ -225,11 +224,6 @@ type WsFuturesNotifications struct {
 	}
 }
 
-type assetTranslatorStore struct {
-	l      sync.RWMutex
-	Assets map[string]string
-}
-
 // FuturesOrderbookData stores orderbook data for futures
 type FuturesOrderbookData struct {
 	ServerTime time.Time `json:"serverTime"`
@@ -237,12 +231,6 @@ type FuturesOrderbookData struct {
 		Bids [][2]float64 `json:"bids"`
 		Asks [][2]float64 `json:"asks"`
 	} `json:"orderBook"`
-}
-
-// TimeResponse type
-type TimeResponse struct {
-	Unixtime types.Time `json:"unixtime"`
-	Rfc1123  string     `json:"rfc1123"`
 }
 
 // FuturesInstrumentData stores info for futures market

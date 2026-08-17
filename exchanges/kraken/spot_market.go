@@ -11,6 +11,12 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
 
+// GetCurrentServerTime returns current server time.
+func (e *Exchange) GetCurrentServerTime(ctx context.Context) (*TimeResponse, error) {
+	var result *TimeResponse
+	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, "/0/public/Time", &result)
+}
+
 // GetSystemStatus returns Kraken's current Spot system status.
 func (e *Exchange) GetSystemStatus(ctx context.Context) (*SystemStatusResponse, error) {
 	var result *SystemStatusResponse
@@ -423,4 +429,73 @@ func (e *Exchange) GetPostTradeData(ctx context.Context, req *GetPostTradeDataRe
 
 	var result *GetPostTradeDataResponse
 	return result, e.SendHTTPRequest(ctx, exchange.RestSpot, common.EncodeURLValues("/0/public/PostTrade", params), &result)
+}
+
+// SeedAssets seeds Kraken's asset list and stores it in the asset translator.
+func (e *Exchange) SeedAssets(ctx context.Context) error {
+	assets, err := e.GetAssets(ctx, new(GetAssetsRequest))
+	if err != nil {
+		return err
+	}
+	for orig, val := range assets {
+		assetTranslator.Seed(orig, val.Altname)
+	}
+
+	assetPairs, err := e.GetAssetPairs(ctx, new(GetAssetPairsRequest))
+	if err != nil {
+		return err
+	}
+	for k, v := range assetPairs {
+		assetTranslator.Seed(k, v.Altname)
+	}
+	return nil
+}
+
+// LookupAltName converts a currency into its alternate name (ZUSD -> USD).
+func (a *assetTranslatorStore) LookupAltName(target string) string {
+	a.l.RLock()
+	alt, ok := a.Assets[target]
+	if !ok {
+		a.l.RUnlock()
+		return ""
+	}
+	a.l.RUnlock()
+	return alt
+}
+
+// LookupCurrency converts an alternate name to its original type (USD -> ZUSD).
+func (a *assetTranslatorStore) LookupCurrency(target string) string {
+	a.l.RLock()
+	for k, v := range a.Assets {
+		if v == target {
+			a.l.RUnlock()
+			return k
+		}
+	}
+	a.l.RUnlock()
+	return ""
+}
+
+// Seed stores a currency translation pair.
+func (a *assetTranslatorStore) Seed(orig, alt string) {
+	a.l.Lock()
+	if a.Assets == nil {
+		a.Assets = make(map[string]string)
+	}
+
+	if _, ok := a.Assets[orig]; ok {
+		a.l.Unlock()
+		return
+	}
+
+	a.Assets[orig] = alt
+	a.l.Unlock()
+}
+
+// Seeded reports whether assets have been seeded.
+func (a *assetTranslatorStore) Seeded() bool {
+	a.l.RLock()
+	isSeeded := len(a.Assets) > 0
+	a.l.RUnlock()
+	return isSeeded
 }

@@ -216,7 +216,7 @@ func TestAddOrderRequestFromSubmit(t *testing.T) {
 }
 
 func TestAuthenticateWebsocket(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	require.NoError(t, ex.AuthenticateWebsocket(t.Context()), "AuthenticateWebsocket must not error")
 	assert.Equal(t, "TOKEN", ex.websocketAuthToken(), "AuthenticateWebsocket should retain the token")
 
@@ -227,7 +227,7 @@ func TestAuthenticateWebsocket(t *testing.T) {
 }
 
 func TestGetAvailableTransferChains(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	chains, err := ex.GetAvailableTransferChains(t.Context(), currency.BTC)
 	require.NoError(t, err, "GetAvailableTransferChains must not error")
 	assert.Equal(t, []string{"Bitcoin", "SynapsePay (US Wire)"}, chains, "GetAvailableTransferChains should return every deposit method")
@@ -299,7 +299,7 @@ func TestUpdateOrderExecutionLimitsPaths(t *testing.T) {
 	assetTranslator.l.Lock()
 	assetTranslator.Assets = nil
 	assetTranslator.l.Unlock()
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	require.NoError(t, ex.UpdateOrderExecutionLimits(t.Context(), asset.Spot), "UpdateOrderExecutionLimits must seed and load Spot limits")
 
 	assetTranslator.l.Lock()
@@ -367,7 +367,7 @@ func TestUpdateTickersPaths(t *testing.T) {
 }
 
 func TestUpdateOrderbookPaths(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	_, err := ex.UpdateOrderbook(t.Context(), currency.EMPTYPAIR, asset.Spot)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "UpdateOrderbook must require a pair")
 	_, err = ex.UpdateOrderbook(t.Context(), spotTestPair, asset.Options)
@@ -381,7 +381,7 @@ func TestUpdateOrderbookPaths(t *testing.T) {
 	_, err = ex.UpdateOrderbook(t.Context(), currency.NewBTCUSD(), asset.Options)
 	require.ErrorIs(t, err, asset.ErrNotSupported, "UpdateOrderbook must reject unsupported enabled assets")
 
-	processErrorExchange, _ := newSpotEndpointExchange(t)
+	processErrorExchange, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	processErrorExchange.Name = ""
 	_, err = processErrorExchange.UpdateOrderbook(t.Context(), spotTestPair, asset.Spot)
 	require.ErrorIs(t, err, common.ErrExchangeNameNotSet, "UpdateOrderbook must surface orderbook processing errors")
@@ -403,7 +403,7 @@ func TestUpdateAccountBalancesPaths(t *testing.T) {
 	assetTranslator.l.Lock()
 	assetTranslator.Assets = nil
 	assetTranslator.l.Unlock()
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	balances, err := ex.UpdateAccountBalances(t.Context(), asset.Spot)
 	require.NoError(t, err, "UpdateAccountBalances must seed and load Spot balances")
 	require.Len(t, balances, 1, "UpdateAccountBalances must return the Spot account")
@@ -434,7 +434,7 @@ func TestUpdateAccountBalancesPaths(t *testing.T) {
 }
 
 func TestGetWithdrawalsHistory(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	history, err := ex.GetWithdrawalsHistory(t.Context(), currency.BTC, asset.Spot)
 	require.NoError(t, err, "GetWithdrawalsHistory must not error")
 	require.Len(t, history, 1, "GetWithdrawalsHistory must return the decoded withdrawal")
@@ -449,7 +449,7 @@ func TestGetWithdrawalsHistory(t *testing.T) {
 }
 
 func TestGetDepositAddressPaths(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	address, err := ex.GetDepositAddress(t.Context(), currency.BTC, "", "Bitcoin")
 	require.NoError(t, err, "GetDepositAddress must accept an explicit chain")
 	assert.Equal(t, "bc1q", address.Address, "GetDepositAddress should return the address")
@@ -495,7 +495,7 @@ func TestGetDepositAddressPaths(t *testing.T) {
 }
 
 func TestCancelOrderPaths(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	require.Error(t, ex.CancelOrder(t.Context(), &order.Cancel{}), "CancelOrder must validate the request")
 	require.NoError(t, ex.CancelOrder(t.Context(), &order.Cancel{AssetType: asset.Spot, OrderID: "ORDER"}), "CancelOrder must cancel a Spot order over REST")
 	require.ErrorIs(t, newSpotErrorExchange(t).CancelOrder(t.Context(), &order.Cancel{AssetType: asset.Spot, OrderID: "ORDER"}), errSpotTransport, "CancelOrder must surface Spot REST errors")
@@ -530,7 +530,7 @@ func TestCancelOrderPaths(t *testing.T) {
 }
 
 func TestCancelBatchOrdersPaths(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t)
+	ex, _ := newSpotEndpointExchange(t, allSpotFixtures...)
 	_, err := ex.CancelBatchOrders(t.Context(), []order.Cancel{{}})
 	require.Error(t, err, "CancelBatchOrders must validate every request")
 	_, err = ex.CancelBatchOrders(t.Context(), []order.Cancel{{AssetType: asset.Spot, OrderID: "ORDER-1"}, {AssetType: asset.Spot, OrderID: "ORDER-2"}})

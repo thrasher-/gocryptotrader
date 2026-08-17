@@ -24,6 +24,11 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 
 - Implement API endpoints in the order they are presented in the API documentation to maintain alignment with the source.
 - Group related endpoints into files that follow the documented API structure.
+- Organise substantial API categories as vertical slices. Each category should own its endpoint implementation, request and response types, direct tests, and mock fixtures, for example `spot_market.go`, `spot_market_types.go`, and `spot_market_test.go`.
+- Omit filename components that only repeat the package name or an implementation detail already clear from the context. Retain a product or protocol qualifier only when sibling surfaces would otherwise collide or become ambiguous, for example `spot_market.go` beside `futures_market.go`, or separate REST and WebSocket implementations of the same category. Do not retain `rest` merely because endpoints use HTTP.
+- Keep shared files limited to behaviour genuinely used across categories, such as request transport, authentication, response envelopes, and cross-category contract tests. Category-specific declarations and fixtures must not accumulate in shared monoliths.
+- Shared endpoint test harnesses must receive category-owned fixtures explicitly and reject unknown routes. They must not return a generic successful response for an unrecognised path.
+- Do not create empty or artificial companion files. A category-specific types or test file is warranted when it owns declarations or direct tests; genuinely shared declarations remain in the shared scope file.
 - Inline endpoint paths directly in the method implementation. Avoid defining them as constants elsewhere.
 - Export exchange types, functions and methods by default (e.g. `func (e *Exchange) GetOrderBook(...)`) so that GoCryptoTrader can be consumed as both a standalone library and interfaced via the engine package.
 
