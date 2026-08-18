@@ -50,6 +50,13 @@ func TestGetDepositMethods(t *testing.T) {
 	depositMethods, err = newSpotErrorExchange(t).GetDepositMethods(ctx, &GetDepositMethodsRequest{Asset: "XBT"})
 	require.ErrorIs(t, err, errSpotTransport, "GetDepositMethods must surface request errors")
 	assert.Nil(t, depositMethods, "GetDepositMethods result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetDepositMethods(t.Context(), &GetDepositMethodsRequest{Asset: "XBT"})
+		require.NoError(t, err, "GetDepositMethods must not error against the live API")
+		require.NotEmpty(t, response, "GetDepositMethods must return deposit methods from the live API")
+	})
 }
 
 func TestGetDepositAddresses(t *testing.T) {
@@ -87,6 +94,13 @@ func TestGetDepositAddresses(t *testing.T) {
 	depositAddresses, err = newSpotErrorExchange(t).GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin"})
 	require.ErrorIs(t, err, errSpotTransport, "GetDepositAddresses must surface request errors")
 	assert.Nil(t, depositAddresses, "GetDepositAddresses result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetDepositAddresses(t.Context(), &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin"})
+		require.NoError(t, err, "GetDepositAddresses must not error against the live API")
+		require.NotNil(t, response, "GetDepositAddresses must return a response from the live API")
+	})
 }
 
 func TestGetWithdrawalInformation(t *testing.T) {
@@ -119,6 +133,18 @@ func TestGetWithdrawalInformation(t *testing.T) {
 	withdrawalInfo, err = newSpotErrorExchange(t).GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: 1})
 	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalInformation must surface request errors")
 	assert.Nil(t, withdrawalInfo, "GetWithdrawalInformation result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		assetCode := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_ASSET")
+		withdrawalKey := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_KEY")
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_INFO_AMOUNT"))
+		require.NoError(t, err, "GetWithdrawalInformation live amount must be valid")
+		response, err := spotLiveExchange.GetWithdrawalInformation(t.Context(), &GetWithdrawalInformationRequest{Asset: assetCode, Key: withdrawalKey, Amount: amount})
+		require.NoError(t, err, "GetWithdrawalInformation must not error against the live API")
+		require.NotNil(t, response, "GetWithdrawalInformation must return a response from the live API")
+		require.NotEmpty(t, response.Method, "GetWithdrawalInformation live response must include a withdrawal method")
+	})
 }
 
 func TestWithdrawFunds(t *testing.T) {
@@ -167,6 +193,18 @@ func TestWithdrawFunds(t *testing.T) {
 	withdrawal, err = newSpotErrorExchange(t).WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1})
 	require.ErrorIs(t, err, errSpotTransport, "WithdrawFunds must surface request errors")
 	assert.Nil(t, withdrawal, "WithdrawFunds result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveWithdrawal)
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_AMOUNT"))
+		require.NoError(t, err, "WithdrawFunds live amount must be valid")
+		assetCode := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_ASSET")
+		withdrawalKey := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_KEY")
+		response, err := spotLiveExchange.WithdrawFunds(t.Context(), &WithdrawFundsRequest{Asset: assetCode, Key: withdrawalKey, Amount: amount})
+		require.NoError(t, err, "WithdrawFunds must not error against the live API")
+		require.NotNil(t, response, "WithdrawFunds must return a response from the live API")
+		require.NotEmpty(t, response.ReferenceID, "WithdrawFunds live response must include a reference identifier")
+	})
 }
 
 func TestGetRecentDepositsStatus(t *testing.T) {
@@ -227,6 +265,14 @@ func TestGetRecentDepositsStatus(t *testing.T) {
 	deposits, err = newSpotErrorExchange(t).GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetRecentDepositsStatus must surface request errors")
 	assert.Nil(t, deposits, "GetRecentDepositsStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetRecentDepositsStatus(t.Context(), new(GetRecentDepositsStatusRequest))
+		require.NoError(t, err, "GetRecentDepositsStatus must not error against the live API")
+		require.NotNil(t, response, "GetRecentDepositsStatus must return a response from the live API")
+		require.NotNil(t, response.Deposits, "GetRecentDepositsStatus live response must include deposits")
+	})
 }
 
 func TestGetRecentWithdrawalsStatus(t *testing.T) {
@@ -287,6 +333,14 @@ func TestGetRecentWithdrawalsStatus(t *testing.T) {
 	withdrawals, err = newSpotErrorExchange(t).GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetRecentWithdrawalsStatus must surface request errors")
 	assert.Nil(t, withdrawals, "GetRecentWithdrawalsStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetRecentWithdrawalsStatus(t.Context(), new(GetRecentWithdrawalsStatusRequest))
+		require.NoError(t, err, "GetRecentWithdrawalsStatus must not error against the live API")
+		require.NotNil(t, response, "GetRecentWithdrawalsStatus must return a response from the live API")
+		require.NotNil(t, response.Withdrawals, "GetRecentWithdrawalsStatus live response must include withdrawals")
+	})
 }
 
 func TestGetWithdrawalMethods(t *testing.T) {
@@ -312,6 +366,13 @@ func TestGetWithdrawalMethods(t *testing.T) {
 	methods, err = newSpotErrorExchange(t).GetWithdrawalMethods(ctx, &GetWithdrawalMethodsRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalMethods must surface request errors")
 	assert.Nil(t, methods, "GetWithdrawalMethods result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetWithdrawalMethods(t.Context(), new(GetWithdrawalMethodsRequest))
+		require.NoError(t, err, "GetWithdrawalMethods must not error against the live API")
+		require.NotNil(t, response, "GetWithdrawalMethods must return a response from the live API")
+	})
 }
 
 func TestGetWithdrawalAddresses(t *testing.T) {
@@ -335,6 +396,13 @@ func TestGetWithdrawalAddresses(t *testing.T) {
 	addresses, err = newSpotErrorExchange(t).GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalAddresses must surface request errors")
 	assert.Nil(t, addresses, "GetWithdrawalAddresses result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetWithdrawalAddresses(t.Context(), new(GetWithdrawalAddressesRequest))
+		require.NoError(t, err, "GetWithdrawalAddresses must not error against the live API")
+		require.NotNil(t, response, "GetWithdrawalAddresses must return a response from the live API")
+	})
 }
 
 func TestWalletTransfer(t *testing.T) {
@@ -374,6 +442,17 @@ func TestWalletTransfer(t *testing.T) {
 	transfer, err = newSpotErrorExchange(t).WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: 1})
 	require.ErrorIs(t, err, errSpotTransport, "WalletTransfer must surface request errors")
 	assert.Nil(t, transfer, "WalletTransfer result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveWalletTransfer)
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WALLET_TRANSFER_AMOUNT"))
+		require.NoError(t, err, "WalletTransfer live amount must be valid")
+		assetCode := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WALLET_TRANSFER_ASSET")
+		response, err := spotLiveExchange.WalletTransfer(t.Context(), &WalletTransferRequest{Asset: assetCode, From: WalletSpot, To: WalletFutures, Amount: amount})
+		require.NoError(t, err, "WalletTransfer must not error against the live API")
+		require.NotNil(t, response, "WalletTransfer must return a response from the live API")
+		require.NotEmpty(t, response.ReferenceID, "WalletTransfer live response must include a reference identifier")
+	})
 }
 
 func TestRecentDepositsStatusResponseUnmarshalJSON(t *testing.T) {
@@ -532,4 +611,13 @@ func TestCancelWithdrawal(t *testing.T) {
 	assert.Equal(t, "REFERENCE", values.Get("refid"), "CancelWithdrawal should encode the reference identifier")
 	_, err = newSpotErrorExchange(t).CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{Asset: "BTC", ReferenceID: "REFERENCE"})
 	require.ErrorIs(t, err, errSpotTransport, "CancelWithdrawal must surface request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveWithdrawalCancellation)
+		assetCode := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_REFERENCE_ASSET")
+		referenceID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_REFERENCE_ID")
+		response, err := spotLiveExchange.CancelWithdrawal(t.Context(), &CancelWithdrawalRequest{Asset: assetCode, ReferenceID: referenceID})
+		require.NoError(t, err, "CancelWithdrawal must not error against the live API")
+		require.True(t, response, "CancelWithdrawal live response must confirm the cancellation")
+	})
 }

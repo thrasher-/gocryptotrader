@@ -211,6 +211,17 @@ func TestAmendOrder(t *testing.T) {
 	amended, err = newSpotErrorExchange(t).AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER"})
 	require.ErrorIs(t, err, errSpotTransport, "AmendOrder must surface request errors")
 	assert.Nil(t, amended, "AmendOrder result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveOrderAmendment)
+		orderID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_AMEND_ORDER_ID")
+		price, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_AMEND_PRICE"))
+		require.NoError(t, err, "AmendOrder live price must be valid")
+		response, err := spotLiveExchange.AmendOrder(t.Context(), &AmendOrderRequest{TransactionID: orderID, LimitPrice: &OrderPrice{Value: price}})
+		require.NoError(t, err, "AmendOrder must not error against the live API")
+		require.NotNil(t, response, "AmendOrder must return a response from the live API")
+		require.NotEmpty(t, response.AmendID, "AmendOrder live response must include an amendment identifier")
+	})
 }
 
 func TestCancelAllOpenOrders(t *testing.T) {
@@ -232,6 +243,13 @@ func TestCancelAllOpenOrders(t *testing.T) {
 	cancelled, err = newSpotErrorExchange(t).CancelAllOpenOrders(ctx)
 	require.ErrorIs(t, err, errSpotTransport, "CancelAllOpenOrders must surface request errors")
 	assert.Nil(t, cancelled, "CancelAllOpenOrders result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveCancelAllOrders)
+		response, err := spotLiveExchange.CancelAllOpenOrders(t.Context())
+		require.NoError(t, err, "CancelAllOpenOrders must not error against the live API")
+		require.NotNil(t, response, "CancelAllOpenOrders must return a response from the live API")
+	})
 }
 
 func TestCancelAllOrdersAfter(t *testing.T) {
@@ -262,6 +280,21 @@ func TestCancelAllOrdersAfter(t *testing.T) {
 	deadMan, err = newSpotErrorExchange(t).CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "CancelAllOrdersAfter must surface request errors")
 	assert.Nil(t, deadMan, "CancelAllOrdersAfter result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveDeadMansSwitch)
+		defer func() {
+			cleanupResponse, cleanupErr := spotLiveExchange.CancelAllOrdersAfter(t.Context(), new(CancelAllOrdersAfterRequest))
+			require.NoError(t, cleanupErr, "CancelAllOrdersAfter live cleanup must disable the dead-man switch")
+			require.NotNil(t, cleanupResponse, "CancelAllOrdersAfter live cleanup must return a response")
+			assert.False(t, cleanupResponse.CurrentTime.IsZero(), "CancelAllOrdersAfter live cleanup current time should be set")
+		}()
+		response, err := spotLiveExchange.CancelAllOrdersAfter(t.Context(), &CancelAllOrdersAfterRequest{Timeout: time.Minute})
+		require.NoError(t, err, "CancelAllOrdersAfter must not error against the live API")
+		require.NotNil(t, response, "CancelAllOrdersAfter must return a response from the live API")
+		assert.False(t, response.CurrentTime.IsZero(), "CancelAllOrdersAfter live current time should be set")
+		assert.False(t, response.TriggerTime.IsZero(), "CancelAllOrdersAfter live trigger time should be set")
+	})
 }
 
 func TestAddOrderBatch(t *testing.T) {
@@ -475,6 +508,21 @@ func TestAddOrderBatch(t *testing.T) {
 	batch, err = newSpotErrorExchange(t).AddOrderBatch(ctx, validRequest())
 	require.ErrorIs(t, err, errSpotTransport, "AddOrderBatch must surface request errors")
 	assert.Nil(t, batch, "AddOrderBatch result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveOrderBatchValidation)
+		response, err := spotLiveExchange.AddOrderBatch(t.Context(), &AddOrderBatchRequest{
+			Orders: []AddOrderBatchOrderRequest{
+				{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1, Price: &OrderPrice{Value: 1}},
+				{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1, Price: &OrderPrice{Value: 1}},
+			},
+			Pair:     spotTestPair,
+			Validate: true,
+		})
+		require.NoError(t, err, "AddOrderBatch must not error against the live API")
+		require.NotNil(t, response, "AddOrderBatch must return a response from the live API")
+		require.Len(t, response.Orders, 2, "AddOrderBatch live response must include each validated order")
+	})
 }
 
 func TestCancelOrderBatch(t *testing.T) {
@@ -524,6 +572,15 @@ func TestCancelOrderBatch(t *testing.T) {
 	batchCancelled, err = newSpotErrorExchange(t).CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
 	require.ErrorIs(t, err, errSpotTransport, "CancelOrderBatch must surface request errors")
 	assert.Nil(t, batchCancelled, "CancelOrderBatch result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveOrderBatchCancellation)
+		orderID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_BATCH_CANCEL_ORDER_ID")
+		response, err := spotLiveExchange.CancelOrderBatch(t.Context(), &CancelOrderBatchRequest{TransactionIDs: []string{orderID}})
+		require.NoError(t, err, "CancelOrderBatch must not error against the live API")
+		require.NotNil(t, response, "CancelOrderBatch must return a response from the live API")
+		require.Positive(t, response.Count, "CancelOrderBatch live response must include a cancellation")
+	})
 }
 
 func TestAddOrder(t *testing.T) {
@@ -722,6 +779,21 @@ func TestAddOrder(t *testing.T) {
 	added, err = newSpotErrorExchange(t).AddOrder(ctx, validRequest)
 	require.ErrorIs(t, err, errSpotTransport, "AddOrder must surface request errors")
 	assert.Nil(t, added, "AddOrder result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveOrderValidation)
+		response, err := spotLiveExchange.AddOrder(t.Context(), &AddOrderRequest{
+			OrderType: OrderTypeLimit,
+			Side:      OrderSideBuy,
+			Volume:    1,
+			Pair:      spotTestPair,
+			Price:     &OrderPrice{Value: 1},
+			Validate:  true,
+		})
+		require.NoError(t, err, "AddOrder must not error against the live API")
+		require.NotNil(t, response, "AddOrder must return a response from the live API")
+		require.NotEmpty(t, response.Description.Order, "AddOrder live response must describe the validated order")
+	})
 }
 
 func TestCancelExistingOrder(t *testing.T) {
@@ -761,4 +833,13 @@ func TestCancelExistingOrder(t *testing.T) {
 	cancelled, err = newSpotErrorExchange(t).CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
 	require.ErrorIs(t, err, errSpotTransport, "CancelExistingOrder must surface request errors")
 	assert.Nil(t, cancelled, "CancelExistingOrder result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveOrderCancellation)
+		orderID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_CANCEL_ORDER_ID")
+		response, err := spotLiveExchange.CancelExistingOrder(t.Context(), &CancelOrderRequest{TransactionID: orderID})
+		require.NoError(t, err, "CancelExistingOrder must not error against the live API")
+		require.NotNil(t, response, "CancelExistingOrder must return a response from the live API")
+		require.Positive(t, response.Count, "CancelExistingOrder live response must include a cancellation")
+	})
 }

@@ -50,6 +50,15 @@ func TestGetSystemStatus(t *testing.T) {
 	status, err = newSpotErrorExchange(t).GetSystemStatus(ctx)
 	require.ErrorIs(t, err, errSpotTransport, "GetSystemStatus must surface request errors")
 	assert.Nil(t, status, "GetSystemStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetSystemStatus(t.Context())
+		require.NoError(t, err, "GetSystemStatus must not error against the live API")
+		require.NotNil(t, response, "GetSystemStatus must return a response from the live API")
+		require.NotEmpty(t, response.Status, "GetSystemStatus live response must include a status")
+		assert.False(t, response.Timestamp.IsZero(), "GetSystemStatus live timestamp should be set")
+	})
 }
 
 func TestGetGroupedOrderBook(t *testing.T) {
@@ -106,6 +115,16 @@ func TestGetGroupedOrderBook(t *testing.T) {
 	grouped, err = newSpotErrorExchange(t).GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetGroupedOrderBook must surface request errors")
 	assert.Nil(t, grouped, "GetGroupedOrderBook result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetGroupedOrderBook(t.Context(), &GroupedOrderBookRequest{Pair: spotTestPair})
+		require.NoError(t, err, "GetGroupedOrderBook must not error against the live API")
+		require.NotNil(t, response, "GetGroupedOrderBook must return a response from the live API")
+		require.NotEmpty(t, response.Pair, "GetGroupedOrderBook live response must include a pair")
+		require.NotNil(t, response.Bids, "GetGroupedOrderBook live response must include bids")
+		require.NotNil(t, response.Asks, "GetGroupedOrderBook live response must include asks")
+	})
 }
 
 func TestQueryLevel3OrderBook(t *testing.T) {
@@ -143,6 +162,16 @@ func TestQueryLevel3OrderBook(t *testing.T) {
 	level3, err = newSpotErrorExchange(t).QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "QueryLevel3OrderBook must surface request errors")
 	assert.Nil(t, level3, "QueryLevel3OrderBook result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.QueryLevel3OrderBook(t.Context(), &QueryLevel3OrderBookRequest{Pair: spotTestPair})
+		require.NoError(t, err, "QueryLevel3OrderBook must not error against the live API")
+		require.NotNil(t, response, "QueryLevel3OrderBook must return a response from the live API")
+		require.NotEmpty(t, response.Pair, "QueryLevel3OrderBook live response must include a pair")
+		require.NotNil(t, response.Bids, "QueryLevel3OrderBook live response must include bids")
+		require.NotNil(t, response.Asks, "QueryLevel3OrderBook live response must include asks")
+	})
 }
 
 func TestGetPreTradeData(t *testing.T) {
@@ -191,6 +220,16 @@ func TestGetPreTradeData(t *testing.T) {
 	preTrade, err = newSpotErrorExchange(t).GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetPreTradeData must surface request errors")
 	assert.Nil(t, preTrade, "GetPreTradeData result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetPreTradeData(t.Context(), &GetPreTradeDataRequest{Pair: spotTestPair})
+		require.NoError(t, err, "GetPreTradeData must not error against the live API")
+		require.NotNil(t, response, "GetPreTradeData must return a response from the live API")
+		require.NotEmpty(t, response.Symbol, "GetPreTradeData live response must include a symbol")
+		require.NotNil(t, response.Bids, "GetPreTradeData live response must include bids")
+		require.NotNil(t, response.Asks, "GetPreTradeData live response must include asks")
+	})
 }
 
 func TestGetPostTradeData(t *testing.T) {
@@ -228,6 +267,15 @@ func TestGetPostTradeData(t *testing.T) {
 	postTrade, err = newSpotErrorExchange(t).GetPostTradeData(ctx, &GetPostTradeDataRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetPostTradeData must surface request errors")
 	assert.Nil(t, postTrade, "GetPostTradeData result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		to := time.Now()
+		response, err := spotLiveExchange.GetPostTradeData(t.Context(), &GetPostTradeDataRequest{Pair: spotTestPair, FromTimestamp: to.Add(-time.Hour), ToTimestamp: to, Count: 100})
+		require.NoError(t, err, "GetPostTradeData must not error against the live API")
+		require.NotNil(t, response, "GetPostTradeData must return a response from the live API")
+		require.NotNil(t, response.Trades, "GetPostTradeData live response must include trades")
+	})
 }
 
 func TestGetAssets(t *testing.T) {
@@ -266,6 +314,13 @@ func TestGetAssets(t *testing.T) {
 	assets, err = newSpotErrorExchange(t).GetAssets(ctx, &GetAssetsRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetAssets must surface request errors")
 	assert.Nil(t, assets, "GetAssets result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetAssets(t.Context(), new(GetAssetsRequest))
+		require.NoError(t, err, "GetAssets must not error against the live API")
+		require.NotEmpty(t, response, "GetAssets must return assets from the live API")
+	})
 }
 
 func TestGetAssetPairs(t *testing.T) {
@@ -339,6 +394,13 @@ func TestGetAssetPairs(t *testing.T) {
 	pairs, err = newSpotErrorExchange(t).GetAssetPairs(ctx, &GetAssetPairsRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetAssetPairs must surface request errors")
 	assert.Nil(t, pairs, "GetAssetPairs result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetAssetPairs(t.Context(), new(GetAssetPairsRequest))
+		require.NoError(t, err, "GetAssetPairs must not error against the live API")
+		require.NotEmpty(t, response, "GetAssetPairs must return asset pairs from the live API")
+	})
 }
 
 func TestGetTicker(t *testing.T) {
@@ -377,6 +439,13 @@ func TestGetTicker(t *testing.T) {
 	tickers, err = newSpotErrorExchange(t).GetTicker(ctx, &GetTickerRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetTicker must surface request errors")
 	assert.Nil(t, tickers, "GetTicker result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetTicker(t.Context(), &GetTickerRequest{Pairs: currency.Pairs{spotTestPair}})
+		require.NoError(t, err, "GetTicker must not error against the live API")
+		require.NotEmpty(t, response, "GetTicker must return ticker data from the live API")
+	})
 }
 
 func TestGetOHLC(t *testing.T) {
@@ -435,6 +504,14 @@ func TestGetOHLC(t *testing.T) {
 	ohlc, err = newSpotErrorExchange(t).GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetOHLC must surface request errors")
 	assert.Nil(t, ohlc, "GetOHLC result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetOHLC(t.Context(), &GetOHLCRequest{Pair: spotTestPair, Interval: time.Hour})
+		require.NoError(t, err, "GetOHLC must not error against the live API")
+		require.NotNil(t, response, "GetOHLC must return a response from the live API")
+		require.NotEmpty(t, response.Candles, "GetOHLC live response must include candles")
+	})
 }
 
 func TestGetDepth(t *testing.T) {
@@ -468,6 +545,13 @@ func TestGetDepth(t *testing.T) {
 	book, err = newSpotErrorExchange(t).GetDepth(ctx, &GetDepthRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetDepth must surface request errors")
 	assert.Nil(t, book, "GetDepth result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetDepth(t.Context(), &GetDepthRequest{Pair: spotTestPair, Count: 10})
+		require.NoError(t, err, "GetDepth must not error against the live API")
+		require.NotEmpty(t, response, "GetDepth must return order-book data from the live API")
+	})
 }
 
 func TestGetTrades(t *testing.T) {
@@ -519,6 +603,14 @@ func TestGetTrades(t *testing.T) {
 	trades, err = newSpotErrorExchange(t).GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetTrades must surface request errors")
 	assert.Nil(t, trades, "GetTrades result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetTrades(t.Context(), &GetTradesRequest{Pair: spotTestPair, Count: 10})
+		require.NoError(t, err, "GetTrades must not error against the live API")
+		require.NotNil(t, response, "GetTrades must return a response from the live API")
+		require.NotEmpty(t, response.Trades, "GetTrades live response must include trade data")
+	})
 }
 
 func TestGetSpread(t *testing.T) {
@@ -566,6 +658,14 @@ func TestGetSpread(t *testing.T) {
 	spread, err = newSpotErrorExchange(t).GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair})
 	require.ErrorIs(t, err, errSpotTransport, "GetSpread must surface request errors")
 	assert.Nil(t, spread, "GetSpread result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetSpread(t.Context(), &GetSpreadRequest{Pair: spotTestPair})
+		require.NoError(t, err, "GetSpread must not error against the live API")
+		require.NotNil(t, response, "GetSpread must return a response from the live API")
+		require.NotEmpty(t, response.Spreads, "GetSpread live response must include spread data")
+	})
 }
 
 func TestOHLCResponseUnmarshalJSON(t *testing.T) {
@@ -672,6 +772,15 @@ func TestGetCurrentServerTime(t *testing.T) {
 	result, err = newSpotErrorExchange(t).GetCurrentServerTime(t.Context())
 	require.ErrorIs(t, err, errSpotTransport, "GetCurrentServerTime must surface request errors")
 	assert.Nil(t, result, "GetCurrentServerTime should return nil after a request error")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		response, err := spotLiveExchange.GetCurrentServerTime(t.Context())
+		require.NoError(t, err, "GetCurrentServerTime must not error against the live API")
+		require.NotNil(t, response, "GetCurrentServerTime must return a response from the live API")
+		require.NotEmpty(t, response.Rfc1123, "GetCurrentServerTime live response must include RFC1123 time")
+		assert.False(t, response.Unixtime.Time().IsZero(), "GetCurrentServerTime live Unix time should be set")
+	})
 }
 
 func TestAssetUnmarshalJSON(t *testing.T) {

@@ -149,6 +149,10 @@ Verify all tests pass by:
 - Every exported endpoint method must have exactly one top-level test named `Test<MethodName>`, for example `TestGetOrderBook` for `GetOrderBook`.
 - Keep all direct endpoint coverage in that test: request validation, parameter conversion and exact outbound values, response decoding, applicable null or empty-result behaviour, and transport failures. Use `t.Run` subtests for that endpoint's enumerated values, boundaries, and table cases.
 - Do not aggregate unrelated endpoints into category-wide sweep tests. Searching for `Test<MethodName>` and running `go test -run '^Test<MethodName>$'` must expose the endpoint's complete direct coverage.
+- Endpoint tests must use deterministic mocks by default and support an opt-in live pass under the repository-standard `mock_test_off` build tag. Keep the live pass as the final `t.Run("live", ...)` subtest of the same `Test<MethodName>` function so the endpoint retains one discoverable test owner.
+- Run request validation before any live-test gate. Public live calls need no credentials and authenticated read-only calls require test credentials. Calls that can alter orders, funds, account settings, or other remote state require narrowly scoped, named mutation opt-ins that default to disabled; do not reuse an order opt-in for withdrawals, transfers, account-wide cancellation, or unrelated state changes.
+- Read account-specific live inputs such as existing order IDs, report IDs, withdrawal keys, subaccounts, and mutation amounts from explicit test-only configuration. Skip the live subtest when a required input is unset; never substitute mock-fixture placeholders or plausible account values into a live request.
+- Keep fixture-specific response and wire assertions in the mock path. Live assertions should check stable endpoint contracts rather than account-specific data, and live paths must retain the exchange rate limiter.
 - Tests for helpers, custom unmarshalling, shared transport, authentication, and test harness behaviour remain separate and are named for the behaviour they cover.
 
 ### Assertion Usage

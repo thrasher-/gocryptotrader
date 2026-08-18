@@ -49,6 +49,17 @@ func TestAllocateEarnFunds(t *testing.T) {
 	allocated, err = newSpotErrorExchange(t).AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 	require.ErrorIs(t, err, errSpotTransport, "AllocateEarnFunds must surface request errors")
 	assert.Nil(t, allocated, "AllocateEarnFunds result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveEarnAllocation)
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_ALLOCATE_AMOUNT"))
+		require.NoError(t, err, "AllocateEarnFunds live amount must be valid")
+		strategyID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID")
+		response, err := spotLiveExchange.AllocateEarnFunds(t.Context(), &AllocateEarnFundsRequest{Amount: amount, StrategyID: strategyID})
+		require.NoError(t, err, "AllocateEarnFunds must not error against the live API")
+		require.NotNil(t, response, "AllocateEarnFunds must return a response from the live API")
+		require.True(t, *response, "AllocateEarnFunds live response must confirm the allocation")
+	})
 }
 
 func TestDeallocateEarnFunds(t *testing.T) {
@@ -79,6 +90,17 @@ func TestDeallocateEarnFunds(t *testing.T) {
 	deallocated, err = newSpotErrorExchange(t).DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 	require.ErrorIs(t, err, errSpotTransport, "DeallocateEarnFunds must surface request errors")
 	assert.Nil(t, deallocated, "DeallocateEarnFunds result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveEarnDeallocation)
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_DEALLOCATE_AMOUNT"))
+		require.NoError(t, err, "DeallocateEarnFunds live amount must be valid")
+		strategyID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID")
+		response, err := spotLiveExchange.DeallocateEarnFunds(t.Context(), &DeallocateEarnFundsRequest{Amount: amount, StrategyID: strategyID})
+		require.NoError(t, err, "DeallocateEarnFunds must not error against the live API")
+		require.NotNil(t, response, "DeallocateEarnFunds must return a response from the live API")
+		require.True(t, *response, "DeallocateEarnFunds live response must confirm the deallocation")
+	})
 }
 
 func TestGetEarnAllocationStatus(t *testing.T) {
@@ -104,6 +126,14 @@ func TestGetEarnAllocationStatus(t *testing.T) {
 	allocationStatus, err = newSpotErrorExchange(t).GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
 	require.ErrorIs(t, err, errSpotTransport, "GetEarnAllocationStatus must surface request errors")
 	assert.Nil(t, allocationStatus, "GetEarnAllocationStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		strategyID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID")
+		response, err := spotLiveExchange.GetEarnAllocationStatus(t.Context(), &EarnOperationStatusRequest{StrategyID: strategyID})
+		require.NoError(t, err, "GetEarnAllocationStatus must not error against the live API")
+		require.NotNil(t, response, "GetEarnAllocationStatus must return a response from the live API")
+	})
 }
 
 func TestGetEarnDeallocationStatus(t *testing.T) {
@@ -129,6 +159,14 @@ func TestGetEarnDeallocationStatus(t *testing.T) {
 	deallocationStatus, err = newSpotErrorExchange(t).GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
 	require.ErrorIs(t, err, errSpotTransport, "GetEarnDeallocationStatus must surface request errors")
 	assert.Nil(t, deallocationStatus, "GetEarnDeallocationStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		strategyID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID")
+		response, err := spotLiveExchange.GetEarnDeallocationStatus(t.Context(), &EarnOperationStatusRequest{StrategyID: strategyID})
+		require.NoError(t, err, "GetEarnDeallocationStatus must not error against the live API")
+		require.NotNil(t, response, "GetEarnDeallocationStatus must return a response from the live API")
+	})
 }
 
 func TestListEarnStrategies(t *testing.T) {
@@ -175,6 +213,14 @@ func TestListEarnStrategies(t *testing.T) {
 	strategies, err = newSpotErrorExchange(t).ListEarnStrategies(ctx, &ListEarnStrategiesRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "ListEarnStrategies must surface request errors")
 	assert.Nil(t, strategies, "ListEarnStrategies result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.ListEarnStrategies(t.Context(), new(ListEarnStrategiesRequest))
+		require.NoError(t, err, "ListEarnStrategies must not error against the live API")
+		require.NotNil(t, response, "ListEarnStrategies must return a response from the live API")
+		require.NotNil(t, response.Items, "ListEarnStrategies live response must include strategy items")
+	})
 }
 
 func TestListEarnAllocations(t *testing.T) {
@@ -205,4 +251,12 @@ func TestListEarnAllocations(t *testing.T) {
 	allocations, err = newSpotErrorExchange(t).ListEarnAllocations(ctx, &ListEarnAllocationsRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "ListEarnAllocations must surface request errors")
 	assert.Nil(t, allocations, "ListEarnAllocations result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.ListEarnAllocations(t.Context(), new(ListEarnAllocationsRequest))
+		require.NoError(t, err, "ListEarnAllocations must not error against the live API")
+		require.NotNil(t, response, "ListEarnAllocations must return a response from the live API")
+		require.NotNil(t, response.Items, "ListEarnAllocations live response must include allocation items")
+	})
 }

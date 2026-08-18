@@ -9,7 +9,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 )
 
 var spotAccountFixtures = spotFixtureSet{
@@ -79,6 +78,13 @@ func TestGetAccountBalance(t *testing.T) {
 	balance, err = newSpotErrorExchange(t).GetAccountBalance(ctx, &GetAccountBalanceRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetAccountBalance must surface request errors")
 	assert.Nil(t, balance, "GetAccountBalance result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetAccountBalance(t.Context(), new(GetAccountBalanceRequest))
+		require.NoError(t, err, "GetAccountBalance must not error against the live API")
+		require.NotNil(t, response, "GetAccountBalance must return a response from the live API")
+	})
 }
 
 func TestGetExtendedBalance(t *testing.T) {
@@ -101,6 +107,13 @@ func TestGetExtendedBalance(t *testing.T) {
 	extended, err = newSpotErrorExchange(t).GetExtendedBalance(ctx, &GetExtendedBalanceRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetExtendedBalance must surface request errors")
 	assert.Nil(t, extended, "GetExtendedBalance result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetExtendedBalance(t.Context(), new(GetExtendedBalanceRequest))
+		require.NoError(t, err, "GetExtendedBalance must not error against the live API")
+		require.NotNil(t, response, "GetExtendedBalance must return a response from the live API")
+	})
 }
 
 func TestGetCreditLines(t *testing.T) {
@@ -128,6 +141,13 @@ func TestGetCreditLines(t *testing.T) {
 	credit, err = newSpotErrorExchange(t).GetCreditLines(ctx, &GetCreditLinesRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetCreditLines must surface request errors")
 	assert.Nil(t, credit, "GetCreditLines result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetCreditLines(t.Context(), new(GetCreditLinesRequest))
+		require.NoError(t, err, "GetCreditLines must not error against the live API")
+		require.NotNil(t, response, "GetCreditLines must return a response from the live API")
+	})
 }
 
 func TestGetOrderAmends(t *testing.T) {
@@ -156,6 +176,15 @@ func TestGetOrderAmends(t *testing.T) {
 	amends, err = newSpotErrorExchange(t).GetOrderAmends(ctx, &GetOrderAmendsRequest{OrderID: "ORDER"})
 	require.ErrorIs(t, err, errSpotTransport, "GetOrderAmends must surface request errors")
 	assert.Nil(t, amends, "GetOrderAmends result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		orderID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ORDER_ID")
+		response, err := spotLiveExchange.GetOrderAmends(t.Context(), &GetOrderAmendsRequest{OrderID: orderID})
+		require.NoError(t, err, "GetOrderAmends must not error against the live API")
+		require.NotNil(t, response, "GetOrderAmends must return a response from the live API")
+		require.NotNil(t, response.Amends, "GetOrderAmends live response must include amendments")
+	})
 }
 
 func TestRequestExportReport(t *testing.T) {
@@ -207,6 +236,18 @@ func TestRequestExportReport(t *testing.T) {
 	report, err = newSpotErrorExchange(t).RequestExportReport(ctx, &RequestExportReportRequest{Report: "trades", Description: "test"})
 	require.ErrorIs(t, err, errSpotTransport, "RequestExportReport must surface request errors")
 	assert.Nil(t, report, "RequestExportReport result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveExportRequest)
+		response, err := spotLiveExchange.RequestExportReport(t.Context(), &RequestExportReportRequest{Report: ExportReportTrades, Description: "GoCryptoTrader live test"})
+		require.NoError(t, err, "RequestExportReport must not error against the live API")
+		require.NotNil(t, response, "RequestExportReport must return a response from the live API")
+		require.NotEmpty(t, response.ID, "RequestExportReport live response must include the report identifier")
+		removed, err := spotLiveExchange.DeleteExportReport(t.Context(), &DeleteExportReportRequest{ID: response.ID, Type: ExportRemovalCancel})
+		require.NoError(t, err, "RequestExportReport live cleanup must cancel the export")
+		require.NotNil(t, removed, "RequestExportReport live cleanup must return a response")
+		require.True(t, removed.Cancel, "RequestExportReport live cleanup must confirm cancellation")
+	})
 }
 
 func TestGetExportReportStatus(t *testing.T) {
@@ -228,6 +269,13 @@ func TestGetExportReportStatus(t *testing.T) {
 	reports, err = newSpotErrorExchange(t).GetExportReportStatus(ctx, &GetExportReportStatusRequest{Report: "trades"})
 	require.ErrorIs(t, err, errSpotTransport, "GetExportReportStatus must surface request errors")
 	assert.Nil(t, reports, "GetExportReportStatus result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetExportReportStatus(t.Context(), &GetExportReportStatusRequest{Report: ExportReportTrades})
+		require.NoError(t, err, "GetExportReportStatus must not error against the live API")
+		require.NotNil(t, response, "GetExportReportStatus must return a response from the live API")
+	})
 }
 
 func TestRetrieveDataExport(t *testing.T) {
@@ -246,6 +294,14 @@ func TestRetrieveDataExport(t *testing.T) {
 	archive, err = newSpotErrorExchange(t).RetrieveDataExport(ctx, &RetrieveDataExportRequest{ID: "REPORT"})
 	require.ErrorIs(t, err, errSpotTransport, "RetrieveDataExport must surface request errors")
 	assert.Nil(t, archive, "RetrieveDataExport result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		reportID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_EXPORT_ID")
+		response, err := spotLiveExchange.RetrieveDataExport(t.Context(), &RetrieveDataExportRequest{ID: reportID})
+		require.NoError(t, err, "RetrieveDataExport must not error against the live API")
+		require.NotEmpty(t, response, "RetrieveDataExport must return report data from the live API")
+	})
 }
 
 func TestDeleteExportReport(t *testing.T) {
@@ -275,6 +331,15 @@ func TestDeleteExportReport(t *testing.T) {
 	deleted, err = newSpotErrorExchange(t).DeleteExportReport(ctx, &DeleteExportReportRequest{ID: "REPORT", Type: "delete"})
 	require.ErrorIs(t, err, errSpotTransport, "DeleteExportReport must surface request errors")
 	assert.Nil(t, deleted, "DeleteExportReport result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveExportDeletion)
+		reportID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_DELETE_EXPORT_ID")
+		response, err := spotLiveExchange.DeleteExportReport(t.Context(), &DeleteExportReportRequest{ID: reportID, Type: ExportRemovalDelete})
+		require.NoError(t, err, "DeleteExportReport must not error against the live API")
+		require.NotNil(t, response, "DeleteExportReport must return a response from the live API")
+		require.True(t, response.Delete, "DeleteExportReport live response must confirm deletion")
+	})
 }
 
 func TestGetAPIKeyInfo(t *testing.T) {
@@ -301,6 +366,14 @@ func TestGetAPIKeyInfo(t *testing.T) {
 	keyInfo, err = newSpotErrorExchange(t).GetAPIKeyInfo(ctx, &GetAPIKeyInfoRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetAPIKeyInfo must surface request errors")
 	assert.Nil(t, keyInfo, "GetAPIKeyInfo result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetAPIKeyInfo(t.Context(), new(GetAPIKeyInfoRequest))
+		require.NoError(t, err, "GetAPIKeyInfo must not error against the live API")
+		require.NotNil(t, response, "GetAPIKeyInfo must return a response from the live API")
+		require.NotEmpty(t, response.APIKey, "GetAPIKeyInfo live response must include the API key identifier")
+	})
 }
 
 func TestGetLedgers(t *testing.T) {
@@ -364,23 +437,20 @@ func TestGetLedgers(t *testing.T) {
 			assert.Equal(t, string(ledgerType), values.Get("type"), "GetLedgers should encode the documented ledger type")
 		})
 	}
-	t.Run("live", func(t *testing.T) {
-		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-		req := &GetLedgersRequest{
-			Start:  TimeOrTransactionID{TransactionID: "LRUHXI-IWECY-K4JYGO"},
-			End:    TimeOrTransactionID{TransactionID: "L5NIY7-JZQJD-3J4M2V"},
-			Offset: 15,
-		}
-		_, err := e.GetLedgers(t.Context(), req)
-		assert.ErrorContains(t, err, "EQuery:Unknown asset pair", "GetLedgers should error on imaginary ledgers")
-	})
-
 	ledgers, err = newSpotNullResultExchange(t).GetLedgers(ctx, &GetLedgersRequest{})
 	require.NoError(t, err, "GetLedgers must accept a null result")
 	assert.Nil(t, ledgers, "GetLedgers should return nil for a null result")
 	ledgers, err = newSpotErrorExchange(t).GetLedgers(ctx, &GetLedgersRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetLedgers must surface request errors")
 	assert.Nil(t, ledgers, "GetLedgers result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetLedgers(t.Context(), new(GetLedgersRequest))
+		require.NoError(t, err, "GetLedgers must not error against the live API")
+		require.NotNil(t, response, "GetLedgers must return a response from the live API")
+		require.NotNil(t, response.Ledger, "GetLedgers live response must include a ledger map")
+	})
 }
 
 func TestTradeInfoJSONUnmarshal(t *testing.T) {
@@ -449,6 +519,13 @@ func TestGetTradeBalance(t *testing.T) {
 	balance, err = newSpotErrorExchange(t).GetTradeBalance(ctx, &GetTradeBalanceRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetTradeBalance must surface request errors")
 	assert.Nil(t, balance, "GetTradeBalance result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetTradeBalance(t.Context(), new(GetTradeBalanceRequest))
+		require.NoError(t, err, "GetTradeBalance must not error against the live API")
+		require.NotNil(t, response, "GetTradeBalance must return a response from the live API")
+	})
 }
 
 func TestGetOpenOrders(t *testing.T) {
@@ -486,6 +563,14 @@ func TestGetOpenOrders(t *testing.T) {
 	openOrders, err = newSpotErrorExchange(t).GetOpenOrders(ctx, &GetOpenOrdersRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetOpenOrders must surface request errors")
 	assert.Nil(t, openOrders, "GetOpenOrders result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetOpenOrders(t.Context(), new(GetOpenOrdersRequest))
+		require.NoError(t, err, "GetOpenOrders must not error against the live API")
+		require.NotNil(t, response, "GetOpenOrders must return a response from the live API")
+		require.NotNil(t, response.Open, "GetOpenOrders live response must include an open-order map")
+	})
 }
 
 func TestGetClosedOrders(t *testing.T) {
@@ -554,6 +639,14 @@ func TestGetClosedOrders(t *testing.T) {
 	closedOrders, err = newSpotErrorExchange(t).GetClosedOrders(ctx, &GetClosedOrdersRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetClosedOrders must surface request errors")
 	assert.Nil(t, closedOrders, "GetClosedOrders result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetClosedOrders(t.Context(), new(GetClosedOrdersRequest))
+		require.NoError(t, err, "GetClosedOrders must not error against the live API")
+		require.NotNil(t, response, "GetClosedOrders must return a response from the live API")
+		require.NotNil(t, response.Closed, "GetClosedOrders live response must include a closed-order map")
+	})
 }
 
 func TestQueryOrdersInfo(t *testing.T) {
@@ -585,6 +678,15 @@ func TestQueryOrdersInfo(t *testing.T) {
 	orders, err = newSpotErrorExchange(t).QueryOrdersInfo(ctx, &QueryOrdersInfoRequest{TransactionIDs: []string{"ORDER"}})
 	require.ErrorIs(t, err, errSpotTransport, "QueryOrdersInfo must surface request errors")
 	assert.Nil(t, orders, "QueryOrdersInfo result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		orderID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ORDER_ID")
+		response, err := spotLiveExchange.QueryOrdersInfo(t.Context(), &QueryOrdersInfoRequest{TransactionIDs: []string{orderID}})
+		require.NoError(t, err, "QueryOrdersInfo must not error against the live API")
+		require.NotNil(t, response, "QueryOrdersInfo must return a response from the live API")
+		require.Contains(t, response, orderID, "QueryOrdersInfo live response must include the requested order")
+	})
 }
 
 func TestGetTradesHistory(t *testing.T) {
@@ -674,6 +776,14 @@ func TestGetTradesHistory(t *testing.T) {
 	history, err = newSpotErrorExchange(t).GetTradesHistory(ctx, &GetTradesHistoryRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetTradesHistory must surface request errors")
 	assert.Nil(t, history, "GetTradesHistory result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetTradesHistory(t.Context(), new(GetTradesHistoryRequest))
+		require.NoError(t, err, "GetTradesHistory must not error against the live API")
+		require.NotNil(t, response, "GetTradesHistory must return a response from the live API")
+		require.NotNil(t, response.Trades, "GetTradesHistory live response must include a trade map")
+	})
 }
 
 func TestQueryTrades(t *testing.T) {
@@ -704,6 +814,15 @@ func TestQueryTrades(t *testing.T) {
 	queriedTrades, err = newSpotErrorExchange(t).QueryTrades(ctx, &QueryTradesRequest{TransactionIDs: []string{"TRADE"}})
 	require.ErrorIs(t, err, errSpotTransport, "QueryTrades must surface request errors")
 	assert.Nil(t, queriedTrades, "QueryTrades result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		tradeID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_TRADE_ID")
+		response, err := spotLiveExchange.QueryTrades(t.Context(), &QueryTradesRequest{TransactionIDs: []string{tradeID}})
+		require.NoError(t, err, "QueryTrades must not error against the live API")
+		require.NotNil(t, response, "QueryTrades must return a response from the live API")
+		require.Contains(t, response, tradeID, "QueryTrades live response must include the requested trade")
+	})
 }
 
 func TestOpenPositions(t *testing.T) {
@@ -734,6 +853,13 @@ func TestOpenPositions(t *testing.T) {
 	positions, err = newSpotErrorExchange(t).OpenPositions(ctx, &OpenPositionsRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "OpenPositions must surface request errors")
 	assert.Nil(t, positions, "OpenPositions result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.OpenPositions(t.Context(), new(OpenPositionsRequest))
+		require.NoError(t, err, "OpenPositions must not error against the live API")
+		require.NotNil(t, response, "OpenPositions must return a response from the live API")
+	})
 }
 
 func TestQueryLedgers(t *testing.T) {
@@ -764,6 +890,15 @@ func TestQueryLedgers(t *testing.T) {
 	queriedLedgers, err = newSpotErrorExchange(t).QueryLedgers(ctx, &QueryLedgersRequest{IDs: []string{"LEDGER"}})
 	require.ErrorIs(t, err, errSpotTransport, "QueryLedgers must surface request errors")
 	assert.Nil(t, queriedLedgers, "QueryLedgers result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		ledgerID := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_LEDGER_ID")
+		response, err := spotLiveExchange.QueryLedgers(t.Context(), &QueryLedgersRequest{IDs: []string{ledgerID}})
+		require.NoError(t, err, "QueryLedgers must not error against the live API")
+		require.NotNil(t, response, "QueryLedgers must return a response from the live API")
+		require.Contains(t, response, ledgerID, "QueryLedgers live response must include the requested ledger entry")
+	})
 }
 
 func TestGetTradeVolume(t *testing.T) {
@@ -824,6 +959,15 @@ func TestGetTradeVolume(t *testing.T) {
 	volume, err = newSpotErrorExchange(t).GetTradeVolume(ctx, &GetTradeVolumeRequest{})
 	require.ErrorIs(t, err, errSpotTransport, "GetTradeVolume must surface request errors")
 	assert.Nil(t, volume, "GetTradeVolume result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetTradeVolume(t.Context(), new(GetTradeVolumeRequest))
+		require.NoError(t, err, "GetTradeVolume must not error against the live API")
+		require.NotNil(t, response, "GetTradeVolume must return a response from the live API")
+		require.NotEmpty(t, response.Currency, "GetTradeVolume live response must include a currency")
+		require.NotEmpty(t, response.AssetClass, "GetTradeVolume live response must include an asset class")
+	})
 }
 
 func TestOrderInfoUnmarshalJSON(t *testing.T) {

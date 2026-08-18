@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -18,6 +20,99 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
+)
+
+type spotLiveAccess struct {
+	requiresCredentials bool
+	mutationAllowed     bool
+	mutationOptIn       string
+}
+
+var (
+	spotLivePublic  = spotLiveAccess{}
+	spotLivePrivate = spotLiveAccess{requiresCredentials: true}
+
+	spotLiveOrderAmendment = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canAmendRealSpotOrder,
+		mutationOptIn:       "canAmendRealSpotOrder",
+	}
+	spotLiveCancelAllOrders = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canCancelAllRealSpotOrders,
+		mutationOptIn:       "canCancelAllRealSpotOrders",
+	}
+	spotLiveDeadMansSwitch = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canArmRealSpotDeadMansSwitch,
+		mutationOptIn:       "canArmRealSpotDeadMansSwitch",
+	}
+	spotLiveOrderBatchValidation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canValidateRealSpotOrderBatch,
+		mutationOptIn:       "canValidateRealSpotOrderBatch",
+	}
+	spotLiveOrderBatchCancellation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canCancelRealSpotOrderBatch,
+		mutationOptIn:       "canCancelRealSpotOrderBatch",
+	}
+	spotLiveOrderValidation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canValidateRealSpotOrder,
+		mutationOptIn:       "canValidateRealSpotOrder",
+	}
+	spotLiveOrderCancellation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canCancelRealSpotOrder,
+		mutationOptIn:       "canCancelRealSpotOrder",
+	}
+	spotLiveWithdrawal = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canWithdrawRealSpotFunds,
+		mutationOptIn:       "canWithdrawRealSpotFunds",
+	}
+	spotLiveWithdrawalCancellation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canCancelRealSpotWithdrawal,
+		mutationOptIn:       "canCancelRealSpotWithdrawal",
+	}
+	spotLiveWalletTransfer = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canTransferRealSpotWalletFunds,
+		mutationOptIn:       "canTransferRealSpotWalletFunds",
+	}
+	spotLiveEarnAllocation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canAllocateRealSpotEarnFunds,
+		mutationOptIn:       "canAllocateRealSpotEarnFunds",
+	}
+	spotLiveEarnDeallocation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canDeallocateRealSpotEarnFunds,
+		mutationOptIn:       "canDeallocateRealSpotEarnFunds",
+	}
+	spotLiveExportRequest = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canRequestRealSpotExportReport,
+		mutationOptIn:       "canRequestRealSpotExportReport",
+	}
+	spotLiveExportDeletion = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canDeleteRealSpotExportReport,
+		mutationOptIn:       "canDeleteRealSpotExportReport",
+	}
+	spotLiveSubaccountCreation = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canCreateRealSpotSubaccount,
+		mutationOptIn:       "canCreateRealSpotSubaccount",
+	}
+	spotLiveSubaccountTransfer = spotLiveAccess{
+		requiresCredentials: true,
+		mutationAllowed:     canTransferRealSpotSubaccountFunds,
+		mutationOptIn:       "canTransferRealSpotSubaccountFunds",
+	}
 )
 
 type spotHTTPResponse struct {
@@ -125,6 +220,163 @@ func TestGetWebsocketToken(t *testing.T) {
 	response, err = newSpotErrorExchange(t).GetWebsocketToken(t.Context())
 	require.ErrorIs(t, err, errSpotTransport, "GetWebsocketToken must surface request errors")
 	assert.Nil(t, response, "GetWebsocketToken response should remain nil after a request error")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePrivate)
+		response, err := spotLiveExchange.GetWebsocketToken(t.Context())
+		require.NoError(t, err, "GetWebsocketToken must not error against the live API")
+		require.NotNil(t, response, "GetWebsocketToken must return a response from the live API")
+		require.NotEmpty(t, response.Token, "GetWebsocketToken live response must include a token")
+		require.Positive(t, response.Expires, "GetWebsocketToken live response must include a positive expiry")
+	})
+}
+
+func skipSpotLiveTest(tb testing.TB, access spotLiveAccess) {
+	tb.Helper()
+	skipSpotLiveTestWithState(tb, access, mockTests, spotLiveExchange)
+}
+
+func skipSpotLiveTestWithState(tb testing.TB, access spotLiveAccess, mock bool, ex *Exchange) {
+	tb.Helper()
+	if mock {
+		tb.Skip("live testing disabled; run with -tags=mock_test_off to enable")
+	}
+	if access.requiresCredentials {
+		sharedtestvalues.SkipTestIfCredentialsUnset(tb, ex)
+	}
+	if access.mutationOptIn != "" && !access.mutationAllowed {
+		tb.Skipf("live mutation disabled; set %s to true after reviewing the endpoint payload", access.mutationOptIn)
+	}
+}
+
+func TestSkipSpotLiveTest(t *testing.T) {
+	reachedEndpoint := false
+	require.True(t, t.Run("configured build", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLivePublic)
+		reachedEndpoint = true
+	}), "skipSpotLiveTest configured-build subtest must not fail")
+	assert.Equal(t, !mockTests, reachedEndpoint, "skipSpotLiveTest should follow the configured build mode")
+}
+
+func TestSkipSpotLiveTestWithState(t *testing.T) {
+	t.Run("mock build", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLivePublic, true, nil)
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState mock subtest must not fail")
+		assert.False(t, reachedEndpoint, "skipSpotLiveTestWithState should skip live calls in a mock build")
+	})
+
+	t.Run("public live", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("continue", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLivePublic, false, nil)
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState public subtest must not fail")
+		assert.True(t, reachedEndpoint, "skipSpotLiveTestWithState should continue public live calls")
+	})
+
+	t.Run("private without credentials", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLivePrivate, false, new(Exchange))
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState private subtest must not fail")
+		assert.False(t, reachedEndpoint, "skipSpotLiveTestWithState should skip private live calls without credentials")
+	})
+
+	t.Run("private with credentials", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("continue", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLivePrivate, false, newAuthenticatedSpotExchange(t, "https://kraken.test"))
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState private subtest must not fail")
+		assert.True(t, reachedEndpoint, "skipSpotLiveTestWithState should continue private live calls with credentials")
+	})
+
+	t.Run("mutation disabled", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLiveAccess{requiresCredentials: true, mutationOptIn: "canMutate"}, false, newAuthenticatedSpotExchange(t, "https://kraken.test"))
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState mutation subtest must not fail")
+		assert.False(t, reachedEndpoint, "skipSpotLiveTestWithState should skip mutating live calls without explicit opt-in")
+	})
+
+	t.Run("mutation enabled", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("continue", func(t *testing.T) {
+			skipSpotLiveTestWithState(t, spotLiveAccess{requiresCredentials: true, mutationAllowed: true, mutationOptIn: "canMutate"}, false, newAuthenticatedSpotExchange(t, "https://kraken.test"))
+			reachedEndpoint = true
+		}), "skipSpotLiveTestWithState mutation-enabled subtest must not fail")
+		assert.True(t, reachedEndpoint, "skipSpotLiveTestWithState should continue mutating live calls with explicit opt-in")
+	})
+}
+
+func spotLiveTestValue(tb testing.TB, name string) string {
+	tb.Helper()
+	value := os.Getenv(name)
+	if value == "" {
+		tb.Skipf("live test parameter %s is unset", name)
+	}
+	return value
+}
+
+func TestSpotLiveTestValue(t *testing.T) {
+	const name = "GCT_KRAKEN_SPOT_LIVE_TEST_VALUE"
+	t.Run("set", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("continue", func(t *testing.T) {
+			t.Setenv(name, "VALUE")
+			assert.Equal(t, "VALUE", spotLiveTestValue(t, name), "spotLiveTestValue should return the configured value")
+			reachedEndpoint = true
+		}), "spotLiveTestValue set subtest must not fail")
+		assert.True(t, reachedEndpoint, "spotLiveTestValue should continue when the value is set")
+	})
+
+	t.Run("unset", func(t *testing.T) {
+		t.Setenv(name, "")
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			spotLiveTestValue(t, name)
+			reachedEndpoint = true
+		}), "spotLiveTestValue unset subtest must not fail")
+		assert.False(t, reachedEndpoint, "spotLiveTestValue should skip when the value is unset")
+	})
+}
+
+func parseSpotLiveTestPositiveFloat(value string) (float64, error) {
+	amount, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, err
+	}
+	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, errAmountInvalid
+	}
+	return amount, nil
+}
+
+func TestParseSpotLiveTestPositiveFloat(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		value         string
+		expected      float64
+		expectedError error
+	}{
+		{name: "valid", value: "0.001", expected: 0.001},
+		{name: "invalid", value: "invalid", expectedError: strconv.ErrSyntax},
+		{name: "zero", value: "0", expectedError: errAmountInvalid},
+		{name: "negative", value: "-1", expectedError: errAmountInvalid},
+		{name: "NaN", value: "NaN", expectedError: errAmountInvalid},
+		{name: "infinity", value: "+Inf", expectedError: errAmountInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			amount, err := parseSpotLiveTestPositiveFloat(tc.value)
+			require.ErrorIs(t, err, tc.expectedError, "parseSpotLiveTestPositiveFloat must return the expected error")
+			assert.Equal(t, tc.expected, amount, "parseSpotLiveTestPositiveFloat should return the expected value")
+		})
+	}
 }
 
 func cloneSpotValues(values url.Values) url.Values {

@@ -109,6 +109,56 @@ if err != nil {
 }
 ```
 
+## Spot REST live tests
+
+Spot endpoint tests use deterministic per-endpoint mocks by default. Add the
+`mock_test_off` build tag to run each endpoint test's final `live` subtest:
+
+```sh
+go test -tags=mock_test_off -run '^TestGetSystemStatus$' ./exchanges/kraken
+```
+
+Public endpoints need no credentials. Authenticated endpoints require test API
+credentials in the `apiCredentials` value in `kraken_test.go`; keep that local
+configuration uncommitted and never commit credentials.
+Account-specific read-only tests skip unless their required environment values
+are set:
+
+- `GCT_KRAKEN_SPOT_LIVE_ORDER_ID`
+- `GCT_KRAKEN_SPOT_LIVE_TRADE_ID`
+- `GCT_KRAKEN_SPOT_LIVE_LEDGER_ID`
+- `GCT_KRAKEN_SPOT_LIVE_EXPORT_ID`
+- `GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID`
+- `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_ASSET`
+- `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_KEY`
+- `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_INFO_AMOUNT`
+
+Every state-changing endpoint has its own `false` opt-in in `kraken_test.go`.
+Run these tests individually after reviewing the exact payload; some operations
+have no safe automatic rollback.
+
+| Endpoint test | Opt-in | Required environment values |
+| --- | --- | --- |
+| `TestAmendOrder` | `canAmendRealSpotOrder` | `GCT_KRAKEN_SPOT_LIVE_AMEND_ORDER_ID`, `GCT_KRAKEN_SPOT_LIVE_AMEND_PRICE` |
+| `TestCancelAllOpenOrders` | `canCancelAllRealSpotOrders` | None; cancels every open Spot order |
+| `TestCancelAllOrdersAfter` | `canArmRealSpotDeadMansSwitch` | None; the test disables the switch after the live call |
+| `TestAddOrderBatch` | `canValidateRealSpotOrderBatch` | None; requests use Kraken's validation-only mode |
+| `TestCancelOrderBatch` | `canCancelRealSpotOrderBatch` | `GCT_KRAKEN_SPOT_LIVE_BATCH_CANCEL_ORDER_ID` |
+| `TestAddOrder` | `canValidateRealSpotOrder` | None; the request uses Kraken's validation-only mode |
+| `TestCancelExistingOrder` | `canCancelRealSpotOrder` | `GCT_KRAKEN_SPOT_LIVE_CANCEL_ORDER_ID` |
+| `TestWithdrawFunds` | `canWithdrawRealSpotFunds` | `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_ASSET`, `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_KEY`, `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_AMOUNT` |
+| `TestCancelWithdrawal` | `canCancelRealSpotWithdrawal` | `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_REFERENCE_ASSET`, `GCT_KRAKEN_SPOT_LIVE_WITHDRAWAL_REFERENCE_ID` |
+| `TestWalletTransfer` | `canTransferRealSpotWalletFunds` | `GCT_KRAKEN_SPOT_LIVE_WALLET_TRANSFER_ASSET`, `GCT_KRAKEN_SPOT_LIVE_WALLET_TRANSFER_AMOUNT` |
+| `TestAllocateEarnFunds` | `canAllocateRealSpotEarnFunds` | `GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID`, `GCT_KRAKEN_SPOT_LIVE_EARN_ALLOCATE_AMOUNT` |
+| `TestDeallocateEarnFunds` | `canDeallocateRealSpotEarnFunds` | `GCT_KRAKEN_SPOT_LIVE_EARN_STRATEGY_ID`, `GCT_KRAKEN_SPOT_LIVE_EARN_DEALLOCATE_AMOUNT` |
+| `TestRequestExportReport` | `canRequestRealSpotExportReport` | None; the test cancels the requested export |
+| `TestDeleteExportReport` | `canDeleteRealSpotExportReport` | `GCT_KRAKEN_SPOT_LIVE_DELETE_EXPORT_ID` |
+| `TestCreateSubaccount` | `canCreateRealSpotSubaccount` | `GCT_KRAKEN_SPOT_LIVE_SUBACCOUNT_USERNAME`, `GCT_KRAKEN_SPOT_LIVE_SUBACCOUNT_EMAIL` |
+| `TestAccountTransfer` | `canTransferRealSpotSubaccountFunds` | `GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_ASSET`, `GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_AMOUNT`, `GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_FROM`, `GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_TO` |
+
+Set `GCT_SKIP_LIVE_TESTS=true` when checking that the tagged package compiles
+without running live tests.
+
 ## Donations
 
 <img src="/docs/assets/donate.png" hspace="70">

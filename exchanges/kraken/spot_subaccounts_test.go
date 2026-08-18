@@ -33,6 +33,15 @@ func TestCreateSubaccount(t *testing.T) {
 	created, err = newSpotErrorExchange(t).CreateSubaccount(ctx, &CreateSubaccountRequest{Username: "subaccount", Email: "subaccount@example.com"})
 	require.ErrorIs(t, err, errSpotTransport, "CreateSubaccount must surface request errors")
 	assert.False(t, created, "CreateSubaccount result should remain false on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveSubaccountCreation)
+		username := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_SUBACCOUNT_USERNAME")
+		email := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_SUBACCOUNT_EMAIL")
+		response, err := spotLiveExchange.CreateSubaccount(t.Context(), &CreateSubaccountRequest{Username: username, Email: email})
+		require.NoError(t, err, "CreateSubaccount must not error against the live API")
+		require.True(t, response, "CreateSubaccount live response must confirm creation")
+	})
 }
 
 func TestAccountTransfer(t *testing.T) {
@@ -71,4 +80,18 @@ func TestAccountTransfer(t *testing.T) {
 	accountTransfer, err = newSpotErrorExchange(t).AccountTransfer(ctx, &AccountTransferRequest{Asset: "XBT", Amount: 1, From: "PRIMARY", To: "SUB"})
 	require.ErrorIs(t, err, errSpotTransport, "AccountTransfer must surface request errors")
 	assert.Nil(t, accountTransfer, "AccountTransfer result should remain nil on request errors")
+
+	t.Run("live", func(t *testing.T) {
+		skipSpotLiveTest(t, spotLiveSubaccountTransfer)
+		amount, err := parseSpotLiveTestPositiveFloat(spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_AMOUNT"))
+		require.NoError(t, err, "AccountTransfer live amount must be valid")
+		assetCode := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_ASSET")
+		fromAccount := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_FROM")
+		toAccount := spotLiveTestValue(t, "GCT_KRAKEN_SPOT_LIVE_ACCOUNT_TRANSFER_TO")
+		response, err := spotLiveExchange.AccountTransfer(t.Context(), &AccountTransferRequest{Asset: assetCode, Amount: amount, From: fromAccount, To: toAccount})
+		require.NoError(t, err, "AccountTransfer must not error against the live API")
+		require.NotNil(t, response, "AccountTransfer must return a response from the live API")
+		require.NotEmpty(t, response.TransferID, "AccountTransfer live response must include a transfer identifier")
+		require.NotEmpty(t, response.Status, "AccountTransfer live response must include a status")
+	})
 }

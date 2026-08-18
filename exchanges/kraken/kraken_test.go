@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,12 +43,35 @@ import (
 )
 
 var (
-	e               *Exchange
-	futuresTestPair = currency.NewPairWithDelimiter("PF", "XBTUSD", "_")
+	e                *Exchange
+	spotLiveExchange *Exchange
+	futuresTestPair  = currency.NewPairWithDelimiter("PF", "XBTUSD", "_")
 )
 
-// Please add your own APIkeys to do correct due diligence testing.
-const canManipulateRealOrders = false
+// Please add your own API keys to do correct due diligence testing.
+// canManipulateRealOrders is retained for the pre-existing wrapper and Futures
+// tests. New Spot endpoint live mutations use endpoint-specific opt-ins so one
+// enabled test cannot trigger a different destructive endpoint.
+const (
+	canManipulateRealOrders = false
+
+	canAmendRealSpotOrder              = false
+	canCancelAllRealSpotOrders         = false
+	canArmRealSpotDeadMansSwitch       = false
+	canValidateRealSpotOrderBatch      = false
+	canCancelRealSpotOrderBatch        = false
+	canValidateRealSpotOrder           = false
+	canCancelRealSpotOrder             = false
+	canWithdrawRealSpotFunds           = false
+	canCancelRealSpotWithdrawal        = false
+	canTransferRealSpotWalletFunds     = false
+	canAllocateRealSpotEarnFunds       = false
+	canDeallocateRealSpotEarnFunds     = false
+	canRequestRealSpotExportReport     = false
+	canDeleteRealSpotExportReport      = false
+	canCreateRealSpotSubaccount        = false
+	canTransferRealSpotSubaccountFunds = false
+)
 
 var apiCredentials = &accounts.Credentials{
 	Key:    "",
@@ -70,18 +91,6 @@ func cloneExchangeConfig(t *testing.T) *config.Exchange {
 	var cloned config.Exchange
 	require.NoError(t, json.Unmarshal(encoded, &cloned), "json.Unmarshal must decode the exchange config")
 	return &cloned
-}
-
-func TestMain(m *testing.M) {
-	e = new(Exchange)
-	if err := testexch.Setup(e); err != nil {
-		log.Fatalf("Kraken Setup error: %s", err)
-	}
-	if apiCredentials.Key != "" && apiCredentials.Secret != "" {
-		e.API.AuthenticatedSupport = true
-		e.SetCredentials(apiCredentials)
-	}
-	os.Exit(m.Run())
 }
 
 func TestSetDefaults(t *testing.T) {
