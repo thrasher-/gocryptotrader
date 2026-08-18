@@ -2,7 +2,6 @@ package kraken
 
 import (
 	"math"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,102 +19,7 @@ var spotEarnFixtures = spotFixtureSet{results: map[string]string{
 	"/0/private/Earn/Allocations":      `{"converted_asset":"USD","total_allocated":"10","total_rewarded":"1","next_cursor":"NEXT","items":[{"strategy_id":"STRATEGY","native_asset":"DOT","amount_allocated":{"total":{"native":"1","converted":"10"}},"total_rewarded":{"native":"0.1","converted":"1"}}]}`,
 }}
 
-func TestSpotEarnEndpointErrors(t *testing.T) {
-	ex := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	_, err := ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
-	require.Error(t, err, "AllocateEarnFunds must surface request errors")
-	_, err = ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
-	require.Error(t, err, "DeallocateEarnFunds must surface request errors")
-	_, err = ex.GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
-	require.Error(t, err, "GetEarnAllocationStatus must surface request errors")
-	_, err = ex.GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
-	require.Error(t, err, "GetEarnDeallocationStatus must surface request errors")
-	_, err = ex.ListEarnStrategies(ctx, &ListEarnStrategiesRequest{})
-	require.Error(t, err, "ListEarnStrategies must surface request errors")
-	_, err = ex.ListEarnAllocations(ctx, &ListEarnAllocationsRequest{})
-	require.Error(t, err, "ListEarnAllocations must surface request errors")
-}
-
-func TestSpotEarnResponseObjectContract(t *testing.T) {
-	successEx, _ := newSpotEndpointExchange(t, spotEarnFixtures)
-	nilResultEx := newSpotNullResultExchange(t)
-	errorEx := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	for _, tc := range []struct {
-		name            string
-		call            func(*Exchange) (any, error)
-		expectedJSON    string
-		zeroValueOnNull bool
-	}{
-		{
-			name:            "AllocateEarnFunds",
-			zeroValueOnNull: true,
-			call: func(ex *Exchange) (any, error) {
-				return ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
-			},
-			expectedJSON: `true`,
-		},
-		{
-			name:            "DeallocateEarnFunds",
-			zeroValueOnNull: true,
-			call: func(ex *Exchange) (any, error) {
-				return ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
-			},
-			expectedJSON: `true`,
-		},
-		{
-			name: "GetEarnAllocationStatus",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
-			},
-			expectedJSON: `"pending":false`,
-		},
-		{
-			name: "GetEarnDeallocationStatus",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
-			},
-			expectedJSON: `"pending":false`,
-		},
-		{
-			name:         "ListEarnStrategies",
-			call:         func(ex *Exchange) (any, error) { return ex.ListEarnStrategies(ctx, &ListEarnStrategiesRequest{}) },
-			expectedJSON: `"id":"STRATEGY"`,
-		},
-		{
-			name:         "ListEarnAllocations",
-			call:         func(ex *Exchange) (any, error) { return ex.ListEarnAllocations(ctx, &ListEarnAllocationsRequest{}) },
-			expectedJSON: `"strategy_id":"STRATEGY"`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.call(successEx)
-			require.NoError(t, err, tc.name+" must not error")
-			require.NotNil(t, result, tc.name+" must return a response")
-			responseJSON, err := json.Marshal(result)
-			require.NoError(t, err, tc.name+" must encode the decoded response")
-			assert.Contains(t, string(responseJSON), tc.expectedJSON, tc.name+" should decode the response")
-
-			result, err = tc.call(nilResultEx)
-			require.NoError(t, err, tc.name+" must accept a null result")
-			if tc.zeroValueOnNull {
-				require.NotNil(t, result, tc.name+" must return a zero-value scalar for a null result")
-				assert.True(t, reflect.ValueOf(result).Elem().IsZero(), tc.name+" should return the zero-value scalar for a null result")
-			} else {
-				assert.Nil(t, result, tc.name+" should return nil for a null result")
-			}
-
-			result, err = tc.call(errorEx)
-			require.ErrorIs(t, err, errSpotTransport, tc.name+" must surface request errors")
-			assert.Nil(t, result, tc.name+" result should remain nil on request errors")
-		})
-	}
-}
-
-func TestSpotEarnEndpoints(t *testing.T) {
+func TestAllocateEarnFunds(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
 	ctx := t.Context()
 
@@ -125,27 +29,63 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errAmountInvalid, "AllocateEarnFunds must require a positive amount")
 	_, err = ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1})
 	require.ErrorIs(t, err, errStrategyIDRequired, "AllocateEarnFunds must require a strategy identifier")
+	_, err = ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: math.NaN(), StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errNumericValueInvalid, "AllocateEarnFunds must reject a non-finite amount")
 	allocated, err := ex.AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 	require.NoError(t, err, "AllocateEarnFunds must not error")
 	require.NotNil(t, allocated, "AllocateEarnFunds must decode a non-null result")
 	assert.True(t, *allocated, "AllocateEarnFunds should decode success")
+	responseJSON, err := json.Marshal(allocated)
+	require.NoError(t, err, "AllocateEarnFunds must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `true`, "AllocateEarnFunds should decode the response")
 	values := requireSpotRequest(t, requests, "/0/private/Earn/Allocate")
 	assert.Equal(t, "STRATEGY", values.Get("strategy_id"), "AllocateEarnFunds should encode the strategy identifier")
 	assert.Equal(t, "1", values.Get("amount"), "AllocateEarnFunds should encode amount")
 
-	_, err = ex.DeallocateEarnFunds(ctx, nil)
+	allocated, err = newSpotNullResultExchange(t).AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
+	require.NoError(t, err, "AllocateEarnFunds must accept a null result")
+	require.NotNil(t, allocated, "AllocateEarnFunds must return a zero-value scalar for a null result")
+	assert.False(t, *allocated, "AllocateEarnFunds should return the zero-value scalar for a null result")
+	allocated, err = newSpotErrorExchange(t).AllocateEarnFunds(ctx, &AllocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errSpotTransport, "AllocateEarnFunds must surface request errors")
+	assert.Nil(t, allocated, "AllocateEarnFunds result should remain nil on request errors")
+}
+
+func TestDeallocateEarnFunds(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
+	ctx := t.Context()
+
+	_, err := ex.DeallocateEarnFunds(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "DeallocateEarnFunds must reject a nil request")
 	_, err = ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{})
 	require.ErrorIs(t, err, errAmountInvalid, "DeallocateEarnFunds must require a positive amount")
 	_, err = ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1})
 	require.ErrorIs(t, err, errStrategyIDRequired, "DeallocateEarnFunds must require a strategy identifier")
+	_, err = ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: math.NaN(), StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errNumericValueInvalid, "DeallocateEarnFunds must reject a non-finite amount")
 	deallocated, err := ex.DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
 	require.NoError(t, err, "DeallocateEarnFunds must not error")
 	require.NotNil(t, deallocated, "DeallocateEarnFunds must decode a non-null result")
 	assert.True(t, *deallocated, "DeallocateEarnFunds should decode success")
+	responseJSON, err := json.Marshal(deallocated)
+	require.NoError(t, err, "DeallocateEarnFunds must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `true`, "DeallocateEarnFunds should decode the response")
 	requireSpotRequest(t, requests, "/0/private/Earn/Deallocate")
 
-	_, err = ex.GetEarnAllocationStatus(ctx, nil)
+	deallocated, err = newSpotNullResultExchange(t).DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
+	require.NoError(t, err, "DeallocateEarnFunds must accept a null result")
+	require.NotNil(t, deallocated, "DeallocateEarnFunds must return a zero-value scalar for a null result")
+	assert.False(t, *deallocated, "DeallocateEarnFunds should return the zero-value scalar for a null result")
+	deallocated, err = newSpotErrorExchange(t).DeallocateEarnFunds(ctx, &DeallocateEarnFundsRequest{Amount: 1, StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errSpotTransport, "DeallocateEarnFunds must surface request errors")
+	assert.Nil(t, deallocated, "DeallocateEarnFunds result should remain nil on request errors")
+}
+
+func TestGetEarnAllocationStatus(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetEarnAllocationStatus(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetEarnAllocationStatus must reject a nil request")
 	_, err = ex.GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{})
 	require.ErrorIs(t, err, errStrategyIDRequired, "GetEarnAllocationStatus must require a strategy identifier")
@@ -153,9 +93,24 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetEarnAllocationStatus must not error")
 	require.NotNil(t, allocationStatus, "GetEarnAllocationStatus must decode a non-null result")
 	assert.False(t, allocationStatus.Pending, "GetEarnAllocationStatus should decode pending status")
+	responseJSON, err := json.Marshal(allocationStatus)
+	require.NoError(t, err, "GetEarnAllocationStatus must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"pending":false`, "GetEarnAllocationStatus should decode the response")
 	requireSpotRequest(t, requests, "/0/private/Earn/AllocateStatus")
 
-	_, err = ex.GetEarnDeallocationStatus(ctx, nil)
+	allocationStatus, err = newSpotNullResultExchange(t).GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
+	require.NoError(t, err, "GetEarnAllocationStatus must accept a null result")
+	assert.Nil(t, allocationStatus, "GetEarnAllocationStatus should return nil for a null result")
+	allocationStatus, err = newSpotErrorExchange(t).GetEarnAllocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errSpotTransport, "GetEarnAllocationStatus must surface request errors")
+	assert.Nil(t, allocationStatus, "GetEarnAllocationStatus result should remain nil on request errors")
+}
+
+func TestGetEarnDeallocationStatus(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetEarnDeallocationStatus(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetEarnDeallocationStatus must reject a nil request")
 	_, err = ex.GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{})
 	require.ErrorIs(t, err, errStrategyIDRequired, "GetEarnDeallocationStatus must require a strategy identifier")
@@ -163,9 +118,24 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetEarnDeallocationStatus must not error")
 	require.NotNil(t, deallocationStatus, "GetEarnDeallocationStatus must decode a non-null result")
 	assert.False(t, deallocationStatus.Pending, "GetEarnDeallocationStatus should decode pending status")
+	responseJSON, err := json.Marshal(deallocationStatus)
+	require.NoError(t, err, "GetEarnDeallocationStatus must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"pending":false`, "GetEarnDeallocationStatus should decode the response")
 	requireSpotRequest(t, requests, "/0/private/Earn/DeallocateStatus")
 
-	_, err = ex.ListEarnStrategies(ctx, nil)
+	deallocationStatus, err = newSpotNullResultExchange(t).GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
+	require.NoError(t, err, "GetEarnDeallocationStatus must accept a null result")
+	assert.Nil(t, deallocationStatus, "GetEarnDeallocationStatus should return nil for a null result")
+	deallocationStatus, err = newSpotErrorExchange(t).GetEarnDeallocationStatus(ctx, &EarnOperationStatusRequest{StrategyID: "STRATEGY"})
+	require.ErrorIs(t, err, errSpotTransport, "GetEarnDeallocationStatus must surface request errors")
+	assert.Nil(t, deallocationStatus, "GetEarnDeallocationStatus result should remain nil on request errors")
+}
+
+func TestListEarnStrategies(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
+	ctx := t.Context()
+
+	_, err := ex.ListEarnStrategies(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "ListEarnStrategies must reject a nil request")
 	_, err = ex.ListEarnStrategies(ctx, &ListEarnStrategiesRequest{LockType: []EarnLockType{""}})
 	require.ErrorIs(t, err, errEarnLockTypeInvalid, "ListEarnStrategies must reject an empty lock type")
@@ -184,7 +154,10 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	require.NotNil(t, strategies, "ListEarnStrategies must decode a non-null result")
 	assert.Equal(t, "staking", strategies.Items[0].YieldSource.Type, "ListEarnStrategies should expose staking-backed strategies")
 	assert.Equal(t, "NEXT", strategies.NextCursor, "ListEarnStrategies should decode pagination")
-	values = requireSpotRequest(t, requests, "/0/private/Earn/Strategies")
+	responseJSON, err := json.Marshal(strategies)
+	require.NoError(t, err, "ListEarnStrategies must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"id":"STRATEGY"`, "ListEarnStrategies should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/Earn/Strategies")
 	assert.Equal(t, `["flex","bonded","timed","instant"]`, values.Get("lock_type"), "ListEarnStrategies should encode lock types as JSON")
 	assert.Equal(t, "true", values.Get("ascending"), "ListEarnStrategies should encode sort direction")
 	_, err = ex.ListEarnStrategies(ctx, &ListEarnStrategiesRequest{})
@@ -196,7 +169,20 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	values = requireSpotRequest(t, requests, "/0/private/Earn/Strategies")
 	assert.Equal(t, "0", values.Get("limit"), "ListEarnStrategies should encode an explicit zero limit")
 
-	_, err = ex.ListEarnAllocations(ctx, nil)
+	strategies, err = newSpotNullResultExchange(t).ListEarnStrategies(ctx, &ListEarnStrategiesRequest{})
+	require.NoError(t, err, "ListEarnStrategies must accept a null result")
+	assert.Nil(t, strategies, "ListEarnStrategies should return nil for a null result")
+	strategies, err = newSpotErrorExchange(t).ListEarnStrategies(ctx, &ListEarnStrategiesRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "ListEarnStrategies must surface request errors")
+	assert.Nil(t, strategies, "ListEarnStrategies result should remain nil on request errors")
+}
+
+func TestListEarnAllocations(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotEarnFixtures)
+	ctx := t.Context()
+	ascending := true
+
+	_, err := ex.ListEarnAllocations(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "ListEarnAllocations must reject a nil request")
 	hideZero := false
 	allocations, err := ex.ListEarnAllocations(ctx, &ListEarnAllocationsRequest{Ascending: &ascending, ConvertedAsset: "USD", HideZeroAllocations: &hideZero})
@@ -204,19 +190,19 @@ func TestSpotEarnEndpoints(t *testing.T) {
 	require.NotNil(t, allocations, "ListEarnAllocations must decode a non-null result")
 	assert.Equal(t, "STRATEGY", allocations.Items[0].StrategyID, "ListEarnAllocations should decode strategy allocations")
 	assert.Equal(t, "NEXT", allocations.NextCursor, "ListEarnAllocations should decode pagination")
-	values = requireSpotRequest(t, requests, "/0/private/Earn/Allocations")
+	responseJSON, err := json.Marshal(allocations)
+	require.NoError(t, err, "ListEarnAllocations must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"strategy_id":"STRATEGY"`, "ListEarnAllocations should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/Earn/Allocations")
 	assert.Equal(t, "false", values.Get("hide_zero_allocations"), "ListEarnAllocations should encode a false zero-allocation filter")
 	_, err = ex.ListEarnAllocations(ctx, &ListEarnAllocationsRequest{})
 	require.NoError(t, err, "ListEarnAllocations must allow an unfiltered request")
 	requireSpotRequest(t, requests, "/0/private/Earn/Allocations")
-}
 
-func TestSpotEarnTypedRequestValidation(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t, spotEarnFixtures)
-	notANumber := math.NaN()
-
-	_, err := ex.AllocateEarnFunds(t.Context(), &AllocateEarnFundsRequest{Amount: notANumber, StrategyID: "STRATEGY"})
-	require.ErrorIs(t, err, errNumericValueInvalid, "AllocateEarnFunds must reject a non-finite amount")
-	_, err = ex.DeallocateEarnFunds(t.Context(), &DeallocateEarnFundsRequest{Amount: notANumber, StrategyID: "STRATEGY"})
-	require.ErrorIs(t, err, errNumericValueInvalid, "DeallocateEarnFunds must reject a non-finite amount")
+	allocations, err = newSpotNullResultExchange(t).ListEarnAllocations(ctx, &ListEarnAllocationsRequest{})
+	require.NoError(t, err, "ListEarnAllocations must accept a null result")
+	assert.Nil(t, allocations, "ListEarnAllocations should return nil for a null result")
+	allocations, err = newSpotErrorExchange(t).ListEarnAllocations(ctx, &ListEarnAllocationsRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "ListEarnAllocations must surface request errors")
+	assert.Nil(t, allocations, "ListEarnAllocations result should remain nil on request errors")
 }

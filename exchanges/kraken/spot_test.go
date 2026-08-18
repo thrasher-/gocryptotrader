@@ -119,15 +119,12 @@ func TestGetWebsocketToken(t *testing.T) {
 	assert.Equal(t, "TOKEN", response.Token, "GetWebsocketToken should decode the token")
 	assert.Equal(t, int64(900), response.Expires, "GetWebsocketToken should decode the expiry")
 	requireSpotRequest(t, requests, "/0/private/GetWebSocketsToken")
+	response, err = newSpotNullResultExchange(t).GetWebsocketToken(t.Context())
+	require.NoError(t, err, "GetWebsocketToken must accept a null REST result")
+	require.Nil(t, response, "GetWebsocketToken must return nil for a null REST result")
 	response, err = newSpotErrorExchange(t).GetWebsocketToken(t.Context())
 	require.ErrorIs(t, err, errSpotTransport, "GetWebsocketToken must surface request errors")
 	assert.Nil(t, response, "GetWebsocketToken response should remain nil after a request error")
-}
-
-func TestGetWebsocketTokenNullResult(t *testing.T) {
-	token, err := newSpotNullResultExchange(t).GetWebsocketToken(t.Context())
-	require.NoError(t, err, "GetWebsocketToken must accept a null REST result")
-	require.Nil(t, token, "GetWebsocketToken must return nil for a null REST result")
 }
 
 func cloneSpotValues(values url.Values) url.Values {

@@ -24,105 +24,9 @@ var spotFundingFixtures = spotFixtureSet{results: map[string]string{
 	"/0/private/WalletTransfer":    `{"refid":"TRANSFER"}`,
 }}
 
-func TestSpotFundingEndpointErrors(t *testing.T) {
-	ex := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	_, err := ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{})
-	require.Error(t, err, "GetRecentDepositsStatus must surface request errors")
-	_, err = ex.GetDepositMethods(ctx, &GetDepositMethodsRequest{Asset: "XBT"})
-	require.Error(t, err, "GetDepositMethods must surface request errors")
-	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin"})
-	require.Error(t, err, "GetDepositAddresses must surface request errors")
-	_, err = ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: 1})
-	require.Error(t, err, "GetWithdrawalInformation must surface request errors")
-	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1})
-	require.Error(t, err, "WithdrawFunds must surface request errors")
-	_, err = ex.CancelWithdrawal(ctx, &CancelWithdrawalRequest{Asset: "BTC", ReferenceID: "REFERENCE"})
-	require.Error(t, err, "CancelWithdrawal must surface request errors")
-	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{})
-	require.Error(t, err, "GetRecentWithdrawalsStatus must surface request errors")
-	_, err = ex.GetWithdrawalMethods(ctx, &GetWithdrawalMethodsRequest{})
-	require.Error(t, err, "GetWithdrawalMethods must surface request errors")
-	_, err = ex.GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{})
-	require.Error(t, err, "GetWithdrawalAddresses must surface request errors")
-	_, err = ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: 1})
-	require.Error(t, err, "WalletTransfer must surface request errors")
-}
-
-func TestSpotFundingResponseObjectContract(t *testing.T) {
-	successEx, _ := newSpotEndpointExchange(t, spotFundingFixtures)
-	nilResultEx := newSpotNullResultExchange(t)
-	errorEx := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	for _, tc := range []struct {
-		name         string
-		call         func(*Exchange) (any, error)
-		expectedJSON string
-	}{
-		{
-			name: "GetWithdrawalInformation",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: 1})
-			},
-			expectedJSON: `"method":"Bitcoin"`,
-		},
-		{
-			name: "WithdrawFunds",
-			call: func(ex *Exchange) (any, error) {
-				return ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1})
-			},
-			expectedJSON: `"refid":"WITHDRAWAL"`,
-		},
-		{
-			name: "GetRecentDepositsStatus",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{})
-			},
-			expectedJSON: `"NextCursor":"NEXT"`,
-		},
-		{
-			name: "GetRecentWithdrawalsStatus",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{})
-			},
-			expectedJSON: `"NextCursor":"NEXT"`,
-		},
-		{
-			name: "WalletTransfer",
-			call: func(ex *Exchange) (any, error) {
-				return ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: 1})
-			},
-			expectedJSON: `"refid":"TRANSFER"`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.call(successEx)
-			require.NoError(t, err, tc.name+" must not error")
-			require.NotNil(t, result, tc.name+" must return a response")
-			responseJSON, err := json.Marshal(result)
-			require.NoError(t, err, tc.name+" must encode the decoded response")
-			assert.Contains(t, string(responseJSON), tc.expectedJSON, tc.name+" should decode the response")
-
-			result, err = tc.call(nilResultEx)
-			require.NoError(t, err, tc.name+" must accept a null result")
-			assert.Nil(t, result, tc.name+" should return nil for a null result")
-
-			result, err = tc.call(errorEx)
-			require.ErrorIs(t, err, errSpotTransport, tc.name+" must surface request errors")
-			assert.Nil(t, result, tc.name+" result should remain nil on request errors")
-		})
-	}
-}
-
-func TestSpotFundingEndpoints(t *testing.T) {
+func TestGetDepositMethods(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
 	ctx := t.Context()
-	amount := 1.0
-	maximumFee := 0.1
-	start := time.Unix(1, 0)
-	end := time.Unix(2, 0)
 
 	_, err := ex.GetDepositMethods(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetDepositMethods must reject a nil request")
@@ -143,7 +47,20 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetDepositMethods must allow omitted optional parameters")
 	requireSpotRequest(t, requests, "/0/private/DepositMethods")
 
-	_, err = ex.GetDepositAddresses(ctx, nil)
+	depositMethods, err = newSpotErrorExchange(t).GetDepositMethods(ctx, &GetDepositMethodsRequest{Asset: "XBT"})
+	require.ErrorIs(t, err, errSpotTransport, "GetDepositMethods must surface request errors")
+	assert.Nil(t, depositMethods, "GetDepositMethods result should remain nil on request errors")
+}
+
+func TestGetDepositAddresses(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	amount := 1.0
+	zero := 0.0
+	negative := -1.0
+	notANumber := math.NaN()
+
+	_, err := ex.GetDepositAddresses(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetDepositAddresses must reject a nil request")
 	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{})
 	require.ErrorIs(t, err, errAssetRequired, "GetDepositAddresses must require an asset")
@@ -151,17 +68,33 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errMethodRequired, "GetDepositAddresses must require a method")
 	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin", AssetClass: "invalid"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetDepositAddresses must reject an invalid asset class")
+	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &zero})
+	require.ErrorIs(t, err, errAmountInvalid, "GetDepositAddresses must reject an explicit zero amount")
+	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &negative})
+	require.ErrorIs(t, err, errAmountInvalid, "GetDepositAddresses must reject a negative amount")
+	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &notANumber})
+	require.ErrorIs(t, err, errNumericValueInvalid, "GetDepositAddresses must reject a non-finite amount")
 	depositAddresses, err := ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", AssetClass: AssetClassCurrency, Method: "Bitcoin Lightning", New: true, Amount: &amount})
 	require.NoError(t, err, "GetDepositAddresses must not error")
 	assert.Equal(t, "MEMO", depositAddresses[0].Memo, "GetDepositAddresses should decode deposit memos")
-	values = requireSpotRequest(t, requests, "/0/private/DepositAddresses")
+	values := requireSpotRequest(t, requests, "/0/private/DepositAddresses")
 	assert.Equal(t, "true", values.Get("new"), "GetDepositAddresses should encode address generation")
 	assert.Equal(t, "1", values.Get("amount"), "GetDepositAddresses should encode Lightning deposit amounts")
 	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin"})
 	require.NoError(t, err, "GetDepositAddresses must allow omitted optional parameters")
 	requireSpotRequest(t, requests, "/0/private/DepositAddresses")
 
-	_, err = ex.GetWithdrawalInformation(ctx, nil)
+	depositAddresses, err = newSpotErrorExchange(t).GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin"})
+	require.ErrorIs(t, err, errSpotTransport, "GetDepositAddresses must surface request errors")
+	assert.Nil(t, depositAddresses, "GetDepositAddresses result should remain nil on request errors")
+}
+
+func TestGetWithdrawalInformation(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	amount := 1.0
+
+	_, err := ex.GetWithdrawalInformation(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetWithdrawalInformation must reject a nil request")
 	_, err = ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{})
 	require.ErrorIs(t, err, errAssetRequired, "GetWithdrawalInformation must require an asset")
@@ -169,12 +102,34 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errKeyRequired, "GetWithdrawalInformation must require a key")
 	_, err = ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet"})
 	require.ErrorIs(t, err, errAmountInvalid, "GetWithdrawalInformation must require a positive amount")
+	_, err = ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: math.NaN()})
+	require.ErrorIs(t, err, errNumericValueInvalid, "GetWithdrawalInformation must reject a non-finite amount")
 	withdrawalInfo, err := ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: amount})
 	require.NoError(t, err, "GetWithdrawalInformation must not error")
+	require.NotNil(t, withdrawalInfo, "GetWithdrawalInformation must return a response")
 	assert.Equal(t, 0.9, withdrawalInfo.Amount.Float64(), "GetWithdrawalInformation should decode the net amount")
+	responseJSON, err := json.Marshal(withdrawalInfo)
+	require.NoError(t, err, "GetWithdrawalInformation must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"method":"Bitcoin"`, "GetWithdrawalInformation should decode the response")
 	requireSpotRequest(t, requests, "/0/private/WithdrawInfo")
 
-	_, err = ex.WithdrawFunds(ctx, nil)
+	withdrawalInfo, err = newSpotNullResultExchange(t).GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: 1})
+	require.NoError(t, err, "GetWithdrawalInformation must accept a null result")
+	assert.Nil(t, withdrawalInfo, "GetWithdrawalInformation should return nil for a null result")
+	withdrawalInfo, err = newSpotErrorExchange(t).GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: 1})
+	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalInformation must surface request errors")
+	assert.Nil(t, withdrawalInfo, "GetWithdrawalInformation result should remain nil on request errors")
+}
+
+func TestWithdrawFunds(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	amount := 1.0
+	maximumFee := 0.1
+	negative := -1.0
+	notANumber := math.NaN()
+
+	_, err := ex.WithdrawFunds(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "WithdrawFunds must reject a nil request")
 	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{})
 	require.ErrorIs(t, err, errAssetRequired, "WithdrawFunds must require an asset")
@@ -186,22 +141,53 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errAssetClassInvalid, "WithdrawFunds must reject an invalid asset class")
 	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: amount, RebaseMultiplier: "invalid"})
 	require.ErrorIs(t, err, errRebaseMultiplierInvalid, "WithdrawFunds must reject an invalid rebase multiplier")
+	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: notANumber})
+	require.ErrorIs(t, err, errNumericValueInvalid, "WithdrawFunds must reject a non-finite amount")
+	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1, MaximumFee: &negative})
+	require.ErrorIs(t, err, errMaximumFeeInvalid, "WithdrawFunds must reject a negative maximum fee")
+	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1, MaximumFee: &notANumber})
+	require.ErrorIs(t, err, errNumericValueInvalid, "WithdrawFunds must reject a non-finite maximum fee")
 	withdrawal, err := ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", AssetClass: AssetClassCurrency, Key: "wallet", Address: "bc1q", Amount: amount, MaximumFee: &maximumFee, RebaseMultiplier: RebaseMultiplierBase})
 	require.NoError(t, err, "WithdrawFunds must not error")
+	require.NotNil(t, withdrawal, "WithdrawFunds must return a response")
 	assert.Equal(t, "WITHDRAWAL", withdrawal.ReferenceID, "WithdrawFunds should decode the withdrawal reference")
-	values = requireSpotRequest(t, requests, "/0/private/Withdraw")
+	responseJSON, err := json.Marshal(withdrawal)
+	require.NoError(t, err, "WithdrawFunds must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"refid":"WITHDRAWAL"`, "WithdrawFunds should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/Withdraw")
 	assert.Equal(t, "bc1q", values.Get("address"), "WithdrawFunds should encode a confirmation address")
 	assert.Equal(t, "0.1", values.Get("max_fee"), "WithdrawFunds should encode a maximum fee")
 	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: amount})
 	require.NoError(t, err, "WithdrawFunds must allow omitted optional parameters")
 	requireSpotRequest(t, requests, "/0/private/Withdraw")
 
-	_, err = ex.GetRecentDepositsStatus(ctx, nil)
+	withdrawal, err = newSpotNullResultExchange(t).WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1})
+	require.NoError(t, err, "WithdrawFunds must accept a null result")
+	assert.Nil(t, withdrawal, "WithdrawFunds should return nil for a null result")
+	withdrawal, err = newSpotErrorExchange(t).WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1})
+	require.ErrorIs(t, err, errSpotTransport, "WithdrawFunds must surface request errors")
+	assert.Nil(t, withdrawal, "WithdrawFunds result should remain nil on request errors")
+}
+
+func TestGetRecentDepositsStatus(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	start := time.Unix(1, 0)
+	end := time.Unix(2, 0)
+	paginate := true
+
+	_, err := ex.GetRecentDepositsStatus(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetRecentDepositsStatus must reject a nil request")
 	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{AssetClass: "invalid"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetRecentDepositsStatus must reject an invalid asset class")
 	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{RebaseMultiplier: "invalid"})
 	require.ErrorIs(t, err, errRebaseMultiplierInvalid, "GetRecentDepositsStatus must reject an invalid rebase multiplier")
+	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Cursor: "CURSOR", Paginate: &paginate})
+	require.ErrorIs(t, err, errCursorConflict, "GetRecentDepositsStatus must reject conflicting pagination values")
+	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Start: time.Unix(-1, 0)})
+	require.ErrorIs(t, err, errTimestampInvalid, "GetRecentDepositsStatus must reject a pre-epoch timestamp")
+	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Start: end, End: start})
+	require.ErrorIs(t, err, errTimeRangeInvalid, "GetRecentDepositsStatus must reject a reversed time range")
 	depositLimit := uint64(25)
 	deposits, err := ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{
 		Asset:            "XBT",
@@ -214,14 +200,17 @@ func TestSpotFundingEndpoints(t *testing.T) {
 		RebaseMultiplier: RebaseMultiplierBase,
 	})
 	require.NoError(t, err, "GetRecentDepositsStatus must not error")
+	require.NotNil(t, deposits, "GetRecentDepositsStatus must return a response")
 	assert.Equal(t, "NEXT", deposits.NextCursor, "GetRecentDepositsStatus should decode pagination")
 	assert.Equal(t, "REF", deposits.Deposits[0].ReferenceID, "GetRecentDepositsStatus should decode deposits")
-	values = requireSpotRequest(t, requests, "/0/private/DepositStatus")
+	responseJSON, err := json.Marshal(deposits)
+	require.NoError(t, err, "GetRecentDepositsStatus must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"NextCursor":"NEXT"`, "GetRecentDepositsStatus should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/DepositStatus")
 	assert.Equal(t, "CURSOR", values.Get("cursor"), "GetRecentDepositsStatus should encode a cursor")
 	assert.Equal(t, "1", values.Get("start"), "GetRecentDepositsStatus should encode start time")
 	assert.Equal(t, "2", values.Get("end"), "GetRecentDepositsStatus should encode end time")
 	assert.Equal(t, "25", values.Get("limit"), "GetRecentDepositsStatus should encode a limit")
-	paginate := true
 	_, err = ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Paginate: &paginate})
 	require.NoError(t, err, "GetRecentDepositsStatus must accept a pagination flag")
 	values = requireSpotRequest(t, requests, "/0/private/DepositStatus")
@@ -232,12 +221,33 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	values = requireSpotRequest(t, requests, "/0/private/DepositStatus")
 	assert.Equal(t, "0", values.Get("limit"), "GetRecentDepositsStatus should encode an explicit zero limit")
 
-	_, err = ex.GetRecentWithdrawalsStatus(ctx, nil)
+	deposits, err = newSpotNullResultExchange(t).GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{})
+	require.NoError(t, err, "GetRecentDepositsStatus must accept a null result")
+	assert.Nil(t, deposits, "GetRecentDepositsStatus should return nil for a null result")
+	deposits, err = newSpotErrorExchange(t).GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetRecentDepositsStatus must surface request errors")
+	assert.Nil(t, deposits, "GetRecentDepositsStatus result should remain nil on request errors")
+}
+
+func TestGetRecentWithdrawalsStatus(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	start := time.Unix(1, 0)
+	end := time.Unix(2, 0)
+	paginate := true
+
+	_, err := ex.GetRecentWithdrawalsStatus(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetRecentWithdrawalsStatus must reject a nil request")
 	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{AssetClass: "invalid"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetRecentWithdrawalsStatus must reject an invalid asset class")
 	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{RebaseMultiplier: "invalid"})
 	require.ErrorIs(t, err, errRebaseMultiplierInvalid, "GetRecentWithdrawalsStatus must reject an invalid rebase multiplier")
+	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Cursor: "CURSOR", Paginate: &paginate})
+	require.ErrorIs(t, err, errCursorConflict, "GetRecentWithdrawalsStatus must reject conflicting pagination values")
+	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Start: time.Unix(-1, 0)})
+	require.ErrorIs(t, err, errTimestampInvalid, "GetRecentWithdrawalsStatus must reject a pre-epoch timestamp")
+	_, err = ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Start: end, End: start})
+	require.ErrorIs(t, err, errTimeRangeInvalid, "GetRecentWithdrawalsStatus must reject a reversed time range")
 	withdrawalLimit := uint64(500)
 	withdrawals, err := ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{
 		Asset:            "XBT",
@@ -250,9 +260,13 @@ func TestSpotFundingEndpoints(t *testing.T) {
 		RebaseMultiplier: RebaseMultiplierBase,
 	})
 	require.NoError(t, err, "GetRecentWithdrawalsStatus must not error")
+	require.NotNil(t, withdrawals, "GetRecentWithdrawalsStatus must return a response")
 	assert.Equal(t, "NEXT", withdrawals.NextCursor, "GetRecentWithdrawalsStatus should decode pagination")
 	assert.Equal(t, "REF", withdrawals.Withdrawals[0].ReferenceID, "GetRecentWithdrawalsStatus should decode withdrawals")
-	values = requireSpotRequest(t, requests, "/0/private/WithdrawStatus")
+	responseJSON, err := json.Marshal(withdrawals)
+	require.NoError(t, err, "GetRecentWithdrawalsStatus must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"NextCursor":"NEXT"`, "GetRecentWithdrawalsStatus should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/WithdrawStatus")
 	assert.Equal(t, "CURSOR", values.Get("cursor"), "GetRecentWithdrawalsStatus should encode a cursor")
 	assert.Equal(t, "1", values.Get("start"), "GetRecentWithdrawalsStatus should encode start time")
 	assert.Equal(t, "2", values.Get("end"), "GetRecentWithdrawalsStatus should encode end time")
@@ -267,7 +281,19 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	values = requireSpotRequest(t, requests, "/0/private/WithdrawStatus")
 	assert.Equal(t, "0", values.Get("limit"), "GetRecentWithdrawalsStatus should encode an explicit zero limit")
 
-	_, err = ex.GetWithdrawalMethods(ctx, nil)
+	withdrawals, err = newSpotNullResultExchange(t).GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{})
+	require.NoError(t, err, "GetRecentWithdrawalsStatus must accept a null result")
+	assert.Nil(t, withdrawals, "GetRecentWithdrawalsStatus should return nil for a null result")
+	withdrawals, err = newSpotErrorExchange(t).GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetRecentWithdrawalsStatus must surface request errors")
+	assert.Nil(t, withdrawals, "GetRecentWithdrawalsStatus result should remain nil on request errors")
+}
+
+func TestGetWithdrawalMethods(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetWithdrawalMethods(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetWithdrawalMethods must reject a nil request")
 	_, err = ex.GetWithdrawalMethods(ctx, &GetWithdrawalMethodsRequest{AssetClass: "invalid"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetWithdrawalMethods must reject an invalid asset class")
@@ -277,13 +303,22 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetWithdrawalMethods must not error")
 	assert.Equal(t, "METHOD", methods[0].MethodID, "GetWithdrawalMethods should decode method identifiers")
 	assert.Equal(t, 8.0, methods[0].Limits[0].Limits["86400"].Remaining.Float64(), "GetWithdrawalMethods should decode current rate limits")
-	values = requireSpotRequest(t, requests, "/0/private/WithdrawMethods")
+	values := requireSpotRequest(t, requests, "/0/private/WithdrawMethods")
 	assert.Equal(t, "Bitcoin", values.Get("network"), "GetWithdrawalMethods should encode network")
 	_, err = ex.GetWithdrawalMethods(ctx, &GetWithdrawalMethodsRequest{})
 	require.NoError(t, err, "GetWithdrawalMethods must allow unfiltered requests")
 	requireSpotRequest(t, requests, "/0/private/WithdrawMethods")
 
-	_, err = ex.GetWithdrawalAddresses(ctx, nil)
+	methods, err = newSpotErrorExchange(t).GetWithdrawalMethods(ctx, &GetWithdrawalMethodsRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalMethods must surface request errors")
+	assert.Nil(t, methods, "GetWithdrawalMethods result should remain nil on request errors")
+}
+
+func TestGetWithdrawalAddresses(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetWithdrawalAddresses(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetWithdrawalAddresses must reject a nil request")
 	_, err = ex.GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{AssetClass: "invalid"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetWithdrawalAddresses must reject an invalid asset class")
@@ -291,13 +326,23 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	addresses, err := ex.GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{Asset: "XBT", AssetClass: "currency", Method: "Bitcoin", Key: "wallet", Verified: &verified})
 	require.NoError(t, err, "GetWithdrawalAddresses must not error")
 	assert.True(t, addresses[0].Verified, "GetWithdrawalAddresses should decode verification status")
-	values = requireSpotRequest(t, requests, "/0/private/WithdrawAddresses")
+	values := requireSpotRequest(t, requests, "/0/private/WithdrawAddresses")
 	assert.Equal(t, "false", values.Get("verified"), "GetWithdrawalAddresses should encode a false verification filter")
 	_, err = ex.GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{})
 	require.NoError(t, err, "GetWithdrawalAddresses must allow unfiltered requests")
 	requireSpotRequest(t, requests, "/0/private/WithdrawAddresses")
 
-	_, err = ex.WalletTransfer(ctx, nil)
+	addresses, err = newSpotErrorExchange(t).GetWithdrawalAddresses(ctx, &GetWithdrawalAddressesRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetWithdrawalAddresses must surface request errors")
+	assert.Nil(t, addresses, "GetWithdrawalAddresses result should remain nil on request errors")
+}
+
+func TestWalletTransfer(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotFundingFixtures)
+	ctx := t.Context()
+	amount := 1.0
+
+	_, err := ex.WalletTransfer(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "WalletTransfer must reject a nil request")
 	_, err = ex.WalletTransfer(ctx, &WalletTransferRequest{})
 	require.ErrorIs(t, err, errAssetRequired, "WalletTransfer must require an asset")
@@ -311,11 +356,24 @@ func TestSpotFundingEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errToWalletInvalid, "WalletTransfer must reject an invalid destination wallet")
 	_, err = ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures})
 	require.ErrorIs(t, err, errAmountInvalid, "WalletTransfer must require a positive amount")
+	_, err = ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: math.NaN()})
+	require.ErrorIs(t, err, errNumericValueInvalid, "WalletTransfer must reject a non-finite amount")
 	transfer, err := ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: amount})
 	require.NoError(t, err, "WalletTransfer must not error")
+	require.NotNil(t, transfer, "WalletTransfer must return a response")
 	assert.Equal(t, "TRANSFER", transfer.ReferenceID, "WalletTransfer should decode the transfer reference")
-	values = requireSpotRequest(t, requests, "/0/private/WalletTransfer")
+	responseJSON, err := json.Marshal(transfer)
+	require.NoError(t, err, "WalletTransfer must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"refid":"TRANSFER"`, "WalletTransfer should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/WalletTransfer")
 	assert.Equal(t, "1", values.Get("amount"), "WalletTransfer should encode amount")
+
+	transfer, err = newSpotNullResultExchange(t).WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: 1})
+	require.NoError(t, err, "WalletTransfer must accept a null result")
+	assert.Nil(t, transfer, "WalletTransfer should return nil for a null result")
+	transfer, err = newSpotErrorExchange(t).WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: 1})
+	require.ErrorIs(t, err, errSpotTransport, "WalletTransfer must surface request errors")
+	assert.Nil(t, transfer, "WalletTransfer result should remain nil on request errors")
 }
 
 func TestRecentDepositsStatusResponseUnmarshalJSON(t *testing.T) {
@@ -456,73 +514,6 @@ func TestContainsWithdrawalField(t *testing.T) {
 			assert.Equal(t, tc.expected, containsWithdrawalField(tc.fields), "containsWithdrawalField should identify known withdrawal fields")
 		})
 	}
-}
-
-func TestSpotFundingTypedRequestValidation(t *testing.T) {
-	ex, _ := newSpotEndpointExchange(t, spotFundingFixtures)
-	ctx := t.Context()
-	zero := 0.0
-	negative := -1.0
-	notANumber := math.NaN()
-	preEpoch := time.Unix(-1, 0)
-	start := time.Unix(2, 0)
-	end := time.Unix(1, 0)
-	paginate := true
-
-	_, err := ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &zero})
-	require.ErrorIs(t, err, errAmountInvalid, "GetDepositAddresses must reject an explicit zero amount")
-	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &negative})
-	require.ErrorIs(t, err, errAmountInvalid, "GetDepositAddresses must reject a negative amount")
-	_, err = ex.GetDepositAddresses(ctx, &GetDepositAddressesRequest{Asset: "XBT", Method: "Bitcoin Lightning", Amount: &notANumber})
-	require.ErrorIs(t, err, errNumericValueInvalid, "GetDepositAddresses must reject a non-finite amount")
-
-	_, err = ex.GetWithdrawalInformation(ctx, &GetWithdrawalInformationRequest{Asset: "XBT", Key: "wallet", Amount: notANumber})
-	require.ErrorIs(t, err, errNumericValueInvalid, "GetWithdrawalInformation must reject a non-finite amount")
-	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: notANumber})
-	require.ErrorIs(t, err, errNumericValueInvalid, "WithdrawFunds must reject a non-finite amount")
-	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1, MaximumFee: &negative})
-	require.ErrorIs(t, err, errMaximumFeeInvalid, "WithdrawFunds must reject a negative maximum fee")
-	_, err = ex.WithdrawFunds(ctx, &WithdrawFundsRequest{Asset: "XBT", Key: "wallet", Amount: 1, MaximumFee: &notANumber})
-	require.ErrorIs(t, err, errNumericValueInvalid, "WithdrawFunds must reject a non-finite maximum fee")
-
-	for _, tc := range []struct {
-		name     string
-		call     func() error
-		expected error
-	}{
-		{name: "deposit cursor conflict", call: func() error {
-			_, err := ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Cursor: "CURSOR", Paginate: &paginate})
-			return err
-		}, expected: errCursorConflict},
-		{name: "deposit pre-epoch timestamp", call: func() error {
-			_, err := ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Start: preEpoch})
-			return err
-		}, expected: errTimestampInvalid},
-		{name: "deposit reversed range", call: func() error {
-			_, err := ex.GetRecentDepositsStatus(ctx, &GetRecentDepositsStatusRequest{Start: start, End: end})
-			return err
-		}, expected: errTimeRangeInvalid},
-		{name: "withdrawal cursor conflict", call: func() error {
-			_, err := ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Cursor: "CURSOR", Paginate: &paginate})
-			return err
-		}, expected: errCursorConflict},
-		{name: "withdrawal pre-epoch timestamp", call: func() error {
-			_, err := ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Start: preEpoch})
-			return err
-		}, expected: errTimestampInvalid},
-		{name: "withdrawal reversed range", call: func() error {
-			_, err := ex.GetRecentWithdrawalsStatus(ctx, &GetRecentWithdrawalsStatusRequest{Start: start, End: end})
-			return err
-		}, expected: errTimeRangeInvalid},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.call()
-			require.ErrorIs(t, err, tc.expected, tc.name+" must be rejected")
-		})
-	}
-
-	_, err = ex.WalletTransfer(ctx, &WalletTransferRequest{Asset: "XBT", From: WalletSpot, To: WalletFutures, Amount: notANumber})
-	require.ErrorIs(t, err, errNumericValueInvalid, "WalletTransfer must reject a non-finite amount")
 }
 
 func TestCancelWithdrawal(t *testing.T) {

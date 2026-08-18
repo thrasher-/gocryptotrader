@@ -31,131 +31,32 @@ var spotMarketFixtures = spotFixtureSet{results: map[string]string{
 	"/0/public/PostTrade":    `{"last_ts":"2026-08-02T00:00:01Z","count":1,"trades":[{"trade_id":"TRADE","price":"100","quantity":"2","symbol":"BTC/USD","description":"Bitcoin / US Dollars","base_asset":"BTC","base_notation":"UNIT","quote_asset":"USD","quote_notation":"MONE","trade_venue":"PGSL","trade_ts":"2026-08-02T00:00:00Z","publication_venue":"PGSL","publication_ts":"2026-08-02T00:00:01Z"}]}`,
 }}
 
-func TestSpotMarketEndpointErrors(t *testing.T) {
-	ex := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	_, err := ex.GetAssets(ctx, &GetAssetsRequest{})
-	require.Error(t, err, "GetAssets must surface request errors")
-	_, err = ex.GetAssetPairs(ctx, &GetAssetPairsRequest{})
-	require.Error(t, err, "GetAssetPairs must surface request errors")
-	_, err = ex.GetTicker(ctx, &GetTickerRequest{})
-	require.Error(t, err, "GetTicker must surface request errors")
-	_, err = ex.GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetOHLC must surface request errors")
-	_, err = ex.GetDepth(ctx, &GetDepthRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetDepth must surface request errors")
-	_, err = ex.GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetTrades must surface request errors")
-	_, err = ex.GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetSpread must surface request errors")
-	_, err = ex.GetSystemStatus(ctx)
-	require.Error(t, err, "GetSystemStatus must surface request errors")
-	_, err = ex.GetCurrentServerTime(ctx)
-	require.Error(t, err, "GetCurrentServerTime must surface request errors")
-	_, err = ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetGroupedOrderBook must surface request errors")
-	_, err = ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
-	require.Error(t, err, "QueryLevel3OrderBook must surface request errors")
-	_, err = ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetPreTradeData must surface request errors")
-	_, err = ex.GetPostTradeData(ctx, &GetPostTradeDataRequest{})
-	require.Error(t, err, "GetPostTradeData must surface request errors")
-
-	bareEx := new(Exchange)
-	_, err = bareEx.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
-	require.Error(t, err, "GetGroupedOrderBook must surface pair-format errors")
-	_, err = bareEx.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
-	require.Error(t, err, "QueryLevel3OrderBook must surface pair-format errors")
-}
-
-func TestSpotMarketResponseObjectContract(t *testing.T) {
-	successEx, _ := newSpotEndpointExchange(t, spotMarketFixtures)
-	nilResultEx := newSpotNullResultExchange(t)
-	errorEx := newSpotErrorExchange(t)
-	ctx := t.Context()
-
-	for _, tc := range []struct {
-		name         string
-		call         func(*Exchange) (any, error)
-		expectedJSON string
-	}{
-		{
-			name:         "GetSystemStatus",
-			call:         func(ex *Exchange) (any, error) { return ex.GetSystemStatus(ctx) },
-			expectedJSON: `"status":"online"`,
-		},
-		{
-			name:         "GetOHLC",
-			call:         func(ex *Exchange) (any, error) { return ex.GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair}) },
-			expectedJSON: `"Candles":{"BTC/USD":[{`,
-		},
-		{
-			name:         "GetTrades",
-			call:         func(ex *Exchange) (any, error) { return ex.GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair}) },
-			expectedJSON: `"Trades":{"BTC/USD":[{`,
-		},
-		{
-			name:         "GetSpread",
-			call:         func(ex *Exchange) (any, error) { return ex.GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair}) },
-			expectedJSON: `"Spreads":{"BTC/USD":[{`,
-		},
-		{
-			name: "GetGroupedOrderBook",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
-			},
-			expectedJSON: `"pair":"XBTUSD"`,
-		},
-		{
-			name: "QueryLevel3OrderBook",
-			call: func(ex *Exchange) (any, error) {
-				return ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
-			},
-			expectedJSON: `"pair":"XBTUSD"`,
-		},
-		{
-			name: "GetPreTradeData",
-			call: func(ex *Exchange) (any, error) {
-				return ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
-			},
-			expectedJSON: `"symbol":"BTC/USD"`,
-		},
-		{
-			name:         "GetPostTradeData",
-			call:         func(ex *Exchange) (any, error) { return ex.GetPostTradeData(ctx, &GetPostTradeDataRequest{}) },
-			expectedJSON: `"trade_id":"TRADE"`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.call(successEx)
-			require.NoError(t, err, tc.name+" must not error")
-			require.NotNil(t, result, tc.name+" must return a response")
-			responseJSON, err := json.Marshal(result)
-			require.NoError(t, err, tc.name+" must encode the decoded response")
-			assert.Contains(t, string(responseJSON), tc.expectedJSON, tc.name+" should decode the response")
-
-			result, err = tc.call(nilResultEx)
-			require.NoError(t, err, tc.name+" must accept a null result")
-			assert.Nil(t, result, tc.name+" should return nil for a null result")
-
-			result, err = tc.call(errorEx)
-			require.ErrorIs(t, err, errSpotTransport, tc.name+" must surface request errors")
-			assert.Nil(t, result, tc.name+" result should remain nil on request errors")
-		})
-	}
-}
-
-func TestSpotMarketEndpoints(t *testing.T) {
+func TestGetSystemStatus(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
 	ctx := t.Context()
 
 	status, err := ex.GetSystemStatus(ctx)
 	require.NoError(t, err, "GetSystemStatus must not error")
+	require.NotNil(t, status, "GetSystemStatus must return a response")
 	assert.Equal(t, "online", status.Status, "GetSystemStatus should decode status")
+	responseJSON, err := json.Marshal(status)
+	require.NoError(t, err, "GetSystemStatus must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"status":"online"`, "GetSystemStatus should decode the response")
 	requireSpotRequest(t, requests, "/0/public/SystemStatus")
 
-	_, err = ex.GetGroupedOrderBook(ctx, nil)
+	status, err = newSpotNullResultExchange(t).GetSystemStatus(ctx)
+	require.NoError(t, err, "GetSystemStatus must accept a null result")
+	assert.Nil(t, status, "GetSystemStatus should return nil for a null result")
+	status, err = newSpotErrorExchange(t).GetSystemStatus(ctx)
+	require.ErrorIs(t, err, errSpotTransport, "GetSystemStatus must surface request errors")
+	assert.Nil(t, status, "GetSystemStatus result should remain nil on request errors")
+}
+
+func TestGetGroupedOrderBook(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetGroupedOrderBook(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetGroupedOrderBook must reject a nil request")
 	_, err = ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{})
 	require.ErrorIs(t, err, errPairRequired, "GetGroupedOrderBook must require a pair")
@@ -163,6 +64,10 @@ func TestSpotMarketEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errGroupedDepthInvalid, "GetGroupedOrderBook must reject unsupported depth")
 	_, err = ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair, Grouping: 2})
 	require.ErrorIs(t, err, errGroupingInvalid, "GetGroupedOrderBook must reject unsupported grouping")
+	assert.Contains(t, errGroupedDepthInvalid.Error(), "omitted", "errGroupedDepthInvalid should describe omission as valid")
+	assert.Contains(t, errGroupingInvalid.Error(), "omitted", "errGroupingInvalid should describe omission as valid")
+	_, err = new(Exchange).GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
+	require.Error(t, err, "GetGroupedOrderBook must surface pair-format errors")
 	for _, tc := range []struct {
 		name     string
 		depth    GroupedOrderBookDepth
@@ -174,23 +79,48 @@ func TestSpotMarketEndpoints(t *testing.T) {
 		t.Run("grouped "+tc.name, func(t *testing.T) {
 			_, err := ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair, Depth: tc.depth, Grouping: tc.grouping})
 			require.NoError(t, err, "GetGroupedOrderBook must accept documented bounds")
-			requireSpotRequest(t, requests, "/0/public/GroupedBook")
+			values := requireSpotRequest(t, requests, "/0/public/GroupedBook")
+			assert.Equal(t, strconv.FormatUint(uint64(tc.depth), 10), values.Get("depth"), "GetGroupedOrderBook should encode documented depth")
+			assert.Equal(t, strconv.FormatUint(uint64(tc.grouping), 10), values.Get("grouping"), "GetGroupedOrderBook should encode documented grouping")
 		})
 	}
+	_, err = ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetGroupedOrderBook must allow optional parameters to be omitted")
+	values := requireSpotRequest(t, requests, "/0/public/GroupedBook")
+	assert.Empty(t, values.Get("depth"), "GetGroupedOrderBook should omit the default depth")
+	assert.Empty(t, values.Get("grouping"), "GetGroupedOrderBook should omit the default grouping")
 	grouped, err := ex.GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair, Depth: 25, Grouping: 5})
 	require.NoError(t, err, "GetGroupedOrderBook must not error")
+	require.NotNil(t, grouped, "GetGroupedOrderBook must return a response")
 	assert.Len(t, grouped.Bids, 1, "GetGroupedOrderBook should decode bids")
-	values := requireSpotRequest(t, requests, "/0/public/GroupedBook")
+	responseJSON, err := json.Marshal(grouped)
+	require.NoError(t, err, "GetGroupedOrderBook must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"pair":"XBTUSD"`, "GetGroupedOrderBook should decode the response")
+	values = requireSpotRequest(t, requests, "/0/public/GroupedBook")
 	assert.Equal(t, "25", values.Get("depth"), "GetGroupedOrderBook should encode depth")
 	assert.Equal(t, "5", values.Get("grouping"), "GetGroupedOrderBook should encode grouping")
 
-	_, err = ex.QueryLevel3OrderBook(ctx, nil)
+	grouped, err = newSpotNullResultExchange(t).GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetGroupedOrderBook must accept a null result")
+	assert.Nil(t, grouped, "GetGroupedOrderBook should return nil for a null result")
+	grouped, err = newSpotErrorExchange(t).GetGroupedOrderBook(ctx, &GroupedOrderBookRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetGroupedOrderBook must surface request errors")
+	assert.Nil(t, grouped, "GetGroupedOrderBook result should remain nil on request errors")
+}
+
+func TestQueryLevel3OrderBook(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.QueryLevel3OrderBook(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "QueryLevel3OrderBook must reject a nil request")
 	_, err = ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{})
 	require.ErrorIs(t, err, errPairRequired, "QueryLevel3OrderBook must require a pair")
 	invalidDepth := Level3OrderBookDepth(1)
 	_, err = ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair, Depth: &invalidDepth})
 	require.ErrorIs(t, err, errLevel3DepthInvalid, "QueryLevel3OrderBook must reject unsupported depth")
+	_, err = new(Exchange).QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
+	require.Error(t, err, "QueryLevel3OrderBook must surface pair-format errors")
 	for _, depth := range []Level3OrderBookDepth{Level3OrderBookDepthFull, Level3OrderBookDepth1000} {
 		_, err := ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair, Depth: &depth})
 		require.NoError(t, err, "QueryLevel3OrderBook must accept documented bounds")
@@ -199,11 +129,27 @@ func TestSpotMarketEndpoints(t *testing.T) {
 	}
 	level3, err := ex.QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
 	require.NoError(t, err, "QueryLevel3OrderBook must not error")
+	require.NotNil(t, level3, "QueryLevel3OrderBook must return a response")
 	assert.Equal(t, int64(1765622008594292000), level3.Bids[0].Timestamp.Time().UnixNano(), "QueryLevel3OrderBook should retain nanosecond timestamps")
-	values = requireSpotRequest(t, requests, "/0/private/Level3")
+	responseJSON, err := json.Marshal(level3)
+	require.NoError(t, err, "QueryLevel3OrderBook must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"pair":"XBTUSD"`, "QueryLevel3OrderBook should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/Level3")
 	assert.Empty(t, values.Get("depth"), "QueryLevel3OrderBook should omit depth to use the server default")
 
-	_, err = ex.GetPreTradeData(ctx, nil)
+	level3, err = newSpotNullResultExchange(t).QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
+	require.NoError(t, err, "QueryLevel3OrderBook must accept a null result")
+	assert.Nil(t, level3, "QueryLevel3OrderBook should return nil for a null result")
+	level3, err = newSpotErrorExchange(t).QueryLevel3OrderBook(ctx, &QueryLevel3OrderBookRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "QueryLevel3OrderBook must surface request errors")
+	assert.Nil(t, level3, "QueryLevel3OrderBook result should remain nil on request errors")
+}
+
+func TestGetPreTradeData(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetPreTradeData(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetPreTradeData must reject a nil request")
 	_, err = ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{})
 	require.ErrorIs(t, err, errSymbolRequired, "GetPreTradeData must require a symbol")
@@ -213,19 +159,45 @@ func TestSpotMarketEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, errSymbolLengthInvalid, "GetPreTradeData must reject a symbol shorter than three characters")
 	_, err = ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: currency.NewPairWithDelimiter(strings.Repeat("A", 16), strings.Repeat("B", 17), "")})
 	require.ErrorIs(t, err, errSymbolLengthInvalid, "GetPreTradeData must reject a symbol longer than thirty-two characters")
-	for _, pair := range []currency.Pair{currency.NewPairWithDelimiter("A", "BC", ""), currency.NewPairWithDelimiter(strings.Repeat("A", 16), strings.Repeat("B", 16), "")} {
-		_, err := ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: pair})
-		require.NoError(t, err, "GetPreTradeData must accept documented symbol bounds")
-		requireSpotRequest(t, requests, "/0/public/PreTrade")
+	for _, tc := range []struct {
+		name           string
+		pair           currency.Pair
+		expectedSymbol string
+	}{
+		{name: "three characters", pair: currency.NewPairWithDelimiter("A", "BC", ""), expectedSymbol: "ABC"},
+		{name: "thirty-two characters", pair: currency.NewPairWithDelimiter(strings.Repeat("A", 16), strings.Repeat("B", 16), ""), expectedSymbol: strings.Repeat("A", 16) + strings.Repeat("B", 16)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: tc.pair})
+			require.NoError(t, err, "GetPreTradeData must accept documented symbol bounds")
+			values := requireSpotRequest(t, requests, "/0/public/PreTrade")
+			assert.Equal(t, tc.expectedSymbol, values.Get("symbol"), "GetPreTradeData should encode the boundary symbol")
+		})
 	}
 	preTrade, err := ex.GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
 	require.NoError(t, err, "GetPreTradeData must not error")
+	require.NotNil(t, preTrade, "GetPreTradeData must return a response")
 	assert.Equal(t, "4H95J0R2X", preTrade.BaseDTICode, "GetPreTradeData should decode DTI metadata")
 	assert.False(t, preTrade.Bids[0].SubmissionTimestamp.IsZero(), "GetPreTradeData should decode submission timestamps")
-	values = requireSpotRequest(t, requests, "/0/public/PreTrade")
+	responseJSON, err := json.Marshal(preTrade)
+	require.NoError(t, err, "GetPreTradeData must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"symbol":"BTC/USD"`, "GetPreTradeData should decode the response")
+	values := requireSpotRequest(t, requests, "/0/public/PreTrade")
 	assert.Equal(t, "XBTUSD", values.Get("symbol"), "GetPreTradeData should encode symbol")
 
-	_, err = ex.GetPostTradeData(ctx, nil)
+	preTrade, err = newSpotNullResultExchange(t).GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetPreTradeData must accept a null result")
+	assert.Nil(t, preTrade, "GetPreTradeData should return nil for a null result")
+	preTrade, err = newSpotErrorExchange(t).GetPreTradeData(ctx, &GetPreTradeDataRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetPreTradeData must surface request errors")
+	assert.Nil(t, preTrade, "GetPreTradeData result should remain nil on request errors")
+}
+
+func TestGetPostTradeData(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetPostTradeData(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetPostTradeData must reject a nil request")
 	_, err = ex.GetPostTradeData(ctx, &GetPostTradeDataRequest{Count: 1001})
 	require.ErrorIs(t, err, errPostTradeCountTooLarge, "GetPostTradeData must enforce Kraken's result limit")
@@ -239,18 +211,28 @@ func TestSpotMarketEndpoints(t *testing.T) {
 	require.Error(t, err, "GetPostTradeData must surface pair-format errors")
 	postTrade, err := ex.GetPostTradeData(ctx, &GetPostTradeDataRequest{Pair: spotTestPair, FromTimestamp: from, ToTimestamp: to, Count: 100})
 	require.NoError(t, err, "GetPostTradeData must not error")
+	require.NotNil(t, postTrade, "GetPostTradeData must return a response")
 	assert.Equal(t, uint64(1), postTrade.Count, "GetPostTradeData should decode the trade count")
-	values = requireSpotRequest(t, requests, "/0/public/PostTrade")
+	responseJSON, err := json.Marshal(postTrade)
+	require.NoError(t, err, "GetPostTradeData must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"trade_id":"TRADE"`, "GetPostTradeData should decode the response")
+	values := requireSpotRequest(t, requests, "/0/public/PostTrade")
 	assert.Equal(t, "XBTUSD", values.Get("symbol"), "GetPostTradeData should encode the formatted pair")
 	assert.Equal(t, from.UTC().Format(time.RFC3339Nano), values.Get("from_ts"), "GetPostTradeData should encode the start timestamp in UTC")
 	assert.Equal(t, to.UTC().Format(time.RFC3339Nano), values.Get("to_ts"), "GetPostTradeData should encode the end timestamp in UTC")
 	assert.Equal(t, "100", values.Get("count"), "GetPostTradeData should encode count")
+
+	postTrade, err = newSpotNullResultExchange(t).GetPostTradeData(ctx, &GetPostTradeDataRequest{})
+	require.NoError(t, err, "GetPostTradeData must accept a null result")
+	assert.Nil(t, postTrade, "GetPostTradeData should return nil for a null result")
+	postTrade, err = newSpotErrorExchange(t).GetPostTradeData(ctx, &GetPostTradeDataRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetPostTradeData must surface request errors")
+	assert.Nil(t, postTrade, "GetPostTradeData result should remain nil on request errors")
 }
 
-func TestSpotPublicEndpoints(t *testing.T) {
+func TestGetAssets(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
 	ctx := t.Context()
-	preEpoch := time.Unix(-1, 0)
 
 	_, err := ex.GetAssets(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetAssets must reject a nil request")
@@ -272,8 +254,25 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetAssets must allow omitted filters")
 	values = requireSpotRequest(t, requests, "/0/public/Assets")
 	assert.Empty(t, values, "GetAssets should omit unset filters")
+	for _, value := range []AssetClass{AssetClassCurrency, AssetClassTokenizedAsset} {
+		t.Run("asset class "+string(value), func(t *testing.T) {
+			_, err := ex.GetAssets(t.Context(), &GetAssetsRequest{AssetClass: value})
+			require.NoError(t, err, "GetAssets must accept the documented asset class")
+			values := requireSpotRequest(t, requests, "/0/public/Assets")
+			assert.Equal(t, string(value), values.Get("aclass"), "GetAssets should encode the documented asset class")
+		})
+	}
 
-	_, err = ex.GetAssetPairs(ctx, nil)
+	assets, err = newSpotErrorExchange(t).GetAssets(ctx, &GetAssetsRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetAssets must surface request errors")
+	assert.Nil(t, assets, "GetAssets result should remain nil on request errors")
+}
+
+func TestGetAssetPairs(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetAssetPairs(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetAssetPairs must reject a nil request")
 	_, err = ex.GetAssetPairs(ctx, &GetAssetPairsRequest{AssetClassBase: invalidSpotValue})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetAssetPairs must reject an invalid asset class")
@@ -301,7 +300,7 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	assert.Equal(t, 250.0, pairs["BTC/USD"].LongPositionLimit.Float64(), "GetAssetPairs should decode long position limit")
 	assert.Equal(t, 200.0, pairs["BTC/USD"].ShortPositionLimit.Float64(), "GetAssetPairs should decode short position limit")
 	assert.Equal(t, "international", pairs["BTC/USD"].ExecutionVenue, "GetAssetPairs should decode execution venue")
-	values = requireSpotRequest(t, requests, "/0/public/AssetPairs")
+	values := requireSpotRequest(t, requests, "/0/public/AssetPairs")
 	assert.Equal(t, "XBTUSD", values.Get("pair"), "GetAssetPairs should encode pairs")
 	assert.Equal(t, "tokenized_asset", values.Get("aclass_base"), "GetAssetPairs should encode base asset class")
 	assert.Equal(t, "margin", values.Get("info"), "GetAssetPairs should encode info")
@@ -312,8 +311,41 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetAssetPairs must allow omitted filters")
 	values = requireSpotRequest(t, requests, "/0/public/AssetPairs")
 	assert.Empty(t, values, "GetAssetPairs should omit unset filters")
+	for _, value := range []AssetPairInfo{AssetPairInfoAll, AssetPairInfoLeverage, AssetPairInfoFees, AssetPairInfoMargin} {
+		t.Run("asset pair info "+string(value), func(t *testing.T) {
+			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{Info: value})
+			require.NoError(t, err, "GetAssetPairs must accept the documented info filter")
+			values := requireSpotRequest(t, requests, "/0/public/AssetPairs")
+			assert.Equal(t, string(value), values.Get("info"), "GetAssetPairs should encode the documented info filter")
+		})
+	}
+	for _, value := range []AssetClass{AssetClassCurrency, AssetClassTokenizedAsset} {
+		t.Run("asset pair base class "+string(value), func(t *testing.T) {
+			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{AssetClassBase: value})
+			require.NoError(t, err, "GetAssetPairs must accept the documented base asset class")
+			values := requireSpotRequest(t, requests, "/0/public/AssetPairs")
+			assert.Equal(t, string(value), values.Get("aclass_base"), "GetAssetPairs should encode the documented base asset class")
+		})
+	}
+	for _, value := range []ExecutionVenue{ExecutionVenueInternational, ExecutionVenueBitnomial} {
+		t.Run("execution venue "+string(value), func(t *testing.T) {
+			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{ExecutionVenue: value})
+			require.NoError(t, err, "GetAssetPairs must accept the documented execution venue")
+			values := requireSpotRequest(t, requests, "/0/public/AssetPairs")
+			assert.Equal(t, string(value), values.Get("execution_venue"), "GetAssetPairs should encode the documented execution venue")
+		})
+	}
 
-	_, err = ex.GetTicker(ctx, nil)
+	pairs, err = newSpotErrorExchange(t).GetAssetPairs(ctx, &GetAssetPairsRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetAssetPairs must surface request errors")
+	assert.Nil(t, pairs, "GetAssetPairs result should remain nil on request errors")
+}
+
+func TestGetTicker(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetTicker(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetTicker must reject a nil request")
 	_, err = ex.GetTicker(ctx, &GetTickerRequest{AssetClass: "currency"})
 	require.ErrorIs(t, err, errAssetClassInvalid, "GetTicker must reject an invalid asset class")
@@ -326,15 +358,33 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	tickers, err := ex.GetTicker(ctx, &GetTickerRequest{Pairs: currency.Pairs{spotTestPair}, AssetClass: AssetClassForex, AssetVersion: AssetVersionDisplay})
 	require.NoError(t, err, "GetTicker must not error")
 	assert.Equal(t, 100.0, tickers["BTC/USD"].Last[0].Float64(), "GetTicker should decode last price")
-	values = requireSpotRequest(t, requests, "/0/public/Ticker")
+	values := requireSpotRequest(t, requests, "/0/public/Ticker")
 	assert.Equal(t, "XBTUSD", values.Get("pair"), "GetTicker should encode pairs")
 	assert.Equal(t, "forex", values.Get("asset_class"), "GetTicker should encode asset class")
 	assert.Equal(t, "1", values.Get("assetVersion"), "GetTicker should encode assetVersion")
 	_, err = ex.GetTicker(ctx, &GetTickerRequest{})
 	require.NoError(t, err, "GetTicker must allow omitted filters")
 	requireSpotRequest(t, requests, "/0/public/Ticker")
+	for _, value := range []AssetClass{AssetClassTokenizedAsset, AssetClassForex} {
+		t.Run("asset class "+string(value), func(t *testing.T) {
+			_, err := ex.GetTicker(t.Context(), &GetTickerRequest{AssetClass: value})
+			require.NoError(t, err, "GetTicker must accept the documented asset class")
+			values := requireSpotRequest(t, requests, "/0/public/Ticker")
+			assert.Equal(t, string(value), values.Get("asset_class"), "GetTicker should encode the documented asset class")
+		})
+	}
 
-	_, err = ex.GetOHLC(ctx, nil)
+	tickers, err = newSpotErrorExchange(t).GetTicker(ctx, &GetTickerRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "GetTicker must surface request errors")
+	assert.Nil(t, tickers, "GetTicker result should remain nil on request errors")
+}
+
+func TestGetOHLC(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+	preEpoch := time.Unix(-1, 0)
+
+	_, err := ex.GetOHLC(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetOHLC must reject a nil request")
 	_, err = ex.GetOHLC(ctx, &GetOHLCRequest{})
 	require.ErrorIs(t, err, errPairRequired, "GetOHLC must require a pair")
@@ -351,8 +401,12 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	since := time.Unix(1695828270, 0)
 	ohlc, err := ex.GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair, Interval: time.Hour, Since: since, AssetClass: AssetClassTokenizedAsset, AssetVersion: AssetVersionDisplay})
 	require.NoError(t, err, "GetOHLC must not error")
+	require.NotNil(t, ohlc, "GetOHLC must return a response")
 	assert.Equal(t, uint64(3), ohlc.Candles["BTC/USD"][0].Count, "GetOHLC should decode candle count")
-	values = requireSpotRequest(t, requests, "/0/public/OHLC")
+	responseJSON, err := json.Marshal(ohlc)
+	require.NoError(t, err, "GetOHLC must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"Candles":{"BTC/USD":[{`, "GetOHLC should decode the response")
+	values := requireSpotRequest(t, requests, "/0/public/OHLC")
 	assert.Equal(t, "60", values.Get("interval"), "GetOHLC should encode interval")
 	assert.Equal(t, "1695828270", values.Get("since"), "GetOHLC should encode since")
 	assert.Equal(t, "tokenized_asset", values.Get("asset_class"), "GetOHLC should encode asset class")
@@ -366,8 +420,28 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetOHLC must accept an explicit zero since value")
 	values = requireSpotRequest(t, requests, "/0/public/OHLC")
 	assert.Equal(t, "0", values.Get("since"), "GetOHLC should encode an explicit zero since value")
+	for _, value := range []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour, 4 * time.Hour, 24 * time.Hour, 7 * 24 * time.Hour, 15 * 24 * time.Hour} {
+		t.Run(value.String(), func(t *testing.T) {
+			_, err := ex.GetOHLC(t.Context(), &GetOHLCRequest{Pair: spotTestPair, Interval: value})
+			require.NoError(t, err, "GetOHLC must accept the documented interval")
+			values := requireSpotRequest(t, requests, "/0/public/OHLC")
+			assert.Equal(t, strconv.FormatInt(int64(value/time.Minute), 10), values.Get("interval"), "GetOHLC should encode the documented interval")
+		})
+	}
 
-	_, err = ex.GetDepth(ctx, nil)
+	ohlc, err = newSpotNullResultExchange(t).GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetOHLC must accept a null result")
+	assert.Nil(t, ohlc, "GetOHLC should return nil for a null result")
+	ohlc, err = newSpotErrorExchange(t).GetOHLC(ctx, &GetOHLCRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetOHLC must surface request errors")
+	assert.Nil(t, ohlc, "GetOHLC result should remain nil on request errors")
+}
+
+func TestGetDepth(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+
+	_, err := ex.GetDepth(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetDepth must reject a nil request")
 	_, err = ex.GetDepth(ctx, &GetDepthRequest{})
 	require.ErrorIs(t, err, errPairRequired, "GetDepth must require a pair")
@@ -382,7 +456,7 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	book, err := ex.GetDepth(ctx, &GetDepthRequest{Pair: spotTestPair, Count: 500, AssetClass: AssetClassTokenizedAsset, AssetVersion: AssetVersionDisplay})
 	require.NoError(t, err, "GetDepth must not error")
 	assert.Equal(t, 2.0, book["BTC/USD"].Bids[0].Quantity.Float64(), "GetDepth should decode bid quantity")
-	values = requireSpotRequest(t, requests, "/0/public/Depth")
+	values := requireSpotRequest(t, requests, "/0/public/Depth")
 	assert.Equal(t, "500", values.Get("count"), "GetDepth should encode count")
 	assert.Equal(t, "tokenized_asset", values.Get("asset_class"), "GetDepth should encode asset class")
 	assert.Equal(t, "1", values.Get("assetVersion"), "GetDepth should encode assetVersion")
@@ -391,7 +465,17 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	values = requireSpotRequest(t, requests, "/0/public/Depth")
 	assert.Empty(t, values.Get("count"), "GetDepth should omit the default count")
 
-	_, err = ex.GetTrades(ctx, nil)
+	book, err = newSpotErrorExchange(t).GetDepth(ctx, &GetDepthRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetDepth must surface request errors")
+	assert.Nil(t, book, "GetDepth result should remain nil on request errors")
+}
+
+func TestGetTrades(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+	preEpoch := time.Unix(-1, 0)
+
+	_, err := ex.GetTrades(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetTrades must reject a nil request")
 	_, err = ex.GetTrades(ctx, &GetTradesRequest{})
 	require.ErrorIs(t, err, errPairRequired, "GetTrades must require a pair")
@@ -407,11 +491,15 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.Error(t, err, "GetTrades must surface pair-format errors")
 	_, err = ex.GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair, Since: preEpoch})
 	require.ErrorIs(t, err, errTimestampInvalid, "GetTrades must reject a pre-epoch timestamp")
-	since = time.Unix(1695828270, 0)
+	since := time.Unix(1695828270, 0)
 	trades, err := ex.GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair, Since: since, Count: 1000, AssetClass: AssetClassTokenizedAsset, AssetVersion: AssetVersionDisplay})
 	require.NoError(t, err, "GetTrades must not error")
+	require.NotNil(t, trades, "GetTrades must return a response")
 	assert.Equal(t, 100.0, trades.Trades["BTC/USD"][0].Price.Float64(), "GetTrades should decode trade price")
-	values = requireSpotRequest(t, requests, "/0/public/Trades")
+	responseJSON, err := json.Marshal(trades)
+	require.NoError(t, err, "GetTrades must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"Trades":{"BTC/USD":[{`, "GetTrades should decode the response")
+	values := requireSpotRequest(t, requests, "/0/public/Trades")
 	assert.Equal(t, "1695828270", values.Get("since"), "GetTrades should encode since")
 	assert.Equal(t, "1000", values.Get("count"), "GetTrades should encode count")
 	assert.Equal(t, "tokenized_asset", values.Get("asset_class"), "GetTrades should encode asset class")
@@ -425,7 +513,20 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	values = requireSpotRequest(t, requests, "/0/public/Trades")
 	assert.Equal(t, "CURSOR", values.Get("since"), "GetTrades should encode an opaque cursor")
 
-	_, err = ex.GetSpread(ctx, nil)
+	trades, err = newSpotNullResultExchange(t).GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetTrades must accept a null result")
+	assert.Nil(t, trades, "GetTrades should return nil for a null result")
+	trades, err = newSpotErrorExchange(t).GetTrades(ctx, &GetTradesRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetTrades must surface request errors")
+	assert.Nil(t, trades, "GetTrades result should remain nil on request errors")
+}
+
+func TestGetSpread(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
+	ctx := t.Context()
+	preEpoch := time.Unix(-1, 0)
+
+	_, err := ex.GetSpread(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetSpread must reject a nil request")
 	_, err = ex.GetSpread(ctx, &GetSpreadRequest{})
 	require.ErrorIs(t, err, errPairRequired, "GetSpread must require a pair")
@@ -437,11 +538,15 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.Error(t, err, "GetSpread must surface pair-format errors")
 	_, err = ex.GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair, Since: preEpoch})
 	require.ErrorIs(t, err, errTimestampInvalid, "GetSpread must reject a pre-epoch timestamp")
-	since = time.Unix(1695828270, 0)
+	since := time.Unix(1695828270, 0)
 	spread, err := ex.GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair, Since: since, AssetClass: AssetClassTokenizedAsset, AssetVersion: AssetVersionDisplay})
 	require.NoError(t, err, "GetSpread must not error")
+	require.NotNil(t, spread, "GetSpread must return a response")
 	assert.Equal(t, 99.0, spread.Spreads["BTC/USD"][0].Bid.Float64(), "GetSpread should decode bid price")
-	values = requireSpotRequest(t, requests, "/0/public/Spread")
+	responseJSON, err := json.Marshal(spread)
+	require.NoError(t, err, "GetSpread must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"Spreads":{"BTC/USD":[{`, "GetSpread should decode the response")
+	values := requireSpotRequest(t, requests, "/0/public/Spread")
 	assert.Equal(t, "1695828270", values.Get("since"), "GetSpread should encode since")
 	assert.Equal(t, "tokenized_asset", values.Get("asset_class"), "GetSpread should encode asset class")
 	assert.Equal(t, "1", values.Get("assetVersion"), "GetSpread should encode assetVersion")
@@ -454,53 +559,13 @@ func TestSpotPublicEndpoints(t *testing.T) {
 	require.NoError(t, err, "GetSpread must accept an explicit zero since value")
 	values = requireSpotRequest(t, requests, "/0/public/Spread")
 	assert.Equal(t, "0", values.Get("since"), "GetSpread should encode an explicit zero since value")
-}
 
-func TestSpotPublicEnums(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t, spotMarketFixtures)
-
-	for _, value := range []AssetClass{AssetClassCurrency, AssetClassTokenizedAsset} {
-		t.Run("asset class "+string(value), func(t *testing.T) {
-			_, err := ex.GetAssets(t.Context(), &GetAssetsRequest{AssetClass: value})
-			require.NoError(t, err, "GetAssets must accept the documented asset class")
-			requireSpotRequest(t, requests, "/0/public/Assets")
-		})
-	}
-	for _, value := range []AssetPairInfo{AssetPairInfoAll, AssetPairInfoLeverage, AssetPairInfoFees, AssetPairInfoMargin} {
-		t.Run("asset pair info "+string(value), func(t *testing.T) {
-			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{Info: value})
-			require.NoError(t, err, "GetAssetPairs must accept the documented info filter")
-			requireSpotRequest(t, requests, "/0/public/AssetPairs")
-		})
-	}
-	for _, value := range []AssetClass{AssetClassCurrency, AssetClassTokenizedAsset} {
-		t.Run("asset pair base class "+string(value), func(t *testing.T) {
-			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{AssetClassBase: value})
-			require.NoError(t, err, "GetAssetPairs must accept the documented base asset class")
-			requireSpotRequest(t, requests, "/0/public/AssetPairs")
-		})
-	}
-	for _, value := range []ExecutionVenue{ExecutionVenueInternational, ExecutionVenueBitnomial} {
-		t.Run("execution venue "+string(value), func(t *testing.T) {
-			_, err := ex.GetAssetPairs(t.Context(), &GetAssetPairsRequest{ExecutionVenue: value})
-			require.NoError(t, err, "GetAssetPairs must accept the documented execution venue")
-			requireSpotRequest(t, requests, "/0/public/AssetPairs")
-		})
-	}
-	for _, value := range []AssetClass{AssetClassTokenizedAsset, AssetClassForex} {
-		t.Run("ticker asset class "+string(value), func(t *testing.T) {
-			_, err := ex.GetTicker(t.Context(), &GetTickerRequest{AssetClass: value})
-			require.NoError(t, err, "GetTicker must accept the documented asset class")
-			requireSpotRequest(t, requests, "/0/public/Ticker")
-		})
-	}
-	for _, value := range []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute, 30 * time.Minute, time.Hour, 4 * time.Hour, 24 * time.Hour, 7 * 24 * time.Hour, 15 * 24 * time.Hour} {
-		t.Run("OHLC interval", func(t *testing.T) {
-			_, err := ex.GetOHLC(t.Context(), &GetOHLCRequest{Pair: spotTestPair, Interval: value})
-			require.NoError(t, err, "GetOHLC must accept the documented interval")
-			requireSpotRequest(t, requests, "/0/public/OHLC")
-		})
-	}
+	spread, err = newSpotNullResultExchange(t).GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair})
+	require.NoError(t, err, "GetSpread must accept a null result")
+	assert.Nil(t, spread, "GetSpread should return nil for a null result")
+	spread, err = newSpotErrorExchange(t).GetSpread(ctx, &GetSpreadRequest{Pair: spotTestPair})
+	require.ErrorIs(t, err, errSpotTransport, "GetSpread must surface request errors")
+	assert.Nil(t, spread, "GetSpread result should remain nil on request errors")
 }
 
 func TestOHLCResponseUnmarshalJSON(t *testing.T) {
@@ -609,12 +674,10 @@ func TestGetCurrentServerTime(t *testing.T) {
 	assert.Nil(t, result, "GetCurrentServerTime should return nil after a request error")
 }
 
-func TestSpotMarketResponseModels(t *testing.T) {
+func TestAssetUnmarshalJSON(t *testing.T) {
 	var assets map[string]Asset
 	require.NoError(t, json.Unmarshal([]byte(`{"BTC":{"aclass":"currency","collateral_value":"0.9","status":"enabled"}}`), &assets), "Asset must decode current fields")
 	assert.Equal(t, "currency", assets["BTC"].AssetClass, "Asset should decode asset class")
-	assert.Contains(t, errGroupedDepthInvalid.Error(), "omitted", "errGroupedDepthInvalid should describe omission as valid")
-	assert.Contains(t, errGroupingInvalid.Error(), "omitted", "errGroupingInvalid should describe omission as valid")
 }
 
 func TestAssetTranslatorStore(t *testing.T) {

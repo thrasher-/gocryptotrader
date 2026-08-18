@@ -28,6 +28,7 @@ Refer to the [ADD_NEW_EXCHANGE.md](/docs/ADD_NEW_EXCHANGE.md) document for compr
 - Omit filename components that only repeat the package name or an implementation detail already clear from the context. Retain a product or protocol qualifier only when sibling surfaces would otherwise collide or become ambiguous, for example `spot_market.go` beside `futures_market.go`, or separate REST and WebSocket implementations of the same category. Do not retain `rest` merely because endpoints use HTTP.
 - Keep shared files limited to behaviour genuinely used across categories, such as request transport, authentication, response envelopes, and cross-category contract tests. Category-specific declarations and fixtures must not accumulate in shared monoliths.
 - Shared endpoint test harnesses must receive category-owned fixtures explicitly and reject unknown routes. They must not return a generic successful response for an unrecognised path.
+- Give each exported API endpoint method exactly one top-level test named `Test<MethodName>` in the corresponding category test file. Follow the test granularity rules below.
 - Do not create empty or artificial companion files. A category-specific types or test file is warranted when it owns declarations or direct tests; genuinely shared declarations remain in the shared scope file.
 - Inline endpoint paths directly in the method implementation. Avoid defining them as constants elsewhere.
 - Export exchange types, functions and methods by default (e.g. `func (e *Exchange) GetOrderBook(...)`) so that GoCryptoTrader can be consumed as both a standalone library and interfaced via the engine package.
@@ -142,6 +143,13 @@ Verify all tests pass by:
 ```console
     go test ./... -race -count 1
 ```
+
+### Test granularity
+
+- Every exported endpoint method must have exactly one top-level test named `Test<MethodName>`, for example `TestGetOrderBook` for `GetOrderBook`.
+- Keep all direct endpoint coverage in that test: request validation, parameter conversion and exact outbound values, response decoding, applicable null or empty-result behaviour, and transport failures. Use `t.Run` subtests for that endpoint's enumerated values, boundaries, and table cases.
+- Do not aggregate unrelated endpoints into category-wide sweep tests. Searching for `Test<MethodName>` and running `go test -run '^Test<MethodName>$'` must expose the endpoint's complete direct coverage.
+- Tests for helpers, custom unmarshalling, shared transport, authentication, and test harness behaviour remain separate and are named for the behaviour they cover.
 
 ### Assertion Usage
 

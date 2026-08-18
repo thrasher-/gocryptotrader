@@ -2,6 +2,7 @@ package kraken
 
 import (
 	"math"
+	"net/url"
 	"slices"
 	"testing"
 	"time"
@@ -22,108 +23,6 @@ var spotTradingFixtures = spotFixtureSet{results: map[string]string{
 	"/0/private/AddOrderBatch":        `{"orders":[{"descr":{"order":"buy 1 XBTUSD"},"txid":"ORDER"}]}`,
 	"/0/private/CancelOrderBatch":     `{"count":3}`,
 }}
-
-func TestSpotTradingEndpointErrors(t *testing.T) {
-	ex := newSpotErrorExchange(t)
-	ctx := t.Context()
-	validBatch := []AddOrderBatchOrderRequest{
-		{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1},
-		{OrderType: OrderTypeLimit, OrderSide: OrderSideSell, Volume: 1},
-	}
-
-	_, err := ex.AddOrder(ctx, &AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair})
-	require.Error(t, err, "AddOrder must surface request errors")
-	_, err = ex.CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
-	require.Error(t, err, "CancelExistingOrder must surface request errors")
-	_, err = ex.AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER"})
-	require.Error(t, err, "AmendOrder must surface request errors")
-	_, err = ex.CancelAllOpenOrders(ctx)
-	require.Error(t, err, "CancelAllOpenOrders must surface request errors")
-	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{})
-	require.Error(t, err, "CancelAllOrdersAfter must surface request errors")
-	_, err = ex.AddOrderBatch(ctx, &AddOrderBatchRequest{Orders: validBatch, Pair: spotTestPair})
-	require.Error(t, err, "AddOrderBatch must surface request errors")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
-	require.Error(t, err, "CancelOrderBatch must surface request errors")
-}
-
-func TestSpotTradingResponseObjectContract(t *testing.T) {
-	successEx, _ := newSpotEndpointExchange(t, spotTradingFixtures)
-	nilResultEx := newSpotNullResultExchange(t)
-	errorEx := newSpotErrorExchange(t)
-	ctx := t.Context()
-	validBatch := []AddOrderBatchOrderRequest{
-		{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1},
-		{OrderType: OrderTypeLimit, OrderSide: OrderSideSell, Volume: 1},
-	}
-
-	for _, tc := range []struct {
-		name         string
-		call         func(*Exchange) (any, error)
-		expectedJSON string
-	}{
-		{
-			name: "AddOrder",
-			call: func(ex *Exchange) (any, error) {
-				return ex.AddOrder(ctx, &AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair})
-			},
-			expectedJSON: `"txid":["ORDER"]`,
-		},
-		{
-			name: "CancelExistingOrder",
-			call: func(ex *Exchange) (any, error) {
-				return ex.CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
-			},
-			expectedJSON: `"count":1`,
-		},
-		{
-			name:         "AmendOrder",
-			call:         func(ex *Exchange) (any, error) { return ex.AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER"}) },
-			expectedJSON: `"amend_id":"AMEND"`,
-		},
-		{
-			name:         "CancelAllOpenOrders",
-			call:         func(ex *Exchange) (any, error) { return ex.CancelAllOpenOrders(ctx) },
-			expectedJSON: `"count":2`,
-		},
-		{
-			name:         "CancelAllOrdersAfter",
-			call:         func(ex *Exchange) (any, error) { return ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{}) },
-			expectedJSON: `"currentTime":"2026-08-02T00:00:00Z"`,
-		},
-		{
-			name: "AddOrderBatch",
-			call: func(ex *Exchange) (any, error) {
-				return ex.AddOrderBatch(ctx, &AddOrderBatchRequest{Orders: validBatch, Pair: spotTestPair})
-			},
-			expectedJSON: `"txid":"ORDER"`,
-		},
-		{
-			name: "CancelOrderBatch",
-			call: func(ex *Exchange) (any, error) {
-				return ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
-			},
-			expectedJSON: `"count":3`,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.call(successEx)
-			require.NoError(t, err, tc.name+" must not error")
-			require.NotNil(t, result, tc.name+" must return a response")
-			responseJSON, err := json.Marshal(result)
-			require.NoError(t, err, tc.name+" must encode the decoded response")
-			assert.Contains(t, string(responseJSON), tc.expectedJSON, tc.name+" should decode the response")
-
-			result, err = tc.call(nilResultEx)
-			require.NoError(t, err, tc.name+" must accept a null result")
-			assert.Nil(t, result, tc.name+" should return nil for a null result")
-
-			result, err = tc.call(errorEx)
-			require.ErrorIs(t, err, errSpotTransport, tc.name+" must surface request errors")
-			assert.Nil(t, result, tc.name+" result should remain nil on request errors")
-		})
-	}
-}
 
 func TestFormatOrderPrice(t *testing.T) {
 	t.Parallel()
@@ -236,7 +135,7 @@ func TestFormatDeadline(t *testing.T) {
 	}
 }
 
-func TestSpotTradingEndpoints(t *testing.T) {
+func TestAmendOrder(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
 	ctx := t.Context()
 	deadline := time.Now().Add(30 * time.Second).In(time.FixedZone("AEST", 10*60*60))
@@ -260,7 +159,11 @@ func TestSpotTradingEndpoints(t *testing.T) {
 		Deadline:        deadline,
 	})
 	require.NoError(t, err, "AmendOrder must not error")
+	require.NotNil(t, amended, "AmendOrder must return a response")
 	assert.Equal(t, "AMEND", amended.AmendID, "AmendOrder should decode the amend identifier")
+	responseJSON, err := json.Marshal(amended)
+	require.NoError(t, err, "AmendOrder must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"amend_id":"AMEND"`, "AmendOrder should decode the response")
 	values := requireSpotRequest(t, requests, "/0/private/AmendOrder")
 	assert.Equal(t, "ORDER", values.Get("txid"), "AmendOrder should encode the transaction identifier")
 	assert.Equal(t, "2", values.Get("order_qty"), "AmendOrder should encode order quantity")
@@ -275,23 +178,98 @@ func TestSpotTradingEndpoints(t *testing.T) {
 	require.NoError(t, err, "AmendOrder must accept a client order identifier")
 	values = requireSpotRequest(t, requests, "/0/private/AmendOrder")
 	assert.Empty(t, values.Get("txid"), "AmendOrder should omit an empty transaction identifier")
+	negative := -1.0
+	notANumber := math.NaN()
+	invalidDeadline := time.Now().Add(time.Second)
+	for _, tc := range []struct {
+		name     string
+		request  AmendOrderRequest
+		expected error
+	}{
+		{name: "negative order quantity", request: AmendOrderRequest{TransactionID: "ORDER", OrderQuantity: &negative}, expected: errVolumeInvalid},
+		{name: "non-finite order quantity", request: AmendOrderRequest{TransactionID: "ORDER", OrderQuantity: &notANumber}, expected: errNumericValueInvalid},
+		{name: "negative display quantity", request: AmendOrderRequest{TransactionID: "ORDER", DisplayQuantity: &negative}, expected: errVolumeInvalid},
+		{name: "non-finite display quantity", request: AmendOrderRequest{TransactionID: "ORDER", DisplayQuantity: &notANumber}, expected: errNumericValueInvalid},
+		{name: "invalid limit price", request: AmendOrderRequest{TransactionID: "ORDER", LimitPrice: &OrderPrice{Expression: "invalid"}}, expected: errOrderPriceInvalid},
+		{name: "unsupported relative limit price", request: AmendOrderRequest{TransactionID: "ORDER", LimitPrice: &OrderPrice{Expression: "#1"}}, expected: errOrderPriceInvalid},
+		{name: "invalid trigger price", request: AmendOrderRequest{TransactionID: "ORDER", TriggerPrice: &OrderPrice{Expression: "invalid"}}, expected: errOrderPriceInvalid},
+		{name: "unsupported relative trigger price", request: AmendOrderRequest{TransactionID: "ORDER", TriggerPrice: &OrderPrice{Expression: "#1"}}, expected: errOrderPriceInvalid},
+		{name: "invalid deadline", request: AmendOrderRequest{TransactionID: "ORDER", Deadline: invalidDeadline}, expected: errDeadlineInvalid},
+		{name: "partially populated pair", request: AmendOrderRequest{TransactionID: "ORDER", Pair: currency.Pair{Base: currency.BTC}}, expected: errPairRequired},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ex.AmendOrder(ctx, &tc.request)
+			require.ErrorIs(t, err, tc.expected, "AmendOrder must reject "+tc.name)
+		})
+	}
+	_, err = new(Exchange).AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER", Pair: spotTestPair})
+	require.Error(t, err, "AmendOrder must surface pair-format errors")
+
+	amended, err = newSpotNullResultExchange(t).AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER"})
+	require.NoError(t, err, "AmendOrder must accept a null result")
+	assert.Nil(t, amended, "AmendOrder should return nil for a null result")
+	amended, err = newSpotErrorExchange(t).AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER"})
+	require.ErrorIs(t, err, errSpotTransport, "AmendOrder must surface request errors")
+	assert.Nil(t, amended, "AmendOrder result should remain nil on request errors")
+}
+
+func TestCancelAllOpenOrders(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
+	ctx := t.Context()
 
 	cancelled, err := ex.CancelAllOpenOrders(ctx)
 	require.NoError(t, err, "CancelAllOpenOrders must not error")
+	require.NotNil(t, cancelled, "CancelAllOpenOrders must return a response")
 	assert.Equal(t, int64(2), cancelled.Count, "CancelAllOpenOrders should decode the cancellation count")
+	responseJSON, err := json.Marshal(cancelled)
+	require.NoError(t, err, "CancelAllOpenOrders must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"count":2`, "CancelAllOpenOrders should decode the response")
 	requireSpotRequest(t, requests, "/0/private/CancelAll")
 
-	_, err = ex.CancelAllOrdersAfter(ctx, nil)
+	cancelled, err = newSpotNullResultExchange(t).CancelAllOpenOrders(ctx)
+	require.NoError(t, err, "CancelAllOpenOrders must accept a null result")
+	assert.Nil(t, cancelled, "CancelAllOpenOrders should return nil for a null result")
+	cancelled, err = newSpotErrorExchange(t).CancelAllOpenOrders(ctx)
+	require.ErrorIs(t, err, errSpotTransport, "CancelAllOpenOrders must surface request errors")
+	assert.Nil(t, cancelled, "CancelAllOpenOrders result should remain nil on request errors")
+}
+
+func TestCancelAllOrdersAfter(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
+	ctx := t.Context()
+
+	_, err := ex.CancelAllOrdersAfter(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "CancelAllOrdersAfter must reject a nil request")
 	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{Timeout: 24 * time.Hour})
 	require.ErrorIs(t, err, errTimeoutTooLarge, "CancelAllOrdersAfter must enforce Kraken's timeout limit")
+	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{Timeout: -time.Second})
+	require.ErrorIs(t, err, errTimeoutInvalid, "CancelAllOrdersAfter must reject negative timeouts")
+	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{Timeout: time.Millisecond})
+	require.ErrorIs(t, err, errTimeoutInvalid, "CancelAllOrdersAfter must reject fractional-second timeouts")
 	deadMan, err := ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{})
 	require.NoError(t, err, "CancelAllOrdersAfter must accept zero to disable the timer")
+	require.NotNil(t, deadMan, "CancelAllOrdersAfter must return a response")
 	assert.False(t, deadMan.CurrentTime.IsZero(), "CancelAllOrdersAfter should decode the current time")
-	values = requireSpotRequest(t, requests, "/0/private/CancelAllOrdersAfter")
+	responseJSON, err := json.Marshal(deadMan)
+	require.NoError(t, err, "CancelAllOrdersAfter must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"currentTime":"2026-08-02T00:00:00Z"`, "CancelAllOrdersAfter should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/CancelAllOrdersAfter")
 	assert.Equal(t, "0", values.Get("timeout"), "CancelAllOrdersAfter should encode a zero timeout")
 
-	_, err = ex.AddOrderBatch(ctx, nil)
+	deadMan, err = newSpotNullResultExchange(t).CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{})
+	require.NoError(t, err, "CancelAllOrdersAfter must accept a null result")
+	assert.Nil(t, deadMan, "CancelAllOrdersAfter should return nil for a null result")
+	deadMan, err = newSpotErrorExchange(t).CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{})
+	require.ErrorIs(t, err, errSpotTransport, "CancelAllOrdersAfter must surface request errors")
+	assert.Nil(t, deadMan, "CancelAllOrdersAfter result should remain nil on request errors")
+}
+
+func TestAddOrderBatch(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
+	ctx := t.Context()
+	deadline := time.Now().Add(30 * time.Second).In(time.FixedZone("AEST", 10*60*60))
+
+	_, err := ex.AddOrderBatch(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "AddOrderBatch must reject a nil request")
 	_, err = ex.AddOrderBatch(ctx, &AddOrderBatchRequest{})
 	require.ErrorIs(t, err, errBatchOrderCount, "AddOrderBatch must require at least two orders")
@@ -355,8 +333,12 @@ func TestSpotTradingEndpoints(t *testing.T) {
 		Broker:     "BROKER",
 	})
 	require.NoError(t, err, "AddOrderBatch must not error")
+	require.NotNil(t, batch, "AddOrderBatch must return a response")
 	assert.Equal(t, "ORDER", batch.Orders[0].Transaction, "AddOrderBatch should decode order identifiers")
-	values = requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
+	responseJSON, err := json.Marshal(batch)
+	require.NoError(t, err, "AddOrderBatch must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"txid":"ORDER"`, "AddOrderBatch should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
 	assert.Contains(t, values.Get("orders"), `"close"`, "AddOrderBatch should encode conditional close orders")
 	assert.Contains(t, values.Get("orders"), `"userref":0`, "AddOrderBatch should encode an explicit zero user reference")
 	assert.Equal(t, "XBTUSD", values.Get("pair"), "AddOrderBatch should encode the formatted pair")
@@ -364,159 +346,10 @@ func TestSpotTradingEndpoints(t *testing.T) {
 	assert.Equal(t, "true", values.Get("validate"), "AddOrderBatch should encode validation mode")
 	assert.Equal(t, deadline.UTC().Format(time.RFC3339Nano), values.Get("deadline"), "AddOrderBatch should encode deadline in UTC")
 
-	_, err = ex.CancelOrderBatch(ctx, nil)
-	require.ErrorIs(t, err, common.ErrNilPointer, "CancelOrderBatch must reject a nil request")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{})
-	require.ErrorIs(t, err, errBatchCancelOrderCount, "CancelOrderBatch must require an identifier")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: make([]string, 51)})
-	require.ErrorIs(t, err, errBatchCancelOrderCount, "CancelOrderBatch must reject more than fifty identifiers")
-	batchCancelled, err := ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{
-		TransactionIDs: []string{"ORDER"},
-		UserReferences: []int32{42},
-		ClientOrderIDs: []string{"CLIENT"},
-	})
-	require.NoError(t, err, "CancelOrderBatch must not error")
-	assert.Equal(t, uint64(3), batchCancelled.Count, "CancelOrderBatch should decode the cancellation count")
-	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
-	assert.Equal(t, `["ORDER",42]`, values.Get("orders"), "CancelOrderBatch should encode primitive transaction and user identifiers")
-	assert.Equal(t, `["CLIENT"]`, values.Get("cl_ord_ids"), "CancelOrderBatch should encode client order identifiers")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{ClientOrderIDs: []string{"CLIENT"}})
-	require.NoError(t, err, "CancelOrderBatch must accept only client order identifiers")
-	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
-	assert.Empty(t, values.Get("orders"), "CancelOrderBatch should omit an empty orders list")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
-	require.NoError(t, err, "CancelOrderBatch must accept only transaction identifiers")
-	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
-	assert.Empty(t, values.Get("cl_ord_ids"), "CancelOrderBatch should omit an empty client order identifier list")
-	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{UserReferences: []int32{42}})
-	require.NoError(t, err, "CancelOrderBatch must accept only user references")
-	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
-	assert.Equal(t, `[42]`, values.Get("orders"), "CancelOrderBatch should encode user references without transaction identifiers")
-}
-
-func TestSpotAddOrderBatchEnums(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
-	testValue := func(t *testing.T, mutate func(*AddOrderBatchRequest)) {
-		t.Helper()
-		req := &AddOrderBatchRequest{
-			Orders: []AddOrderBatchOrderRequest{
-				{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1},
-				{OrderType: OrderTypeLimit, OrderSide: OrderSideSell, Volume: 1},
-			},
-			Pair: spotTestPair,
-		}
-		mutate(req)
-		_, err := ex.AddOrderBatch(t.Context(), req)
-		require.NoError(t, err, "AddOrderBatch must accept the documented enum value")
-		requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
-	}
-
-	for _, value := range []OrderType{OrderTypeMarket, OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit, OrderTypeSettlePosition} {
-		t.Run("order type "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].OrderType = value })
-		})
-	}
-	for _, value := range []OrderSide{OrderSideBuy, OrderSideSell} {
-		t.Run("side "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].OrderSide = value })
-		})
-	}
-	for _, value := range []OrderTrigger{OrderTriggerIndex, OrderTriggerLast} {
-		t.Run("trigger "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].Trigger = value })
-		})
-	}
-	for _, value := range []SelfTradePolicy{SelfTradePolicyCancelNewest, SelfTradePolicyCancelOldest, SelfTradePolicyCancelBoth} {
-		t.Run("self trade "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].SelfTradePolicy = value })
-		})
-	}
-	for _, value := range []OrderTimeInForce{OrderTimeInForceGTC, OrderTimeInForceIOC, OrderTimeInForceGTD} {
-		t.Run("time in force "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].TimeInForce = value })
-		})
-	}
-	for _, value := range []OrderType{OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit} {
-		t.Run("close order type "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].Close = &AddOrderBatchCloseRequest{OrderType: value} })
-		})
-	}
-	t.Run("asset class tokenized asset", func(t *testing.T) {
-		testValue(t, func(req *AddOrderBatchRequest) { req.AssetClass = AssetClassTokenizedAsset })
-	})
-}
-
-func TestSpotTradingTypedRequestValidation(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
-	ctx := t.Context()
 	negative := -1.0
 	notANumber := math.NaN()
 	invalidDeadline := time.Now().Add(time.Second)
-	validAddOrder := AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair}
-
-	for _, tc := range []struct {
-		name     string
-		mutate   func(*AddOrderRequest)
-		expected error
-	}{
-		{name: "negative volume", mutate: func(req *AddOrderRequest) { req.Volume = negative }, expected: errVolumeInvalid},
-		{name: "non-finite volume", mutate: func(req *AddOrderRequest) { req.Volume = notANumber }, expected: errNumericValueInvalid},
-		{name: "negative display volume", mutate: func(req *AddOrderRequest) { req.DisplayVolume = &negative }, expected: errVolumeInvalid},
-		{name: "non-finite display volume", mutate: func(req *AddOrderRequest) { req.DisplayVolume = &notANumber }, expected: errNumericValueInvalid},
-		{name: "invalid price", mutate: func(req *AddOrderRequest) { req.Price = &OrderPrice{Expression: "invalid"} }, expected: errOrderPriceInvalid},
-		{name: "invalid secondary price", mutate: func(req *AddOrderRequest) { req.SecondaryPrice = &OrderPrice{Expression: "invalid"} }, expected: errOrderPriceInvalid},
-		{name: "invalid start delay", mutate: func(req *AddOrderRequest) { req.StartDelay = time.Millisecond }, expected: errScheduledTimeInvalid},
-		{name: "invalid expiry delay", mutate: func(req *AddOrderRequest) { req.ExpireAfter = time.Second }, expected: errScheduledTimeInvalid},
-		{name: "invalid deadline", mutate: func(req *AddOrderRequest) { req.Deadline = invalidDeadline }, expected: errDeadlineInvalid},
-		{name: "invalid order flag", mutate: func(req *AddOrderRequest) { req.OrderFlags = []OrderFlag{"invalid"} }, expected: errOrderFlagInvalid},
-		{name: "invalid close price", mutate: func(req *AddOrderRequest) {
-			req.Close = &AddOrderCloseRequest{OrderType: OrderTypeLimit, Price: &OrderPrice{Expression: "invalid"}}
-		}, expected: errOrderPriceInvalid},
-		{name: "invalid close secondary price", mutate: func(req *AddOrderRequest) {
-			req.Close = &AddOrderCloseRequest{OrderType: OrderTypeLimit, SecondaryPrice: &OrderPrice{Expression: "invalid"}}
-		}, expected: errOrderPriceInvalid},
-	} {
-		t.Run("AddOrder "+tc.name, func(t *testing.T) {
-			req := validAddOrder
-			tc.mutate(&req)
-			_, err := ex.AddOrder(ctx, &req)
-			require.ErrorIs(t, err, tc.expected, "AddOrder must reject "+tc.name)
-		})
-	}
-
-	_, err := new(Exchange).AddOrder(ctx, &validAddOrder)
-	require.Error(t, err, "AddOrder must surface pair-format errors")
-
-	for _, tc := range []struct {
-		name     string
-		request  AmendOrderRequest
-		expected error
-	}{
-		{name: "negative order quantity", request: AmendOrderRequest{TransactionID: "ORDER", OrderQuantity: &negative}, expected: errVolumeInvalid},
-		{name: "non-finite order quantity", request: AmendOrderRequest{TransactionID: "ORDER", OrderQuantity: &notANumber}, expected: errNumericValueInvalid},
-		{name: "negative display quantity", request: AmendOrderRequest{TransactionID: "ORDER", DisplayQuantity: &negative}, expected: errVolumeInvalid},
-		{name: "non-finite display quantity", request: AmendOrderRequest{TransactionID: "ORDER", DisplayQuantity: &notANumber}, expected: errNumericValueInvalid},
-		{name: "invalid limit price", request: AmendOrderRequest{TransactionID: "ORDER", LimitPrice: &OrderPrice{Expression: "invalid"}}, expected: errOrderPriceInvalid},
-		{name: "unsupported relative limit price", request: AmendOrderRequest{TransactionID: "ORDER", LimitPrice: &OrderPrice{Expression: "#1"}}, expected: errOrderPriceInvalid},
-		{name: "invalid trigger price", request: AmendOrderRequest{TransactionID: "ORDER", TriggerPrice: &OrderPrice{Expression: "invalid"}}, expected: errOrderPriceInvalid},
-		{name: "unsupported relative trigger price", request: AmendOrderRequest{TransactionID: "ORDER", TriggerPrice: &OrderPrice{Expression: "#1"}}, expected: errOrderPriceInvalid},
-		{name: "invalid deadline", request: AmendOrderRequest{TransactionID: "ORDER", Deadline: invalidDeadline}, expected: errDeadlineInvalid},
-		{name: "partially populated pair", request: AmendOrderRequest{TransactionID: "ORDER", Pair: currency.Pair{Base: currency.BTC}}, expected: errPairRequired},
-	} {
-		t.Run("AmendOrder "+tc.name, func(t *testing.T) {
-			_, err := ex.AmendOrder(ctx, &tc.request)
-			require.ErrorIs(t, err, tc.expected, "AmendOrder must reject "+tc.name)
-		})
-	}
-	_, err = new(Exchange).AmendOrder(ctx, &AmendOrderRequest{TransactionID: "ORDER", Pair: spotTestPair})
-	require.Error(t, err, "AmendOrder must surface pair-format errors")
-
-	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{Timeout: -time.Second})
-	require.ErrorIs(t, err, errTimeoutInvalid, "CancelAllOrdersAfter must reject negative timeouts")
-	_, err = ex.CancelAllOrdersAfter(ctx, &CancelAllOrdersAfterRequest{Timeout: time.Millisecond})
-	require.ErrorIs(t, err, errTimeoutInvalid, "CancelAllOrdersAfter must reject fractional-second timeouts")
-
-	validBatch := func() *AddOrderBatchRequest {
+	validRequest := func() *AddOrderBatchRequest {
 		return &AddOrderBatchRequest{
 			Orders: []AddOrderBatchOrderRequest{
 				{OrderType: OrderTypeLimit, OrderSide: OrderSideBuy, Volume: 1},
@@ -546,20 +379,20 @@ func TestSpotTradingTypedRequestValidation(t *testing.T) {
 			req.Close = &AddOrderBatchCloseRequest{OrderType: OrderTypeLimit, SecondaryPrice: &OrderPrice{Expression: "invalid"}}
 		}, expected: errOrderPriceInvalid},
 	} {
-		t.Run("AddOrderBatch "+tc.name, func(t *testing.T) {
-			req := validBatch()
+		t.Run(tc.name, func(t *testing.T) {
+			req := validRequest()
 			tc.mutate(&req.Orders[0])
 			_, err := ex.AddOrderBatch(ctx, req)
 			require.ErrorIs(t, err, tc.expected, "AddOrderBatch must reject "+tc.name)
 		})
 	}
-	invalidBatchDeadline := validBatch()
+	invalidBatchDeadline := validRequest()
 	invalidBatchDeadline.Deadline = invalidDeadline
 	_, err = ex.AddOrderBatch(ctx, invalidBatchDeadline)
 	require.ErrorIs(t, err, errDeadlineInvalid, "AddOrderBatch must reject an invalid deadline")
 
 	displayVolume := 0.5
-	richBatch := validBatch()
+	richBatch := validRequest()
 	richBatch.Orders[0].DisplayVolume = &displayVolume
 	richBatch.Orders[0].SecondaryPrice = &OrderPrice{Value: 90}
 	richBatch.Orders[0].Leverage = 2
@@ -571,7 +404,7 @@ func TestSpotTradingTypedRequestValidation(t *testing.T) {
 	_, err = ex.AddOrderBatch(ctx, richBatch)
 	require.NoError(t, err, "AddOrderBatch must accept typed optional fields")
 	assert.Equal(t, beforeOrders, richBatch.Orders, "AddOrderBatch should not mutate caller orders")
-	values := requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
+	values = requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
 	assert.Contains(t, values.Get("orders"), `"displayvol":"0.5"`, "AddOrderBatch should encode display volume")
 	assert.Contains(t, values.Get("orders"), `"leverage":"2"`, "AddOrderBatch should encode leverage")
 	assert.Contains(t, values.Get("orders"), `"price2":"90"`, "AddOrderBatch should encode secondary price")
@@ -579,20 +412,124 @@ func TestSpotTradingTypedRequestValidation(t *testing.T) {
 	assert.Contains(t, values.Get("orders"), `"expiretm":"+5"`, "AddOrderBatch should encode expiry delay")
 	assert.Contains(t, values.Get("orders"), `"oflags":"post"`, "AddOrderBatch should encode order flags")
 	assert.Contains(t, values.Get("orders"), `"price2":"70"`, "AddOrderBatch should encode the close secondary price")
-	_, err = new(Exchange).AddOrderBatch(ctx, validBatch())
+	_, err = new(Exchange).AddOrderBatch(ctx, validRequest())
 	require.Error(t, err, "AddOrderBatch must surface pair-format errors")
 
+	testValue := func(t *testing.T, mutate func(*AddOrderBatchRequest)) (addOrderBatchWireOrder, url.Values) {
+		t.Helper()
+		req := validRequest()
+		mutate(req)
+		_, err := ex.AddOrderBatch(t.Context(), req)
+		require.NoError(t, err, "AddOrderBatch must accept the documented enum value")
+		values := requireSpotRequest(t, requests, "/0/private/AddOrderBatch")
+		var orders []addOrderBatchWireOrder
+		require.NoError(t, json.Unmarshal([]byte(values.Get("orders")), &orders), "AddOrderBatch must encode valid orders JSON")
+		require.Len(t, orders, len(req.Orders), "AddOrderBatch must encode every order")
+		return orders[0], values
+	}
+	for _, value := range []OrderType{OrderTypeMarket, OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit, OrderTypeSettlePosition} {
+		t.Run("order type "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].OrderType = value })
+			assert.Equal(t, string(value), order.OrderType, "AddOrderBatch should encode the documented order type")
+		})
+	}
+	for _, value := range []OrderSide{OrderSideBuy, OrderSideSell} {
+		t.Run("side "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].OrderSide = value })
+			assert.Equal(t, string(value), order.OrderSide, "AddOrderBatch should encode the documented order side")
+		})
+	}
+	for _, value := range []OrderTrigger{OrderTriggerIndex, OrderTriggerLast} {
+		t.Run("trigger "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].Trigger = value })
+			assert.Equal(t, string(value), order.Trigger, "AddOrderBatch should encode the documented trigger")
+		})
+	}
+	for _, value := range []SelfTradePolicy{SelfTradePolicyCancelNewest, SelfTradePolicyCancelOldest, SelfTradePolicyCancelBoth} {
+		t.Run("self trade "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].SelfTradePolicy = value })
+			assert.Equal(t, string(value), order.SelfTradePolicy, "AddOrderBatch should encode the documented self-trade policy")
+		})
+	}
+	for _, value := range []OrderTimeInForce{OrderTimeInForceGTC, OrderTimeInForceIOC, OrderTimeInForceGTD} {
+		t.Run("time in force "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].TimeInForce = value })
+			assert.Equal(t, string(value), order.TimeInForce, "AddOrderBatch should encode the documented time in force")
+		})
+	}
+	for _, value := range []OrderType{OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit} {
+		t.Run("close order type "+string(value), func(t *testing.T) {
+			order, _ := testValue(t, func(req *AddOrderBatchRequest) { req.Orders[0].Close = &AddOrderBatchCloseRequest{OrderType: value} })
+			require.NotNil(t, order.Close, "AddOrderBatch must encode the close order")
+			assert.Equal(t, string(value), order.Close.OrderType, "AddOrderBatch should encode the documented close order type")
+		})
+	}
+	t.Run("asset class tokenized asset", func(t *testing.T) {
+		_, values := testValue(t, func(req *AddOrderBatchRequest) { req.AssetClass = AssetClassTokenizedAsset })
+		assert.Equal(t, string(AssetClassTokenizedAsset), values.Get("asset_class"), "AddOrderBatch should encode the documented asset class")
+	})
+
+	batch, err = newSpotNullResultExchange(t).AddOrderBatch(ctx, validRequest())
+	require.NoError(t, err, "AddOrderBatch must accept a null result")
+	assert.Nil(t, batch, "AddOrderBatch should return nil for a null result")
+	batch, err = newSpotErrorExchange(t).AddOrderBatch(ctx, validRequest())
+	require.ErrorIs(t, err, errSpotTransport, "AddOrderBatch must surface request errors")
+	assert.Nil(t, batch, "AddOrderBatch result should remain nil on request errors")
+}
+
+func TestCancelOrderBatch(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
+	ctx := t.Context()
+
+	_, err := ex.CancelOrderBatch(ctx, nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "CancelOrderBatch must reject a nil request")
+	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{})
+	require.ErrorIs(t, err, errBatchCancelOrderCount, "CancelOrderBatch must require an identifier")
+	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: make([]string, 51)})
+	require.ErrorIs(t, err, errBatchCancelOrderCount, "CancelOrderBatch must reject more than fifty identifiers")
+	batchCancelled, err := ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{
+		TransactionIDs: []string{"ORDER"},
+		UserReferences: []int32{42},
+		ClientOrderIDs: []string{"CLIENT"},
+	})
+	require.NoError(t, err, "CancelOrderBatch must not error")
+	require.NotNil(t, batchCancelled, "CancelOrderBatch must return a response")
+	assert.Equal(t, uint64(3), batchCancelled.Count, "CancelOrderBatch should decode the cancellation count")
+	responseJSON, err := json.Marshal(batchCancelled)
+	require.NoError(t, err, "CancelOrderBatch must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"count":3`, "CancelOrderBatch should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
+	assert.Equal(t, `["ORDER",42]`, values.Get("orders"), "CancelOrderBatch should encode primitive transaction and user identifiers")
+	assert.Equal(t, `["CLIENT"]`, values.Get("cl_ord_ids"), "CancelOrderBatch should encode client order identifiers")
+	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{ClientOrderIDs: []string{"CLIENT"}})
+	require.NoError(t, err, "CancelOrderBatch must accept only client order identifiers")
+	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
+	assert.Empty(t, values.Get("orders"), "CancelOrderBatch should omit an empty orders list")
+	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
+	require.NoError(t, err, "CancelOrderBatch must accept only transaction identifiers")
+	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
+	assert.Empty(t, values.Get("cl_ord_ids"), "CancelOrderBatch should omit an empty client order identifier list")
+	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{UserReferences: []int32{42}})
+	require.NoError(t, err, "CancelOrderBatch must accept only user references")
+	values = requireSpotRequest(t, requests, "/0/private/CancelOrderBatch")
+	assert.Equal(t, `[42]`, values.Get("orders"), "CancelOrderBatch should encode user references without transaction identifiers")
 	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{""}})
 	require.ErrorIs(t, err, errOrderIDRequired, "CancelOrderBatch must reject an empty transaction identifier")
 	_, err = ex.CancelOrderBatch(ctx, &CancelOrderBatchRequest{ClientOrderIDs: []string{""}})
 	require.ErrorIs(t, err, errOrderIDRequired, "CancelOrderBatch must reject an empty client order identifier")
+
+	batchCancelled, err = newSpotNullResultExchange(t).CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
+	require.NoError(t, err, "CancelOrderBatch must accept a null result")
+	assert.Nil(t, batchCancelled, "CancelOrderBatch should return nil for a null result")
+	batchCancelled, err = newSpotErrorExchange(t).CancelOrderBatch(ctx, &CancelOrderBatchRequest{TransactionIDs: []string{"ORDER"}})
+	require.ErrorIs(t, err, errSpotTransport, "CancelOrderBatch must surface request errors")
+	assert.Nil(t, batchCancelled, "CancelOrderBatch result should remain nil on request errors")
 }
 
-func TestSpotTradingRequestModels(t *testing.T) {
+func TestAddOrder(t *testing.T) {
 	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
 	ctx := t.Context()
 	userReference := int32(0)
-	cancelUserReference := int32(-42)
 	deadline := time.Now().Add(30 * time.Second).In(time.FixedZone("AEST", 10*60*60))
 	displayVolume := 0.5
 	validRequest := &AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair}
@@ -667,7 +604,11 @@ func TestSpotTradingRequestModels(t *testing.T) {
 		Broker:          "BROKER",
 	})
 	require.NoError(t, err, "AddOrder must not error")
+	require.NotNil(t, added, "AddOrder must return a response")
 	assert.Equal(t, []string{"ORDER"}, added.TransactionIDs, "AddOrder should decode transaction IDs")
+	responseJSON, err := json.Marshal(added)
+	require.NoError(t, err, "AddOrder must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"txid":["ORDER"]`, "AddOrder should decode the response")
 	values = requireSpotRequest(t, requests, "/0/private/AddOrder")
 	assert.Equal(t, "0", values.Get("userref"), "AddOrder should encode an explicit zero user reference")
 	assert.Equal(t, "0.5", values.Get("displayvol"), "AddOrder should encode display volume")
@@ -695,8 +636,100 @@ func TestSpotTradingRequestModels(t *testing.T) {
 	assert.Equal(t, "CLIENT", values.Get("cl_ord_id"), "AddOrder should encode client order ID")
 	assert.Empty(t, values.Get("userref"), "AddOrder should omit user reference when unset")
 	assert.Empty(t, values.Get("close[price]"), "AddOrder should omit conditional close fields when unset")
+	negative := -1.0
+	notANumber := math.NaN()
+	invalidDeadline := time.Now().Add(time.Second)
+	for _, tc := range []struct {
+		name     string
+		mutate   func(*AddOrderRequest)
+		expected error
+	}{
+		{name: "negative volume", mutate: func(req *AddOrderRequest) { req.Volume = negative }, expected: errVolumeInvalid},
+		{name: "non-finite volume", mutate: func(req *AddOrderRequest) { req.Volume = notANumber }, expected: errNumericValueInvalid},
+		{name: "negative display volume", mutate: func(req *AddOrderRequest) { req.DisplayVolume = &negative }, expected: errVolumeInvalid},
+		{name: "non-finite display volume", mutate: func(req *AddOrderRequest) { req.DisplayVolume = &notANumber }, expected: errNumericValueInvalid},
+		{name: "invalid price", mutate: func(req *AddOrderRequest) { req.Price = &OrderPrice{Expression: "invalid"} }, expected: errOrderPriceInvalid},
+		{name: "invalid secondary price", mutate: func(req *AddOrderRequest) { req.SecondaryPrice = &OrderPrice{Expression: "invalid"} }, expected: errOrderPriceInvalid},
+		{name: "invalid start delay", mutate: func(req *AddOrderRequest) { req.StartDelay = time.Millisecond }, expected: errScheduledTimeInvalid},
+		{name: "invalid expiry delay", mutate: func(req *AddOrderRequest) { req.ExpireAfter = time.Second }, expected: errScheduledTimeInvalid},
+		{name: "invalid deadline", mutate: func(req *AddOrderRequest) { req.Deadline = invalidDeadline }, expected: errDeadlineInvalid},
+		{name: "invalid order flag", mutate: func(req *AddOrderRequest) { req.OrderFlags = []OrderFlag{"invalid"} }, expected: errOrderFlagInvalid},
+		{name: "invalid close price", mutate: func(req *AddOrderRequest) {
+			req.Close = &AddOrderCloseRequest{OrderType: OrderTypeLimit, Price: &OrderPrice{Expression: "invalid"}}
+		}, expected: errOrderPriceInvalid},
+		{name: "invalid close secondary price", mutate: func(req *AddOrderRequest) {
+			req.Close = &AddOrderCloseRequest{OrderType: OrderTypeLimit, SecondaryPrice: &OrderPrice{Expression: "invalid"}}
+		}, expected: errOrderPriceInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := *validRequest
+			tc.mutate(&req)
+			_, err := ex.AddOrder(ctx, &req)
+			require.ErrorIs(t, err, tc.expected, "AddOrder must reject "+tc.name)
+		})
+	}
+	_, err = new(Exchange).AddOrder(ctx, validRequest)
+	require.Error(t, err, "AddOrder must surface pair-format errors")
 
-	_, err = ex.CancelExistingOrder(ctx, nil)
+	testValue := func(t *testing.T, mutate func(*AddOrderRequest)) url.Values {
+		t.Helper()
+		req := &AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair}
+		mutate(req)
+		_, err := ex.AddOrder(t.Context(), req)
+		require.NoError(t, err, "AddOrder must accept the documented enum value")
+		return requireSpotRequest(t, requests, "/0/private/AddOrder")
+	}
+	for _, value := range []OrderType{OrderTypeMarket, OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit, OrderTypeSettlePosition} {
+		t.Run("order type "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.OrderType = value })
+			assert.Equal(t, string(value), values.Get("ordertype"), "AddOrder should encode the documented order type")
+		})
+	}
+	for _, value := range []OrderSide{OrderSideBuy, OrderSideSell} {
+		t.Run("side "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.Side = value })
+			assert.Equal(t, string(value), values.Get("type"), "AddOrder should encode the documented order side")
+		})
+	}
+	for _, value := range []OrderTrigger{OrderTriggerIndex, OrderTriggerLast} {
+		t.Run("trigger "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.Trigger = value })
+			assert.Equal(t, string(value), values.Get("trigger"), "AddOrder should encode the documented trigger")
+		})
+	}
+	for _, value := range []SelfTradePolicy{SelfTradePolicyCancelNewest, SelfTradePolicyCancelOldest, SelfTradePolicyCancelBoth} {
+		t.Run("self trade "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.SelfTradePolicy = value })
+			assert.Equal(t, string(value), values.Get("stptype"), "AddOrder should encode the documented self-trade policy")
+		})
+	}
+	for _, value := range []OrderTimeInForce{OrderTimeInForceGTC, OrderTimeInForceIOC, OrderTimeInForceGTD, OrderTimeInForceFOK} {
+		t.Run("time in force "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.TimeInForce = value })
+			assert.Equal(t, string(value), values.Get("timeinforce"), "AddOrder should encode the documented time in force")
+		})
+	}
+	for _, value := range []OrderType{OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit} {
+		t.Run("close order type "+string(value), func(t *testing.T) {
+			values := testValue(t, func(req *AddOrderRequest) { req.Close = &AddOrderCloseRequest{OrderType: value} })
+			assert.Equal(t, string(value), values.Get("close[ordertype]"), "AddOrder should encode the documented close order type")
+		})
+	}
+
+	added, err = newSpotNullResultExchange(t).AddOrder(ctx, validRequest)
+	require.NoError(t, err, "AddOrder must accept a null result")
+	assert.Nil(t, added, "AddOrder should return nil for a null result")
+	added, err = newSpotErrorExchange(t).AddOrder(ctx, validRequest)
+	require.ErrorIs(t, err, errSpotTransport, "AddOrder must surface request errors")
+	assert.Nil(t, added, "AddOrder result should remain nil on request errors")
+}
+
+func TestCancelExistingOrder(t *testing.T) {
+	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
+	ctx := t.Context()
+	cancelUserReference := int32(-42)
+
+	_, err := ex.CancelExistingOrder(ctx, nil)
 	require.ErrorIs(t, err, common.ErrNilPointer, "CancelExistingOrder must reject a nil request")
 	_, err = ex.CancelExistingOrder(ctx, &CancelOrderRequest{})
 	require.ErrorIs(t, err, errOrderIdentityRequired, "CancelExistingOrder must require an order identifier")
@@ -706,8 +739,12 @@ func TestSpotTradingRequestModels(t *testing.T) {
 	require.ErrorIs(t, err, errOrderIdentityConflict, "CancelExistingOrder must reject transaction and client identifiers together")
 	cancelled, err := ex.CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
 	require.NoError(t, err, "CancelExistingOrder must accept a transaction identifier")
+	require.NotNil(t, cancelled, "CancelExistingOrder must return a response")
 	assert.Equal(t, int64(1), cancelled.Count, "CancelExistingOrder should decode cancellation count")
-	values = requireSpotRequest(t, requests, "/0/private/CancelOrder")
+	responseJSON, err := json.Marshal(cancelled)
+	require.NoError(t, err, "CancelExistingOrder must encode the decoded response")
+	assert.Contains(t, string(responseJSON), `"count":1`, "CancelExistingOrder should decode the response")
+	values := requireSpotRequest(t, requests, "/0/private/CancelOrder")
 	assert.Equal(t, "ORDER", values.Get("txid"), "CancelExistingOrder should encode transaction identifier")
 	_, err = ex.CancelExistingOrder(ctx, &CancelOrderRequest{UserReference: &cancelUserReference})
 	require.NoError(t, err, "CancelExistingOrder must accept a user reference")
@@ -717,47 +754,11 @@ func TestSpotTradingRequestModels(t *testing.T) {
 	require.NoError(t, err, "CancelExistingOrder must accept a client order ID")
 	values = requireSpotRequest(t, requests, "/0/private/CancelOrder")
 	assert.Equal(t, "CLIENT", values.Get("cl_ord_id"), "CancelExistingOrder should encode client order ID")
-}
 
-func TestSpotAddOrderEnums(t *testing.T) {
-	ex, requests := newSpotEndpointExchange(t, spotTradingFixtures)
-	testValue := func(t *testing.T, mutate func(*AddOrderRequest)) {
-		t.Helper()
-		req := &AddOrderRequest{OrderType: OrderTypeLimit, Side: OrderSideBuy, Volume: 1, Pair: spotTestPair}
-		mutate(req)
-		_, err := ex.AddOrder(t.Context(), req)
-		require.NoError(t, err, "AddOrder must accept the documented enum value")
-		requireSpotRequest(t, requests, "/0/private/AddOrder")
-	}
-
-	for _, value := range []OrderType{OrderTypeMarket, OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit, OrderTypeSettlePosition} {
-		t.Run("order type "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.OrderType = value })
-		})
-	}
-	for _, value := range []OrderSide{OrderSideBuy, OrderSideSell} {
-		t.Run("side "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.Side = value })
-		})
-	}
-	for _, value := range []OrderTrigger{OrderTriggerIndex, OrderTriggerLast} {
-		t.Run("trigger "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.Trigger = value })
-		})
-	}
-	for _, value := range []SelfTradePolicy{SelfTradePolicyCancelNewest, SelfTradePolicyCancelOldest, SelfTradePolicyCancelBoth} {
-		t.Run("self trade "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.SelfTradePolicy = value })
-		})
-	}
-	for _, value := range []OrderTimeInForce{OrderTimeInForceGTC, OrderTimeInForceIOC, OrderTimeInForceGTD, OrderTimeInForceFOK} {
-		t.Run("time in force "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.TimeInForce = value })
-		})
-	}
-	for _, value := range []OrderType{OrderTypeLimit, OrderTypeIceberg, OrderTypeStopLoss, OrderTypeTakeProfit, OrderTypeStopLossLimit, OrderTypeTakeProfitLimit, OrderTypeTrailingStop, OrderTypeTrailingStopLimit} {
-		t.Run("close order type "+string(value), func(t *testing.T) {
-			testValue(t, func(req *AddOrderRequest) { req.Close = &AddOrderCloseRequest{OrderType: value} })
-		})
-	}
+	cancelled, err = newSpotNullResultExchange(t).CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
+	require.NoError(t, err, "CancelExistingOrder must accept a null result")
+	assert.Nil(t, cancelled, "CancelExistingOrder should return nil for a null result")
+	cancelled, err = newSpotErrorExchange(t).CancelExistingOrder(ctx, &CancelOrderRequest{TransactionID: "ORDER"})
+	require.ErrorIs(t, err, errSpotTransport, "CancelExistingOrder must surface request errors")
+	assert.Nil(t, cancelled, "CancelExistingOrder result should remain nil on request errors")
 }
