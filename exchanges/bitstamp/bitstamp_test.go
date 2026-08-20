@@ -9,6 +9,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
+	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
@@ -1045,5 +1046,30 @@ func TestSubscribe(t *testing.T) {
 	require.NoError(t, err, "UnSubscribe must not error")
 	for _, s := range subs {
 		assert.Equalf(t, subscription.UnsubscribedState, s.State(), "Subscription %s should be subscribed", s)
+	}
+}
+
+func TestOrderSideUnmarshal(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		payload string
+		exp     order.Side
+	}{
+		{`{"side":"0"}`, order.Buy}, // ticker quotes it
+		{`{"side":0}`, order.Buy},   // websocket sends it bare
+		{`{"side":"1"}`, order.Sell},
+		{`{"side":1}`, order.Sell},
+	} {
+		var v struct {
+			Side orderSide `json:"side"`
+		}
+		require.NoErrorf(t, json.Unmarshal([]byte(tc.payload), &v), "Unmarshal must not error for %s", tc.payload)
+		assert.Equalf(t, tc.exp, v.Side.Side(), "%s should decode to %s", tc.payload, tc.exp)
+	}
+	for _, payload := range []string{`{"side":"2"}`, `{"side":"x"}`, `{"side":""}`, `{"side":true}`} {
+		var v struct {
+			Side orderSide `json:"side"`
+		}
+		assert.Errorf(t, json.Unmarshal([]byte(payload), &v), "Unmarshal should reject %s", payload)
 	}
 }

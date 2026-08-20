@@ -34,6 +34,11 @@ func (p *TradingPair) UnmarshalJSON(data []byte) error {
 type orderSide order.Side
 
 func (s *orderSide) UnmarshalJSON(data []byte) error {
+	// Bitstamp quotes the side on the ticker and sends it bare over the websocket. A ,string tag
+	// cannot reconcile the two, as encoding/json does not apply it to a type that unmarshals itself.
+	if len(data) > 1 && data[0] == '"' && data[len(data)-1] == '"' {
+		data = data[1 : len(data)-1]
+	}
 	var i int64
 	if err := json.Unmarshal(data, &i); err != nil {
 		return err

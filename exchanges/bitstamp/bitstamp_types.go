@@ -34,7 +34,7 @@ type Ticker struct {
 	Timestamp       types.Time `json:"timestamp"`
 	Open            float64    `json:"open,string"`
 	Open24          float64    `json:"open_24,string"`
-	Side            orderSide  `json:"side,string"`
+	Side            orderSide  `json:"side"`
 	PercentChange24 float64    `json:"percent_change_24,string"`
 }
 
