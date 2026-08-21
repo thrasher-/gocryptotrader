@@ -26,7 +26,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
-	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 const btcMarketsWSURL = "wss://socket.btcmarkets.net/v2"
@@ -86,19 +85,14 @@ func (e *Exchange) wsReadData(ctx context.Context) {
 	}
 }
 
-// UnmarshalJSON implements the unmarshaler interface.
+// UnmarshalJSON implements the unmarshaler interface. The rows are scanned straight into the
+// levels; an intermediate [][3]types.Number cost reflection for every cell and a copy afterwards.
 func (w *WebsocketOrderbook) UnmarshalJSON(data []byte) error {
-	var resp [][3]types.Number
-	if err := json.Unmarshal(data, &resp); err != nil {
+	var levels orderbook.LevelsArrayPriceAmountOrderCount
+	if err := levels.UnmarshalJSON(data); err != nil {
 		return err
 	}
-
-	*w = WebsocketOrderbook(make(orderbook.Levels, len(resp)))
-	for x := range resp {
-		(*w)[x].Price = resp[x][0].Float64()
-		(*w)[x].Amount = resp[x][1].Float64()
-		(*w)[x].OrderCount = resp[x][2].Int64()
-	}
+	*w = WebsocketOrderbook(levels.Levels())
 	return nil
 }
 

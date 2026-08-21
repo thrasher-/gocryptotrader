@@ -786,14 +786,14 @@ func (w *wsCandle) UnmarshalJSON(data []byte) error {
 }
 
 type wsSnapshot struct {
-	Asks []wsOrderbookItem `json:"as"`
-	Bids []wsOrderbookItem `json:"bs"`
+	Asks wsOrderbookItems `json:"as"`
+	Bids wsOrderbookItems `json:"bs"`
 }
 
 type wsUpdate struct {
-	Asks     []wsOrderbookItem `json:"a"`
-	Bids     []wsOrderbookItem `json:"b"`
-	Checksum uint32            `json:"c,string"`
+	Asks     wsOrderbookItems `json:"a"`
+	Bids     wsOrderbookItems `json:"b"`
+	Checksum uint32           `json:"c,string"`
 }
 
 type wsOrderbookItem struct {

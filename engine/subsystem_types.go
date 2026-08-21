@@ -73,6 +73,7 @@ type iCurrencyPairSyncer interface {
 	IsRunning() bool
 	PrintTickerSummary(*ticker.Price, string, error)
 	PrintOrderbookSummary(*orderbook.Book, string, error)
+	NeedsOrderbookSummary() bool
 	WebsocketUpdate(string, currency.Pair, asset.Item, syncItemType, error) error
 }
 

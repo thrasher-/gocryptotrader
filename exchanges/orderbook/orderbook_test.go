@@ -596,24 +596,31 @@ func TestReverse(t *testing.T) {
 func TestCheckAlignment(t *testing.T) {
 	t.Parallel()
 	itemWithFunding := Levels{{Amount: 1337, Price: 0, Period: 1337}}
-	err := checkAlignment(itemWithFunding, true, true, false, false, isDsc, "Bitfinex")
+	err := checkAlignment(itemWithFunding, true, true, false, descending, "Bitfinex")
 	if err != nil {
 		t.Error(err)
 	}
-	err = checkAlignment(itemWithFunding, false, true, false, false, isDsc, "Bitfinex")
+	err = checkAlignment(itemWithFunding, false, true, false, descending, "Bitfinex")
 	require.ErrorIs(t, err, ErrPriceZero)
 
-	err = checkAlignment(itemWithFunding, true, true, false, false, isDsc, "Binance")
+	err = checkAlignment(itemWithFunding, true, true, false, descending, "Binance")
 	require.ErrorIs(t, err, ErrPriceZero)
 
 	itemWithFunding[0].Price = 1337
-	err = checkAlignment(itemWithFunding, true, true, false, true, isDsc, "Binance")
-	require.ErrorIs(t, err, errChecksumStringNotSet)
-
-	itemWithFunding[0].StrAmount = "1337.0000000"
-	itemWithFunding[0].StrPrice = "1337.0000000"
-	err = checkAlignment(itemWithFunding, true, true, false, true, isDsc, "Binance")
+	err = checkAlignment(itemWithFunding, true, true, false, descending, "Binance")
 	require.NoError(t, err)
+
+	// The digits a checksum needs live beside the levels, so validate is where their absence shows
+	book := &Book{
+		Exchange: "Binance", ValidateOrderbook: true, ChecksumStringRequired: true,
+		IsFundingRate: true, PriceDuplication: true,
+		Bids: itemWithFunding, Asks: itemWithFunding,
+	}
+	require.ErrorIs(t, book.Validate(), errChecksumStringNotSet)
+
+	book.BidDigits = []LevelDigits{{Price: "1337.0000000", Amount: "1337.0000000"}}
+	book.AskDigits = []LevelDigits{{Price: "1337.0000000", Amount: "1337.0000000"}}
+	require.NoError(t, book.Validate())
 }
 
 func TestLevelsArrayPriceAmountUnmarshalJSON(t *testing.T) {

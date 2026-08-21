@@ -84,6 +84,10 @@ func TestProcessUpdate(t *testing.T) {
 	d.validateOrderbook = false // Disable verification
 	err = d.ProcessUpdate(&Update{UpdateTime: time.Now(), Asks: Levels{{Price: 1337.5, Amount: 69420, ID: 69420}}, ExpectedChecksum: 1337, GenerateChecksum: func(*Book) uint32 { return 1337 }})
 	require.NoError(t, err, "must not error when ValidateOrderbook is false")
+
+	require.NoError(t, d.LoadSnapshot(newSnapshot(20)))
+	err = d.ProcessUpdate(&Update{UpdateTime: time.Now(), Asks: Levels{{Price: 1337.5, Amount: 69420, ID: 69420}}, ExpectedChecksum: 1337, GenerateChecksum: func(*Book) uint32 { return 1336 }})
+	require.ErrorIs(t, err, errChecksumMismatch, "checksum must still be verified when ValidateOrderbook is false")
 }
 
 func TestUpdate(t *testing.T) {

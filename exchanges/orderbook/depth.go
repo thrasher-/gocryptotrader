@@ -46,6 +46,10 @@ type Depth struct {
 	// validationError defines current book state and why it was invalidated.
 	validationError error
 
+	// updatesSinceFullValidation paces the periodic full walk. Not in options, which AssignOptions
+	// replaces wholesale.
+	updatesSinceFullValidation int
+
 	m sync.RWMutex
 }
 
@@ -72,12 +76,15 @@ func (d *Depth) Retrieve() (*Book, error) {
 	return &Book{
 		Bids:                   d.bidLevels.retrieve(0),
 		Asks:                   d.askLevels.retrieve(0),
+		BidDigits:              append([]LevelDigits(nil), d.bidLevels.digits...),
+		AskDigits:              append([]LevelDigits(nil), d.askLevels.digits...),
 		Exchange:               d.exchange,
 		Asset:                  d.asset,
 		Pair:                   d.pair,
 		LastUpdated:            d.lastUpdated,
 		LastPushed:             d.lastPushed,
 		InsertedAt:             d.insertedAt,
+		TrackInsertTime:        d.trackInsertTime,
 		LastUpdateID:           d.lastUpdateID,
 		PriceDuplication:       d.priceDuplication,
 		IsFundingRate:          d.isFundingRate,
@@ -96,16 +103,62 @@ func (d *Depth) LoadSnapshot(incoming *Book) error {
 	if incoming.LastUpdated.IsZero() {
 		return fmt.Errorf("error loading orderbook snapshot: %s %s %s - %w", d.exchange, d.pair, d.asset, ErrLastUpdatedNotSet)
 	}
+	// Checking only the neighbourhoods an update touches rests on everything else having been
+	// checked when it was written, which starts here.
+	if d.validateOrderbook {
+		if err := d.validateIncoming(incoming); err != nil {
+			return d.invalidate(err)
+		}
+	}
 	d.lastUpdateID = incoming.LastUpdateID
 	d.lastUpdated = incoming.LastUpdated
 	d.lastPushed = incoming.LastPushed
-	d.insertedAt = time.Now()
+	if d.trackInsertTime {
+		d.insertedAt = time.Now()
+	}
 	d.restSnapshot = incoming.RestSnapshot
-	d.bidLevels.load(incoming.Bids)
-	d.askLevels.load(incoming.Asks)
+	d.bidLevels.load(incoming.Bids, incoming.BidDigits)
+	d.askLevels.load(incoming.Asks, incoming.AskDigits)
 	d.validationError = nil
+	d.updatesSinceFullValidation = 0
 	d.Alert()
 	return nil
+}
+
+// validateIncoming checks a snapshot before it is installed, using this depth's options rather than
+// whatever the caller happened to set on the book.
+func (d *Depth) validateIncoming(incoming *Book) error {
+	if d.checksumStringRequired && (len(incoming.BidDigits) != len(incoming.Bids) || len(incoming.AskDigits) != len(incoming.Asks)) {
+		return fmt.Errorf("%s %s %s: %w", d.exchange, d.pair, d.asset, errChecksumStringNotSet)
+	}
+	book := *incoming
+	book.Exchange, book.Pair, book.Asset = d.exchange, d.pair, d.asset
+	book.IsFundingRate, book.PriceDuplication = d.isFundingRate, d.priceDuplication
+	book.IDAlignment, book.ChecksumStringRequired = d.idAligned, d.checksumStringRequired
+	return validate(&book)
+}
+
+// TopLevels copies the leading levels of each side into the caller's buffers, returning how many of
+// each were written. Checksums read only the first handful, for which Retrieve's copy of the entire
+// book is many times the cost.
+func (d *Depth) TopLevels(bids, asks Levels) (gotBids, gotAsks int, err error) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	if d.validationError != nil {
+		return 0, 0, d.validationError
+	}
+	return copy(bids, d.bidLevels.Levels), copy(asks, d.askLevels.Levels), nil
+}
+
+// TopDigits copies the leading levels' wire digits into the caller's buffers, returning how many of
+// each were written. Checksums read only the first handful.
+func (d *Depth) TopDigits(bids, asks []LevelDigits) (gotBids, gotAsks int, err error) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	if d.validationError != nil {
+		return 0, 0, d.validationError
+	}
+	return copy(bids, d.bidLevels.digits), copy(asks, d.askLevels.digits), nil
 }
 
 // Invalidate initialises the Depth, with a error to explain why it was invalid
@@ -120,8 +173,8 @@ func (d *Depth) Invalidate(withReason error) error {
 func (d *Depth) invalidate(withReason error) error {
 	d.lastUpdateID = 0
 	d.lastUpdated = time.Time{}
-	d.bidLevels.load(nil)
-	d.askLevels.load(nil)
+	d.bidLevels.load(nil, nil)
+	d.askLevels.load(nil, nil)
 	d.validationError = fmt.Errorf("%s %s %s Reason: [%w]", d.exchange, d.pair, d.asset, common.AppendError(ErrOrderbookInvalid, withReason))
 	d.Alert()
 	return d.validationError
@@ -132,6 +185,14 @@ func (d *Depth) IsValid() bool {
 	d.m.RLock()
 	defer d.m.RUnlock()
 	return d.validationError == nil
+}
+
+// ValidationError returns the error that invalidated the book, or nil while it remains valid,
+// without the level copy Retrieve performs
+func (d *Depth) ValidationError() error {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	return d.validationError
 }
 
 // AssignOptions assigns the initial options for the depth instance
@@ -150,6 +211,7 @@ func (d *Depth) AssignOptions(b *Book) {
 		idAligned:              b.IDAlignment,
 		maxDepth:               b.MaxDepth,
 		checksumStringRequired: b.ChecksumStringRequired,
+		trackInsertTime:        b.TrackInsertTime,
 	}
 	d.m.Unlock()
 }
@@ -179,6 +241,16 @@ func (d *Depth) LastUpdateID() (int64, error) {
 		return 0, d.validationError
 	}
 	return d.lastUpdateID, nil
+}
+
+// LastUpdated returns the time of the last change on the exchange books
+func (d *Depth) LastUpdated() (time.Time, error) {
+	d.m.RLock()
+	defer d.m.RUnlock()
+	if d.validationError != nil {
+		return time.Time{}, d.validationError
+	}
+	return d.lastUpdated, nil
 }
 
 // IsFundingRate returns if the depth is a funding rate
@@ -245,7 +317,11 @@ func (d *Depth) updateAndAlert(update *Update) {
 	d.lastUpdateID = update.UpdateID
 	d.lastUpdated = update.UpdateTime
 	d.lastPushed = update.LastPushed
-	d.insertedAt = time.Now()
+	if d.trackInsertTime {
+		// Reading the wall clock costs about a quarter of what applying an update costs, so it is
+		// only paid for when something is going to read the answer
+		d.insertedAt = time.Now()
+	}
 	d.Alert()
 }
 

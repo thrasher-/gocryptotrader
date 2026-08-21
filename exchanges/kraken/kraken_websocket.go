@@ -514,6 +514,8 @@ func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsS
 		ValidateOrderbook:      e.ValidateOrderbook,
 		Bids:                   make(orderbook.Levels, len(obSnapshot.Bids)),
 		Asks:                   make(orderbook.Levels, len(obSnapshot.Asks)),
+		BidDigits:              make([]orderbook.LevelDigits, len(obSnapshot.Bids)),
+		AskDigits:              make([]orderbook.LevelDigits, len(obSnapshot.Asks)),
 		MaxDepth:               levels,
 		ChecksumStringRequired: true,
 	}
@@ -523,9 +525,8 @@ func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsS
 	var highestLastUpdate time.Time
 	for i := range obSnapshot.Asks {
 		base.Asks[i].Price = obSnapshot.Asks[i].Price
-		base.Asks[i].StrPrice = obSnapshot.Asks[i].PriceRaw
 		base.Asks[i].Amount = obSnapshot.Asks[i].Amount
-		base.Asks[i].StrAmount = obSnapshot.Asks[i].AmountRaw
+		base.AskDigits[i] = orderbook.LevelDigits{Price: obSnapshot.Asks[i].PriceRaw, Amount: obSnapshot.Asks[i].AmountRaw}
 
 		askUpdatedTime := obSnapshot.Asks[i].Time.Time()
 		if highestLastUpdate.Before(askUpdatedTime) {
@@ -535,9 +536,8 @@ func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsS
 
 	for i := range obSnapshot.Bids {
 		base.Bids[i].Price = obSnapshot.Bids[i].Price
-		base.Bids[i].StrPrice = obSnapshot.Bids[i].PriceRaw
 		base.Bids[i].Amount = obSnapshot.Bids[i].Amount
-		base.Bids[i].StrAmount = obSnapshot.Bids[i].AmountRaw
+		base.BidDigits[i] = orderbook.LevelDigits{Price: obSnapshot.Bids[i].PriceRaw, Amount: obSnapshot.Bids[i].AmountRaw}
 
 		bidUpdateTime := obSnapshot.Bids[i].Time.Time()
 		if highestLastUpdate.Before(bidUpdateTime) {
@@ -549,13 +549,18 @@ func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsS
 	return e.Websocket.Orderbook.LoadSnapshot(&base)
 }
 
+// krakenChecksumLevels is how many levels of each side Kraken folds into its checksum
+const krakenChecksumLevels = 10
+
 // wsProcessOrderBookUpdate updates an orderbook entry for a given currency pair
 func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate) error {
 	obUpdate := orderbook.Update{
-		Asset: asset.Spot,
-		Pair:  pair,
-		Bids:  make(orderbook.Levels, len(wsUpdt.Bids)),
-		Asks:  make(orderbook.Levels, len(wsUpdt.Asks)),
+		Asset:     asset.Spot,
+		Pair:      pair,
+		Bids:      make(orderbook.Levels, len(wsUpdt.Bids)),
+		Asks:      make(orderbook.Levels, len(wsUpdt.Asks)),
+		BidDigits: make([]orderbook.LevelDigits, len(wsUpdt.Bids)),
+		AskDigits: make([]orderbook.LevelDigits, len(wsUpdt.Asks)),
 	}
 
 	// Calculating checksum requires incoming decimal place checks for both
@@ -566,9 +571,8 @@ func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate
 	// Ask data is not always sent
 	for i := range wsUpdt.Asks {
 		obUpdate.Asks[i].Price = wsUpdt.Asks[i].Price
-		obUpdate.Asks[i].StrPrice = wsUpdt.Asks[i].PriceRaw
 		obUpdate.Asks[i].Amount = wsUpdt.Asks[i].Amount
-		obUpdate.Asks[i].StrAmount = wsUpdt.Asks[i].AmountRaw
+		obUpdate.AskDigits[i] = orderbook.LevelDigits{Price: wsUpdt.Asks[i].PriceRaw, Amount: wsUpdt.Asks[i].AmountRaw}
 
 		askUpdatedTime := wsUpdt.Asks[i].Time.Time()
 		if highestLastUpdate.Before(askUpdatedTime) {
@@ -579,9 +583,8 @@ func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate
 	// Bid data is not always sent
 	for i := range wsUpdt.Bids {
 		obUpdate.Bids[i].Price = wsUpdt.Bids[i].Price
-		obUpdate.Bids[i].StrPrice = wsUpdt.Bids[i].PriceRaw
 		obUpdate.Bids[i].Amount = wsUpdt.Bids[i].Amount
-		obUpdate.Bids[i].StrAmount = wsUpdt.Bids[i].AmountRaw
+		obUpdate.BidDigits[i] = orderbook.LevelDigits{Price: wsUpdt.Bids[i].PriceRaw, Amount: wsUpdt.Bids[i].AmountRaw}
 
 		bidUpdatedTime := wsUpdt.Bids[i].Time.Time()
 		if highestLastUpdate.Before(bidUpdatedTime) {
@@ -595,44 +598,51 @@ func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate
 		return err
 	}
 
-	book, err := e.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
+	// The checksum reads the leading levels only, so copying the whole book would cost far more than
+	// the check itself
+	var bids, asks [krakenChecksumLevels]orderbook.LevelDigits
+	nBids, nAsks, err := e.Websocket.Orderbook.TopDigits(pair, asset.Spot, bids[:], asks[:])
 	if err != nil {
 		return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w", pair, asset.Spot, err)
 	}
 
-	return validateCRC32(book, wsUpdt.Checksum)
+	return validateCRC32(bids[:nBids], asks[:nAsks], pair, wsUpdt.Checksum)
 }
 
-func validateCRC32(b *orderbook.Book, token uint32) error {
-	if b == nil {
-		return common.ErrNilPointer
+func validateCRC32(bids, asks []orderbook.LevelDigits, pair currency.Pair, token uint32) error {
+	h := crc32.NewIEEE()
+	var scratch [64]byte
+	for i := range asks {
+		// Historically the ask price was trimmed after the trimmed amount was appended to it. With
+		// the amount's point already gone the outer pass can only reach the price's, so trimming
+		// each in turn produces the same digits.
+		_, _ = h.Write(appendTrimmed(scratch[:0], asks[i].Price))
+		_, _ = h.Write(appendTrimmed(scratch[:0], asks[i].Amount))
 	}
-	var checkStr strings.Builder
-	for i := 0; i < 10 && i < len(b.Asks); i++ {
-		_, err := checkStr.WriteString(trim(b.Asks[i].StrPrice + trim(b.Asks[i].StrAmount)))
-		if err != nil {
-			return err
-		}
+	for i := range bids {
+		_, _ = h.Write(appendTrimmed(scratch[:0], bids[i].Price))
+		_, _ = h.Write(appendTrimmed(scratch[:0], bids[i].Amount))
 	}
-
-	for i := 0; i < 10 && i < len(b.Bids); i++ {
-		_, err := checkStr.WriteString(trim(b.Bids[i].StrPrice) + trim(b.Bids[i].StrAmount))
-		if err != nil {
-			return err
-		}
-	}
-
-	if check := crc32.ChecksumIEEE([]byte(checkStr.String())); check != token {
-		return fmt.Errorf("%s %s %w %d, expected %d", b.Pair, b.Asset, errInvalidChecksum, check, token)
+	if check := h.Sum32(); check != token {
+		return fmt.Errorf("%s %s %w %d, expected %d", pair, asset.Spot, errInvalidChecksum, check, token)
 	}
 	return nil
 }
 
-// trim removes '.' and prefixed '0' from subsequent string
-func trim(s string) string {
-	s = strings.Replace(s, ".", "", 1)
-	s = strings.TrimLeft(s, "0")
-	return s
+// appendTrimmed appends s without its first point or any leading zeroes, which is the form Kraken
+// checksums. It writes into the caller's buffer so the hot path allocates nothing.
+func appendTrimmed(dst []byte, s string) []byte {
+	point := strings.IndexByte(s, '.')
+	lead := 0
+	for lead < len(s) && (s[lead] == '0' || lead == point) {
+		lead++
+	}
+	for i := lead; i < len(s); i++ {
+		if i != point {
+			dst = append(dst, s[i])
+		}
+	}
+	return dst
 }
 
 // wsProcessCandle converts candle data and sends it to the data handler

@@ -1239,10 +1239,11 @@ type WsOrderbook struct {
 	TimeMS        types.Time       `json:"time"`
 }
 
-// OrderbookChanges represents orderbook ask and bid changes
+// OrderbookChanges represents orderbook ask and bid changes. The rows are [price, amount, id] and
+// are scanned straight into levels rather than through reflection into an intermediate array.
 type OrderbookChanges struct {
-	Asks [][3]types.Number `json:"asks"`
-	Bids [][3]types.Number `json:"bids"`
+	Asks orderbook.LevelsArrayPriceAmountID `json:"asks"`
+	Bids orderbook.LevelsArrayPriceAmountID `json:"bids"`
 }
 
 // WsCandlestick represents candlestick information push data for a symbol

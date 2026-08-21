@@ -1421,30 +1421,54 @@ func TestGetHistoricTrades(t *testing.T) {
 }
 
 var testOb = orderbook.Book{
+	// NOTE: 0.00000500 float64 == 0.000005, so the digits are carried alongside
 	Asks: []orderbook.Level{
-		// NOTE: 0.00000500 float64 == 0.000005
-		{Price: 0.05005, StrPrice: "0.05005", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05010, StrPrice: "0.05010", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05015, StrPrice: "0.05015", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05020, StrPrice: "0.05020", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05025, StrPrice: "0.05025", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05030, StrPrice: "0.05030", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05035, StrPrice: "0.05035", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05040, StrPrice: "0.05040", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05045, StrPrice: "0.05045", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.05050, StrPrice: "0.05050", Amount: 0.00000500, StrAmount: "0.00000500"},
+		{Price: 0.05005, Amount: 0.00000500},
+		{Price: 0.05010, Amount: 0.00000500},
+		{Price: 0.05015, Amount: 0.00000500},
+		{Price: 0.05020, Amount: 0.00000500},
+		{Price: 0.05025, Amount: 0.00000500},
+		{Price: 0.05030, Amount: 0.00000500},
+		{Price: 0.05035, Amount: 0.00000500},
+		{Price: 0.05040, Amount: 0.00000500},
+		{Price: 0.05045, Amount: 0.00000500},
+		{Price: 0.05050, Amount: 0.00000500},
+	},
+	AskDigits: []orderbook.LevelDigits{
+		{Price: "0.05005", Amount: "0.00000500"},
+		{Price: "0.05010", Amount: "0.00000500"},
+		{Price: "0.05015", Amount: "0.00000500"},
+		{Price: "0.05020", Amount: "0.00000500"},
+		{Price: "0.05025", Amount: "0.00000500"},
+		{Price: "0.05030", Amount: "0.00000500"},
+		{Price: "0.05035", Amount: "0.00000500"},
+		{Price: "0.05040", Amount: "0.00000500"},
+		{Price: "0.05045", Amount: "0.00000500"},
+		{Price: "0.05050", Amount: "0.00000500"},
 	},
 	Bids: []orderbook.Level{
-		{Price: 0.05000, StrPrice: "0.05000", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04995, StrPrice: "0.04995", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04990, StrPrice: "0.04990", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04980, StrPrice: "0.04980", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04975, StrPrice: "0.04975", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04970, StrPrice: "0.04970", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04965, StrPrice: "0.04965", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04960, StrPrice: "0.04960", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04955, StrPrice: "0.04955", Amount: 0.00000500, StrAmount: "0.00000500"},
-		{Price: 0.04950, StrPrice: "0.04950", Amount: 0.00000500, StrAmount: "0.00000500"},
+		{Price: 0.05000, Amount: 0.00000500},
+		{Price: 0.04995, Amount: 0.00000500},
+		{Price: 0.04990, Amount: 0.00000500},
+		{Price: 0.04980, Amount: 0.00000500},
+		{Price: 0.04975, Amount: 0.00000500},
+		{Price: 0.04970, Amount: 0.00000500},
+		{Price: 0.04965, Amount: 0.00000500},
+		{Price: 0.04960, Amount: 0.00000500},
+		{Price: 0.04955, Amount: 0.00000500},
+		{Price: 0.04950, Amount: 0.00000500},
+	},
+	BidDigits: []orderbook.LevelDigits{
+		{Price: "0.05000", Amount: "0.00000500"},
+		{Price: "0.04995", Amount: "0.00000500"},
+		{Price: "0.04990", Amount: "0.00000500"},
+		{Price: "0.04980", Amount: "0.00000500"},
+		{Price: "0.04975", Amount: "0.00000500"},
+		{Price: "0.04970", Amount: "0.00000500"},
+		{Price: "0.04965", Amount: "0.00000500"},
+		{Price: "0.04960", Amount: "0.00000500"},
+		{Price: "0.04955", Amount: "0.00000500"},
+		{Price: "0.04950", Amount: "0.00000500"},
 	},
 }
 
@@ -1452,20 +1476,14 @@ const krakenAPIDocChecksum = 974947235
 
 func TestChecksumCalculation(t *testing.T) {
 	t.Parallel()
-	expected := "5005"
-	if v := trim("0.05005"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
+	assert.Equal(t, "5005", string(appendTrimmed(nil, "0.05005")), "appendTrimmed should drop the point and leading zeroes")
+	assert.Equal(t, "500", string(appendTrimmed(nil, "0.00000500")), "appendTrimmed should drop the point and leading zeroes")
+	assert.Empty(t, string(appendTrimmed(nil, "0.0")), "appendTrimmed should reduce a zero to nothing")
+	assert.Equal(t, "1234", string(appendTrimmed(nil, "1234")), "appendTrimmed should leave a pointless value alone")
 
-	expected = "500"
-	if v := trim("0.00000500"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
-
-	err := validateCRC32(&testOb, krakenAPIDocChecksum)
-	if err != nil {
-		t.Error(err)
-	}
+	// Checksum published in Kraken's own websocket documentation
+	assert.NoError(t, validateCRC32(testOb.BidDigits, testOb.AskDigits, testOb.Pair, krakenAPIDocChecksum),
+		"validateCRC32 should reproduce the documented checksum")
 }
 
 func TestGetCharts(t *testing.T) {

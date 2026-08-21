@@ -2231,7 +2231,7 @@ func TestWsHandleData(t *testing.T) {
 	}
 	// Since running test in parallel shuffles the order of execution
 	// We run book_lv2 data handling, ensuring the snapshot is processed before the update as follows
-	err := e.wsHandleData(generateContext(t), e.Websocket.Conn, []byte(`{"channel":"book_lv2","data":[{"symbol":"BTC_USDC","createTime":1694469187745,"asks":[],"bids":[["25148.81","0.02158"],["25088.11","0"]],"lastId":598273385,"id":598273386,"ts":1694469187760}],"action":"snapshot"}`))
+	err := e.wsHandleData(generateContext(t), e.Websocket.Conn, []byte(`{"channel":"book_lv2","data":[{"symbol":"BTC_USDC","createTime":1694469187745,"asks":[],"bids":[["25148.81","0.02158"],["25088.11","0.31337"]],"lastId":598273385,"id":598273386,"ts":1694469187760}],"action":"snapshot"}`))
 	require.NoError(t, err, "book_lv2 snapshot must not error")
 	err = e.wsHandleData(generateContext(t), e.Websocket.Conn, []byte(`{"channel":"book_lv2","data":[{"symbol":"BTC_USDC","createTime":1694469187745,"asks":[],"bids":[["25148.81","0.02158"],["25088.11","0"]],"lastId":598273385,"id":598273386,"ts":1694469187760}],"action":"update"}`))
 	assert.NoError(t, err, "book_lv2 update should not error")
@@ -2511,7 +2511,13 @@ func TestWsFuturesHandleData(t *testing.T) {
 	err := e.wsFuturesHandleData(generateContext(t), e.Websocket.Conn, []byte(`{"channel":"book_lv2","data":[{"asks":[["87845.63","1"],["87850.4","1"],["87859.98","9"],["87866.84","21"],["87888.32","33"],["87891.40","106"],["87894.48","705"],["87897.56","238"],["87900.64","762"],["87905.16","8"],["87911.17","34"],["87913.95","4040"],["87915.13","470"],["87919.09","199"],["87922.74","2141"],["87923.05","758"],["87931.52","1568"],["87937.09","10"],["87940.31","1392"],["87940.61","64"]],"bids":[["87842.42","1"],["87842.41","1"],["87835.72","1138"],["87834.64","226"],["87833.61","446"],["87833.56","26"],["87832.48","13"],["87831.40","130"],["87807.27","69"],["87798.48","935"],["87794.18","1932"],["87791.10","296"],["87789.69","1596"],["87788.02","320"],["87784.94","131"],["87781.86","242"],["87780.90","768"],["87772.11","1737"],["87771.33","910"],["87767.37","261"]],"lid":3206980818,"id":3206980819,"ts":1765921828543,"s":"BTC_USDT_PERP","cT":1765921827839}],"action":"snapshot"}`))
 	require.NoError(t, err, "Futures Orderbook Level-2 Snapshot must not error")
 	err = e.wsFuturesHandleData(t.Context(), e.Websocket.Conn, []byte(`{"channel":"book_lv2","data":[{"asks":[],"bids":[["87807.27","4"]],"lid":3206980819,"id":3206980843,"ts":1765921828626,"s":"BTC_USDT_PERP","cT":1765921828619}],"action":"update"}`))
-	assert.NoError(t, err, "Futures Orderbook Level-2 Update should not error")
+	require.NoError(t, err, "Futures Orderbook Level-2 Update must not error")
+
+	// book_lv2 has no level IDs, so an ID keyed update would amend the top of book instead of the level it names
+	book, err := e.Websocket.Orderbook.GetOrderbook(currency.NewPair(currency.BTC, currency.NewCode("USDT_PERP")), asset.Futures)
+	require.NoError(t, err, "GetOrderbook must not error")
+	assert.Equal(t, 87842.42, book.Bids[0].Price, "best bid should be untouched by the update")
+	assert.Equal(t, 4.0, book.Bids[8].Amount, "update should amend the level matching its price")
 }
 
 var futuresPrivatePushDataMap = []struct {

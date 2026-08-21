@@ -828,23 +828,8 @@ func (e *Exchange) processSpotOrderbookWithDepth(ctx context.Context, respData [
 		return err
 	}
 
-	bids := make([]orderbook.Level, len(resp.Result.Changes.Bids))
-	for i := range resp.Result.Changes.Bids {
-		bids[i] = orderbook.Level{
-			Price:  resp.Result.Changes.Bids[i][0].Float64(),
-			Amount: resp.Result.Changes.Bids[i][1].Float64(),
-			ID:     resp.Result.Changes.Bids[i][2].Int64(),
-		}
-	}
-
-	asks := make([]orderbook.Level, len(resp.Result.Changes.Asks))
-	for i := range resp.Result.Changes.Asks {
-		asks[i] = orderbook.Level{
-			Price:  resp.Result.Changes.Asks[i][0].Float64(),
-			Amount: resp.Result.Changes.Asks[i][1].Float64(),
-			ID:     resp.Result.Changes.Asks[i][2].Int64(),
-		}
-	}
+	bids := resp.Result.Changes.Bids.Levels()
+	asks := resp.Result.Changes.Asks.Levels()
 
 	return e.wsOBUpdateMgr.ProcessOrderbookUpdate(ctx, resp.Result.SequenceStart, &orderbook.Update{
 		UpdateID:   resp.Result.SequenceEnd,

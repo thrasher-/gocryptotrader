@@ -859,6 +859,36 @@ func TestSetup(t *testing.T) {
 	require.True(t, w.sortBuffer)
 	require.True(t, w.sortBufferByUpdateIDs)
 	require.Equal(t, "test", w.exchangeName)
+	require.True(t, w.validateOrderbook)
+}
+
+func TestLoadSnapshotNilBook(t *testing.T) {
+	t.Parallel()
+	o := &Orderbook{}
+	require.NoError(t, o.Setup(&config.Exchange{Name: exchangeName}, &Config{}, stream.NewRelay(1)))
+	var book *orderbook.Book
+	require.ErrorIs(t, o.LoadSnapshot(book), common.ErrNilPointer, "a nil book must error rather than panic")
+}
+
+func TestLoadSnapshotVerification(t *testing.T) {
+	t.Parallel()
+
+	// A Book literal that omits ValidateOrderbook must still be verified
+	const exchName = "test"
+	cp, err := getExclusivePair()
+	require.NoError(t, err)
+	verifying := &Orderbook{}
+	require.NoError(t, verifying.Setup(&config.Exchange{Name: exchName}, &Config{}, stream.NewRelay(2)))
+	err = verifying.LoadSnapshot(&orderbook.Book{Exchange: exchName, Pair: cp, Asset: asset.Spot, LastUpdated: time.Now(), Asks: orderbook.Levels{{Amount: 1}}})
+	require.ErrorIs(t, err, orderbook.ErrPriceZero)
+
+	cp, err = getExclusivePair()
+	require.NoError(t, err)
+	cfg := &config.Exchange{Name: exchName}
+	cfg.Orderbook.VerificationBypass = true
+	bypassing := &Orderbook{}
+	require.NoError(t, bypassing.Setup(cfg, &Config{}, stream.NewRelay(2)))
+	require.NoError(t, bypassing.LoadSnapshot(&orderbook.Book{Exchange: exchName, Pair: cp, Asset: asset.Spot, LastUpdated: time.Now(), Asks: orderbook.Levels{{Amount: 1}}}))
 }
 
 func TestInvalidateOrderbook(t *testing.T) {
@@ -893,4 +923,54 @@ func TestInvalidateOrderbook(t *testing.T) {
 
 	_, err = w.GetOrderbook(cp, asset.Spot)
 	require.ErrorIs(t, err, orderbook.ErrOrderbookInvalid)
+}
+
+func TestBufferTopAccessors(t *testing.T) {
+	t.Parallel()
+	cp, err := getExclusivePair()
+	require.NoError(t, err)
+	o := &Orderbook{}
+	require.NoError(t, o.Setup(&config.Exchange{Name: exchangeName}, &Config{}, stream.NewRelay(2)))
+
+	when := time.Now().Truncate(time.Millisecond)
+	require.NoError(t, o.LoadSnapshot(&orderbook.Book{
+		Exchange: exchangeName, Pair: cp, Asset: asset.Spot, LastUpdated: when,
+		Bids:      orderbook.Levels{{Price: 100, Amount: 1}, {Price: 99, Amount: 1}},
+		Asks:      orderbook.Levels{{Price: 101, Amount: 1}},
+		BidDigits: []orderbook.LevelDigits{{Price: "100.0"}, {Price: "99.0"}},
+		AskDigits: []orderbook.LevelDigits{{Price: "101.0"}},
+	}))
+
+	levelBids, levelAsks := make(orderbook.Levels, 4), make(orderbook.Levels, 4)
+	gotBids, gotAsks, err := o.TopLevels(cp, asset.Spot, levelBids, levelAsks)
+	require.NoError(t, err)
+	assert.Equal(t, 2, gotBids, "should report the levels available")
+	assert.Equal(t, 1, gotAsks, "should report the levels available")
+	assert.Equal(t, 100.0, levelBids[0].Price, "should copy from the top of the book")
+
+	digitBids, digitAsks := make([]orderbook.LevelDigits, 4), make([]orderbook.LevelDigits, 4)
+	gotBids, gotAsks, err = o.TopDigits(cp, asset.Spot, digitBids, digitAsks)
+	require.NoError(t, err)
+	assert.Equal(t, 2, gotBids, "should report the digits available")
+	assert.Equal(t, 1, gotAsks, "should report the digits available")
+	assert.Equal(t, "100.0", digitBids[0].Price, "should copy from the top of the book")
+
+	last, err := o.LastUpdated(cp, asset.Spot)
+	require.NoError(t, err)
+	assert.Equal(t, when, last, "should return the time the book was last changed")
+
+	// an unknown book is reported rather than treated as empty
+	missing, err := getExclusivePair()
+	require.NoError(t, err)
+	_, _, err = o.TopLevels(missing, asset.Spot, levelBids, levelAsks)
+	assert.ErrorIs(t, err, orderbook.ErrDepthNotFound, "should report an unknown book")
+	_, _, err = o.TopDigits(missing, asset.Spot, digitBids, digitAsks)
+	assert.ErrorIs(t, err, orderbook.ErrDepthNotFound, "should report an unknown book")
+	_, err = o.LastUpdated(missing, asset.Spot)
+	assert.ErrorIs(t, err, orderbook.ErrDepthNotFound, "should report an unknown book")
+
+	_, err = o.LastUpdated(currency.EMPTYPAIR, asset.Spot)
+	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "should reject an empty pair")
+	_, err = o.LastUpdated(cp, asset.Empty)
+	assert.ErrorIs(t, err, asset.ErrInvalidAsset, "should reject an invalid asset")
 }

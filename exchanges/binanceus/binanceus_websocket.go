@@ -687,17 +687,17 @@ func (e *Exchange) applyBufferUpdate(pair currency.Pair) error {
 		return e.obm.fetchBookViaREST(pair)
 	}
 
-	recent, err := e.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
+	// Only the last update ID is read from the stored book, so fetching a copy of every level to
+	// find it costs far more than the check it feeds.
+	lastUpdateID, err := e.Websocket.Orderbook.LastUpdateID(pair, asset.Spot)
 	if err != nil {
 		log.Errorf(
 			log.WebsocketMgr,
 			"%s error fetching recent orderbook when applying updates: %s\n",
 			e.Name,
 			err)
-	}
-
-	if recent != nil {
-		err = e.obm.checkAndProcessOrderbookUpdate(e.ProcessOrderbookUpdate, pair, recent)
+	} else {
+		err = e.obm.checkAndProcessOrderbookUpdate(e.ProcessOrderbookUpdate, pair, lastUpdateID)
 		if err != nil {
 			log.Errorf(
 				log.WebsocketMgr,
@@ -928,7 +928,7 @@ func (o *orderbookManager) stopNeedsFetchingBook(pair currency.Pair) error {
 	return nil
 }
 
-func (o *orderbookManager) checkAndProcessOrderbookUpdate(processor func(currency.Pair, asset.Item, *WebsocketDepthStream) error, pair currency.Pair, recent *orderbook.Book) error {
+func (o *orderbookManager) checkAndProcessOrderbookUpdate(processor func(currency.Pair, asset.Item, *WebsocketDepthStream) error, pair currency.Pair, lastUpdateID int64) error {
 	o.Lock()
 	defer o.Unlock()
 	state, ok := o.state[pair.Base][pair.Quote][asset.Spot]
@@ -943,7 +943,7 @@ buffer:
 	for {
 		select {
 		case d := <-state.buffer:
-			process, err := state.validate(d, recent)
+			process, err := state.validate(d, pair, lastUpdateID)
 			if err != nil {
 				return err
 			}
@@ -962,17 +962,17 @@ buffer:
 }
 
 // validate checks for correct update alignment
-func (u *update) validate(updt *WebsocketDepthStream, recent *orderbook.Book) (bool, error) {
-	if updt.LastUpdateID <= recent.LastUpdateID {
+func (u *update) validate(updt *WebsocketDepthStream, pair currency.Pair, lastUpdateID int64) (bool, error) {
+	if updt.LastUpdateID <= lastUpdateID {
 		// Drop any event where u is <= lastUpdateId in the snapshot.
 		return false, nil
 	}
 
-	id := recent.LastUpdateID + 1
+	id := lastUpdateID + 1
 	if u.initialSync {
 		if updt.FirstUpdateID > id || updt.LastUpdateID < id {
 			return false, fmt.Errorf("initial websocket orderbook sync failure for pair %s and asset %s",
-				recent.Pair,
+				pair,
 				asset.Spot)
 		}
 		u.initialSync = false

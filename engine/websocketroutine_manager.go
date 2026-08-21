@@ -285,21 +285,27 @@ func (m *WebsocketRoutineManager) websocketDataHandler(exchName string, data any
 			}
 		}
 	case *orderbook.Depth:
-		base, err := d.Retrieve()
-		if err != nil {
+		// Retrieve copies both sides, so only materialise the book when a consumer needs the levels
+		if err := d.ValidationError(); err != nil {
 			return err
 		}
 		if m.syncer.IsRunning() {
 			err := m.syncer.WebsocketUpdate(exchName,
-				base.Pair,
-				base.Asset,
+				d.Pair(),
+				d.Asset(),
 				SyncItemOrderbook,
 				nil)
 			if err != nil {
 				return err
 			}
 		}
-		m.syncer.PrintOrderbookSummary(base, "websocket", nil)
+		if m.syncer.NeedsOrderbookSummary() {
+			base, err := d.Retrieve()
+			if err != nil {
+				return err
+			}
+			m.syncer.PrintOrderbookSummary(base, "websocket", nil)
+		}
 	case *order.Detail:
 		if !m.orderManager.IsRunning() {
 			return nil

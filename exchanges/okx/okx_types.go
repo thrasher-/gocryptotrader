@@ -3586,8 +3586,8 @@ type PublicTrade struct {
 
 // WsOrderBookData represents a book order push data
 type WsOrderBookData struct {
-	Asks               [][4]types.Number `json:"asks"`
-	Bids               [][4]types.Number `json:"bids"`
+	Asks               WsOrderBookLevels `json:"asks"`
+	Bids               WsOrderBookLevels `json:"bids"`
 	Timestamp          types.Time        `json:"ts"`
 	PreviousSequenceID int64             `json:"prevSeqId"`
 	SequenceID         int64             `json:"seqId"`
@@ -4245,8 +4245,8 @@ type WsOrderbook5 struct {
 
 // Book5Data stores the orderbook data for orderbook 5 websocket
 type Book5Data struct {
-	Asks         [][4]types.Number `json:"asks"`
-	Bids         [][4]types.Number `json:"bids"`
+	Asks         WsOrderBookLevels `json:"asks"`
+	Bids         WsOrderBookLevels `json:"bids"`
 	InstrumentID string            `json:"instId"`
 	Timestamp    types.Time        `json:"ts"`
 	SequenceID   int64             `json:"seqId"`

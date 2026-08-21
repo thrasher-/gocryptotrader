@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/key"
@@ -42,12 +43,18 @@ func (o *Orderbook) Setup(exchangeConfig *config.Exchange, c *Config, dataHandle
 	o.dataHandler = dataHandler
 	o.ob = make(map[key.PairAsset]*orderbookHolder)
 	o.verbose = exchangeConfig.Verbose
+	o.validateOrderbook = !exchangeConfig.Orderbook.VerificationBypass
 	return nil
 }
 
 // LoadSnapshot loads initial snapshot of orderbook data from websocket
 func (o *Orderbook) LoadSnapshot(book *orderbook.Book) error {
 	ctx := context.TODO()
+	if err := common.NilGuard(book); err != nil {
+		return err
+	}
+	// Skipped only when config and caller agree, so a Book literal omitting the field still honours the config
+	book.ValidateOrderbook = book.ValidateOrderbook || o.validateOrderbook
 	if err := book.Validate(); err != nil {
 		return err
 	}
@@ -73,6 +80,9 @@ func (o *Orderbook) LoadSnapshot(book *orderbook.Book) error {
 		o.m.Unlock()
 	}
 
+	holder.m.Lock()
+	defer holder.m.Unlock()
+
 	book.RestSnapshot = false
 	if err := holder.ob.LoadSnapshot(book); err != nil {
 		return err
@@ -96,6 +106,8 @@ func (o *Orderbook) Update(u *orderbook.Update) error {
 
 // updateHolder avoids repeating the map lookup when the caller already has the holder for the update key.
 func (o *Orderbook) updateHolder(holder *orderbookHolder, u *orderbook.Update) error {
+	holder.m.Lock()
+	defer holder.m.Unlock()
 	if o.bufferEnabled {
 		if processed, err := o.processBufferUpdate(holder, u); err != nil || !processed {
 			return err
@@ -132,8 +144,12 @@ func (o *Orderbook) processBufferUpdate(holder *orderbookHolder, u *orderbook.Up
 		}
 	}
 
-	// Always empty the buffer after processing, even if there's an error
-	defer func() { holder.buffer = holder.buffer[:0] }()
+	// Always empty the buffer after processing, even if there's an error. Cleared rather than
+	// resliced, since each entry holds level slices that would otherwise stay reachable.
+	defer func() {
+		clear(holder.buffer)
+		holder.buffer = holder.buffer[:0]
+	}()
 
 	for i := range holder.buffer {
 		if err := holder.ob.ProcessUpdate(&holder.buffer[i]); err != nil {
@@ -142,6 +158,30 @@ func (o *Orderbook) processBufferUpdate(holder *orderbookHolder, u *orderbook.Up
 	}
 
 	return true, nil
+}
+
+// TopLevels copies the leading levels of each side of a stored book into the caller's buffers,
+// returning how many of each were written.
+func (o *Orderbook) TopLevels(p currency.Pair, a asset.Item, bids, asks orderbook.Levels) (gotBids, gotAsks int, err error) {
+	o.m.RLock()
+	holder, ok := o.ob[key.PairAsset{Base: p.Base.Item, Quote: p.Quote.Item, Asset: a}]
+	o.m.RUnlock()
+	if !ok {
+		return 0, 0, fmt.Errorf("%w for Exchange %s CurrencyPair: %s AssetType: %s", orderbook.ErrDepthNotFound, o.exchangeName, p, a)
+	}
+	return holder.ob.TopLevels(bids, asks)
+}
+
+// TopDigits copies the leading levels' wire digits from a stored book into the caller's buffers,
+// returning how many of each were written.
+func (o *Orderbook) TopDigits(p currency.Pair, a asset.Item, bids, asks []orderbook.LevelDigits) (gotBids, gotAsks int, err error) {
+	o.m.RLock()
+	holder, ok := o.ob[key.PairAsset{Base: p.Base.Item, Quote: p.Quote.Item, Asset: a}]
+	o.m.RUnlock()
+	if !ok {
+		return 0, 0, fmt.Errorf("%w for Exchange %s CurrencyPair: %s AssetType: %s", orderbook.ErrDepthNotFound, o.exchangeName, p, a)
+	}
+	return holder.ob.TopDigits(bids, asks)
 }
 
 // GetOrderbook returns an orderbook copy as orderbook.Book
@@ -178,12 +218,32 @@ func (o *Orderbook) LastUpdateID(p currency.Pair, a asset.Item) (int64, error) {
 	return book.ob.LastUpdateID()
 }
 
+// LastUpdated returns the time of the last change on a stored book
+func (o *Orderbook) LastUpdated(p currency.Pair, a asset.Item) (time.Time, error) {
+	if p.IsEmpty() {
+		return time.Time{}, currency.ErrCurrencyPairEmpty
+	}
+	if !a.IsValid() {
+		return time.Time{}, asset.ErrInvalidAsset
+	}
+	o.m.RLock()
+	book, ok := o.ob[key.PairAsset{Base: p.Base.Item, Quote: p.Quote.Item, Asset: a}]
+	o.m.RUnlock()
+	if !ok {
+		return time.Time{}, fmt.Errorf("%w for Exchange %s CurrencyPair: %s AssetType: %s", orderbook.ErrDepthNotFound, o.exchangeName, p, a)
+	}
+	return book.ob.LastUpdated()
+}
+
 // FlushBuffer flushes individual orderbook buffers while keeping the orderbook lookups intact and ready for new updates
 // when a connection is re-established.
 func (o *Orderbook) FlushBuffer() {
 	o.m.Lock()
 	for _, holder := range o.ob {
+		holder.m.Lock()
+		clear(holder.buffer)
 		holder.buffer = holder.buffer[:0]
+		holder.m.Unlock()
 	}
 	o.m.Unlock()
 }

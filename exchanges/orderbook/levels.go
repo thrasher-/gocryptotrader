@@ -3,8 +3,9 @@ package orderbook
 import (
 	"errors"
 	"fmt"
+	"math"
 
-	"github.com/thrasher-corp/gocryptotrader/common/math"
+	gctmath "github.com/thrasher-corp/gocryptotrader/common/math"
 )
 
 // FullLiquidityExhaustedPercentage defines when a book has been completely
@@ -50,6 +51,24 @@ func (l *Levels) load(incoming Levels) {
 	copy(*l, incoming)                // Copy
 }
 
+// loadDigits refreshes the sidecar from a snapshot, keeping it index aligned with the levels.
+func loadDigits(dst *[]LevelDigits, incoming []LevelDigits, levels int) {
+	if len(incoming) == 0 {
+		*dst = nil
+		return
+	}
+	if cap(*dst) >= levels {
+		clear((*dst)[min(levels, len(*dst)):cap(*dst)])
+		*dst = (*dst)[:levels]
+	} else {
+		*dst = make([]LevelDigits, levels)
+	}
+	copy(*dst, incoming)
+	for i := len(incoming); i < levels; i++ {
+		(*dst)[i] = LevelDigits{}
+	}
+}
+
 // updateByID amends price by corresponding ID and returns an error if not found
 func (l Levels) updateByID(updts []Level) error {
 updates:
@@ -62,10 +81,8 @@ updates:
 				// Only apply changes when zero values are not present, Bitmex
 				// for example sends 0 price values.
 				l[y].Price = updts[x].Price
-				l[y].StrPrice = updts[x].StrPrice
 			}
 			l[y].Amount = updts[x].Amount
-			l[y].StrAmount = updts[x].StrAmount
 			continue updates
 		}
 		return fmt.Errorf("update error: %w; ID: %d not found", errIDCannotBeMatched, updts[x].ID)
@@ -115,45 +132,166 @@ func (l Levels) retrieve(count int) Levels {
 	return result
 }
 
-// updateInsertByPrice amends, inserts, moves and cleaves length of depth by
-// updates
-func (l *Levels) updateInsertByPrice(updts Levels, maxChainLength int, compare func(float64, float64) bool) {
-updates:
-	for x := range updts {
-		for y := range *l {
-			switch {
-			case (*l)[y].Price == updts[x].Price:
-				if updts[x].Amount <= 0 {
-					// Delete
-					if y+1 == len(*l) {
-						*l = (*l)[:y]
-					} else {
-						copy((*l)[y:], (*l)[y+1:])
-						*l = (*l)[:len(*l)-1]
-					}
-				} else {
-					// Update
-					(*l)[y].Amount = updts[x].Amount
-					(*l)[y].StrAmount = updts[x].StrAmount
-				}
-				continue updates
-			case compare((*l)[y].Price, updts[x].Price):
-				if updts[x].Amount > 0 {
-					*l = append(*l, Level{})   // Extend
-					copy((*l)[y+1:], (*l)[y:]) // Copy elements from index y onwards one position to the right
-					(*l)[y] = updts[x]         // Insert updts[x] at index y
-				}
-				continue updates
+// locate returns the index holding price, or where it should be inserted to preserve the side's
+// ordering. The bound is doubled out from the head before bisecting, so cost tracks distance from
+// the best price rather than book depth, and updates cluster at the touch. The side must satisfy
+// isOrdered and price must be a number; callers use linearBound otherwise.
+func (l Levels) locate(price float64, isAscending bool) int {
+	if len(l) == 0 {
+		return 0
+	}
+	// An exact hit on the best price is not preceded by it either, covering the commonest
+	// amendment in one comparison
+	if isAscending {
+		if !(l[0].Price < price) {
+			return 0
+		}
+	} else if !(l[0].Price > price) {
+		return 0
+	}
+
+	lo, hi := 0, 1
+	for hi < len(l) {
+		if isAscending {
+			if !(l[hi].Price < price) {
+				break
 			}
+		} else if !(l[hi].Price > price) {
+			break
+		}
+		lo = hi
+		hi <<= 1
+	}
+	hi = min(hi, len(l))
+
+	for lo++; lo < hi; {
+		mid := lo + (hi-lo)/2
+		var precedes bool
+		if isAscending {
+			precedes = l[mid].Price < price
+		} else {
+			precedes = l[mid].Price > price
+		}
+		if precedes {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
+// isOrdered reports whether the side is monotonic and free of NaN, the precondition for locate. NaN
+// compares false in both directions, so a side holding one has no total order.
+func (l Levels) isOrdered(isAscending bool) bool {
+	for i := range l {
+		if math.IsNaN(l[i].Price) {
+			return false
+		}
+		if i == 0 {
+			continue
+		}
+		if isAscending {
+			if l[i].Price < l[i-1].Price {
+				return false
+			}
+		} else if l[i].Price > l[i-1].Price {
+			return false
+		}
+	}
+	return true
+}
+
+// linearBound is the scan locate replaced, retained for prices with no ordered comparison.
+func (l Levels) linearBound(price float64, isAscending bool) int {
+	for y := range l {
+		if l[y].Price == price {
+			return y
+		}
+		if isAscending {
+			if l[y].Price > price {
+				return y
+			}
+		} else if l[y].Price < price {
+			return y
+		}
+	}
+	return len(l)
+}
+
+// updateInsertByPrice amends, inserts, moves and cleaves length of depth by updates. ordered states
+// whether the side satisfies isOrdered; the return reports whether it still does.
+// updateInsertByPrice applies updts, mirroring every shift onto digits so that it stays index
+// aligned with the levels. digits is nil for the exchanges that do not need it, and updtDigits, when
+// supplied, index aligns with updts.
+func (l *Levels) updateInsertByPrice(updts Levels, updtDigits, digits *[]LevelDigits, maxChainLength int, isAscending, ordered bool) bool {
+	for x := range updts {
+		var y int
+		switch {
+		case len(*l) > 0 && (*l)[0].Price == updts[x].Price:
+			// Amending the best price is the commonest update a feed sends. locate answers it in a
+			// single comparison as well, but not before the call, which on a shallow side costs
+			// more than the whole scan this replaced. A NaN never reaches here, comparing false.
+			y = 0
+		case ordered && !math.IsNaN(updts[x].Price):
+			y = l.locate(updts[x].Price, isAscending)
+		default:
+			// Without a total order a bisect has no defined answer, and on a NaN it
+			// converges to index 0 and installs it as the best price
+			y = l.linearBound(updts[x].Price, isAscending)
+		}
+		if y < len(*l) && (*l)[y].Price == updts[x].Price {
+			if updts[x].Amount <= 0 {
+				// Delete
+				copy((*l)[y:], (*l)[y+1:])
+				*l = (*l)[:len(*l)-1]
+				if digits != nil && y < len(*digits) {
+					copy((*digits)[y:], (*digits)[y+1:])
+					// A digit is a slice of the payload it arrived in, so the vacated slot is
+					// cleared rather than left beyond the length still pinning that payload
+					(*digits)[len(*digits)-1] = LevelDigits{}
+					*digits = (*digits)[:len(*digits)-1]
+				}
+			} else {
+				// Update
+				(*l)[y].Amount = updts[x].Amount
+				if digits != nil && y < len(*digits) {
+					(*digits)[y] = digitsAt(updtDigits, x)
+				}
+			}
+			continue
 		}
 		if updts[x].Amount > 0 {
-			*l = append(*l, updts[x])
+			*l = append(*l, Level{})   // Extend
+			copy((*l)[y+1:], (*l)[y:]) // Copy elements from index y onwards one position to the right
+			(*l)[y] = updts[x]         // Insert updts[x] at index y
+			if digits != nil {
+				*digits = append(*digits, LevelDigits{})
+				copy((*digits)[y+1:], (*digits)[y:])
+				(*digits)[y] = digitsAt(updtDigits, x)
+			}
+			if math.IsNaN(updts[x].Price) {
+				ordered = false // the side can no longer be binary searched
+			}
 		}
 	}
 	// Reduces length of total stored slice length to a maxChainLength value
 	if maxChainLength != 0 && len(*l) > maxChainLength {
 		*l = (*l)[:maxChainLength]
+		if digits != nil && len(*digits) > maxChainLength {
+			clear((*digits)[maxChainLength:])
+			*digits = (*digits)[:maxChainLength]
+		}
 	}
+	return ordered
+}
+
+// digitsAt reads the digits for update x, which a caller that does not supply them leaves empty.
+func digitsAt(d *[]LevelDigits, x int) LevelDigits {
+	if d == nil || x >= len(*d) {
+		return LevelDigits{}
+	}
+	return (*d)[x]
 }
 
 // updateInsertByID updates or inserts if not found for a bid or ask depth
@@ -180,7 +318,6 @@ updates:
 				}
 				// no price change, amend amount and continue update
 				(*l)[y].Amount = updts[x].Amount
-				(*l)[y].StrAmount = updts[x].StrAmount
 				continue updates // continue to next update
 			}
 
@@ -347,7 +484,36 @@ func (l Levels) getMovementByBase(base, refPrice float64, swap bool) (*Movement,
 }
 
 // bidLevels bid depth specific functionality
-type bidLevels struct{ Levels }
+type bidLevels struct {
+	Levels
+	// digits index aligns with Levels for exchanges whose checksum needs the digits as sent
+	digits []LevelDigits
+	// ordered records whether the side satisfies isOrdered, the precondition for locate. Anything
+	// that can break the ordering clears it, so an unsorted side keeps the scan behaviour it had
+	// before the search was introduced.
+	ordered bool
+	// orderedScanned states whether ordered has been established for the levels currently held. A
+	// snapshot clears it rather than scanning, so a book that is only ever loaded and read never
+	// pays for a precondition none of its callers need.
+	orderedScanned bool
+}
+
+// load refreshes the side from a snapshot and re-establishes whether it is ordered
+func (bids *bidLevels) load(incoming Levels, incomingDigits []LevelDigits) {
+	bids.Levels.load(incoming)
+	loadDigits(&bids.digits, incomingDigits, len(bids.Levels))
+	bids.orderedScanned = false
+}
+
+// searchable reports whether locate can be used, scanning for the answer the first time it is asked
+// of a freshly loaded side
+func (bids *bidLevels) searchable() bool {
+	if !bids.orderedScanned {
+		bids.ordered = bids.Levels.isOrdered(descending)
+		bids.orderedScanned = true
+	}
+	return bids.ordered
+}
 
 // bidCompare ensures price is in correct descending alignment (can inline)
 func bidCompare(left, right float64) bool {
@@ -356,17 +522,45 @@ func bidCompare(left, right float64) bool {
 
 // updateInsertByPrice amends, inserts, moves and cleaves length of depth by
 // updates
-func (bids *bidLevels) updateInsertByPrice(updts Levels, maxChainLength int) {
-	bids.Levels.updateInsertByPrice(updts, maxChainLength, bidCompare)
+func (bids *bidLevels) updateInsertByPrice(updts Levels, updtDigits []LevelDigits, maxChainLength int) {
+	bids.ordered = bids.Levels.updateInsertByPrice(updts, &updtDigits, bids.digitsOrNil(), maxChainLength, descending, bids.searchable())
 }
 
-// updateInsertByID updates or inserts if not found
+// digitsOrNil hands the sidecar to the mutator only when this side keeps one.
+func (bids *bidLevels) digitsOrNil() *[]LevelDigits {
+	if bids.digits == nil {
+		return nil
+	}
+	return &bids.digits
+}
+
+// updateByID amends details by ID. An amendment can change a price without moving the level, so the
+// side can no longer be assumed ordered.
+func (bids *bidLevels) updateByID(updts Levels) error {
+	bids.ordered, bids.orderedScanned = false, true
+	bids.digits = nil
+	return bids.Levels.updateByID(updts)
+}
+
+// updateInsertByID updates or inserts if not found. Placement is by price comparison, which an
+// unorderable price falls through, so the side can no longer be assumed ordered.
 func (bids *bidLevels) updateInsertByID(updts Levels) error {
+	bids.ordered, bids.orderedScanned = false, true
+	bids.digits = nil
 	return bids.Levels.updateInsertByID(updts, bidCompare)
 }
 
-// insertUpdates inserts new updates for bids based on price level
+// deleteByID removes levels by ID. The sidecar is not keyed by ID, so it is dropped rather than left
+// a level out of step with the digits beside it.
+func (bids *bidLevels) deleteByID(updts Levels, bypassErr bool) error {
+	bids.digits = nil
+	return bids.Levels.deleteByID(updts, bypassErr)
+}
+
+// insertUpdates inserts new updates for bids based on price level. See bidLevels.updateInsertByID.
 func (bids *bidLevels) insertUpdates(updts Levels) error {
+	bids.ordered, bids.orderedScanned = false, true
+	bids.digits = nil
 	return bids.Levels.insertUpdates(updts, bidCompare)
 }
 
@@ -398,7 +592,7 @@ func (bids *bidLevels) hitBidsByNominalSlippage(slippage, refPrice float64) (*Mo
 		currentTotalAmounts := cumulativeAmounts + bids.Levels[x].Amount
 
 		nominal.AverageOrderCost = currentFullValue / currentTotalAmounts
-		percent := math.PercentageChange(refPrice, nominal.AverageOrderCost)
+		percent := gctmath.PercentageChange(refPrice, nominal.AverageOrderCost)
 		if percent != 0 {
 			percent *= -1
 		}
@@ -459,7 +653,7 @@ func (bids *bidLevels) hitBidsByImpactSlippage(slippage, refPrice float64) (*Mov
 
 	impact := &Movement{StartPrice: refPrice, EndPrice: refPrice}
 	for x := range bids.Levels {
-		percent := math.PercentageChange(refPrice, bids.Levels[x].Price)
+		percent := gctmath.PercentageChange(refPrice, bids.Levels[x].Price)
 		if percent != 0 {
 			percent *= -1
 		}
@@ -480,7 +674,30 @@ func (bids *bidLevels) hitBidsByImpactSlippage(slippage, refPrice float64) (*Mov
 }
 
 // askLevels ask depth specific functionality
-type askLevels struct{ Levels }
+type askLevels struct {
+	Levels
+	// digits index aligns with Levels for exchanges whose checksum needs the digits as sent
+	digits []LevelDigits
+	// ordered records whether the side satisfies isOrdered. See bidLevels.
+	ordered        bool
+	orderedScanned bool
+}
+
+// load refreshes the side from a snapshot and re-establishes whether it is ordered
+func (ask *askLevels) load(incoming Levels, incomingDigits []LevelDigits) {
+	ask.Levels.load(incoming)
+	loadDigits(&ask.digits, incomingDigits, len(ask.Levels))
+	ask.orderedScanned = false
+}
+
+// searchable reports whether locate can be used. See bidLevels.searchable.
+func (ask *askLevels) searchable() bool {
+	if !ask.orderedScanned {
+		ask.ordered = ask.Levels.isOrdered(ascending)
+		ask.orderedScanned = true
+	}
+	return ask.ordered
+}
 
 // askCompare ensures price is in correct ascending alignment (can inline)
 func askCompare(left, right float64) bool {
@@ -489,17 +706,43 @@ func askCompare(left, right float64) bool {
 
 // updateInsertByPrice amends, inserts, moves and cleaves length of depth by
 // updates
-func (ask *askLevels) updateInsertByPrice(updts Levels, maxChainLength int) {
-	ask.Levels.updateInsertByPrice(updts, maxChainLength, askCompare)
+func (ask *askLevels) updateInsertByPrice(updts Levels, updtDigits []LevelDigits, maxChainLength int) {
+	ask.ordered = ask.Levels.updateInsertByPrice(updts, &updtDigits, ask.digitsOrNil(), maxChainLength, ascending, ask.searchable())
 }
 
-// updateInsertByID updates or inserts if not found
+// digitsOrNil hands the sidecar to the mutator only when this side keeps one.
+func (ask *askLevels) digitsOrNil() *[]LevelDigits {
+	if ask.digits == nil {
+		return nil
+	}
+	return &ask.digits
+}
+
+// updateByID amends details by ID. See bidLevels.updateByID.
+func (ask *askLevels) updateByID(updts Levels) error {
+	ask.ordered, ask.orderedScanned = false, true
+	ask.digits = nil
+	return ask.Levels.updateByID(updts)
+}
+
+// updateInsertByID updates or inserts if not found. See bidLevels.updateInsertByID.
 func (ask *askLevels) updateInsertByID(updts Levels) error {
+	ask.ordered, ask.orderedScanned = false, true
+	ask.digits = nil
 	return ask.Levels.updateInsertByID(updts, askCompare)
 }
 
-// insertUpdates inserts new updates for asks based on price level
+// deleteByID removes levels by ID. The sidecar is not keyed by ID, so it is dropped rather than left
+// a level out of step with the digits beside it.
+func (ask *askLevels) deleteByID(updts Levels, bypassErr bool) error {
+	ask.digits = nil
+	return ask.Levels.deleteByID(updts, bypassErr)
+}
+
+// insertUpdates inserts new updates for asks based on price level. See bidLevels.updateInsertByID.
 func (ask *askLevels) insertUpdates(updts Levels) error {
+	ask.ordered, ask.orderedScanned = false, true
+	ask.digits = nil
 	return ask.Levels.insertUpdates(updts, askCompare)
 }
 
@@ -527,7 +770,7 @@ func (ask *askLevels) liftAsksByNominalSlippage(slippage, refPrice float64) (*Mo
 		currentAmounts := cumulativeAmounts + ask.Levels[x].Amount
 
 		nominal.AverageOrderCost = currentValue / currentAmounts
-		percent := math.PercentageChange(refPrice, nominal.AverageOrderCost)
+		percent := gctmath.PercentageChange(refPrice, nominal.AverageOrderCost)
 
 		if slippage < percent {
 			targetCost := (1 + slippage/100) * refPrice
@@ -580,7 +823,7 @@ func (ask *askLevels) liftAsksByImpactSlippage(slippage, refPrice float64) (*Mov
 
 	impact := &Movement{StartPrice: refPrice, EndPrice: refPrice}
 	for x := range ask.Levels {
-		percent := math.PercentageChange(refPrice, ask.Levels[x].Price)
+		percent := gctmath.PercentageChange(refPrice, ask.Levels[x].Price)
 		impact.ImpactPercentage = percent
 		impact.EndPrice = ask.Levels[x].Price
 		if slippage <= percent {
@@ -623,7 +866,7 @@ func (m *Movement) finalizeFields(cost, amount, headPrice, leftover float64, swa
 
 	// Nominal percentage is the difference from the reference price to average
 	// order cost.
-	m.NominalPercentage = math.PercentageChange(m.StartPrice, m.AverageOrderCost)
+	m.NominalPercentage = gctmath.PercentageChange(m.StartPrice, m.AverageOrderCost)
 	if m.NominalPercentage < 0 {
 		m.NominalPercentage *= -1
 	}
@@ -632,7 +875,7 @@ func (m *Movement) finalizeFields(cost, amount, headPrice, leftover float64, swa
 		// Impact percentage is how much the orderbook slips from the reference
 		// price to the remaining level price.
 
-		m.ImpactPercentage = math.PercentageChange(m.StartPrice, m.EndPrice)
+		m.ImpactPercentage = gctmath.PercentageChange(m.StartPrice, m.EndPrice)
 		if m.ImpactPercentage < 0 {
 			m.ImpactPercentage *= -1
 		}

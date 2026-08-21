@@ -9,9 +9,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/dispatch"
-	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
-	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 const (
@@ -32,6 +30,7 @@ var (
 	errAssetTypeNotSet      = errors.New("orderbook asset type not set")
 	errAmountInvalid        = errors.New("amount cannot be less or equal to zero")
 	errPriceOutOfOrder      = errors.New("pricing out of order")
+	errPriceInvalid         = errors.New("price is not a finite number")
 	errIDOutOfOrder         = errors.New("ID out of order")
 	errDuplication          = errors.New("price duplication")
 	errIDDuplication        = errors.New("id duplication")
@@ -60,18 +59,12 @@ type store struct {
 }
 
 // Level contains an orderbook price and the aggregated order amount at that price.
+// Level holds no pointers, so a side of them lands in a span the garbage collector never scans.
+// Exchanges whose checksum needs the digits exactly as sent carry them alongside in LevelDigits.
 type Level struct {
+	Price  float64
 	Amount float64
-	// StrAmount is a string representation of the amount. e.g. 0.00000100 this
-	// parsed as a float will constrict comparison to 1e-6 not 1e-8 or
-	// potentially will round value which is not ideal.
-	StrAmount string
-	Price     float64
-	// StrPrice is a string representation of the price. e.g. 0.00000100 this
-	// parsed as a float will constrict comparison to 1e-6 not 1e-8 or
-	// potentially will round value which is not ideal.
-	StrPrice string
-	ID       int64
+	ID     int64
 
 	// Funding rate field
 	Period int64
@@ -81,10 +74,23 @@ type Level struct {
 	OrderCount        int64
 }
 
+// LevelDigits is a level's price and amount as the exchange wrote them. Parsing to a float and back
+// does not reproduce them, e.g. 0.00000100 returns as 1e-06, and some checksums are built from the
+// original digits. Held beside the levels rather than within them so that Level stays pointer free.
+type LevelDigits struct {
+	Price  string
+	Amount string
+}
+
 // Book contains an orderbook
 type Book struct {
 	Bids Levels
 	Asks Levels
+
+	// BidDigits and AskDigits, when set, index align with Bids and Asks and carry the digits an
+	// exchange checksum is built from
+	BidDigits []LevelDigits
+	AskDigits []LevelDigits
 
 	Exchange string
 	Pair     currency.Pair
@@ -106,7 +112,14 @@ type Book struct {
 	// management system. This field is used to calculate round-trip times and
 	// processing delays, e.g., InsertedAt.Sub(LastPushed) represents the
 	// total processing time including network latency.
+	//
+	// Only populated when TrackInsertTime is set; reading the clock costs about a quarter of what
+	// applying an update costs, which is not worth paying when nothing consumes the answer.
 	InsertedAt time.Time
+
+	// TrackInsertTime records InsertedAt on every update. Off by default because the clock read
+	// dominates the rest of the work an update does.
+	TrackInsertTime bool
 
 	LastUpdateID int64
 	// PriceDuplication defines whether an orderbook can contain duplicate
@@ -140,6 +153,7 @@ type options struct {
 	lastUpdated            time.Time
 	lastPushed             time.Time
 	insertedAt             time.Time
+	trackInsertTime        bool
 	lastUpdateID           int64
 	priceDuplication       bool
 	isFundingRate          bool
@@ -183,21 +197,25 @@ type Movement struct {
 // e.g. [[price, amount], [price, amount]] or [][2]types.Number type declaration
 type LevelsArrayPriceAmount Levels
 
-// UnmarshalJSON implements json.Unmarshaler
-func (l *LevelsArrayPriceAmount) UnmarshalJSON(data []byte) error {
-	var v [][2]types.Number
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*l = make(LevelsArrayPriceAmount, len(v))
-	for x := range v {
-		(*l)[x].Price = v[x][0].Float64()
-		(*l)[x].Amount = v[x][1].Float64()
-	}
-	return nil
-}
-
 // Levels converts the LevelsArrayPriceAmount to a orderbook.Levels type
 func (l *LevelsArrayPriceAmount) Levels() Levels {
+	return Levels(*l)
+}
+
+// LevelsArrayPriceAmountOrderCount unmarshals orderbook levels from a JSON slice of arrays carrying
+// an order count as their third cell, e.g. [[price, amount, orderCount], ...]
+type LevelsArrayPriceAmountOrderCount Levels
+
+// Levels converts the LevelsArrayPriceAmountOrderCount to an orderbook.Levels type
+func (l *LevelsArrayPriceAmountOrderCount) Levels() Levels {
+	return Levels(*l)
+}
+
+// LevelsArrayPriceAmountID unmarshals orderbook levels from a JSON slice of arrays carrying the
+// level's exchange ID as their third cell, e.g. [[price, amount, id], ...]
+type LevelsArrayPriceAmountID Levels
+
+// Levels converts the LevelsArrayPriceAmountID to an orderbook.Levels type
+func (l *LevelsArrayPriceAmountID) Levels() Levels {
 	return Levels(*l)
 }

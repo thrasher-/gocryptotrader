@@ -3363,3 +3363,30 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 		assert.NotEmpty(t, resp)
 	}
 }
+
+func TestUpdateValidate(t *testing.T) {
+	t.Parallel()
+	pair := currency.NewBTCUSDT()
+
+	// anything at or behind the stored sequence is dropped
+	u := &update{}
+	process, err := u.validate(&WebsocketDepthStream{FirstUpdateID: 1, LastUpdateID: 100}, pair, 100)
+	require.NoError(t, err)
+	assert.False(t, process, "an update at the stored sequence should be dropped")
+
+	// the first processed event must straddle the stored sequence plus one
+	u = &update{initialSync: true}
+	_, err = u.validate(&WebsocketDepthStream{FirstUpdateID: 103, LastUpdateID: 104}, pair, 100)
+	assert.Error(t, err, "an initial sync that starts beyond the gap should error")
+
+	u = &update{initialSync: true}
+	process, err = u.validate(&WebsocketDepthStream{FirstUpdateID: 100, LastUpdateID: 101}, pair, 100)
+	require.NoError(t, err)
+	assert.True(t, process, "an initial sync spanning the gap should process")
+	assert.False(t, u.initialSync, "the initial sync should complete")
+
+	// thereafter anything ahead of the stored sequence processes
+	process, err = u.validate(&WebsocketDepthStream{FirstUpdateID: 102, LastUpdateID: 103}, pair, 101)
+	require.NoError(t, err)
+	assert.True(t, process, "a subsequent update ahead of the sequence should process")
+}

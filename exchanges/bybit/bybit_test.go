@@ -3510,7 +3510,7 @@ func TestFetchTradablePairs(t *testing.T) {
 
 func TestDeltaUpdateOrderbook(t *testing.T) {
 	t.Parallel()
-	data := []byte(`{"topic":"orderbook.50.WEMIXUSDT","ts":1697573183768,"type":"snapshot","data":{"s":"WEMIXUSDT","b":[["0.9511","260.703"],["0.9677","0"]],"a":[],"u":3119516,"seq":14126848493},"cts":1728966699481}`)
+	data := []byte(`{"topic":"orderbook.50.WEMIXUSDT","ts":1697573183768,"type":"snapshot","data":{"s":"WEMIXUSDT","b":[["0.9677","1.234"],["0.9511","260.703"]],"a":[],"u":3119516,"seq":14126848493},"cts":1728966699481}`)
 	err := e.wsHandleData(t.Context(), nil, asset.Spot, data)
 	require.NoError(t, err, "wsHandleData must not error")
 	update := []byte(`{"topic":"orderbook.50.WEMIXUSDT","ts":1697573183768,"type":"delta","data":{"s":"WEMIXUSDT","b":[["0.9511","260.703"],["0.9677","0"]],"a":[],"u":3119516,"seq":14126848493},"cts":1728966699481}`)

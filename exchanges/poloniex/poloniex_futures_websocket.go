@@ -415,11 +415,11 @@ func (e *Exchange) processFuturesOrderbookLevel2(data []byte, action string) err
 			}
 			continue
 		}
+		// book_lv2 carries no level IDs, so updates are keyed by price with a zero amount signalling a delete
 		if err := e.Websocket.Orderbook.Update(&orderbook.Update{
 			UpdateID:   r.ID,
 			UpdateTime: r.CreationTime.Time(),
 			LastPushed: r.Timestamp.Time(),
-			Action:     orderbook.UpdateAction,
 			Asset:      asset.Futures,
 			Pair:       r.Symbol,
 			Asks:       r.Asks.Levels(),
