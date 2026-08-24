@@ -3149,8 +3149,8 @@ func TestWSHandleAuthenticatedData(t *testing.T) {
 		conn := &FixtureConnection{match: match}
 		const response = `{"topic":"order","data":[{"category":"spot","symbol":"BTCUSDT","orderId":"first-order-id","orderLinkId":"client-id","side":"Buy","orderStatus":"New","orderType":"Limit","timeInForce":"GTC"},{"category":"spot","symbol":"BTCUSDT","orderId":"second-order-id","orderLinkId":"","side":"Sell","orderStatus":"Cancelled","orderType":"Limit","timeInForce":"GTC"}]}`
 		require.NoError(t, ex.wsHandleAuthenticatedData(t.Context(), conn, []byte(response)), "wsHandleAuthenticatedData must fan out every batched order update")
-		assert.NotEmpty(t, <-clientResponses, "the index-zero client-correlated update must be routed")
-		assert.NotEmpty(t, <-exchangeResponses, "the later exchange-correlated update must be routed")
+		assert.NotEmpty(t, <-clientResponses, "the index-zero client-correlated update should be routed")
+		assert.NotEmpty(t, <-exchangeResponses, "the later exchange-correlated update should be routed")
 		select {
 		case <-observer.notify:
 		default:
@@ -3165,8 +3165,8 @@ func TestWSHandleAuthenticatedData(t *testing.T) {
 			orders, ok := data.Data.([]order.Detail)
 			require.True(t, ok, "the normal order stream must receive order details")
 			require.Len(t, orders, 2, "the normal order stream must retain the full batch")
-			assert.Equal(t, "first-order-id", orders[0].OrderID, "the first streamed order must match")
-			assert.Equal(t, "second-order-id", orders[1].OrderID, "the second streamed order must match")
+			assert.Equal(t, "first-order-id", orders[0].OrderID, "the first streamed order should match")
+			assert.Equal(t, "second-order-id", orders[1].OrderID, "the second streamed order should match")
 		default:
 			require.FailNow(t, "the full order batch must remain visible to the normal stream")
 		}

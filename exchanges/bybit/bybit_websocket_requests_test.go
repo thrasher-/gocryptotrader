@@ -278,7 +278,7 @@ func TestWebsocketOrderUpdateStore(t *testing.T) {
 	}
 	listener.mu.Lock()
 	require.Len(t, listener.updates, 2, "publish must queue every client-correlated update without blocking")
-	assert.Equal(t, websocketTestOrderID, listener.updates[0].OrderID, "publish must prefer and deliver the client-correlated update")
+	assert.Equal(t, websocketTestOrderID, listener.updates[0].OrderID, "publish should prefer and deliver the client-correlated update")
 	listener.mu.Unlock()
 	unsubscribe()
 
@@ -287,7 +287,7 @@ func TestWebsocketOrderUpdateStore(t *testing.T) {
 	store.publish(&WebsocketOrderDetails{OrderID: websocketTestOrderID})
 	listener.mu.Lock()
 	require.Len(t, listener.updates, 1, "publish must queue the exchange-correlated update")
-	assert.Equal(t, websocketTestOrderID, listener.updates[0].OrderID, "publish must deliver an exchange-correlated update")
+	assert.Equal(t, websocketTestOrderID, listener.updates[0].OrderID, "publish should deliver an exchange-correlated update")
 	listener.mu.Unlock()
 	store.publish(&WebsocketOrderDetails{OrderID: "unmatched"})
 
@@ -297,7 +297,7 @@ func TestWebsocketOrderUpdateStore(t *testing.T) {
 	closedListener := &websocketOrderUpdateListener{notify: make(chan struct{}, 1), closed: true}
 	store.listeners["closed-id"] = closedListener
 	store.publish(&WebsocketOrderDetails{OrderID: "closed-id"})
-	assert.Empty(t, closedListener.updates, "publish must ignore a closed listener")
+	assert.Empty(t, closedListener.updates, "publish should ignore a closed listener")
 }
 
 func TestWebsocketAmendOrderConfirmed(t *testing.T) {
@@ -335,7 +335,7 @@ func TestWebsocketAmendOrderConfirmed(t *testing.T) {
 	}
 	confirmed, err := websocketAmendOrderConfirmed(amendRequest, &matching)
 	require.NoError(t, err, "matching amendment fields must not error")
-	assert.True(t, confirmed, "matching amendment fields must confirm the operation")
+	assert.True(t, confirmed, "matching amendment fields should confirm the operation")
 
 	for _, tc := range []struct {
 		name   string
@@ -360,25 +360,25 @@ func TestWebsocketAmendOrderConfirmed(t *testing.T) {
 			tc.mutate(&update)
 			gotConfirmed, gotErr := websocketAmendOrderConfirmed(amendRequest, &update)
 			require.NoError(t, gotErr, "a non-terminal mismatched update must not error")
-			assert.False(t, gotConfirmed, "a mismatched requested field must not confirm the amendment")
+			assert.False(t, gotConfirmed, "a mismatched requested field should not confirm the amendment")
 		})
 	}
 
 	confirmed, err = websocketAmendOrderConfirmed(new(AmendOrderRequest), new(WebsocketOrderDetails))
 	require.NoError(t, err, "omitted amendment fields must not error")
-	assert.True(t, confirmed, "omitted amendment fields must not require confirmation")
+	assert.True(t, confirmed, "omitted amendment fields should not require confirmation")
 	zero := 0.0
 	confirmed, err = websocketAmendOrderConfirmed(&AmendOrderRequest{TakeProfitPrice: &zero, StopLossPrice: &zero}, new(WebsocketOrderDetails))
 	require.NoError(t, err, "explicit take-profit and stop-loss cancellation must not error")
-	assert.True(t, confirmed, "explicit zero take-profit and stop-loss values must confirm cancellation")
+	assert.True(t, confirmed, "explicit zero take-profit and stop-loss values should confirm cancellation")
 	confirmed, err = websocketAmendOrderConfirmed(&AmendOrderRequest{TakeProfitPrice: &zero}, &WebsocketOrderDetails{TakeProfit: 1})
 	require.NoError(t, err, "an uncleared take-profit must not error")
-	assert.False(t, confirmed, "an explicit zero take-profit must wait for the cleared value")
+	assert.False(t, confirmed, "an explicit zero take-profit should wait for the cleared value")
 	for _, status := range []string{"Filled", websocketTestCancelled, "Rejected", "Deactivated", "PartiallyFilledCanceled"} {
 		t.Run(status, func(t *testing.T) {
 			t.Parallel()
 			confirmed, err := websocketAmendOrderConfirmed(amendRequest, &WebsocketOrderDetails{OrderStatus: status})
-			assert.False(t, confirmed, "a terminal order must not confirm an amendment")
+			assert.False(t, confirmed, "a terminal order should not confirm an amendment")
 			require.ErrorIs(t, err, errWebsocketOrderTerminalState, "a terminal order must fail an amendment immediately")
 		})
 	}
@@ -389,10 +389,10 @@ func TestWebsocketAmendOrderConfirmed(t *testing.T) {
 func TestWebsocketAmendStringConfirmed(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, websocketAmendStringConfirmed("", "anything"), "an omitted string must not require confirmation")
-	assert.False(t, websocketAmendStringConfirmed("UNKNOWN", "anything"), "an explicit unknown string must require an exact confirmation")
-	assert.True(t, websocketAmendStringConfirmed(websocketTestMarkPrice, websocketTestMarkPrice), "equal strings must confirm")
-	assert.False(t, websocketAmendStringConfirmed(websocketTestMarkPrice, websocketTestLastPrice), "different requested strings must not confirm")
+	assert.True(t, websocketAmendStringConfirmed("", "anything"), "an omitted string should not require confirmation")
+	assert.False(t, websocketAmendStringConfirmed("UNKNOWN", "anything"), "an explicit unknown string should require an exact confirmation")
+	assert.True(t, websocketAmendStringConfirmed(websocketTestMarkPrice, websocketTestMarkPrice), "equal strings should confirm")
+	assert.False(t, websocketAmendStringConfirmed(websocketTestMarkPrice, websocketTestLastPrice), "different requested strings should not confirm")
 }
 
 func TestWebsocketCancelOrderConfirmed(t *testing.T) {
@@ -401,16 +401,16 @@ func TestWebsocketCancelOrderConfirmed(t *testing.T) {
 	for _, status := range []string{websocketTestCancelled, "Deactivated", "PartiallyFilledCanceled"} {
 		confirmed, err := websocketCancelOrderConfirmed(&WebsocketOrderDetails{OrderStatus: status})
 		require.NoError(t, err, "a cancellation terminal status must not error")
-		assert.True(t, confirmed, "a cancellation terminal status must confirm cancellation")
+		assert.True(t, confirmed, "a cancellation terminal status should confirm cancellation")
 	}
 	for _, status := range []string{"Filled", "Rejected"} {
 		confirmed, err := websocketCancelOrderConfirmed(&WebsocketOrderDetails{OrderStatus: status})
-		assert.False(t, confirmed, "a conflicting terminal status must not confirm cancellation")
+		assert.False(t, confirmed, "a conflicting terminal status should not confirm cancellation")
 		require.ErrorIs(t, err, errWebsocketOrderTerminalState, "a conflicting terminal status must fail cancellation immediately")
 	}
 	confirmed, err := websocketCancelOrderConfirmed(&WebsocketOrderDetails{OrderStatus: websocketTestNew})
 	require.NoError(t, err, "a non-terminal cancellation update must not error")
-	assert.False(t, confirmed, "a non-terminal update must not confirm cancellation")
+	assert.False(t, confirmed, "a non-terminal update should not confirm cancellation")
 }
 
 func TestWebsocketOrderRejection(t *testing.T) {
@@ -476,7 +476,7 @@ func TestSendWebsocketTradeRequestUntil(t *testing.T) {
 		ex.websocketOrderUpdates.publish(&WebsocketOrderDetails{OrderID: websocketTestOrderID, OrderStatus: websocketTestNew, RejectReason: websocketTestNoError})
 		ex.websocketOrderUpdates.publish(&WebsocketOrderDetails{OrderID: websocketTestOrderID, OrderStatus: websocketTestCancelled})
 		require.NoError(t, <-errs, "sendWebsocketTradeRequestUntil must inspect queued updates until cancellation is confirmed")
-		assert.Equal(t, websocketTestCancelled, (<-result).OrderStatus, "the operation-specific terminal update must be returned")
+		assert.Equal(t, websocketTestCancelled, (<-result).OrderStatus, "the operation-specific terminal update should be returned")
 	})
 
 	t.Run("fill fails cancellation", func(t *testing.T) {
