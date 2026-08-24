@@ -368,8 +368,10 @@ type AmendOrderRequest struct {
 	OrderQuantity          float64 `json:"qty,omitempty,string"` // Order quantity. For Spot Market Buy order, please note that qty should be quote currency amount
 	Price                  float64 `json:"price,string,omitempty"`
 
-	TakeProfitPrice float64 `json:"takeProfit,omitempty,string"`
-	StopLossPrice   float64 `json:"stopLoss,omitempty,string"`
+	// Pointers distinguish an omitted amendment from an explicit zero, which
+	// cancels the existing take-profit or stop-loss on Bybit.
+	TakeProfitPrice *float64 `json:"takeProfit,omitempty,string"`
+	StopLossPrice   *float64 `json:"stopLoss,omitempty,string"`
 
 	TakeProfitTriggerBy string `json:"tpTriggerBy,omitempty"` // The price type to trigger take profit. 'MarkPrice', 'IndexPrice', default: 'LastPrice'
 	StopLossTriggerBy   string `json:"slTriggerBy,omitempty"` // The price type to trigger stop loss. MarkPrice, IndexPrice, default: LastPrice

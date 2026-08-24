@@ -111,6 +111,7 @@ func TestValidatePlaceOrderRequest(t *testing.T) {
 
 func TestValidateAmendOrderRequest(t *testing.T) {
 	t.Parallel()
+	zero := 0.0
 
 	for _, tc := range []struct {
 		params AmendOrderRequest
@@ -124,6 +125,25 @@ func TestValidateAmendOrderRequest(t *testing.T) {
 				Symbol:   currency.NewBTCUSDT(),
 			},
 			err: errEitherOrderIDOROrderLinkIDRequired,
+		},
+		{
+			params: AmendOrderRequest{Category: cSpot, Symbol: currency.NewBTCUSDT(), OrderID: "69420"},
+			err:    errAmendmentRequired,
+		},
+		{
+			params: AmendOrderRequest{Category: cSpot, Symbol: currency.NewBTCUSDT(), OrderID: "69420", TakeProfitPrice: &zero},
+		},
+		{
+			params: AmendOrderRequest{Category: cSpot, Symbol: currency.NewBTCUSDT(), OrderID: "69420", OrderImpliedVolatility: "invalid"},
+			err:    errInvalidOrderImpliedVolatility,
+		},
+		{
+			params: AmendOrderRequest{Category: cSpot, Symbol: currency.NewBTCUSDT(), OrderID: "69420", OrderImpliedVolatility: "NaN"},
+			err:    errInvalidOrderImpliedVolatility,
+		},
+		{
+			params: AmendOrderRequest{Category: cSpot, Symbol: currency.NewBTCUSDT(), OrderID: "69420", OrderImpliedVolatility: "+Inf"},
+			err:    errInvalidOrderImpliedVolatility,
 		},
 		{
 			params: AmendOrderRequest{

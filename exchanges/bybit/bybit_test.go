@@ -3057,11 +3057,120 @@ func TestWSHandleData(t *testing.T) {
 func TestWSHandleAuthenticatedData(t *testing.T) {
 	t.Parallel()
 
-	err := e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"op":"pong","args":["1753340040127"],"conn_id":"d157a7favkf4mm3ibuvg-14toog"}`))
+	err := e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{`))
+	require.Error(t, err, "wsHandleAuthenticatedData must return malformed payload errors")
+
+	err = e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"op":"pong","args":["1753340040127"],"conn_id":"d157a7favkf4mm3ibuvg-14toog"}`))
 	require.NoError(t, err, "wsHandleAuthenticatedData must not error for pong message")
 
 	err = e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"topic": "unhandled"}`))
 	require.ErrorIs(t, err, errUnhandledStreamData, "wsHandleAuthenticatedData must error for unhandled stream data")
+
+	err = e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"topic":"order","data":{}}`))
+	require.Error(t, err, "wsHandleAuthenticatedData must return malformed order batch errors")
+
+	err = e.wsHandleAuthenticatedData(t.Context(), nil, []byte(`{"topic":"order","data":[1]}`))
+	require.Error(t, err, "wsHandleAuthenticatedData must return malformed order update errors")
+
+	t.Run("unique client order ID is routed", func(t *testing.T) {
+		t.Parallel()
+		const response = `{"topic":"order","data":[{"category":"spot","symbol":"BTCUSDT","orderId":"order-id","orderLinkId":"client-id","side":"Buy","orderStatus":"New","orderType":"Limit","timeInForce":"GTC"}]}`
+		match := websocket.NewMatch()
+		responses, err := match.Set("client-id", 1)
+		require.NoError(t, err, "response signature must be registered")
+		conn := &FixtureConnection{match: match}
+		require.NoError(t, e.wsHandleAuthenticatedData(t.Context(), conn, []byte(response)), "wsHandleAuthenticatedData must route the client-correlated order response")
+		select {
+		case received := <-responses:
+			var routed struct {
+				OrderDetails []struct {
+					OrderLinkID string `json:"orderLinkId"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(received, &routed), "routed order response must decode")
+			require.Len(t, routed.OrderDetails, 1, "routed order response must contain one update")
+			assert.Equal(t, "client-id", routed.OrderDetails[0].OrderLinkID, "routed client order ID should match")
+		default:
+			require.FailNow(t, "client-correlated order response must be routed")
+		}
+	})
+
+	t.Run("unique exchange order ID is routed", func(t *testing.T) {
+		t.Parallel()
+		const response = `{"topic":"order","data":[{"category":"spot","symbol":"BTCUSDT","orderId":"order-id","orderLinkId":"","side":"Buy","orderStatus":"New","orderType":"Limit","timeInForce":"GTC"}]}`
+		match := websocket.NewMatch()
+		responses, err := match.Set("order-id", 1)
+		require.NoError(t, err, "response signature must be registered")
+		conn := &FixtureConnection{match: match}
+		require.NoError(t, e.wsHandleAuthenticatedData(t.Context(), conn, []byte(response)), "wsHandleAuthenticatedData must route the exchange-correlated order response")
+		select {
+		case received := <-responses:
+			var routed struct {
+				OrderDetails []struct {
+					OrderID string `json:"orderId"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(received, &routed), "routed order response must decode")
+			require.Len(t, routed.OrderDetails, 1, "routed order response must contain one update")
+			assert.Equal(t, "order-id", routed.OrderDetails[0].OrderID, "routed exchange order ID should match")
+		default:
+			require.FailNow(t, "exchange-correlated order response must be routed")
+		}
+	})
+
+	t.Run("empty client order ID is not routed", func(t *testing.T) {
+		t.Parallel()
+		const response = `{"topic":"order","data":[{"category":"spot","symbol":"BTCUSDT","orderId":"order-id","orderLinkId":"","side":"Buy","orderStatus":"New","orderType":"Limit","timeInForce":"GTC"}]}`
+		match := websocket.NewMatch()
+		responses, err := match.Set("", 1)
+		require.NoError(t, err, "empty client order ID signature must be registered")
+		defer match.RemoveSignature("")
+		conn := &FixtureConnection{match: match}
+		require.NoError(t, e.wsHandleAuthenticatedData(t.Context(), conn, []byte(response)), "wsHandleAuthenticatedData must process an uncorrelated order update")
+		select {
+		case <-responses:
+			require.FailNow(t, "empty client order ID must not consume an unrelated order update")
+		default:
+		}
+	})
+
+	t.Run("batched matches remain visible to the order stream", func(t *testing.T) {
+		t.Parallel()
+		ex := new(Exchange)
+		require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")
+		match := websocket.NewMatch()
+		clientResponses, err := match.Set("client-id", 1)
+		require.NoError(t, err, "client response signature must be registered")
+		exchangeResponses, err := match.Set("second-order-id", 1)
+		require.NoError(t, err, "exchange response signature must be registered")
+		observer, unsubscribe, err := ex.websocketOrderUpdates.subscribe("second-order-id")
+		require.NoError(t, err, "operation observer must be registered")
+		defer unsubscribe()
+		conn := &FixtureConnection{match: match}
+		const response = `{"topic":"order","data":[{"category":"spot","symbol":"BTCUSDT","orderId":"first-order-id","orderLinkId":"client-id","side":"Buy","orderStatus":"New","orderType":"Limit","timeInForce":"GTC"},{"category":"spot","symbol":"BTCUSDT","orderId":"second-order-id","orderLinkId":"","side":"Sell","orderStatus":"Cancelled","orderType":"Limit","timeInForce":"GTC"}]}`
+		require.NoError(t, ex.wsHandleAuthenticatedData(t.Context(), conn, []byte(response)), "wsHandleAuthenticatedData must fan out every batched order update")
+		assert.NotEmpty(t, <-clientResponses, "the index-zero client-correlated update must be routed")
+		assert.NotEmpty(t, <-exchangeResponses, "the later exchange-correlated update must be routed")
+		select {
+		case <-observer.notify:
+		default:
+			require.FailNow(t, "the operation observer must receive the correlated private update")
+		}
+		observer.mu.Lock()
+		require.Len(t, observer.updates, 1, "the operation observer must retain the correlated private update")
+		assert.Equal(t, "second-order-id", observer.updates[0].OrderID, "the observed exchange order ID should match")
+		observer.mu.Unlock()
+		select {
+		case data := <-ex.Websocket.DataHandler.C:
+			orders, ok := data.Data.([]order.Detail)
+			require.True(t, ok, "the normal order stream must receive order details")
+			require.Len(t, orders, 2, "the normal order stream must retain the full batch")
+			assert.Equal(t, "first-order-id", orders[0].OrderID, "the first streamed order must match")
+			assert.Equal(t, "second-order-id", orders[1].OrderID, "the second streamed order must match")
+		default:
+			require.FailNow(t, "the full order batch must remain visible to the normal stream")
+		}
+	})
 
 	ex := new(Exchange)
 	require.NoError(t, testexch.Setup(ex), "Test instance Setup must not error")

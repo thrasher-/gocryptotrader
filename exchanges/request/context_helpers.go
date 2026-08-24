@@ -3,6 +3,7 @@ package request
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 )
@@ -13,9 +14,10 @@ type verbosity string
 
 type headersKey struct{}
 
-func init() {
+// Header overrides are optional, so register their key on first use while still guaranteeing registration before context freezing.
+var registerHeadersContextKey = sync.OnceFunc(func() {
 	common.RegisterContextKey(headersKey{})
-}
+})
 
 // WithVerbose adds verbosity to a request context so that specific requests
 // can have distinct verbosity without impacting all requests.
@@ -38,6 +40,7 @@ func WithHeaders(ctx context.Context, headers http.Header) context.Context {
 	if len(headers) == 0 {
 		return ctx
 	}
+	registerHeadersContextKey()
 	return context.WithValue(ctx, headersKey{}, headers.Clone())
 }
 

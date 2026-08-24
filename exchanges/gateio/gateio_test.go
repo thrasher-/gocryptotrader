@@ -3,14 +3,19 @@ package gateio
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,6 +29,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
 	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/fundingrate"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
@@ -34,6 +40,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/livetest"
 	testsubs "github.com/thrasher-corp/gocryptotrader/internal/testing/subscriptions"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 	"github.com/thrasher-corp/gocryptotrader/types"
@@ -41,14 +48,1044 @@ import (
 
 // Please supply your own APIKEYS here for due diligence testing
 
-const canManipulateRealOrders = false
+const (
+	canManipulateRealOrders              = false
+	gateIOTestBTCUSDT                    = "BTC_USDT"
+	gateIOTestBuySide                    = "buy"
+	gateIOTestContractQueryKey           = "contract"
+	gateIOTestCoinMarginedName           = "coin margined"
+	gateIOTestCrossMarginCurrenciesPath  = "/api/v4/margin/cross/currencies"
+	gateIOTestCurrencyPairQueryKey       = "currency_pair"
+	gateIOTestDeliveryUSDTContractsPath  = "/api/v4/delivery/usdt/contracts"
+	gateIOTestFromQueryKey               = "from"
+	gateIOTestIntervalQueryKey           = "interval"
+	gateIOTestLimitQueryKey              = "limit"
+	gateIOTestOptionsContractsPath       = "/api/v4/options/contracts"
+	gateIOTestOptionsUnderlyingResponse  = `[{"name":"BTC_USDT"}]`
+	gateIOTestOptionsUnderlyingsPath     = "/api/v4/options/underlyings"
+	gateIOTestOrderCorrelation           = "correlation"
+	gateIOTestSpotCurrencyPairsPath      = "/api/v4/spot/currency_pairs"
+	gateIOTestTypeQueryKey               = "type"
+	gateIOTestUSDTMarginedName           = "USDT margined"
+	gateIOLiveReconciliationPollInterval = 500 * time.Millisecond
+	gateIOLiveReconciliationPollAttempts = 60
+	gateIOLiveReconciliationTimeout      = 90 * time.Second
+	gateIOLiveOrderCleanupPollAttempts   = 20
+	gateIOTestLimitOrderType             = "limit"
+)
 
 var apiCredentials = &accounts.Credentials{
 	Key:    "",
 	Secret: "",
 }
 
+type gateIOLiveCancelAllSpotOrders struct {
+	DedicatedTestAccount bool               `json:"dedicated_test_account"`
+	Order                CreateOrderRequest `json:"order"`
+	Side                 order.Side         `json:"side"`
+}
+
+type gateIOLiveAmendSpotOrder struct {
+	DedicatedTestAccount bool               `json:"dedicated_test_account"`
+	Order                CreateOrderRequest `json:"order"`
+	Change               PriceAndAmount     `json:"change"`
+}
+
+type gateIOLiveCancelSingleSpotOrder struct {
+	DedicatedTestAccount bool               `json:"dedicated_test_account"`
+	Order                CreateOrderRequest `json:"order"`
+}
+
+type gateIOLiveBatchOrders struct {
+	DedicatedTestAccount bool                 `json:"dedicated_test_account"`
+	Orders               []CreateOrderRequest `json:"orders"`
+}
+
+type gateIOLiveSpotOrder struct {
+	DedicatedTestAccount bool               `json:"dedicated_test_account"`
+	Order                CreateOrderRequest `json:"order"`
+}
+
+type gateIOLiveIsolatedBorrowOrRepay struct {
+	DedicatedTestAccount bool                       `json:"dedicated_test_account"`
+	Request              IsolatedBorrowRepayRequest `json:"request"`
+	Restore              IsolatedBorrowRepayRequest `json:"restore"`
+}
+
+type gateIOLiveLeverageSetting struct {
+	DedicatedTestAccount bool          `json:"dedicated_test_account"`
+	Pair                 currency.Pair `json:"pair"`
+	Leverage             float64       `json:"leverage"`
+}
+
+type gateIOLiveAutoRepaymentStatus struct {
+	DedicatedTestAccount bool `json:"dedicated_test_account"`
+	Enabled              bool `json:"enabled"`
+}
+
+type gateIOLiveTransferCurrency struct {
+	DedicatedTestAccount bool                  `json:"dedicated_test_account"`
+	Request              TransferCurrencyParam `json:"request"`
+}
+
+type gateIOLiveSubAccountTransfer struct {
+	DedicatedTestAccount bool                    `json:"dedicated_test_account"`
+	Request              SubAccountTransferParam `json:"request"`
+}
+
+// Mutation live tests are disabled while their named GCT_GATEIO_LIVE_* environment variable is unset.
+// The variable's JSON value both opts in and supplies the account-specific request values.
+// Legacy canManipulateRealOrders tests retain their existing gating until they are converted separately.
+var (
+	gateIOLiveMutationMu  sync.Mutex
+	gateIOLiveOrderTextID atomic.Uint64
+)
+
 var e *Exchange
+
+type gateIOHTTPRequest struct {
+	method string
+	path   string
+	query  url.Values
+	body   []byte
+}
+
+func setupGateIOHTTPTest(t *testing.T, expectedMethod, expectedPath, response string, responseStatus ...int) (testExchange *Exchange, receivedRequests <-chan gateIOHTTPRequest) {
+	t.Helper()
+	require.LessOrEqual(t, len(responseStatus), 1, "response status must be omitted or contain one value")
+	status := http.StatusOK
+	if len(responseStatus) == 1 {
+		status = responseStatus[0]
+	}
+
+	requests := make(chan gateIOHTTPRequest, 16)
+	t.Cleanup(func() {
+		assert.Empty(t, requests, "recorded requests should be consumed")
+	})
+	ex := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != expectedMethod || r.URL.Path != expectedPath {
+			http.NotFound(w, r)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err, "reading request body should not error")
+		recorded := gateIOHTTPRequest{
+			method: r.Method,
+			path:   r.URL.Path,
+			query:  r.URL.Query(),
+			body:   body,
+		}
+		select {
+		case requests <- recorded:
+		default:
+			assert.Fail(t, "recorded request buffer should not overflow")
+		}
+		w.WriteHeader(status)
+		_, err = fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing response should not error")
+	}))
+	return ex, requests
+}
+
+func requireGateIORequestErrors(t *testing.T, expectedPath string, responseDecoding bool, requestCall func(context.Context, *Exchange) error) {
+	t.Helper()
+
+	setupResponse := func(response string, status int) *Exchange {
+		return setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != expectedPath {
+				http.NotFound(w, r)
+				return
+			}
+			w.WriteHeader(status)
+			_, err := fmt.Fprint(w, response)
+			assert.NoError(t, err, "writing response should not error")
+		}))
+	}
+	failing := setupResponse(`{}`, http.StatusBadGateway)
+	cancelledContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, requestCall(cancelledContext, failing), context.Canceled, "endpoint must return a canceled transport error")
+	require.Error(t, requestCall(t.Context(), failing), "endpoint must return a non-success HTTP error")
+	if responseDecoding {
+		malformed := setupResponse(`{`, http.StatusOK)
+		require.Error(t, requestCall(t.Context(), malformed), "endpoint must return a malformed-response error")
+	}
+}
+
+func requireGateIOHTTPRequest(t *testing.T, requests <-chan gateIOHTTPRequest) gateIOHTTPRequest {
+	t.Helper()
+	gotRequest, err := waitForGateIOHTTPRequest(t.Context(), requests, time.Second)
+	require.NoError(t, err, "endpoint request must reach the recording handler")
+	return gotRequest
+}
+
+func waitForGateIOHTTPRequest(ctx context.Context, requests <-chan gateIOHTTPRequest, timeout time.Duration) (gateIOHTTPRequest, error) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case gotRequest, ok := <-requests:
+		if !ok {
+			return gateIOHTTPRequest{}, errors.New("GateIO request channel closed before receiving a request")
+		}
+		return gotRequest, nil
+	case <-ctx.Done():
+		return gateIOHTTPRequest{}, ctx.Err()
+	case <-timer.C:
+		return gateIOHTTPRequest{}, errors.New("timed out waiting for GateIO endpoint request")
+	}
+}
+
+func gateIOLiveTestValue(tb testing.TB, name string) string {
+	tb.Helper()
+	value := os.Getenv(name)
+	if value == "" {
+		tb.Skipf("live test parameter %s is unset", name)
+	}
+	return value
+}
+
+func decodeGateIOLiveTestJSON[T any](value string) (T, error) {
+	var result T
+	return result, json.Unmarshal([]byte(value), &result)
+}
+
+type gateIOLiveSpotOrderCleanup struct {
+	orderID       string
+	text          string
+	currencyPair  currency.Pair
+	isCrossMargin bool
+}
+
+func newGateIOLiveOrderText() string {
+	return "t-gct-" + strconv.FormatInt(time.Now().UnixNano(), 36) + "-" + strconv.FormatUint(gateIOLiveOrderTextID.Add(1), 36)
+}
+
+func prepareGateIOLiveSpotOrder(arg *CreateOrderRequest) error {
+	if arg == nil {
+		return errNilArgument
+	}
+	if arg.CurrencyPair.IsInvalid() {
+		return currency.ErrCurrencyPairEmpty
+	}
+	if arg.Account != spotAccount {
+		return fmt.Errorf("live order account must be %q", spotAccount)
+	}
+	if arg.Type != gateIOTestLimitOrderType {
+		return errors.New("live order type must be limit")
+	}
+	if arg.Side != gateIOTestBuySide && arg.Side != "sell" {
+		return order.ErrSideIsInvalid
+	}
+	if arg.Amount <= 0 {
+		return errInvalidAmount
+	}
+	if arg.Price <= 0 {
+		return errInvalidPrice
+	}
+	if arg.TimeInForce != pocTIF {
+		return fmt.Errorf("live order time in force must be %q", pocTIF)
+	}
+	if arg.AutoBorrow || arg.AutoRepay {
+		return errors.New("live order must not enable automatic borrowing or repayment")
+	}
+	if arg.Text != "" {
+		return errors.New("live order text is reserved for cleanup correlation")
+	}
+	arg.Text = newGateIOLiveOrderText()
+	arg.ActionMode = "FULL"
+	return nil
+}
+
+func reconcileGateIOLiveMutation[T any](ctx context.Context, read func(context.Context) (T, error), restore func(context.Context) error, before, applied T, equal func(T, T) bool, pollInterval time.Duration, pollAttempts int) error {
+	if pollAttempts <= 0 {
+		return errors.New("live mutation reconciliation poll attempts must be positive")
+	}
+	if equal(before, applied) {
+		return errors.New("live mutation original and applied states must be distinguishable")
+	}
+	wait := func() error {
+		if pollInterval <= 0 {
+			return nil
+		}
+		timer := time.NewTimer(pollInterval)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
+	}
+
+	appliedObserved := false
+	var reconciliationErr error
+	for attempt := range pollAttempts {
+		current, err := read(ctx)
+		switch {
+		case err != nil:
+			reconciliationErr = errors.Join(reconciliationErr, err)
+		case equal(current, applied):
+			appliedObserved = true
+		case !equal(current, before):
+			return errors.Join(reconciliationErr, errors.New("live mutation state is neither the original nor expected applied state"))
+		}
+		if appliedObserved {
+			break
+		}
+		if attempt+1 < pollAttempts {
+			if err := wait(); err != nil {
+				return errors.Join(reconciliationErr, err)
+			}
+		}
+	}
+	if !appliedObserved {
+		return errors.Join(reconciliationErr, errors.New("live mutation application was not observed before the reconciliation deadline"))
+	}
+	if err := restore(ctx); err != nil {
+		reconciliationErr = errors.Join(reconciliationErr, err)
+	}
+	for attempt := range pollAttempts {
+		current, err := read(ctx)
+		switch {
+		case err != nil:
+			reconciliationErr = errors.Join(reconciliationErr, err)
+		case equal(current, before):
+			return nil
+		case !equal(current, applied):
+			return errors.Join(reconciliationErr, errors.New("live mutation cleanup state is neither the original nor expected applied state"))
+		}
+		if attempt+1 < pollAttempts {
+			if err := wait(); err != nil {
+				return errors.Join(reconciliationErr, err)
+			}
+		}
+	}
+	return errors.Join(reconciliationErr, errors.New("live mutation cleanup did not restore the original state"))
+}
+
+func cleanupGateIOLiveSpotOrders(ctx context.Context, list func(context.Context, currency.Pair, string, uint64, uint64) ([]SpotOrder, error), cancel func(context.Context, string, string, bool) (*SpotOrder, error), orders []gateIOLiveSpotOrderCleanup, pollInterval time.Duration, pollAttempts int) error {
+	if pollAttempts <= 0 {
+		return errors.New("live order cleanup poll attempts must be positive")
+	}
+	wait := func() error {
+		if pollInterval <= 0 {
+			return nil
+		}
+		timer := time.NewTimer(pollInterval)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
+	}
+
+	var errs error
+	for _, item := range orders {
+		if item.orderID == "" && item.text == "" {
+			continue
+		}
+		knownOrderIDs := make([]string, 0, 1)
+		if item.orderID != "" {
+			knownOrderIDs = append(knownOrderIDs, item.orderID)
+		}
+		observed := false
+		consecutiveAbsent := 0
+		var lastAttemptErr error
+		confirmedAbsent := false
+		for attempt := range pollAttempts {
+			var listErr error
+			activeOrderIDs := make([]string, 0, len(knownOrderIDs))
+			for page := uint64(1); ; page++ {
+				pageOrders, err := list(ctx, item.currencyPair, statusOpen, page, 100)
+				if err != nil {
+					listErr = err
+					break
+				}
+				for i := range pageOrders {
+					if (item.text != "" && pageOrders[i].Text == item.text) || (item.orderID != "" && pageOrders[i].OrderID == item.orderID) {
+						if pageOrders[i].OrderID != "" && !slices.Contains(activeOrderIDs, pageOrders[i].OrderID) {
+							activeOrderIDs = append(activeOrderIDs, pageOrders[i].OrderID)
+							if !slices.Contains(knownOrderIDs, pageOrders[i].OrderID) {
+								knownOrderIDs = append(knownOrderIDs, pageOrders[i].OrderID)
+							}
+						}
+					}
+				}
+				if len(pageOrders) < 100 {
+					break
+				}
+			}
+			switch {
+			case len(activeOrderIDs) > 0:
+				observed = true
+				consecutiveAbsent = 0
+			case listErr == nil:
+				consecutiveAbsent++
+			default:
+				consecutiveAbsent = 0
+			}
+
+			cancelOrderIDs := slices.Clone(knownOrderIDs)
+			for _, orderID := range activeOrderIDs {
+				if !slices.Contains(cancelOrderIDs, orderID) {
+					cancelOrderIDs = append(cancelOrderIDs, orderID)
+				}
+			}
+			lastAttemptErr = listErr
+			for _, orderID := range cancelOrderIDs {
+				_, err := cancel(ctx, orderID, item.currencyPair.String(), item.isCrossMargin)
+				lastAttemptErr = common.AppendError(lastAttemptErr, err)
+			}
+
+			minimumAbsentObservations := 2
+			if pollAttempts == 1 {
+				minimumAbsentObservations = 1
+			}
+			if consecutiveAbsent >= minimumAbsentObservations && (len(knownOrderIDs) > 0 || observed) {
+				confirmedAbsent = true
+				break
+			}
+			if attempt+1 < pollAttempts {
+				if err := wait(); err != nil {
+					lastAttemptErr = common.AppendError(lastAttemptErr, err)
+					break
+				}
+			}
+		}
+		if !confirmedAbsent {
+			errs = common.AppendError(errs, lastAttemptErr)
+			errs = common.AppendError(errs, fmt.Errorf("live order cleanup could not confirm absence for order %q text %q", item.orderID, item.text))
+		}
+	}
+	return errs
+}
+
+func TestGateIOLiveTestValue(t *testing.T) {
+	const name = "GCT_GATEIO_LIVE_TEST_VALUE"
+	t.Run("set", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("continue", func(t *testing.T) {
+			t.Setenv(name, "value")
+			assert.Equal(t, "value", gateIOLiveTestValue(t, name), "gateIOLiveTestValue should return the configured value")
+			reachedEndpoint = true
+		}), "gateIOLiveTestValue set subtest must not fail")
+		assert.True(t, reachedEndpoint, "gateIOLiveTestValue should continue when the value is set")
+	})
+
+	t.Run("unset", func(t *testing.T) {
+		t.Setenv(name, "")
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			gateIOLiveTestValue(t, name)
+			reachedEndpoint = true
+		}), "gateIOLiveTestValue unset subtest must not fail")
+		assert.False(t, reachedEndpoint, "gateIOLiveTestValue should skip when the value is unset")
+	})
+}
+
+func TestDecodeGateIOLiveTestJSON(t *testing.T) {
+	t.Parallel()
+	type value struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+
+	got, err := decodeGateIOLiveTestJSON[value](`{"name":"fixture","enabled":true}`)
+	require.NoError(t, err, "decodeGateIOLiveTestJSON must decode valid JSON")
+	assert.Equal(t, value{Name: "fixture", Enabled: true}, got, "decoded live test value should match")
+
+	_, err = decodeGateIOLiveTestJSON[value](`{`)
+	require.Error(t, err, "decodeGateIOLiveTestJSON must return malformed JSON errors")
+}
+
+func TestNewGateIOLiveOrderText(t *testing.T) {
+	t.Parallel()
+
+	first := newGateIOLiveOrderText()
+	second := newGateIOLiveOrderText()
+	assert.True(t, strings.HasPrefix(first, "t-gct-"), "live order text should use the GateIO custom-text prefix")
+	assert.LessOrEqual(t, len(first), 30, "live order text should fit GateIO's 28-byte payload limit after the t- prefix")
+	assert.NotEqual(t, first, second, "live order text should be unique")
+}
+
+func TestPrepareGateIOLiveSpotOrder(t *testing.T) {
+	t.Parallel()
+
+	valid := CreateOrderRequest{CurrencyPair: BTCUSDT, Type: gateIOTestLimitOrderType, Account: spotAccount, Side: gateIOTestBuySide, Amount: 1, Price: 2, TimeInForce: pocTIF}
+	require.ErrorIs(t, prepareGateIOLiveSpotOrder(nil), errNilArgument, "nil live orders must be rejected")
+	for _, tc := range []struct {
+		name string
+		edit func(*CreateOrderRequest)
+		err  error
+	}{
+		{name: "pair", edit: func(arg *CreateOrderRequest) { arg.CurrencyPair = currency.EMPTYPAIR }, err: currency.ErrCurrencyPairEmpty},
+		{name: "account", edit: func(arg *CreateOrderRequest) { arg.Account = marginAccount }},
+		{name: "order type", edit: func(arg *CreateOrderRequest) { arg.Type = "market" }},
+		{name: "side", edit: func(arg *CreateOrderRequest) { arg.Side = "hold" }, err: order.ErrSideIsInvalid},
+		{name: "amount", edit: func(arg *CreateOrderRequest) { arg.Amount = 0 }, err: errInvalidAmount},
+		{name: "price", edit: func(arg *CreateOrderRequest) { arg.Price = 0 }, err: errInvalidPrice},
+		{name: "time in force", edit: func(arg *CreateOrderRequest) { arg.TimeInForce = gtcTIF }},
+		{name: "auto borrow", edit: func(arg *CreateOrderRequest) { arg.AutoBorrow = true }},
+		{name: "auto repay", edit: func(arg *CreateOrderRequest) { arg.AutoRepay = true }},
+		{name: "text", edit: func(arg *CreateOrderRequest) { arg.Text = "t-caller" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			arg := valid
+			tc.edit(&arg)
+			err := prepareGateIOLiveSpotOrder(&arg)
+			if tc.err != nil {
+				require.ErrorIs(t, err, tc.err, "invalid live order must return the expected error")
+			} else {
+				require.Error(t, err, "invalid live order must return an error")
+			}
+		})
+	}
+
+	first := valid
+	require.NoError(t, prepareGateIOLiveSpotOrder(&first), "valid live order must be prepared")
+	assert.True(t, strings.HasPrefix(first.Text, "t-gct-"), "prepared order should have a cleanup correlation ID")
+	assert.Equal(t, "FULL", first.ActionMode, "prepared order should request the full response")
+	second := valid
+	require.NoError(t, prepareGateIOLiveSpotOrder(&second), "second valid live order must be prepared")
+	assert.NotEqual(t, first.Text, second.Text, "prepared live order correlation IDs should be unique")
+}
+
+func TestReconcileGateIOLiveMutation(t *testing.T) {
+	t.Parallel()
+
+	const pollAttempts = 3
+	expectedErr := errors.New("forced reconciliation error")
+	equal := func(a, b int) bool { return a == b }
+	t.Run("application not observed", func(t *testing.T) {
+		t.Parallel()
+		reads := 0
+		restored := false
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			reads++
+			return 1, nil
+		}, func(context.Context) error {
+			restored = true
+			return nil
+		}, 1, 2, equal, 0, pollAttempts)
+		require.ErrorContains(t, err, "application was not observed", "an unobserved acknowledged mutation must remain unresolved")
+		assert.Equal(t, pollAttempts, reads, "original state should be observed for the full polling window")
+		assert.False(t, restored, "an unobserved mutation should not invoke a potentially unsafe inverse operation")
+	})
+	t.Run("indistinguishable states", func(t *testing.T) {
+		t.Parallel()
+		read := false
+		restored := false
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			read = true
+			return 1, nil
+		}, func(context.Context) error {
+			restored = true
+			return nil
+		}, 1, 1, equal, 0, pollAttempts)
+		require.ErrorContains(t, err, "must be distinguishable", "indistinguishable mutation states must be rejected")
+		assert.False(t, read, "indistinguishable mutation states should be rejected before polling")
+		assert.False(t, restored, "indistinguishable mutation states should not invoke an unsafe inverse operation")
+	})
+	t.Run("applied", func(t *testing.T) {
+		t.Parallel()
+		state := 2
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return state, nil }, func(context.Context) error {
+			state = 1
+			return nil
+		}, 1, 2, equal, 0, pollAttempts)
+		require.NoError(t, err, "applied state must be restored")
+		assert.Equal(t, 1, state, "cleanup should restore the original state")
+	})
+	t.Run("delayed application and restoration", func(t *testing.T) {
+		t.Parallel()
+		states := []int{1, 1, 2, 2, 1}
+		reads := 0
+		restores := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			state := states[reads]
+			reads++
+			return state, nil
+		}, func(context.Context) error {
+			restores++
+			return nil
+		}, 1, 2, equal, time.Nanosecond, pollAttempts)
+		require.NoError(t, err, "delayed applied and restored states must be reconciled")
+		assert.Equal(t, len(states), reads, "reconciliation should poll through both delayed transitions")
+		assert.Equal(t, 1, restores, "cleanup should restore the delayed mutation once")
+	})
+	t.Run("transient observation error", func(t *testing.T) {
+		t.Parallel()
+		state := 2
+		reads := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			reads++
+			if reads == 1 {
+				return 0, expectedErr
+			}
+			return state, nil
+		}, func(context.Context) error {
+			state = 1
+			return nil
+		}, 1, 2, equal, 0, pollAttempts)
+		require.NoError(t, err, "transient observation errors must not prevent verified cleanup")
+		assert.Equal(t, 1, state, "cleanup should restore state after a transient observation error")
+	})
+	t.Run("ambiguous restore error", func(t *testing.T) {
+		t.Parallel()
+		state := 2
+		restores := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			return state, nil
+		}, func(context.Context) error {
+			restores++
+			return expectedErr
+		}, 1, 2, equal, 0, pollAttempts)
+		require.ErrorIs(t, err, expectedErr, "ambiguous restore errors must be returned")
+		assert.Equal(t, 1, restores, "cleanup should not retry a potentially non-idempotent inverse operation")
+	})
+	t.Run("transient verification error", func(t *testing.T) {
+		t.Parallel()
+		state := 2
+		reads := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			reads++
+			if reads == 2 {
+				return 0, expectedErr
+			}
+			return state, nil
+		}, func(context.Context) error {
+			state = 1
+			return nil
+		}, 1, 2, equal, 0, pollAttempts)
+		require.NoError(t, err, "transient verification errors must not prevent verified cleanup")
+		assert.Equal(t, 1, state, "cleanup should restore state after a transient verification error")
+	})
+	t.Run("initial read error", func(t *testing.T) {
+		t.Parallel()
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return 0, expectedErr }, func(context.Context) error { return nil }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorIs(t, err, expectedErr, "initial state read errors must be returned")
+	})
+	t.Run("unexpected state", func(t *testing.T) {
+		t.Parallel()
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return 3, nil }, func(context.Context) error { return nil }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorContains(t, err, "neither the original nor expected applied state", "unexpected mutation state must be rejected")
+	})
+	t.Run("restore error", func(t *testing.T) {
+		t.Parallel()
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return 2, nil }, func(context.Context) error { return expectedErr }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorIs(t, err, expectedErr, "restore errors must be returned")
+	})
+	t.Run("verification read error", func(t *testing.T) {
+		t.Parallel()
+		reads := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			reads++
+			if reads == 2 {
+				return 0, expectedErr
+			}
+			return 2, nil
+		}, func(context.Context) error { return nil }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorIs(t, err, expectedErr, "verification state read errors must be returned")
+	})
+	t.Run("unexpected verification state", func(t *testing.T) {
+		t.Parallel()
+		reads := 0
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) {
+			reads++
+			if reads == 1 {
+				return 2, nil
+			}
+			return 3, nil
+		}, func(context.Context) error { return nil }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorContains(t, err, "cleanup state is neither", "unexpected cleanup state must be rejected")
+	})
+	t.Run("not restored", func(t *testing.T) {
+		t.Parallel()
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return 2, nil }, func(context.Context) error { return nil }, 1, 2, equal, 0, pollAttempts)
+		require.ErrorContains(t, err, "did not restore", "cleanup that leaves the applied state must be rejected")
+	})
+	t.Run("context cancelled while observing", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := reconcileGateIOLiveMutation(ctx, func(context.Context) (int, error) { return 1, nil }, func(context.Context) error { return nil }, 1, 2, equal, time.Hour, pollAttempts)
+		require.ErrorIs(t, err, context.Canceled, "observation waits must return context cancellation")
+	})
+	t.Run("invalid attempts", func(t *testing.T) {
+		t.Parallel()
+		err := reconcileGateIOLiveMutation(t.Context(), func(context.Context) (int, error) { return 1, nil }, func(context.Context) error { return nil }, 1, 2, equal, 0, 0)
+		require.ErrorContains(t, err, "poll attempts must be positive", "reconciliation must reject an empty polling window")
+	})
+}
+
+func TestCleanupGateIOLiveSpotOrders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid attempts", func(t *testing.T) {
+		t.Parallel()
+		err := cleanupGateIOLiveSpotOrders(t.Context(), nil, nil, nil, 0, 0)
+		require.ErrorContains(t, err, "poll attempts must be positive", "cleanup must reject an empty polling window")
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+		require.NoError(t, cleanupGateIOLiveSpotOrders(t.Context(), func(context.Context, currency.Pair, string, uint64, uint64) ([]SpotOrder, error) {
+			require.FailNow(t, "empty cleanup must not list orders")
+			return nil, nil
+		}, func(context.Context, string, string, bool) (*SpotOrder, error) {
+			require.FailNow(t, "empty cleanup must not cancel orders")
+			return nil, nil
+		}, []gateIOLiveSpotOrderCleanup{{currencyPair: BTCUSDT}}, 0, 1), "cleanup must accept empty fixtures")
+	})
+
+	t.Run("known ID survives transient listing error", func(t *testing.T) {
+		t.Parallel()
+		expectedListErr := errors.New("forced list error")
+		listCalls := 0
+		cancelCalls := 0
+		err := cleanupGateIOLiveSpotOrders(t.Context(), func(_ context.Context, pair currency.Pair, status string, page, limit uint64) ([]SpotOrder, error) {
+			assert.Equal(t, BTCUSDT, pair, "cleanup pair should match")
+			assert.Equal(t, statusOpen, status, "cleanup should query open orders")
+			assert.Equal(t, uint64(1), page, "cleanup should start with the first API page")
+			assert.Equal(t, uint64(100), limit, "cleanup page size should match")
+			listCalls++
+			if listCalls == 1 {
+				return nil, expectedListErr
+			}
+			return nil, nil
+		}, func(_ context.Context, orderID, pair string, isCrossMargin bool) (*SpotOrder, error) {
+			cancelCalls++
+			assert.Equal(t, "known-id", orderID, "known order ID should be cancelled directly")
+			assert.Equal(t, BTCUSDT.String(), pair, "cancellation pair should match")
+			assert.False(t, isCrossMargin, "spot cleanup should not use cross margin")
+			return &SpotOrder{OrderID: orderID}, nil
+		}, []gateIOLiveSpotOrderCleanup{{orderID: "known-id", text: gateIOTestOrderCorrelation, currencyPair: BTCUSDT}}, 0, 3)
+		require.NoError(t, err, "cleanup must recover from a transient listing error when the known ID can be cancelled")
+		assert.Equal(t, 3, listCalls, "cleanup should confirm absence twice after the transient error")
+		assert.Equal(t, 3, cancelCalls, "cleanup should keep targeting the known ID until absence is confirmed")
+	})
+
+	t.Run("text discovery persists across listing failures and confirms absence", func(t *testing.T) {
+		t.Parallel()
+		expectedListErr := errors.New("forced list error")
+		attempt := 0
+		cancelCalls := 0
+		err := cleanupGateIOLiveSpotOrders(t.Context(), func(_ context.Context, _ currency.Pair, _ string, page, limit uint64) ([]SpotOrder, error) {
+			assert.Equal(t, uint64(100), limit, "cleanup page size should match")
+			if page == 1 {
+				attempt++
+			}
+			if attempt == 1 && page == 1 {
+				orders := make([]SpotOrder, 100)
+				for i := range orders {
+					orders[i].OrderID = strconv.Itoa(i + 1)
+				}
+				return orders, nil
+			}
+			if attempt == 1 && page == 2 {
+				return []SpotOrder{{OrderID: "found-id", Text: gateIOTestOrderCorrelation}}, nil
+			}
+			if attempt == 2 && page == 1 {
+				return nil, expectedListErr
+			}
+			return nil, nil
+		}, func(_ context.Context, orderID, _ string, isCrossMargin bool) (*SpotOrder, error) {
+			cancelCalls++
+			assert.Equal(t, "found-id", orderID, "text-correlated order ID should be cancelled")
+			assert.True(t, isCrossMargin, "configured cross-margin cleanup should be preserved")
+			return &SpotOrder{OrderID: orderID}, nil
+		}, []gateIOLiveSpotOrderCleanup{{text: gateIOTestOrderCorrelation, currencyPair: BTCUSDT, isCrossMargin: true}}, 0, 4)
+		require.NoError(t, err, "cleanup must retain a paginated text-correlated order across a transient listing error")
+		assert.Equal(t, 4, attempt, "cleanup should recover from the listing error and confirm two absent observations")
+		assert.Equal(t, 4, cancelCalls, "cleanup should retain and retry the discovered order ID on every attempt")
+	})
+
+	t.Run("text discovery survives a later page failure", func(t *testing.T) {
+		t.Parallel()
+		expectedListErr := errors.New("forced later page error")
+		attempt := 0
+		cancelCalls := 0
+		err := cleanupGateIOLiveSpotOrders(t.Context(), func(_ context.Context, _ currency.Pair, _ string, page, limit uint64) ([]SpotOrder, error) {
+			assert.Equal(t, uint64(100), limit, "cleanup page size should match")
+			if page == 1 {
+				attempt++
+			}
+			if attempt <= 2 {
+				if page == 2 {
+					return nil, expectedListErr
+				}
+				orders := make([]SpotOrder, 100)
+				if attempt == 1 {
+					orders[0] = SpotOrder{OrderID: "found-id", Text: gateIOTestOrderCorrelation}
+				}
+				return orders, nil
+			}
+			return nil, nil
+		}, func(_ context.Context, orderID, _ string, _ bool) (*SpotOrder, error) {
+			cancelCalls++
+			assert.Equal(t, "found-id", orderID, "text-correlated order ID should be cancelled")
+			return &SpotOrder{OrderID: orderID}, nil
+		}, []gateIOLiveSpotOrderCleanup{{text: gateIOTestOrderCorrelation, currencyPair: BTCUSDT}}, 0, 4)
+		require.NoError(t, err, "cleanup must retain an ID discovered before a later page failure")
+		assert.Equal(t, 4, attempt, "cleanup should retry after later page failures and confirm absence twice")
+		assert.Equal(t, 4, cancelCalls, "cleanup should cancel the discovered ID during every attempt")
+	})
+
+	t.Run("text-only absence is observed for the full window", func(t *testing.T) {
+		t.Parallel()
+		listCalls := 0
+		err := cleanupGateIOLiveSpotOrders(t.Context(), func(context.Context, currency.Pair, string, uint64, uint64) ([]SpotOrder, error) {
+			listCalls++
+			return nil, nil
+		}, func(context.Context, string, string, bool) (*SpotOrder, error) {
+			require.FailNow(t, "absent text-only fixture must not be cancelled")
+			return nil, nil
+		}, []gateIOLiveSpotOrderCleanup{{text: "never-visible", currencyPair: BTCUSDT}}, 0, 3)
+		require.ErrorContains(t, err, "could not confirm absence", "a text-only fixture that was never observed must remain unresolved")
+		assert.Equal(t, 3, listCalls, "text-only absence should be observed for the full polling window")
+	})
+
+	t.Run("unresolved listing and cancellation errors", func(t *testing.T) {
+		t.Parallel()
+		expectedListErr := errors.New("forced list error")
+		expectedCancelErr := errors.New("forced cancellation error")
+		err := cleanupGateIOLiveSpotOrders(t.Context(), func(context.Context, currency.Pair, string, uint64, uint64) ([]SpotOrder, error) {
+			return nil, expectedListErr
+		}, func(context.Context, string, string, bool) (*SpotOrder, error) {
+			return nil, expectedCancelErr
+		}, []gateIOLiveSpotOrderCleanup{{orderID: "known-id", currencyPair: BTCUSDT}}, 0, 2)
+		require.ErrorIs(t, err, expectedListErr, "unresolved cleanup must return the final listing error")
+		require.ErrorIs(t, err, expectedCancelErr, "unresolved cleanup must return the final cancellation error")
+		require.ErrorContains(t, err, "could not confirm absence", "unresolved cleanup must identify the fixture")
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := cleanupGateIOLiveSpotOrders(ctx, func(context.Context, currency.Pair, string, uint64, uint64) ([]SpotOrder, error) {
+			return []SpotOrder{{OrderID: "found-id", Text: gateIOTestOrderCorrelation}}, nil
+		}, func(context.Context, string, string, bool) (*SpotOrder, error) {
+			return &SpotOrder{}, nil
+		}, []gateIOLiveSpotOrderCleanup{{text: gateIOTestOrderCorrelation, currencyPair: BTCUSDT}}, time.Hour, 2)
+		require.ErrorIs(t, err, context.Canceled, "cleanup polling must return context cancellation")
+	})
+}
+
+func TestRequireGateIORequestErrors(t *testing.T) {
+	t.Parallel()
+	requestCall := func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetServerTime(ctx, asset.Spot)
+		return err
+	}
+	t.Run("transport and decoding", func(t *testing.T) {
+		t.Parallel()
+		requireGateIORequestErrors(t, "/api/v4/spot/time", true, requestCall)
+	})
+	t.Run("transport only", func(t *testing.T) {
+		t.Parallel()
+		requireGateIORequestErrors(t, "/api/v4/spot/time", false, requestCall)
+	})
+}
+
+func TestRequireGateIOHTTPRequest(t *testing.T) {
+	t.Parallel()
+	expected := gateIOHTTPRequest{method: http.MethodGet, path: "/api/v4/fixture", query: url.Values{"key": {"value"}}, body: []byte(`{}`)}
+	requests := make(chan gateIOHTTPRequest, 1)
+	requests <- expected
+	assert.Equal(t, expected, requireGateIOHTTPRequest(t, requests), "required request should match the recorded value")
+}
+
+func TestWaitForGateIOHTTPRequest(t *testing.T) {
+	t.Parallel()
+	expected := gateIOHTTPRequest{method: http.MethodGet, path: "/api/v4/fixture"}
+	requests := make(chan gateIOHTTPRequest, 1)
+	requests <- expected
+	got, err := waitForGateIOHTTPRequest(t.Context(), requests, time.Second)
+	require.NoError(t, err, "recorded request must be returned")
+	assert.Equal(t, expected, got, "recorded request should match")
+
+	closedRequests := make(chan gateIOHTTPRequest)
+	close(closedRequests)
+	_, err = waitForGateIOHTTPRequest(t.Context(), closedRequests, time.Second)
+	require.ErrorContains(t, err, "channel closed", "closed request channels must return an error")
+
+	cancelledContext, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = waitForGateIOHTTPRequest(cancelledContext, make(chan gateIOHTTPRequest), time.Hour)
+	require.ErrorIs(t, err, context.Canceled, "context cancellation must be returned")
+
+	_, err = waitForGateIOHTTPRequest(t.Context(), make(chan gateIOHTTPRequest), time.Nanosecond)
+	require.ErrorContains(t, err, "timed out", "missing requests must return a bounded timeout error")
+}
+
+func TestSetupGateIOHTTPTest(t *testing.T) {
+	t.Parallel()
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/spot/time", `{"server_time":1787110000}`)
+	serverTime, err := ex.GetServerTime(t.Context(), asset.Spot)
+	require.NoError(t, err, "GetServerTime must not error for the configured route")
+	assert.Equal(t, time.Unix(1787110000, 0), serverTime, "server time should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodGet, gotRequest.method, "request method should match")
+	assert.Equal(t, "/api/v4/spot/time", gotRequest.path, "request path should match")
+	endpoint, err := ex.API.Endpoints.GetURL(exchange.RestSpot)
+	require.NoError(t, err, "GateIO REST endpoint must be available")
+	httpRequest, err := http.NewRequestWithContext(t.Context(), http.MethodPost, endpoint+"spot/time", http.NoBody)
+	require.NoError(t, err, "method-mismatch request must be created")
+	response, err := http.DefaultClient.Do(httpRequest)
+	require.NoError(t, err, "method-mismatch request must complete")
+	t.Cleanup(func() {
+		assert.NoError(t, response.Body.Close(), "closing method-mismatch response body should not error")
+	})
+	assert.Equal(t, http.StatusNotFound, response.StatusCode, "unexpected request method should be rejected")
+
+	var result any
+	err = ex.SendHTTPRequest(t.Context(), exchange.RestSpot, publicGetServerTimeEPL, "unknown", &result)
+	require.ErrorContains(t, err, "404", "unknown routes must return an HTTP error")
+}
+
+func skipGateIOLiveTest(tb testing.TB, requiresCredentials bool) {
+	tb.Helper()
+	liveEnabled := !livetest.ShouldSkip() && strings.EqualFold(strings.TrimSpace(os.Getenv("GCT_GATEIO_LIVE_TESTS")), "true")
+	skipGateIOLiveTestWithState(tb, requiresCredentials, liveEnabled, e)
+}
+
+func skipGateIOLiveTestWithState(tb testing.TB, requiresCredentials, liveEnabled bool, ex *Exchange) {
+	tb.Helper()
+	if !liveEnabled {
+		tb.Skip("live testing disabled; set GCT_GATEIO_LIVE_TESTS=true to enable")
+	}
+	if requiresCredentials {
+		sharedtestvalues.SkipTestIfCredentialsUnset(tb, ex)
+	}
+}
+
+func skipGateIOLiveMutationTest(tb testing.TB, enableEnvironment string) {
+	tb.Helper()
+	liveEnabled := !livetest.ShouldSkip() && strings.EqualFold(strings.TrimSpace(os.Getenv("GCT_GATEIO_LIVE_TESTS")), "true")
+	skipGateIOLiveMutationTestWithState(tb, enableEnvironment, os.Getenv(enableEnvironment) != "", liveEnabled, e)
+}
+
+func skipGateIOLiveMutationTestWithState(tb testing.TB, enableEnvironment string, enabled, liveEnabled bool, ex *Exchange) {
+	tb.Helper()
+	skipGateIOLiveTestWithState(tb, true, liveEnabled, ex)
+	if !enabled {
+		tb.Skipf("live mutation disabled; populate %s", enableEnvironment)
+	}
+	gateIOLiveMutationMu.Lock()
+	tb.Cleanup(gateIOLiveMutationMu.Unlock)
+}
+
+func TestSkipGateIOLiveMutationTest(t *testing.T) {
+	t.Setenv("GCT_GATEIO_LIVE_TESTS", "")
+	const enableEnvironment = "GCT_GATEIO_LIVE_TEST_MUTATION"
+	for _, tc := range []struct {
+		name  string
+		value string
+	}{
+		{name: "disabled"},
+		{name: "enabled", value: `{}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(enableEnvironment, tc.value)
+			reachedEndpoint := false
+			require.True(t, t.Run("configured build", func(t *testing.T) {
+				skipGateIOLiveMutationTest(t, enableEnvironment)
+				reachedEndpoint = true
+			}), "configured-build mutation subtest must not fail")
+			assert.False(t, reachedEndpoint, "mutation gate should remain disabled while the package live opt-in is unset")
+		})
+	}
+}
+
+func TestSkipGateIOLiveTest(t *testing.T) {
+	t.Setenv("GCT_GATEIO_LIVE_TESTS", "")
+	reachedEndpoint := false
+	require.True(t, t.Run("configured build", func(t *testing.T) {
+		skipGateIOLiveTest(t, false)
+		reachedEndpoint = true
+	}), "skipGateIOLiveTest configured-build subtest must not fail")
+	assert.False(t, reachedEndpoint, "skipGateIOLiveTest should require the package live opt-in")
+}
+
+func TestSkipGateIOLiveTestWithState(t *testing.T) {
+	t.Run("live disabled", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipGateIOLiveTestWithState(t, false, false, nil)
+			reachedEndpoint = true
+		}), "mock-build subtest must not fail")
+		assert.False(t, reachedEndpoint, "disabled live state should skip the endpoint")
+	})
+
+	t.Run("public live build", func(t *testing.T) {
+		skipGateIOLiveTestWithState(t, false, true, nil)
+	})
+
+	t.Run("private live build without credentials", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			ex := new(Exchange)
+			ex.SetDefaults()
+			skipGateIOLiveTestWithState(t, true, true, ex)
+			reachedEndpoint = true
+		}), "missing-credentials subtest must not fail")
+		assert.False(t, reachedEndpoint, "missing credentials should skip the live endpoint")
+	})
+
+	t.Run("private live build with credentials", func(t *testing.T) {
+		ex := new(Exchange)
+		ex.SetDefaults()
+		ex.SetCredentials(&accounts.Credentials{Key: "key", Secret: "secret"})
+		skipGateIOLiveTestWithState(t, true, true, ex)
+	})
+}
+
+func TestSkipGateIOLiveMutationTestWithState(t *testing.T) {
+	credentialedExchange := func() *Exchange {
+		ex := new(Exchange)
+		ex.SetDefaults()
+		ex.SetCredentials(&accounts.Credentials{Key: "key", Secret: "secret"})
+		return ex
+	}
+
+	t.Run("live disabled", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipGateIOLiveMutationTestWithState(t, "GCT_GATEIO_LIVE_TEST_MUTATION", true, false, nil)
+			reachedEndpoint = true
+		}), "mock-build mutation subtest must not fail")
+		assert.False(t, reachedEndpoint, "disabled live state should skip the mutation")
+	})
+
+	t.Run("missing credentials", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			ex := new(Exchange)
+			ex.SetDefaults()
+			skipGateIOLiveMutationTestWithState(t, "GCT_GATEIO_LIVE_TEST_MUTATION", true, true, ex)
+			reachedEndpoint = true
+		}), "missing-credentials mutation subtest must not fail")
+		assert.False(t, reachedEndpoint, "missing credentials should skip the live mutation")
+	})
+
+	t.Run("mutation disabled", func(t *testing.T) {
+		reachedEndpoint := false
+		require.True(t, t.Run("skip", func(t *testing.T) {
+			skipGateIOLiveMutationTestWithState(t, "GCT_GATEIO_LIVE_TEST_MUTATION", false, true, credentialedExchange())
+			reachedEndpoint = true
+		}), "disabled mutation subtest must not fail")
+		assert.False(t, reachedEndpoint, "disabled mutation should skip the live endpoint")
+	})
+
+	t.Run("mutation enabled", func(t *testing.T) {
+		skipGateIOLiveMutationTestWithState(t, "GCT_GATEIO_LIVE_TEST_MUTATION", true, true, credentialedExchange())
+	})
+}
 
 func TestMain(m *testing.M) {
 	e = new(Exchange)
@@ -80,12 +1117,12 @@ func TestSetUnixTimeRangeParams(t *testing.T) {
 			name:           "both set",
 			from:           from,
 			to:             to,
-			expectedParams: url.Values{"from": {strconv.FormatInt(from.Unix(), 10)}, "to": {strconv.FormatInt(to.Unix(), 10)}},
+			expectedParams: url.Values{gateIOTestFromQueryKey: {strconv.FormatInt(from.Unix(), 10)}, "to": {strconv.FormatInt(to.Unix(), 10)}},
 		},
 		{
 			name:           "from only",
 			from:           from,
-			expectedParams: url.Values{"from": {strconv.FormatInt(from.Unix(), 10)}},
+			expectedParams: url.Values{gateIOTestFromQueryKey: {strconv.FormatInt(from.Unix(), 10)}},
 		},
 		{
 			name:           "to only",
@@ -107,7 +1144,7 @@ func TestSetUnixTimeRangeParams(t *testing.T) {
 			name:           "start equals end",
 			from:           from,
 			to:             from,
-			expectedParams: url.Values{"from": {strconv.FormatInt(from.Unix(), 10)}, "to": {strconv.FormatInt(from.Unix(), 10)}},
+			expectedParams: url.Values{gateIOTestFromQueryKey: {strconv.FormatInt(from.Unix(), 10)}, "to": {strconv.FormatInt(from.Unix(), 10)}},
 		},
 		{
 			name:           "start after current time",
@@ -173,13 +1210,102 @@ func TestCancelAllExchangeOrders(t *testing.T) {
 	}
 }
 
-func TestGetAccountBalances(t *testing.T) {
+func TestUpdateAccountBalances(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	for _, a := range e.GetAssetTypes(false) {
-		_, err := e.UpdateAccountBalances(t.Context(), a)
-		assert.NoErrorf(t, err, "UpdateAccountBalances should not error for asset %s", a)
+
+	responses := map[string]string{
+		"/api/v4/spot/accounts":          `[{"currency":"BTC","available":"2","locked":"1"}]`,
+		"/api/v4/margin/user/account":    `[{"base":{"currency":"BTC","available":"2","borrowed":"0.5","locked":"1"},"quote":{"currency":"USDT","available":"3","borrowed":"1","locked":"2"}}]`,
+		"/api/v4/margin/cross/accounts":  `{"balances":{"BTC":{"available":"2","freeze":"1","borrowed":"0.5","interest":"0.1"}}}`,
+		"/api/v4/futures/btc/accounts":   `{"currency":"BTC","total":"3","available":"2"}`,
+		"/api/v4/futures/usdt/accounts":  `{"currency":"USDT","total":"3","available":"2"}`,
+		"/api/v4/delivery/usdt/accounts": `{"currency":"USDT","total":"3","available":"2"}`,
+		"/api/v4/options/accounts":       `{"currency":"USDT","total":"3","available":"2"}`,
 	}
+	ex := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response, ok := responses[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing account response should not error")
+	}))
+	// UpdateAccountBalances persists through the account manager, which requires credentials in the context even when request signing is skipped.
+	ctx := accounts.DeployCredentialsToContext(t.Context(), &accounts.Credentials{Key: "key", Secret: "secret"})
+	expectedBalances := map[asset.Item]accounts.CurrencyBalances{
+		asset.Spot: {
+			currency.BTC: {Currency: currency.BTC, Total: 3, Hold: 1, Free: 2},
+		},
+		asset.Margin: {
+			currency.BTC:  {Currency: currency.BTC, Total: 3, Hold: 1, Free: 2, AvailableWithoutBorrow: 1.5, Borrowed: 0.5},
+			currency.USDT: {Currency: currency.USDT, Total: 5, Hold: 2, Free: 3, AvailableWithoutBorrow: 2, Borrowed: 1},
+		},
+		asset.CrossMargin: {
+			currency.BTC: {Currency: currency.BTC, Total: 3, Hold: 1, Free: 2, AvailableWithoutBorrow: 1.4, Borrowed: 0.6},
+		},
+		asset.CoinMarginedFutures: {
+			currency.BTC: {Currency: currency.BTC, Total: 3, Hold: 1, Free: 2},
+		},
+		asset.USDTMarginedFutures: {
+			currency.USDT: {Currency: currency.USDT, Total: 3, Hold: 1, Free: 2},
+		},
+		asset.DeliveryFutures: {
+			currency.USDT: {Currency: currency.USDT, Total: 3, Hold: 1, Free: 2},
+		},
+		asset.Options: {
+			currency.USDT: {Currency: currency.USDT, Total: 3, Hold: 1, Free: 2},
+		},
+	}
+	for _, a := range []asset.Item{asset.Spot, asset.Margin, asset.CrossMargin, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures, asset.Options} {
+		subAccounts, err := ex.UpdateAccountBalances(ctx, a)
+		require.NoErrorf(t, err, "UpdateAccountBalances must not error for %s", a)
+		require.Lenf(t, subAccounts, 1, "UpdateAccountBalances must return one subaccount for %s", a)
+		assert.Equalf(t, a, subAccounts[0].AssetType, "subaccount asset should match for %s", a)
+		assert.Emptyf(t, subAccounts[0].ID, "subaccount ID should be empty for %s", a)
+		for ccy, balance := range subAccounts[0].Balances {
+			assert.Falsef(t, balance.UpdatedAt.IsZero(), "balance update time should be populated for %s %s", a, ccy)
+			balance.UpdatedAt = time.Time{}
+			subAccounts[0].Balances[ccy] = balance
+		}
+		assert.Equalf(t, expectedBalances[a], subAccounts[0].Balances, "balances should match for %s", a)
+	}
+
+	malformed := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/margin/user/account" {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `[{"base":{},"quote":{}}]`)
+		assert.NoError(t, err, "writing malformed margin response should not error")
+	}))
+	_, err := malformed.UpdateAccountBalances(t.Context(), asset.Margin)
+	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty, "UpdateAccountBalances must return malformed balance errors")
+
+	failing := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := responses[r.URL.Path]; !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `{`)
+		assert.NoError(t, err, "writing invalid response should not error")
+	}))
+	for _, a := range []asset.Item{asset.Spot, asset.Margin, asset.CrossMargin, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures, asset.Options} {
+		_, err = failing.UpdateAccountBalances(ctx, a)
+		require.Errorf(t, err, "UpdateAccountBalances must return the decode error for %s", a)
+	}
+
+	_, err = ex.UpdateAccountBalances(t.Context(), asset.Empty)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "UpdateAccountBalances must reject an unsupported asset")
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		for _, a := range e.GetAssetTypes(false) {
+			_, err := e.UpdateAccountBalances(t.Context(), a)
+			require.NoErrorf(t, err, "UpdateAccountBalances must not error for %s against the live API", a)
+		}
+	})
 }
 
 func TestSetCrossMarginAccountBalances(t *testing.T) {
@@ -342,6 +1468,14 @@ func TestUpdateTicker(t *testing.T) {
 		_, err := e.UpdateTicker(t.Context(), getPair(t, a), a)
 		assert.NoErrorf(t, err, "UpdateTicker should not error for %s", a)
 	}
+
+	pair := currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter)
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/btc/tickers", `[{"contract":"BTC_USD","last":"2"}]`)
+	updated, err := ex.UpdateTicker(t.Context(), pair, asset.CoinMarginedFutures)
+	require.NoError(t, err, "UpdateTicker must not error for coin-margined futures")
+	assert.Equal(t, 2.0, updated.Last, "last price should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {pair.String()}}, gotRequest.query, "request query should match")
 }
 
 func TestListSpotCurrencies(t *testing.T) {
@@ -374,7 +1508,7 @@ func TestGetCurrencyPairDetal(t *testing.T) {
 
 func TestGetTickers(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetTickers(t.Context(), "BTC_USDT", ""); err != nil {
+	if _, err := e.GetTickers(t.Context(), gateIOTestBTCUSDT, ""); err != nil {
 		t.Errorf("%s GetTickers() error %v", e.Name, err)
 	}
 }
@@ -394,9 +1528,51 @@ func TestGetOrderbook(t *testing.T) {
 
 func TestGetMarketTrades(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetMarketTrades(t.Context(), getPair(t, asset.Spot), 0, "", true, time.Time{}, time.Time{}, 1); err != nil {
-		t.Errorf("%s GetMarketTrades() error %v", e.Name, err)
-	}
+
+	_, err := e.GetMarketTrades(t.Context(), currency.EMPTYPAIR, 0, "", false, time.Time{}, time.Time{}, 0)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetMarketTrades must reject an empty pair")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetMarketTrades(t.Context(), pair, 0, "", false, from, from.Add(-time.Minute), 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetMarketTrades must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/spot/trades", `[{"id":"7","side":"buy","price":"2"}]`)
+	trades, err := ex.GetMarketTrades(t.Context(), pair, 25, "last", true, from, to, 2)
+	require.NoError(t, err, "GetMarketTrades must not error")
+	require.Len(t, trades, 1, "GetMarketTrades must decode one trade")
+	assert.Equal(t, int64(7), trades[0].ID, "trade ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodGet, gotRequest.method, "request method should be GET")
+	assert.Equal(t, "/api/v4/spot/trades", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:         {"1700000000"},
+		"last_id":                      {"last"},
+		gateIOTestLimitQueryKey:        {"25"},
+		"page":                         {"2"},
+		"reverse":                      {"true"},
+		"to":                           {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	trades, err = ex.GetMarketTrades(t.Context(), pair, 0, "", false, time.Time{}, time.Time{}, 0)
+	require.NoError(t, err, "GetMarketTrades must accept omitted optional parameters")
+	require.Len(t, trades, 1, "GetMarketTrades must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/trades", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetMarketTrades(ctx, pair, 0, "", false, time.Time{}, time.Time{}, 0)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetMarketTrades(t.Context(), getPair(t, asset.Spot), 0, "", true, time.Time{}, time.Time{}, 1)
+		require.NoError(t, err, "GetMarketTrades must not error against the live API")
+	})
 }
 
 func TestCandlestickUnmarshalJSON(t *testing.T) {
@@ -420,9 +1596,51 @@ func TestCandlestickUnmarshalJSON(t *testing.T) {
 
 func TestGetCandlesticks(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetCandlesticks(t.Context(), getPair(t, asset.Spot), 0, time.Time{}, time.Time{}, kline.OneDay); err != nil {
-		t.Errorf("%s GetCandlesticks() error %v", e.Name, err)
-	}
+
+	_, err := e.GetCandlesticks(t.Context(), currency.EMPTYPAIR, 0, time.Time{}, time.Time{}, 0)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetCandlesticks must reject an empty pair")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err = e.GetCandlesticks(t.Context(), pair, 0, time.Time{}, time.Time{}, kline.ThreeDay)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetCandlesticks must reject an unsupported interval")
+
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetCandlesticks(t.Context(), pair, 0, from, from.Add(-time.Minute), 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetCandlesticks must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/spot/candlesticks", `[["1738108800","1","2","3","0.5","1.5","4","true"]]`)
+	candlesticks, err := ex.GetCandlesticks(t.Context(), pair, 25, from, to, kline.OneDay)
+	require.NoError(t, err, "GetCandlesticks must not error")
+	require.Len(t, candlesticks, 1, "GetCandlesticks must decode one candlestick")
+	assert.Equal(t, types.Number(2), candlesticks[0].ClosePrice, "close price should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/spot/candlesticks", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:         {"1700000000"},
+		gateIOTestIntervalQueryKey:     {"1d"},
+		gateIOTestLimitQueryKey:        {"25"},
+		"to":                           {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	candlesticks, err = ex.GetCandlesticks(t.Context(), pair, 0, time.Time{}, time.Time{}, 0)
+	require.NoError(t, err, "GetCandlesticks must accept omitted optional parameters")
+	require.Len(t, candlesticks, 1, "GetCandlesticks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/candlesticks", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetCandlesticks(ctx, pair, 0, time.Time{}, time.Time{}, kline.OneDay)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetCandlesticks(t.Context(), getPair(t, asset.Spot), 0, time.Time{}, time.Time{}, kline.OneDay)
+		require.NoError(t, err, "GetCandlesticks must not error against the live API")
+	})
 }
 
 func TestGetTradingFeeRatio(t *testing.T) {
@@ -443,34 +1661,128 @@ func TestGetSpotAccounts(t *testing.T) {
 
 func TestCreateBatchOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err := e.CreateBatchOrders(t.Context(), []CreateOrderRequest{
-		{
-			CurrencyPair: getPair(t, asset.Spot),
-			Side:         "sell",
-			Amount:       0.001,
-			Price:        12349,
-			Account:      e.assetTypeToString(asset.Spot),
-			Type:         "limit",
-		},
-		{
-			CurrencyPair: currency.Pair{Base: currency.BTC, Quote: currency.USDT, Delimiter: currency.UnderscoreDelimiter},
-			Side:         "buy",
-			Amount:       1,
-			Price:        1234567789,
-			Account:      e.assetTypeToString(asset.Spot),
-			Type:         "limit",
-		},
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	valid := CreateOrderRequest{CurrencyPair: pair, Side: "BUY", Amount: 1, Price: 2, Account: spotAccount, Type: gateIOTestLimitOrderType}
+	tooMany := make([]CreateOrderRequest, 11)
+	for i := range tooMany {
+		tooMany[i] = valid
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []CreateOrderRequest
+		err  error
+	}{
+		{name: "too many orders", args: tooMany, err: errMultipleOrders},
+		{name: "different accounts", args: []CreateOrderRequest{valid, {CurrencyPair: pair, Side: gateIOTestBuySide, Amount: 1, Price: 2, Account: marginAccount, Type: gateIOTestLimitOrderType}}, err: errDifferentAccount},
+		{name: "empty pair", args: []CreateOrderRequest{{Side: gateIOTestBuySide, Amount: 1, Price: 2, Account: spotAccount, Type: gateIOTestLimitOrderType}}, err: currency.ErrCurrencyPairEmpty},
+		{name: "invalid type", args: []CreateOrderRequest{{CurrencyPair: pair, Side: gateIOTestBuySide, Amount: 1, Price: 2, Account: spotAccount, Type: "market"}}, err: errOrderTypeNotLimit},
+		{name: "invalid side", args: []CreateOrderRequest{{CurrencyPair: pair, Side: "HOLD", Amount: 1, Price: 2, Account: spotAccount, Type: gateIOTestLimitOrderType}}, err: order.ErrSideIsInvalid},
+		{name: "invalid account", args: []CreateOrderRequest{{CurrencyPair: pair, Side: gateIOTestBuySide, Amount: 1, Price: 2, Account: futuresAccount, Type: gateIOTestLimitOrderType}}, err: errOrderAccountInvalid},
+		{name: "invalid amount", args: []CreateOrderRequest{{CurrencyPair: pair, Side: gateIOTestBuySide, Price: 2, Account: spotAccount, Type: gateIOTestLimitOrderType}}, err: errInvalidAmount},
+		{name: "invalid price", args: []CreateOrderRequest{{CurrencyPair: pair, Side: gateIOTestBuySide, Amount: 1, Account: spotAccount, Type: gateIOTestLimitOrderType}}, err: errInvalidPrice},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			original := slices.Clone(tc.args)
+			_, err := e.CreateBatchOrders(t.Context(), tc.args)
+			require.ErrorIs(t, err, tc.err, "CreateBatchOrders must return the expected error")
+			assert.Equal(t, original, tc.args, "request arguments should remain unchanged")
+		})
+	}
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodPost, "/api/v4/spot/batch_orders", `[{"id":"order-1","succeeded":true}]`)
+	orderRequests := []CreateOrderRequest{valid, valid}
+	orders, err := ex.CreateBatchOrders(t.Context(), orderRequests)
+	require.NoError(t, err, "CreateBatchOrders must not error")
+	require.Len(t, orders, 1, "CreateBatchOrders must decode one order")
+	assert.Equal(t, "order-1", orders[0].OrderID, "order ID should match")
+	assert.True(t, orders[0].Succeeded, "order result should report success")
+	assert.Equal(t, "BUY", orderRequests[0].Side, "request side should remain unchanged")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodPost, gotRequest.method, "request method should be POST")
+	assert.Equal(t, "/api/v4/spot/batch_orders", gotRequest.path, "request path should match")
+	assert.JSONEq(t, `[{"currency_pair":"BTC_USDT","type":"limit","account":"spot","side":"buy","amount":"1","price":"2"},{"currency_pair":"BTC_USDT","type":"limit","account":"spot","side":"buy","amount":"1","price":"2"}]`, string(gotRequest.body), "request body should match")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/batch_orders", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.CreateBatchOrders(ctx, []CreateOrderRequest{valid})
+		return err
 	})
-	assert.NoError(t, err, "CreateBatchOrders should not error")
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_BATCH_ORDERS")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveBatchOrders](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_BATCH_ORDERS"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_BATCH_ORDERS must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_BATCH_ORDERS must set dedicated_test_account=true")
+		require.NotEmpty(t, config.Orders, "GCT_GATEIO_LIVE_BATCH_ORDERS must contain at least one order")
+		cleanup := make([]gateIOLiveSpotOrderCleanup, len(config.Orders))
+		for i := range config.Orders {
+			require.NoErrorf(t, prepareGateIOLiveSpotOrder(&config.Orders[i]), "GCT_GATEIO_LIVE_BATCH_ORDERS order %d must be a safe post-only fixture", i)
+			cleanup[i] = gateIOLiveSpotOrderCleanup{text: config.Orders[i].Text, currencyPair: config.Orders[i].CurrencyPair}
+		}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, cleanupGateIOLiveSpotOrders(ctx, e.GetSpotOrders, e.CancelSingleSpotOrder, cleanup, gateIOLiveReconciliationPollInterval, gateIOLiveOrderCleanupPollAttempts), "CreateBatchOrders live cleanup should reconcile fixture orders")
+		})
+		orders, err := e.CreateBatchOrders(t.Context(), config.Orders)
+		require.NoError(t, err, "CreateBatchOrders must not error against the live API")
+		require.Len(t, orders, len(config.Orders), "CreateBatchOrders must return one result per live request")
+		for i := range orders {
+			require.Truef(t, orders[i].Succeeded, "CreateBatchOrders live order %d must succeed", i)
+			require.NotEmptyf(t, orders[i].OrderID, "CreateBatchOrders live order %d must return an order ID", i)
+			require.NotEmptyf(t, orders[i].Text, "CreateBatchOrders live order %d must return its correlation ID", i)
+			configIndex := slices.IndexFunc(config.Orders, func(arg CreateOrderRequest) bool { return arg.Text == orders[i].Text })
+			require.NotEqualf(t, -1, configIndex, "CreateBatchOrders live order %d must match a configured correlation ID", i)
+			cleanup[configIndex].orderID = orders[i].OrderID
+			if orders[i].CurrencyPair != "" {
+				responsePair, err := currency.NewPairFromString(orders[i].CurrencyPair)
+				require.NoErrorf(t, err, "CreateBatchOrders live order %d response pair must parse", i)
+				cleanup[configIndex].currencyPair = responsePair
+			}
+			if orders[i].Account != "" {
+				require.Equalf(t, spotAccount, orders[i].Account, "CreateBatchOrders live order %d response account must remain spot", i)
+			}
+		}
+	})
 }
 
 func TestGetSpotOpenOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	if _, err := e.GetSpotOpenOrders(t.Context(), 0, 0, false); err != nil {
-		t.Errorf("%s GetSpotOpenOrders() error %v", e.Name, err)
-	}
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/spot/open_orders", `[{"currency_pair":"BTC_USDT","total":"1","orders":[{"id":"order-1"}]}]`)
+	orders, err := ex.GetSpotOpenOrders(t.Context(), 2, 25, true)
+	require.NoError(t, err, "GetSpotOpenOrders must not error")
+	require.Len(t, orders, 1, "GetSpotOpenOrders must decode one order group")
+	assert.Equal(t, gateIOTestBTCUSDT, orders[0].CurrencyPair, "currency pair should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodGet, gotRequest.method, "request method should be GET")
+	assert.Equal(t, "/api/v4/spot/open_orders", gotRequest.path, "request path should match")
+	assert.Equal(t, "2", gotRequest.query.Get("page"), "page should match")
+	assert.Equal(t, "25", gotRequest.query.Get(gateIOTestLimitQueryKey), "limit should match")
+	assert.Equal(t, crossMarginAccount, gotRequest.query.Get("account"), "account should match")
+
+	orders, err = ex.GetSpotOpenOrders(t.Context(), 0, 0, false)
+	require.NoError(t, err, "GetSpotOpenOrders must accept omitted optional parameters")
+	require.Len(t, orders, 1, "GetSpotOpenOrders must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/open_orders", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetSpotOpenOrders(ctx, 0, 0, false)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetSpotOpenOrders(t.Context(), 0, 0, false)
+		require.NoError(t, err, "GetSpotOpenOrders must not error against the live API")
+	})
 }
 
 func TestSpotClosePositionWhenCrossCurrencyDisabled(t *testing.T) {
@@ -485,18 +1797,62 @@ func TestSpotClosePositionWhenCrossCurrencyDisabled(t *testing.T) {
 	}
 }
 
-func TestCreateSpotOrder(t *testing.T) {
+func TestPlaceSpotOrder(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err := e.PlaceSpotOrder(t.Context(), &CreateOrderRequest{
-		CurrencyPair: getPair(t, asset.Spot),
-		Side:         "buy",
-		Amount:       1,
-		Price:        900000,
-		Account:      e.assetTypeToString(asset.Spot),
-		Type:         "limit",
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.PlaceSpotOrder(t.Context(), nil)
+	require.ErrorIs(t, err, errNilArgument, "PlaceSpotOrder must reject nil input")
+	_, err = e.PlaceSpotOrder(t.Context(), &CreateOrderRequest{})
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "PlaceSpotOrder must reject an empty pair")
+	invalidSide := &CreateOrderRequest{CurrencyPair: pair, Side: "HOLD", Account: spotAccount, Amount: 1}
+	_, err = e.PlaceSpotOrder(t.Context(), invalidSide)
+	require.ErrorIs(t, err, order.ErrSideIsInvalid, "PlaceSpotOrder must reject an invalid side")
+	assert.Equal(t, "HOLD", invalidSide.Side, "request side should remain unchanged")
+	_, err = e.PlaceSpotOrder(t.Context(), &CreateOrderRequest{CurrencyPair: pair, Side: gateIOTestBuySide, Account: futuresAccount, Amount: 1})
+	require.ErrorIs(t, err, errOrderAccountInvalid, "PlaceSpotOrder must reject an invalid account")
+	_, err = e.PlaceSpotOrder(t.Context(), &CreateOrderRequest{CurrencyPair: pair, Side: gateIOTestBuySide, Account: spotAccount})
+	require.ErrorIs(t, err, errInvalidAmount, "PlaceSpotOrder must reject an invalid amount")
+	_, err = e.PlaceSpotOrder(t.Context(), &CreateOrderRequest{CurrencyPair: pair, Side: gateIOTestBuySide, Account: spotAccount, Amount: 1, Price: -1})
+	require.ErrorIs(t, err, errInvalidPrice, "PlaceSpotOrder must reject an invalid price")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodPost, "/api/v4/spot/orders", `{"id":"order-1","succeeded":true}`)
+	orderRequest := &CreateOrderRequest{CurrencyPair: pair, Side: "SELL", Account: spotAccount, Amount: 1}
+	placed, err := ex.PlaceSpotOrder(t.Context(), orderRequest)
+	require.NoError(t, err, "PlaceSpotOrder must not error")
+	require.NotNil(t, placed, "PlaceSpotOrder must decode an order")
+	assert.Equal(t, "order-1", placed.OrderID, "order ID should match")
+	assert.Equal(t, "SELL", orderRequest.Side, "request side should remain unchanged")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodPost, gotRequest.method, "request method should be POST")
+	assert.Equal(t, "/api/v4/spot/orders", gotRequest.path, "request path should match")
+	assert.JSONEq(t, `{"currency_pair":"BTC_USDT","account":"spot","side":"sell","amount":"1"}`, string(gotRequest.body), "request body should match")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/orders", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.PlaceSpotOrder(ctx, &CreateOrderRequest{CurrencyPair: pair, Side: "sell", Account: spotAccount, Amount: 1})
+		return err
 	})
-	assert.NoError(t, err, "PlaceSpotOrder should not error")
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_SPOT_ORDER")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveSpotOrder](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_SPOT_ORDER"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_SPOT_ORDER must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_SPOT_ORDER must set dedicated_test_account=true")
+		require.NoError(t, prepareGateIOLiveSpotOrder(&config.Order), "GCT_GATEIO_LIVE_SPOT_ORDER order must be a safe post-only fixture")
+		cleanup := []gateIOLiveSpotOrderCleanup{{text: config.Order.Text, currencyPair: config.Order.CurrencyPair}}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, cleanupGateIOLiveSpotOrders(ctx, e.GetSpotOrders, e.CancelSingleSpotOrder, cleanup, gateIOLiveReconciliationPollInterval, gateIOLiveOrderCleanupPollAttempts), "PlaceSpotOrder live cleanup should reconcile the fixture order")
+		})
+		placed, err := e.PlaceSpotOrder(t.Context(), &config.Order)
+		require.NoError(t, err, "PlaceSpotOrder must not error against the live API")
+		require.NotNil(t, placed, "PlaceSpotOrder must return a live order")
+		require.NotEmpty(t, placed.OrderID, "PlaceSpotOrder must return a live order ID")
+		cleanup[0].orderID = placed.OrderID
+	})
 }
 
 func TestGetSpotOrders(t *testing.T) {
@@ -508,10 +1864,79 @@ func TestGetSpotOrders(t *testing.T) {
 
 func TestCancelAllOpenOrdersSpecifiedCurrencyPair(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	if _, err := e.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), getPair(t, asset.Spot), order.Sell, asset.Empty); err != nil {
-		t.Errorf("%s CancelAllOpenOrdersSpecifiedCurrencyPair() error %v", e.Name, err)
-	}
+
+	_, err := e.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), currency.EMPTYPAIR, order.AnySide, asset.Empty)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "CancelAllOpenOrdersSpecifiedCurrencyPair must reject an empty pair")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err = e.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), pair, order.AnySide, asset.USDTMarginedFutures)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "CancelAllOpenOrdersSpecifiedCurrencyPair must reject an unsupported asset")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodDelete, "/api/v4/spot/orders", `[{"id":"order-1","succeeded":true}]`)
+	cancelled, err := ex.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), pair, order.Sell, asset.Margin)
+	require.NoError(t, err, "CancelAllOpenOrdersSpecifiedCurrencyPair must not error")
+	require.Len(t, cancelled, 1, "CancelAllOpenOrdersSpecifiedCurrencyPair must decode one order")
+	assert.Equal(t, "order-1", cancelled[0].OrderID, "order ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodDelete, gotRequest.method, "request method should be DELETE")
+	assert.Equal(t, "/api/v4/spot/orders", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		"account":                      {marginAccount},
+		gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT},
+		"side":                         {"sell"},
+	}, gotRequest.query, "request query should match")
+
+	cancelled, err = ex.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), pair, order.AnySide, asset.Empty)
+	require.NoError(t, err, "CancelAllOpenOrdersSpecifiedCurrencyPair must accept omitted optional parameters")
+	require.Len(t, cancelled, 1, "CancelAllOpenOrdersSpecifiedCurrencyPair must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/orders", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.CancelAllOpenOrdersSpecifiedCurrencyPair(ctx, pair, order.Sell, asset.Margin)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveCancelAllSpotOrders](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS must set dedicated_test_account=true")
+		require.NoError(t, prepareGateIOLiveSpotOrder(&config.Order), "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS order must be a safe post-only fixture")
+		require.Contains(t, []order.Side{order.Buy, order.Sell}, config.Side, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS side must be buy or sell")
+		require.True(t, strings.EqualFold(config.Side.String(), config.Order.Side), "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS order side must match the cancellation side")
+		existing, err := e.GetSpotOrders(t.Context(), config.Order.CurrencyPair, statusOpen, 0, 0)
+		require.NoError(t, err, "GetSpotOrders must check the live cancellation scope")
+		require.Empty(t, existing, "GCT_GATEIO_LIVE_CANCEL_ALL_SPOT_ORDERS pair must have no existing open orders")
+		cleanup := []gateIOLiveSpotOrderCleanup{{text: config.Order.Text, currencyPair: config.Order.CurrencyPair}}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, cleanupGateIOLiveSpotOrders(ctx, e.GetSpotOrders, e.CancelSingleSpotOrder, cleanup, gateIOLiveReconciliationPollInterval, gateIOLiveOrderCleanupPollAttempts), "CancelAllOpenOrdersSpecifiedCurrencyPair live cleanup should reconcile the fixture order")
+		})
+		placed, err := e.PlaceSpotOrder(t.Context(), &config.Order)
+		require.NoError(t, err, "PlaceSpotOrder must create the live cancellation fixture")
+		require.NotNil(t, placed, "PlaceSpotOrder must return the live cancellation fixture")
+		require.NotEmpty(t, placed.OrderID, "PlaceSpotOrder must return the live cancellation fixture ID")
+		cleanup[0].orderID = placed.OrderID
+		openOrders, err := e.GetSpotOrders(t.Context(), config.Order.CurrencyPair, statusOpen, 0, 0)
+		require.NoError(t, err, "GetSpotOrders must recheck the exact live cancellation scope")
+		require.Len(t, openOrders, 1, "live cancellation scope must contain only the fixture order")
+		require.Equal(t, placed.OrderID, openOrders[0].OrderID, "live cancellation scope order ID must match the fixture")
+		require.Equal(t, config.Order.Text, openOrders[0].Text, "live cancellation scope correlation ID must match the fixture")
+		cancelled, err := e.CancelAllOpenOrdersSpecifiedCurrencyPair(t.Context(), config.Order.CurrencyPair, config.Side, asset.Spot)
+		require.NoError(t, err, "CancelAllOpenOrdersSpecifiedCurrencyPair must not error against the live API")
+		fixtureCancelled := false
+		for i := range cancelled {
+			if cancelled[i].OrderID == placed.OrderID && cancelled[i].Succeeded {
+				fixtureCancelled = true
+				break
+			}
+		}
+		require.True(t, fixtureCancelled, "CancelAllOpenOrdersSpecifiedCurrencyPair must cancel the fixture order")
+	})
 }
 
 func TestCancelBatchOrdersWithIDList(t *testing.T) {
@@ -545,32 +1970,123 @@ func TestGetSpotOrder(t *testing.T) {
 
 func TestAmendSpotOrder(t *testing.T) {
 	t.Parallel()
-	_, err := e.AmendSpotOrder(t.Context(), "", getPair(t, asset.Spot), false, &PriceAndAmount{
-		Price: 1000,
-	})
-	assert.ErrorIs(t, err, errInvalidOrderID)
 
-	_, err = e.AmendSpotOrder(t.Context(), "123", currency.EMPTYPAIR, false, &PriceAndAmount{
-		Price: 1000,
-	})
-	assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.AmendSpotOrder(t.Context(), "123", pair, false, nil)
+	require.ErrorIs(t, err, errNilArgument, "AmendSpotOrder must reject nil input")
+	_, err = e.AmendSpotOrder(t.Context(), "", pair, false, &PriceAndAmount{Price: 1})
+	require.ErrorIs(t, err, errInvalidOrderID, "AmendSpotOrder must reject an empty order ID")
+	_, err = e.AmendSpotOrder(t.Context(), "123", currency.EMPTYPAIR, false, &PriceAndAmount{Price: 1})
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "AmendSpotOrder must reject an empty pair")
+	_, err = e.AmendSpotOrder(t.Context(), "123", pair, false, &PriceAndAmount{Amount: 1, Price: 1})
+	require.ErrorIs(t, err, errAmendAmountAndPriceSet, "AmendSpotOrder must reject simultaneous amount and price changes")
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	_, err = e.AmendSpotOrder(t.Context(), "123", getPair(t, asset.Spot), false, &PriceAndAmount{
-		Price: 1000,
+	ex, requests := setupGateIOHTTPTest(t, http.MethodPatch, "/api/v4/spot/orders/123", `{"id":"123","price":"1"}`)
+	amended, err := ex.AmendSpotOrder(t.Context(), "123", pair, true, &PriceAndAmount{Price: 1})
+	require.NoError(t, err, "AmendSpotOrder must not error")
+	require.NotNil(t, amended, "AmendSpotOrder must decode an order")
+	assert.Equal(t, "123", amended.OrderID, "order ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodPatch, gotRequest.method, "request method should be PATCH")
+	assert.Equal(t, "/api/v4/spot/orders/123", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		"account":                      {crossMarginAccount},
+		gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT},
+	}, gotRequest.query, "request query should match")
+	assert.JSONEq(t, `{"price":"1"}`, string(gotRequest.body), "request body should match")
+
+	amended, err = ex.AmendSpotOrder(t.Context(), "123", pair, false, &PriceAndAmount{Price: 1})
+	require.NoError(t, err, "AmendSpotOrder must accept an omitted account")
+	require.NotNil(t, amended, "AmendSpotOrder must decode the response with an omitted account")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "a false cross-margin flag should omit the account")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/orders/123", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.AmendSpotOrder(ctx, "123", pair, false, &PriceAndAmount{Price: 1})
+		return err
 	})
-	if err != nil {
-		t.Error(err)
-	}
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveAmendSpotOrder](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER must set dedicated_test_account=true")
+		require.NoError(t, prepareGateIOLiveSpotOrder(&config.Order), "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER order must be a safe post-only fixture")
+		require.NotEqual(t, config.Change.Amount != 0, config.Change.Price != 0, "GCT_GATEIO_LIVE_AMEND_SPOT_ORDER change must set exactly one of amount or price")
+		cleanup := []gateIOLiveSpotOrderCleanup{{text: config.Order.Text, currencyPair: config.Order.CurrencyPair}}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, cleanupGateIOLiveSpotOrders(ctx, e.GetSpotOrders, e.CancelSingleSpotOrder, cleanup, gateIOLiveReconciliationPollInterval, gateIOLiveOrderCleanupPollAttempts), "AmendSpotOrder live cleanup should reconcile the fixture order")
+		})
+		placed, err := e.PlaceSpotOrder(t.Context(), &config.Order)
+		require.NoError(t, err, "PlaceSpotOrder must create the live amendment fixture")
+		require.NotNil(t, placed, "PlaceSpotOrder must return the live amendment fixture")
+		require.NotEmpty(t, placed.OrderID, "PlaceSpotOrder must return the live amendment fixture ID")
+		cleanup[0].orderID = placed.OrderID
+		amended, err := e.AmendSpotOrder(t.Context(), placed.OrderID, config.Order.CurrencyPair, false, &config.Change)
+		require.NoError(t, err, "AmendSpotOrder must not error against the live API")
+		require.NotNil(t, amended, "AmendSpotOrder must return the amended fixture order")
+		require.Equal(t, placed.OrderID, amended.OrderID, "AmendSpotOrder must amend the fixture order")
+	})
 }
 
 func TestCancelSingleSpotOrder(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	if _, err := e.CancelSingleSpotOrder(t.Context(), "1234",
-		getPair(t, asset.Spot).String(), false); err != nil {
-		t.Errorf("%s CancelSingleSpotOrder() error %v", e.Name, err)
-	}
+
+	_, err := e.CancelSingleSpotOrder(t.Context(), "", gateIOTestBTCUSDT, false)
+	require.ErrorIs(t, err, errInvalidOrderID, "CancelSingleSpotOrder must reject an empty order ID")
+	_, err = e.CancelSingleSpotOrder(t.Context(), "123", "", false)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "CancelSingleSpotOrder must reject an empty pair")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodDelete, "/api/v4/spot/orders/123", `{"id":"123","status":"cancelled"}`)
+	cancelled, err := ex.CancelSingleSpotOrder(t.Context(), "123", gateIOTestBTCUSDT, true)
+	require.NoError(t, err, "CancelSingleSpotOrder must not error")
+	require.NotNil(t, cancelled, "CancelSingleSpotOrder must decode an order")
+	assert.Equal(t, "123", cancelled.OrderID, "order ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodDelete, gotRequest.method, "request method should be DELETE")
+	assert.Equal(t, "/api/v4/spot/orders/123", gotRequest.path, "request path should match")
+	assert.Equal(t, gateIOTestBTCUSDT, gotRequest.query.Get(gateIOTestCurrencyPairQueryKey), "currency pair should match")
+	assert.Equal(t, crossMarginAccount, gotRequest.query.Get("account"), "account should match")
+
+	cancelled, err = ex.CancelSingleSpotOrder(t.Context(), "123", gateIOTestBTCUSDT, false)
+	require.NoError(t, err, "CancelSingleSpotOrder must accept an omitted account")
+	require.NotNil(t, cancelled, "CancelSingleSpotOrder must decode the response with an omitted account")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestCurrencyPairQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "a false cross-margin flag should omit the account")
+
+	requireGateIORequestErrors(t, "/api/v4/spot/orders/123", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.CancelSingleSpotOrder(ctx, "123", gateIOTestBTCUSDT, false)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_CANCEL_SINGLE_SPOT_ORDER")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveCancelSingleSpotOrder](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_CANCEL_SINGLE_SPOT_ORDER"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_CANCEL_SINGLE_SPOT_ORDER must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_CANCEL_SINGLE_SPOT_ORDER must set dedicated_test_account=true")
+		require.NoError(t, prepareGateIOLiveSpotOrder(&config.Order), "GCT_GATEIO_LIVE_CANCEL_SINGLE_SPOT_ORDER order must be a safe post-only fixture")
+		cleanup := []gateIOLiveSpotOrderCleanup{{text: config.Order.Text, currencyPair: config.Order.CurrencyPair}}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, cleanupGateIOLiveSpotOrders(ctx, e.GetSpotOrders, e.CancelSingleSpotOrder, cleanup, gateIOLiveReconciliationPollInterval, gateIOLiveOrderCleanupPollAttempts), "CancelSingleSpotOrder live cleanup should reconcile the fixture order")
+		})
+		placed, err := e.PlaceSpotOrder(t.Context(), &config.Order)
+		require.NoError(t, err, "PlaceSpotOrder must create the live cancellation fixture")
+		require.NotNil(t, placed, "PlaceSpotOrder must return the live cancellation fixture")
+		require.NotEmpty(t, placed.OrderID, "PlaceSpotOrder must return the live cancellation fixture ID")
+		cleanup[0].orderID = placed.OrderID
+		cancelled, err := e.CancelSingleSpotOrder(t.Context(), placed.OrderID, config.Order.CurrencyPair.String(), false)
+		require.NoError(t, err, "CancelSingleSpotOrder must not error against the live API")
+		require.NotNil(t, cancelled, "CancelSingleSpotOrder must return the cancelled fixture order")
+		require.Equal(t, placed.OrderID, cancelled.OrderID, "CancelSingleSpotOrder must cancel the fixture order")
+	})
 }
 
 func TestGetMySpotTradingHistory(t *testing.T) {
@@ -645,7 +2161,7 @@ func TestCreatePriceTriggeredOrder(t *testing.T) {
 			Expiration: 3600,
 		},
 		Put: PutOrderData{
-			Type:        "limit",
+			Type:        gateIOTestLimitOrderType,
 			Side:        "sell",
 			Price:       2312312,
 			Amount:      30,
@@ -816,9 +2332,35 @@ func TestQueryInterestDeductionRecords(t *testing.T) {
 	_, err = e.QueryInterestDeductionRecords(t.Context(), currency.BTC, 0, 0, time.Time{}, time.Time{}, "invalid")
 	require.ErrorIs(t, err, errInvalidLoanType)
 
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err = e.QueryInterestDeductionRecords(t.Context(), currency.EMPTYCODE, 0, 0, time.Time{}, time.Time{}, "")
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/unified/interest_records", `[{"currency":"BTC","interest":"1","type":"platform"}]`)
+	records, err := ex.QueryInterestDeductionRecords(t.Context(), currency.BTC, 2, 100, time.Time{}, time.Time{}, "platform")
 	require.NoError(t, err, "QueryInterestDeductionRecords must not error")
+	require.Len(t, records, 1, "QueryInterestDeductionRecords must decode one record")
+	assert.Equal(t, currency.BTC, records[0].Currency, "record currency should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/unified/interest_records", gotRequest.path, "request path should match")
+	assert.Equal(t, "BTC", gotRequest.query.Get("currency"), "currency should match")
+	assert.Equal(t, "2", gotRequest.query.Get("page"), "page should match")
+	assert.Equal(t, "100", gotRequest.query.Get(gateIOTestLimitQueryKey), "limit should match")
+	assert.Equal(t, "platform", gotRequest.query.Get(gateIOTestTypeQueryKey), "loan type should match")
+
+	records, err = ex.QueryInterestDeductionRecords(t.Context(), currency.EMPTYCODE, 0, 0, time.Time{}, time.Time{}, "")
+	require.NoError(t, err, "QueryInterestDeductionRecords must accept omitted optional parameters")
+	require.Len(t, records, 1, "QueryInterestDeductionRecords must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/unified/interest_records", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.QueryInterestDeductionRecords(ctx, currency.BTC, 2, 100, time.Time{}, time.Time{}, "platform")
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.QueryInterestDeductionRecords(t.Context(), currency.EMPTYCODE, 0, 0, time.Time{}, time.Time{}, "")
+		require.NoError(t, err, "QueryInterestDeductionRecords must not error against the live API")
+	})
 }
 
 func TestCurrencySupportedByCrossMargin(t *testing.T) {
@@ -846,10 +2388,45 @@ func TestGetCrossMarginAccounts(t *testing.T) {
 
 func TestGetCrossMarginAccountChangeHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	if _, err := e.GetCrossMarginAccountChangeHistory(t.Context(), currency.BTC, time.Time{}, time.Time{}, 0, 6, "in"); err != nil {
-		t.Errorf("%s GetCrossMarginAccountChangeHistory() error %v", e.Name, err)
-	}
+
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err := e.GetCrossMarginAccountChangeHistory(t.Context(), currency.EMPTYCODE, from, from.Add(-time.Minute), 0, 0, "")
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetCrossMarginAccountChangeHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/margin/cross/account_book", `[{"id":"record-1","currency":"BTC","type":"in"}]`)
+	records, err := ex.GetCrossMarginAccountChangeHistory(t.Context(), currency.BTC, from, to, 2, 25, "in")
+	require.NoError(t, err, "GetCrossMarginAccountChangeHistory must not error")
+	require.Len(t, records, 1, "GetCrossMarginAccountChangeHistory must decode one record")
+	assert.Equal(t, "record-1", records[0].ID, "record ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/margin/cross/account_book", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		"currency":              {"BTC"},
+		gateIOTestFromQueryKey:  {"1700000000"},
+		gateIOTestLimitQueryKey: {"25"},
+		"page":                  {"2"},
+		"to":                    {"1700000060"},
+		gateIOTestTypeQueryKey:  {"in"},
+	}, gotRequest.query, "request query should match")
+
+	records, err = ex.GetCrossMarginAccountChangeHistory(t.Context(), currency.EMPTYCODE, time.Time{}, time.Time{}, 0, 0, "")
+	require.NoError(t, err, "GetCrossMarginAccountChangeHistory must accept omitted optional parameters")
+	require.Len(t, records, 1, "GetCrossMarginAccountChangeHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/margin/cross/account_book", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetCrossMarginAccountChangeHistory(ctx, currency.BTC, time.Time{}, time.Time{}, 0, 0, "in")
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetCrossMarginAccountChangeHistory(t.Context(), currency.BTC, time.Time{}, time.Time{}, 0, 6, "in")
+		require.NoError(t, err, "GetCrossMarginAccountChangeHistory must not error against the live API")
+	})
 }
 
 var createCrossMarginBorrowLoanJSON = `{"id": "17",	"create_time": 1620381696159,	"update_time": 1620381696159,	"currency": "EOS",	"amount": "110.553635",	"text": "web",	"status": 2,	"repaid": "110.506649705159",	"repaid_interest": "0.046985294841",	"unpaid_interest": "0.0000074393366667"}`
@@ -953,16 +2530,127 @@ func TestGetDepositRecords(t *testing.T) {
 
 func TestTransferCurrency(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	if _, err := e.TransferCurrency(t.Context(), &TransferCurrencyParam{
-		Currency:     currency.BTC,
-		From:         e.assetTypeToString(asset.Spot),
-		To:           e.assetTypeToString(asset.Margin),
-		Amount:       1202.000,
-		CurrencyPair: getPair(t, asset.Spot),
-	}); err != nil {
-		t.Errorf("%s TransferCurrency() error %v", e.Name, err)
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+
+	for _, tc := range []struct {
+		name string
+		arg  *TransferCurrencyParam
+		err  error
+	}{
+		{name: "nil argument", err: errNilArgument},
+		{name: "empty currency", arg: &TransferCurrencyParam{}, err: currency.ErrCurrencyCodeEmpty},
+		{name: "empty from", arg: &TransferCurrencyParam{Currency: currency.BTC}, err: errTransferFromAccountRequired},
+		{name: "empty to", arg: &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount}, err: errTransferToAccountRequired},
+		{name: "same account", arg: &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: spotAccount}, err: errTransferAccountsIdentical},
+		{name: "to margin without pair", arg: &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: marginAccount}, err: errTransferPairRequired},
+		{name: "from margin without pair", arg: &TransferCurrencyParam{Currency: currency.BTC, From: marginAccount, To: spotAccount}, err: errTransferPairRequired},
+		{name: "to futures without settlement", arg: &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: futuresAccount}, err: errTransferSettlementRequired},
+		{name: "from futures without settlement", arg: &TransferCurrencyParam{Currency: currency.BTC, From: futuresAccount, To: spotAccount}, err: errTransferSettlementRequired},
+		{name: "invalid amount", arg: &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: optionsAccount}, err: errInvalidAmount},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := e.TransferCurrency(t.Context(), tc.arg)
+			require.ErrorIs(t, err, tc.err, "TransferCurrency must return the expected error")
+		})
 	}
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodPost, "/api/v4/wallet/transfers", `{"tx_id":7}`)
+	transfer, err := ex.TransferCurrency(t.Context(), &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: marginAccount, Amount: 1, CurrencyPair: pair})
+	require.NoError(t, err, "TransferCurrency must not error")
+	require.NotNil(t, transfer, "TransferCurrency must decode a response")
+	assert.Equal(t, int64(7), transfer.TransactionID, "transaction ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodPost, gotRequest.method, "request method should be POST")
+	assert.Equal(t, "/api/v4/wallet/transfers", gotRequest.path, "request path should match")
+	assert.JSONEq(t, `{"currency":"BTC","from":"spot","to":"margin","amount":"1","currency_pair":"BTC_USDT","settle":""}`, string(gotRequest.body), "request body should match")
+
+	requireGateIORequestErrors(t, "/api/v4/wallet/transfers", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.TransferCurrency(ctx, &TransferCurrencyParam{Currency: currency.BTC, From: spotAccount, To: marginAccount, Amount: 1, CurrencyPair: pair})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveTransferCurrency](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY must set dedicated_test_account=true")
+		require.True(t,
+			config.Request.From == spotAccount && config.Request.To == marginAccount || config.Request.From == marginAccount && config.Request.To == spotAccount,
+			"GCT_GATEIO_LIVE_TRANSFER_CURRENCY must transfer only between spot and isolated margin")
+		require.True(t, config.Request.CurrencyPair.IsPopulated(), "GCT_GATEIO_LIVE_TRANSFER_CURRENCY currency pair must be populated")
+		require.True(t, config.Request.Currency.Equal(config.Request.CurrencyPair.Base) || config.Request.Currency.Equal(config.Request.CurrencyPair.Quote), "GCT_GATEIO_LIVE_TRANSFER_CURRENCY currency must belong to the configured pair")
+		require.Positive(t, config.Request.Amount, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY amount must be positive")
+		type balanceState struct {
+			from types.Number
+			to   types.Number
+		}
+		readBalances := func(ctx context.Context) (balanceState, error) {
+			spotBalances, err := e.GetSpotAccounts(ctx, config.Request.Currency)
+			if err != nil {
+				return balanceState{}, err
+			}
+			var spotBalance types.Number
+			spotFound := false
+			for i := range spotBalances {
+				if spotBalances[i].Currency.Equal(config.Request.Currency) {
+					spotBalance = spotBalances[i].Available
+					spotFound = true
+					break
+				}
+			}
+			if !spotFound {
+				return balanceState{}, fmt.Errorf("spot balance for %s was not returned", config.Request.Currency)
+			}
+			marginAccounts, err := e.GetIsolatedMarginAccountList(ctx, config.Request.CurrencyPair)
+			if err != nil {
+				return balanceState{}, err
+			}
+			var marginBalance types.Number
+			marginFound := false
+			for i := range marginAccounts {
+				if !marginAccounts[i].CurrencyPair.Equal(config.Request.CurrencyPair) {
+					continue
+				}
+				if config.Request.Currency.Equal(config.Request.CurrencyPair.Base) {
+					marginBalance = marginAccounts[i].Base.Available
+				} else {
+					marginBalance = marginAccounts[i].Quote.Available
+				}
+				marginFound = true
+				break
+			}
+			if !marginFound {
+				return balanceState{}, fmt.Errorf("isolated margin balance for %s was not returned", config.Request.CurrencyPair)
+			}
+			if config.Request.From == spotAccount {
+				return balanceState{from: spotBalance, to: marginBalance}, nil
+			}
+			return balanceState{from: marginBalance, to: spotBalance}, nil
+		}
+		before, err := readBalances(t.Context())
+		require.NoError(t, err, "GCT_GATEIO_LIVE_TRANSFER_CURRENCY must snapshot both balances")
+		applied := balanceState{from: before.from - config.Request.Amount, to: before.to + config.Request.Amount}
+		equal := func(a, b balanceState) bool {
+			return math.Abs(a.from.Float64()-b.from.Float64()) <= 1e-10 && math.Abs(a.to.Float64()-b.to.Float64()) <= 1e-10
+		}
+		require.False(t, equal(before, applied), "GCT_GATEIO_LIVE_TRANSFER_CURRENCY amount must produce a distinguishable balance change")
+		restore := config.Request
+		restore.From, restore.To = config.Request.To, config.Request.From
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, reconcileGateIOLiveMutation(ctx, readBalances, func(ctx context.Context) error {
+				_, err := e.TransferCurrency(ctx, &restore)
+				return err
+			}, before, applied, equal, gateIOLiveReconciliationPollInterval, gateIOLiveReconciliationPollAttempts), "TransferCurrency live cleanup should reconcile the transferred funds")
+		})
+		_, err = e.TransferCurrency(t.Context(), &config.Request)
+		require.NoError(t, err, "TransferCurrency must not error against the live API")
+	})
 }
 
 func TestAssetTypeToString(t *testing.T) {
@@ -1015,6 +2703,7 @@ func TestIsSpotOrderAccount(t *testing.T) {
 
 func TestSubAccountTransfer(t *testing.T) {
 	t.Parallel()
+
 	ctx := t.Context()
 	req := SubAccountTransferParam{SubAccountType: "index"}
 	require.ErrorIs(t, e.SubAccountTransfer(ctx, req), currency.ErrCurrencyCodeEmpty)
@@ -1026,9 +2715,97 @@ func TestSubAccountTransfer(t *testing.T) {
 	require.ErrorIs(t, e.SubAccountTransfer(ctx, req), errInvalidAmount)
 	req.Amount = 1.337
 	require.ErrorIs(t, e.SubAccountTransfer(ctx, req), asset.ErrNotSupported)
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
+	ex, requests := setupGateIOHTTPTest(t, http.MethodPost, "/api/v4/wallet/sub_account_transfers", `{}`)
 	req.SubAccountType = "spot"
-	require.NoError(t, e.SubAccountTransfer(ctx, req))
+	require.NoError(t, ex.SubAccountTransfer(ctx, req), "SubAccountTransfer must not error")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, http.MethodPost, gotRequest.method, "request method should be POST")
+	assert.Equal(t, "/api/v4/wallet/sub_account_transfers", gotRequest.path, "request path should match")
+	assert.JSONEq(t, `{"currency":"BTC","sub_account":"1337","direction":"to","amount":"1.337","sub_account_type":"spot"}`, string(gotRequest.body), "request body should match")
+
+	requireGateIORequestErrors(t, "/api/v4/wallet/sub_account_transfers", false, func(ctx context.Context, ex *Exchange) error {
+		return ex.SubAccountTransfer(ctx, req)
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+
+		skipGateIOLiveMutationTest(t, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER")
+		config, err := decodeGateIOLiveTestJSON[gateIOLiveSubAccountTransfer](gateIOLiveTestValue(t, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER"))
+		require.NoError(t, err, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER must contain valid JSON")
+		require.True(t, config.DedicatedTestAccount, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER must set dedicated_test_account=true")
+		require.Equal(t, spotAccount, config.Request.SubAccountType, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER must use the subaccount spot balance")
+		require.False(t, config.Request.Currency.IsEmpty(), "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER currency must be set")
+		require.NotEmpty(t, config.Request.SubAccount, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER subaccount must be set")
+		require.Positive(t, config.Request.Amount, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER amount must be positive")
+		restore := config.Request
+		switch strings.ToLower(config.Request.Direction) {
+		case "to":
+			restore.Direction = "from"
+		case "from":
+			restore.Direction = "to"
+		default:
+			require.FailNow(t, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER direction must be to or from")
+		}
+		type balanceState struct {
+			from types.Number
+			to   types.Number
+		}
+		readBalances := func(ctx context.Context) (balanceState, error) {
+			spotBalances, err := e.GetSpotAccounts(ctx, config.Request.Currency)
+			if err != nil {
+				return balanceState{}, err
+			}
+			var mainBalance types.Number
+			mainFound := false
+			for i := range spotBalances {
+				if spotBalances[i].Currency.Equal(config.Request.Currency) {
+					mainBalance = spotBalances[i].Available
+					mainFound = true
+					break
+				}
+			}
+			if !mainFound {
+				return balanceState{}, fmt.Errorf("main spot balance for %s was not returned", config.Request.Currency)
+			}
+			subBalances, err := e.GetSubAccountBalances(ctx, config.Request.SubAccount)
+			if err != nil {
+				return balanceState{}, err
+			}
+			var subBalance types.Number
+			subFound := false
+			for i := range subBalances {
+				if value, ok := subBalances[i].Available[config.Request.Currency.String()]; ok {
+					subBalance = value
+					subFound = true
+					break
+				}
+			}
+			if !subFound {
+				return balanceState{}, fmt.Errorf("subaccount spot balance for %s was not returned", config.Request.Currency)
+			}
+			if strings.EqualFold(config.Request.Direction, "to") {
+				return balanceState{from: mainBalance, to: subBalance}, nil
+			}
+			return balanceState{from: subBalance, to: mainBalance}, nil
+		}
+		before, err := readBalances(t.Context())
+		require.NoError(t, err, "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER must snapshot both balances")
+		applied := balanceState{from: before.from - config.Request.Amount, to: before.to + config.Request.Amount}
+		equal := func(a, b balanceState) bool {
+			return math.Abs(a.from.Float64()-b.from.Float64()) <= 1e-10 && math.Abs(a.to.Float64()-b.to.Float64()) <= 1e-10
+		}
+		require.False(t, equal(before, applied), "GCT_GATEIO_LIVE_SUBACCOUNT_TRANSFER amount must produce a distinguishable balance change")
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), gateIOLiveReconciliationTimeout)
+			defer cancel()
+			assert.NoError(t, reconcileGateIOLiveMutation(ctx, readBalances, func(ctx context.Context) error {
+				return e.SubAccountTransfer(ctx, restore)
+			}, before, applied, equal, gateIOLiveReconciliationPollInterval, gateIOLiveReconciliationPollAttempts), "SubAccountTransfer live cleanup should reconcile the transferred funds")
+		})
+		err = e.SubAccountTransfer(t.Context(), config.Request)
+		require.NoError(t, err, "SubAccountTransfer must not error against the live API")
+	})
 }
 
 func TestGetSubAccountTransferHistory(t *testing.T) {
@@ -1150,38 +2927,143 @@ func TestGetFuturesOrderbook(t *testing.T) {
 
 func TestGetFuturesTradingHistory(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetFuturesTradingHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0, 0, "", time.Time{}, time.Time{})
-	assert.NoError(t, err, "GetFuturesTradingHistory should not error for CoinMarginedFutures")
-	_, err = e.GetFuturesTradingHistory(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 0, 0, "", time.Time{}, time.Time{})
-	assert.NoError(t, err, "GetFuturesTradingHistory should not error for USDTMarginedFutures")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.GetFuturesTradingHistory(t.Context(), currency.EMPTYCODE, pair, 0, 0, "", time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFuturesTradingHistory must reject an empty settlement currency")
+	_, err = e.GetFuturesTradingHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, 0, 0, "", time.Time{}, time.Time{})
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetFuturesTradingHistory must reject an empty contract")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetFuturesTradingHistory(t.Context(), currency.USDT, pair, 0, 0, "", from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetFuturesTradingHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/usdt/trades", `[{"id":7,"contract":"BTC_USDT","price":"2"}]`)
+	trades, err := ex.GetFuturesTradingHistory(t.Context(), currency.USDT, pair, 25, 3, "last", from, to)
+	require.NoError(t, err, "GetFuturesTradingHistory must not error")
+	require.Len(t, trades, 1, "GetFuturesTradingHistory must decode one trade")
+	assert.Equal(t, int64(7), trades[0].ID, "trade ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/futures/usdt/trades", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		"last_id":                  {"last"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"offset":                   {"3"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	trades, err = ex.GetFuturesTradingHistory(t.Context(), currency.USDT, pair, 0, 0, "", time.Time{}, time.Time{})
+	require.NoError(t, err, "GetFuturesTradingHistory must accept omitted optional parameters")
+	require.Len(t, trades, 1, "GetFuturesTradingHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/trades", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFuturesTradingHistory(ctx, currency.USDT, pair, 0, 0, "", time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetFuturesTradingHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0, 0, "", time.Time{}, time.Time{})
+		require.NoError(t, err, "GetFuturesTradingHistory must not error for coin-margined futures against the live API")
+		_, err = e.GetFuturesTradingHistory(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 0, 0, "", time.Time{}, time.Time{})
+		require.NoError(t, err, "GetFuturesTradingHistory must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestGetFuturesCandlesticks(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetFuturesCandlesticks(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures).String(), time.Time{}, time.Time{}, 0, kline.OneWeek)
-	assert.NoError(t, err, "GetFuturesCandlesticks should not error for CoinMarginedFutures")
-	_, err = e.GetFuturesCandlesticks(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures).String(), time.Time{}, time.Time{}, 0, kline.OneWeek)
-	assert.NoError(t, err, "GetFuturesCandlesticks should not error for USDTMarginedFutures")
+
+	_, err := e.GetFuturesCandlesticks(t.Context(), currency.EMPTYCODE, gateIOTestBTCUSDT, time.Time{}, time.Time{}, 0, 0)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFuturesCandlesticks must reject an empty settlement currency")
+	_, err = e.GetFuturesCandlesticks(t.Context(), currency.USDT, "", time.Time{}, time.Time{}, 0, 0)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetFuturesCandlesticks must reject an empty contract")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetFuturesCandlesticks(t.Context(), currency.USDT, gateIOTestBTCUSDT, from, from.Add(-time.Minute), 0, 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetFuturesCandlesticks must reject a reversed time range")
+	_, err = e.GetFuturesCandlesticks(t.Context(), currency.USDT, gateIOTestBTCUSDT, time.Time{}, time.Time{}, 0, kline.ThreeDay)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetFuturesCandlesticks must reject an unsupported interval")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/usdt/candlesticks", `[{"t":1738108800,"c":"2","n":"BTC_USDT"}]`)
+	candlesticks, err := ex.GetFuturesCandlesticks(t.Context(), currency.USDT, "btc_usdt", from, to, 25, kline.OneDay)
+	require.NoError(t, err, "GetFuturesCandlesticks must not error")
+	require.Len(t, candlesticks, 1, "GetFuturesCandlesticks must decode one candlestick")
+	assert.Equal(t, gateIOTestBTCUSDT, candlesticks[0].Name, "contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/futures/usdt/candlesticks", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestIntervalQueryKey: {"1d"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	candlesticks, err = ex.GetFuturesCandlesticks(t.Context(), currency.USDT, "btc_usdt", time.Time{}, time.Time{}, 0, 0)
+	require.NoError(t, err, "GetFuturesCandlesticks must accept omitted optional parameters")
+	require.Len(t, candlesticks, 1, "GetFuturesCandlesticks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/candlesticks", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFuturesCandlesticks(ctx, currency.USDT, gateIOTestBTCUSDT, time.Time{}, time.Time{}, 0, kline.OneDay)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetFuturesCandlesticks(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures).String(), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		require.NoError(t, err, "GetFuturesCandlesticks must not error for coin-margined futures against the live API")
+		_, err = e.GetFuturesCandlesticks(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures).String(), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		require.NoError(t, err, "GetFuturesCandlesticks must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestPremiumIndexKLine(t *testing.T) {
 	t.Parallel()
-	to := time.Now().UTC()
-	from := to.Add(-2 * kline.OneWeek.Duration())
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(kline.OneWeek.Duration())
+	for _, tc := range []struct {
+		name     string
+		settle   currency.Code
+		contract currency.Pair
+		path     string
+	}{
+		{name: gateIOTestCoinMarginedName, settle: currency.BTC, contract: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter), path: "/api/v4/futures/btc/premium_index"},
+		{name: gateIOTestUSDTMarginedName, settle: currency.USDT, contract: currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter), path: "/api/v4/futures/usdt/premium_index"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ex, requests := setupGateIOHTTPTest(t, http.MethodGet, tc.path, `[{"t":1700000000,"c":"2"}]`)
+			candles, err := ex.PremiumIndexKLine(t.Context(), tc.settle, tc.contract, from, to, 25, kline.OneWeek)
+			require.NoError(t, err, "PremiumIndexKLine must not error")
+			require.Len(t, candles, 1, "PremiumIndexKLine must decode one candlestick")
+			assert.Equal(t, 2.0, candles[0].ClosePrice.Float64(), "close price should match")
+			gotRequest := requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{
+				gateIOTestContractQueryKey: {tc.contract.String()},
+				gateIOTestFromQueryKey:     {"1700000000"},
+				gateIOTestIntervalQueryKey: {"7d"},
+				gateIOTestLimitQueryKey:    {"25"},
+				"to":                       {strconv.FormatInt(to.Unix(), 10)},
+			}, gotRequest.query, "request query should match")
 
-	t.Run("live request", func(t *testing.T) {
-		t.Parallel()
-		coinMarginedContract := getPair(t, asset.CoinMarginedFutures)
-		usdtMarginedContract := getPair(t, asset.USDTMarginedFutures)
-		_, err := e.PremiumIndexKLine(t.Context(), currency.BTC, coinMarginedContract, from, to, 0, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error for CoinMarginedFutures")
-		_, err = e.PremiumIndexKLine(t.Context(), currency.USDT, usdtMarginedContract, from, to, 0, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error for USDTMarginedFutures")
-		_, err = e.PremiumIndexKLine(t.Context(), currency.USDT, usdtMarginedContract, time.Time{}, time.Time{}, 1, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error with supplied limit")
-		_, err = e.PremiumIndexKLine(t.Context(), currency.USDT, usdtMarginedContract, from, to, 1, kline.OneWeek)
-		assert.NoError(t, err, "PremiumIndexKLine should not error with supplied bounds and limit")
-	})
+			candles, err = ex.PremiumIndexKLine(t.Context(), tc.settle, tc.contract, time.Time{}, time.Time{}, 0, kline.OneWeek)
+			require.NoError(t, err, "PremiumIndexKLine must accept omitted optional parameters")
+			require.Len(t, candles, 1, "PremiumIndexKLine must decode the response with omitted optional parameters")
+			gotRequest = requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{
+				gateIOTestContractQueryKey: {tc.contract.String()},
+				gateIOTestIntervalQueryKey: {"7d"},
+			}, gotRequest.query, "zero-value optional parameters should be omitted")
+		})
+	}
 
 	t.Run("validation", func(t *testing.T) {
 		t.Parallel()
@@ -1193,22 +3075,117 @@ func TestPremiumIndexKLine(t *testing.T) {
 		_, err = e.PremiumIndexKLine(t.Context(), currency.USDT, contract, time.Time{}, time.Time{}, 0, kline.FiveDay)
 		assert.ErrorIs(t, err, kline.ErrUnsupportedInterval, "unsupported interval should return expected error")
 	})
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/premium_index", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.PremiumIndexKLine(ctx, currency.USDT, currency.NewBTCUSDT(), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.PremiumIndexKLine(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		require.NoError(t, err, "PremiumIndexKLine must not error for coin-margined futures against the live API")
+		_, err = e.PremiumIndexKLine(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		require.NoError(t, err, "PremiumIndexKLine must not error for USDT-margined futures against the live API")
+	})
 }
 
-func TestGetFutureTickers(t *testing.T) {
+func TestGetFuturesTickers(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetFuturesTickers(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures))
-	assert.NoError(t, err, "GetFutureTickers should not error for CoinMarginedFutures")
-	_, err = e.GetFuturesTickers(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures))
-	assert.NoError(t, err, "GetFutureTickers should not error for USDTMarginedFutures")
+	_, err := e.GetFuturesTickers(t.Context(), currency.EMPTYCODE, currency.EMPTYPAIR)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFuturesTickers must reject an empty settlement currency")
+	for _, tc := range []struct {
+		name     string
+		settle   currency.Code
+		contract currency.Pair
+		path     string
+	}{
+		{name: gateIOTestCoinMarginedName, settle: currency.BTC, contract: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter), path: "/api/v4/futures/btc/tickers"},
+		{name: gateIOTestUSDTMarginedName, settle: currency.USDT, contract: currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter), path: "/api/v4/futures/usdt/tickers"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ex, requests := setupGateIOHTTPTest(t, http.MethodGet, tc.path, fmt.Sprintf(`[{"contract":%q,"last":"2"}]`, tc.contract.String()))
+			tickers, err := ex.GetFuturesTickers(t.Context(), tc.settle, tc.contract)
+			require.NoError(t, err, "GetFuturesTickers must not error")
+			require.Len(t, tickers, 1, "GetFuturesTickers must decode one ticker")
+			assert.Equal(t, tc.contract.String(), tickers[0].Contract, "contract should match")
+			gotRequest := requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{gateIOTestContractQueryKey: {tc.contract.String()}}, gotRequest.query, "request query should match")
+
+			tickers, err = ex.GetFuturesTickers(t.Context(), tc.settle, currency.EMPTYPAIR)
+			require.NoError(t, err, "GetFuturesTickers must accept an omitted contract")
+			require.Len(t, tickers, 1, "GetFuturesTickers must decode the response with an omitted contract")
+			gotRequest = requireGateIOHTTPRequest(t, requests)
+			assert.Empty(t, gotRequest.query, "empty contract should be omitted")
+		})
+	}
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/tickers", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFuturesTickers(ctx, currency.USDT, currency.NewBTCUSDT())
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetFuturesTickers(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures))
+		require.NoError(t, err, "GetFuturesTickers must not error for coin-margined futures against the live API")
+		_, err = e.GetFuturesTickers(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures))
+		require.NoError(t, err, "GetFuturesTickers must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestGetFutureFundingRates(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetFutureFundingRates(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0)
-	assert.NoError(t, err, "GetFutureFundingRates should not error for CoinMarginedFutures")
-	_, err = e.GetFutureFundingRates(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 0)
-	assert.NoError(t, err, "GetFutureFundingRates should not error for USDTMarginedFutures")
+	_, err := e.GetFutureFundingRates(t.Context(), currency.EMPTYCODE, currency.NewBTCUSDT(), 0)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFutureFundingRates must reject an empty settlement currency")
+	_, err = e.GetFutureFundingRates(t.Context(), currency.USDT, currency.EMPTYPAIR, 0)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetFutureFundingRates must reject an empty contract")
+	for _, tc := range []struct {
+		name     string
+		settle   currency.Code
+		contract currency.Pair
+		path     string
+	}{
+		{name: gateIOTestCoinMarginedName, settle: currency.BTC, contract: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter), path: "/api/v4/futures/btc/funding_rate"},
+		{name: gateIOTestUSDTMarginedName, settle: currency.USDT, contract: currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter), path: "/api/v4/futures/usdt/funding_rate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ex, requests := setupGateIOHTTPTest(t, http.MethodGet, tc.path, `[{"t":1700000000,"r":"0.1"}]`)
+			rates, err := ex.GetFutureFundingRates(t.Context(), tc.settle, tc.contract, 25)
+			require.NoError(t, err, "GetFutureFundingRates must not error")
+			require.Len(t, rates, 1, "GetFutureFundingRates must decode one rate")
+			assert.Equal(t, 0.1, rates[0].Rate.Float64(), "funding rate should match")
+			gotRequest := requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{
+				gateIOTestContractQueryKey: {tc.contract.String()},
+				gateIOTestLimitQueryKey:    {"25"},
+			}, gotRequest.query, "request query should match")
+
+			rates, err = ex.GetFutureFundingRates(t.Context(), tc.settle, tc.contract, 0)
+			require.NoError(t, err, "GetFutureFundingRates must accept an omitted limit")
+			require.Len(t, rates, 1, "GetFutureFundingRates must decode the response with an omitted limit")
+			gotRequest = requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{gateIOTestContractQueryKey: {tc.contract.String()}}, gotRequest.query, "zero-value limit should be omitted")
+		})
+	}
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/funding_rate", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFutureFundingRates(ctx, currency.USDT, currency.NewBTCUSDT(), 0)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetFutureFundingRates(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0)
+		require.NoError(t, err, "GetFutureFundingRates must not error for coin-margined futures against the live API")
+		_, err = e.GetFutureFundingRates(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), 0)
+		require.NoError(t, err, "GetFutureFundingRates must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestGetFuturesInsuranceBalanceHistory(t *testing.T) {
@@ -1219,10 +3196,58 @@ func TestGetFuturesInsuranceBalanceHistory(t *testing.T) {
 
 func TestGetFutureStats(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetFutureStats(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), time.Time{}, 0, 0)
-	assert.NoError(t, err, "GetFutureStats should not error for CoinMarginedFutures")
-	_, err = e.GetFutureStats(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), time.Time{}, 0, 0)
-	assert.NoError(t, err, "GetFutureStats should not error for USDTMarginedFutures")
+	_, err := e.GetFutureStats(t.Context(), currency.EMPTYCODE, currency.NewBTCUSDT(), time.Time{}, 0, 0)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFutureStats must reject an empty settlement currency")
+	_, err = e.GetFutureStats(t.Context(), currency.USDT, currency.EMPTYPAIR, time.Time{}, 0, 0)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "GetFutureStats must reject an empty contract")
+	_, err = e.GetFutureStats(t.Context(), currency.USDT, currency.NewBTCUSDT(), time.Time{}, kline.FiveDay, 0)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetFutureStats must reject an unsupported interval")
+	from := time.Unix(1_700_000_000, 0)
+	for _, tc := range []struct {
+		name     string
+		settle   currency.Code
+		contract currency.Pair
+		path     string
+	}{
+		{name: gateIOTestCoinMarginedName, settle: currency.BTC, contract: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter), path: "/api/v4/futures/btc/contract_stats"},
+		{name: gateIOTestUSDTMarginedName, settle: currency.USDT, contract: currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter), path: "/api/v4/futures/usdt/contract_stats"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ex, requests := setupGateIOHTTPTest(t, http.MethodGet, tc.path, `[{"time":1700000000,"open_interest":"3"}]`)
+			stats, err := ex.GetFutureStats(t.Context(), tc.settle, tc.contract, from, kline.OneDay, 25)
+			require.NoError(t, err, "GetFutureStats must not error")
+			require.Len(t, stats, 1, "GetFutureStats must decode one statistic")
+			assert.Equal(t, 3.0, stats[0].OpenInterest.Float64(), "open interest should match")
+			gotRequest := requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{
+				gateIOTestContractQueryKey: {tc.contract.String()},
+				gateIOTestFromQueryKey:     {"1700000000"},
+				gateIOTestIntervalQueryKey: {"1d"},
+				gateIOTestLimitQueryKey:    {"25"},
+			}, gotRequest.query, "request query should match")
+
+			stats, err = ex.GetFutureStats(t.Context(), tc.settle, tc.contract, time.Time{}, 0, 0)
+			require.NoError(t, err, "GetFutureStats must accept omitted optional parameters")
+			require.Len(t, stats, 1, "GetFutureStats must decode the response with omitted optional parameters")
+			gotRequest = requireGateIOHTTPRequest(t, requests)
+			assert.Equal(t, url.Values{gateIOTestContractQueryKey: {tc.contract.String()}}, gotRequest.query, "zero-value optional parameters should be omitted")
+		})
+	}
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/contract_stats", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFutureStats(ctx, currency.USDT, currency.NewBTCUSDT(), time.Time{}, 0, 0)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetFutureStats(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), time.Time{}, 0, 0)
+		require.NoError(t, err, "GetFutureStats must not error for coin-margined futures against the live API")
+		_, err = e.GetFutureStats(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), time.Time{}, 0, 0)
+		require.NoError(t, err, "GetFutureStats must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestGetIndexConstituent(t *testing.T) {
@@ -1233,10 +3258,50 @@ func TestGetIndexConstituent(t *testing.T) {
 
 func TestGetLiquidationHistory(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetLiquidationHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), time.Time{}, time.Time{}, 0)
-	assert.NoError(t, err, "GetLiquidationHistory should not error for CoinMarginedFutures")
-	_, err = e.GetLiquidationHistory(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), time.Time{}, time.Time{}, 0)
-	assert.NoError(t, err, "GetLiquidationHistory should not error for USDTMarginedFutures")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.GetLiquidationHistory(t.Context(), currency.EMPTYCODE, pair, time.Time{}, time.Time{}, 0)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetLiquidationHistory must reject an empty settlement currency")
+	_, err = e.GetLiquidationHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, time.Time{}, time.Time{}, 0)
+	require.ErrorIs(t, err, errInvalidOrMissingContractParam, "GetLiquidationHistory must reject an empty contract")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetLiquidationHistory(t.Context(), currency.USDT, pair, from, from.Add(-time.Minute), 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetLiquidationHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/usdt/liq_orders", `[{"contract":"BTC_USDT","order_id":7}]`)
+	liquidations, err := ex.GetLiquidationHistory(t.Context(), currency.USDT, pair, from, to, 25)
+	require.NoError(t, err, "GetLiquidationHistory must not error")
+	require.Len(t, liquidations, 1, "GetLiquidationHistory must decode one liquidation")
+	assert.Equal(t, int64(7), liquidations[0].OrderID, "order ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/futures/usdt/liq_orders", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	liquidations, err = ex.GetLiquidationHistory(t.Context(), currency.USDT, pair, time.Time{}, time.Time{}, 0)
+	require.NoError(t, err, "GetLiquidationHistory must accept omitted optional parameters")
+	require.Len(t, liquidations, 1, "GetLiquidationHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/liq_orders", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetLiquidationHistory(ctx, currency.USDT, pair, time.Time{}, time.Time{}, 0)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetLiquidationHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), time.Time{}, time.Time{}, 0)
+		require.NoError(t, err, "GetLiquidationHistory must not error for coin-margined futures against the live API")
+		_, err = e.GetLiquidationHistory(t.Context(), currency.USDT, getPair(t, asset.USDTMarginedFutures), time.Time{}, time.Time{}, 0)
+		require.NoError(t, err, "GetLiquidationHistory must not error for USDT-margined futures against the live API")
+	})
 }
 
 func TestQueryFuturesAccount(t *testing.T) {
@@ -1248,9 +3313,45 @@ func TestQueryFuturesAccount(t *testing.T) {
 
 func TestGetFuturesAccountBooks(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetFuturesAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Time{}, "dnw")
-	assert.NoError(t, err, "GetFuturesAccountBooks should not error")
+
+	_, err := e.GetFuturesAccountBooks(t.Context(), currency.EMPTYCODE, 0, time.Time{}, time.Time{}, "")
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFuturesAccountBooks must reject an empty settlement currency")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetFuturesAccountBooks(t.Context(), currency.USDT, 0, from, from.Add(-time.Minute), "")
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetFuturesAccountBooks must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/usdt/account_book", `[{"text":"fixture","balance":"2"}]`)
+	records, err := ex.GetFuturesAccountBooks(t.Context(), currency.USDT, 25, from, to, "dnw")
+	require.NoError(t, err, "GetFuturesAccountBooks must not error")
+	require.Len(t, records, 1, "GetFuturesAccountBooks must decode one record")
+	assert.Equal(t, "fixture", records[0].Text, "record text should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/futures/usdt/account_book", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestFromQueryKey:  {"1700000000"},
+		gateIOTestLimitQueryKey: {"25"},
+		"to":                    {"1700000060"},
+		gateIOTestTypeQueryKey:  {"dnw"},
+	}, gotRequest.query, "request query should match")
+
+	records, err = ex.GetFuturesAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Time{}, "")
+	require.NoError(t, err, "GetFuturesAccountBooks must accept omitted optional parameters")
+	require.Len(t, records, 1, "GetFuturesAccountBooks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/account_book", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFuturesAccountBooks(ctx, currency.USDT, 0, time.Time{}, time.Time{}, "")
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetFuturesAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Time{}, "dnw")
+		require.NoError(t, err, "GetFuturesAccountBooks must not error against the live API")
+	})
 }
 
 func TestGetAllFuturesPositionsOfUsers(t *testing.T) {
@@ -1372,9 +3473,47 @@ func TestGetMyDeliveryTradingHistory(t *testing.T) {
 
 func TestGetDeliveryPositionCloseHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetDeliveryPositionCloseHistory(t.Context(), currency.USDT, getPair(t, asset.DeliveryFutures), 0, 0, time.Time{}, time.Time{})
-	assert.NoError(t, err, "GetDeliveryPositionCloseHistory should not error")
+
+	_, err := e.GetDeliveryPositionCloseHistory(t.Context(), currency.EMPTYCODE, currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetDeliveryPositionCloseHistory must reject an empty settlement currency")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetDeliveryPositionCloseHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, 0, 0, from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetDeliveryPositionCloseHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/delivery/usdt/position_close", `[{"contract":"BTC_USDT","text":"fixture"}]`)
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	positions, err := ex.GetDeliveryPositionCloseHistory(t.Context(), currency.USDT, pair, 25, 3, from, to)
+	require.NoError(t, err, "GetDeliveryPositionCloseHistory must not error")
+	require.Len(t, positions, 1, "GetDeliveryPositionCloseHistory must decode one position")
+	assert.Equal(t, gateIOTestBTCUSDT, positions[0].Contract, "position contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/delivery/usdt/position_close", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"offset":                   {"3"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	positions, err = ex.GetDeliveryPositionCloseHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetDeliveryPositionCloseHistory must accept omitted optional parameters")
+	require.Len(t, positions, 1, "GetDeliveryPositionCloseHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/delivery/usdt/position_close", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetDeliveryPositionCloseHistory(ctx, currency.USDT, pair, 0, 0, time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetDeliveryPositionCloseHistory(t.Context(), currency.USDT, getPair(t, asset.DeliveryFutures), 0, 0, time.Time{}, time.Time{})
+		require.NoError(t, err, "GetDeliveryPositionCloseHistory must not error against the live API")
+	})
 }
 
 func TestGetDeliveryLiquidationHistory(t *testing.T) {
@@ -1572,9 +3711,47 @@ func TestGetMyFuturesTradingHistory(t *testing.T) {
 
 func TestGetFuturesPositionCloseHistory(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetFuturesPositionCloseHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0, 0, time.Time{}, time.Time{})
-	assert.NoError(t, err, "GetFuturesPositionCloseHistory should not error")
+
+	_, err := e.GetFuturesPositionCloseHistory(t.Context(), currency.EMPTYCODE, currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetFuturesPositionCloseHistory must reject an empty settlement currency")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetFuturesPositionCloseHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, 0, 0, from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetFuturesPositionCloseHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/usdt/position_close", `[{"contract":"BTC_USDT","text":"fixture"}]`)
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	positions, err := ex.GetFuturesPositionCloseHistory(t.Context(), currency.USDT, pair, 25, 3, from, to)
+	require.NoError(t, err, "GetFuturesPositionCloseHistory must not error")
+	require.Len(t, positions, 1, "GetFuturesPositionCloseHistory must decode one position")
+	assert.Equal(t, gateIOTestBTCUSDT, positions[0].Contract, "position contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/futures/usdt/position_close", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"offset":                   {"3"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	positions, err = ex.GetFuturesPositionCloseHistory(t.Context(), currency.USDT, currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetFuturesPositionCloseHistory must accept omitted optional parameters")
+	require.Len(t, positions, 1, "GetFuturesPositionCloseHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/futures/usdt/position_close", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetFuturesPositionCloseHistory(ctx, currency.USDT, pair, 0, 0, time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetFuturesPositionCloseHistory(t.Context(), currency.BTC, getPair(t, asset.CoinMarginedFutures), 0, 0, time.Time{}, time.Time{})
+		require.NoError(t, err, "GetFuturesPositionCloseHistory must not error against the live API")
+	})
 }
 
 func TestGetFuturesLiquidationHistory(t *testing.T) {
@@ -1701,14 +3878,98 @@ func TestGetDeliveryOrderbook(t *testing.T) {
 
 func TestGetDeliveryTradingHistory(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetDeliveryTradingHistory(t.Context(), currency.USDT, "", getPair(t, asset.DeliveryFutures), 0, time.Time{}, time.Time{})
-	assert.NoError(t, err, "GetDeliveryTradingHistory should not error")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.GetDeliveryTradingHistory(t.Context(), currency.EMPTYCODE, "", pair, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetDeliveryTradingHistory must reject an empty settlement currency")
+	_, err = e.GetDeliveryTradingHistory(t.Context(), currency.USDT, "", currency.EMPTYPAIR, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errInvalidOrMissingContractParam, "GetDeliveryTradingHistory must reject an empty contract")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetDeliveryTradingHistory(t.Context(), currency.USDT, "", pair, 0, from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetDeliveryTradingHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/delivery/usdt/trades", `[{"id":7,"contract":"BTC_USDT","price":"2"}]`)
+	trades, err := ex.GetDeliveryTradingHistory(t.Context(), currency.USDT, "last", pair, 25, from, to)
+	require.NoError(t, err, "GetDeliveryTradingHistory must not error")
+	require.Len(t, trades, 1, "GetDeliveryTradingHistory must decode one trade")
+	assert.Equal(t, int64(7), trades[0].ID, "trade ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/delivery/usdt/trades", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		"last_id":                  {"last"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	trades, err = ex.GetDeliveryTradingHistory(t.Context(), currency.USDT, "", pair, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetDeliveryTradingHistory must accept omitted optional parameters")
+	require.Len(t, trades, 1, "GetDeliveryTradingHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/delivery/usdt/trades", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetDeliveryTradingHistory(ctx, currency.USDT, "", pair, 0, time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetDeliveryTradingHistory(t.Context(), currency.USDT, "", getPair(t, asset.DeliveryFutures), 0, time.Time{}, time.Time{})
+		require.NoError(t, err, "GetDeliveryTradingHistory must not error against the live API")
+	})
 }
 
 func TestGetDeliveryFuturesCandlesticks(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, getPair(t, asset.DeliveryFutures), time.Time{}, time.Time{}, 0, kline.OneWeek)
-	assert.NoError(t, err, "GetDeliveryFuturesCandlesticks should not error")
+
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	_, err := e.GetDeliveryFuturesCandlesticks(t.Context(), currency.EMPTYCODE, pair, time.Time{}, time.Time{}, 0, 0)
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetDeliveryFuturesCandlesticks must reject an empty settlement currency")
+	_, err = e.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, currency.EMPTYPAIR, time.Time{}, time.Time{}, 0, 0)
+	require.ErrorIs(t, err, errInvalidOrMissingContractParam, "GetDeliveryFuturesCandlesticks must reject an empty contract")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, pair, from, from.Add(-time.Minute), 0, 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetDeliveryFuturesCandlesticks must reject a reversed time range")
+	_, err = e.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, pair, time.Time{}, time.Time{}, 0, kline.ThreeDay)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetDeliveryFuturesCandlesticks must reject an unsupported interval")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/delivery/usdt/candlesticks", `[{"t":1738108800,"c":"2","n":"BTC_USDT"}]`)
+	candlesticks, err := ex.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, pair, from, to, 25, kline.OneDay)
+	require.NoError(t, err, "GetDeliveryFuturesCandlesticks must not error")
+	require.Len(t, candlesticks, 1, "GetDeliveryFuturesCandlesticks must decode one candlestick")
+	assert.Equal(t, gateIOTestBTCUSDT, candlesticks[0].Name, "contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/delivery/usdt/candlesticks", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestIntervalQueryKey: {"1d"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	candlesticks, err = ex.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, pair, time.Time{}, time.Time{}, 0, 0)
+	require.NoError(t, err, "GetDeliveryFuturesCandlesticks must accept omitted optional parameters")
+	require.Len(t, candlesticks, 1, "GetDeliveryFuturesCandlesticks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/delivery/usdt/candlesticks", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetDeliveryFuturesCandlesticks(ctx, currency.USDT, pair, time.Time{}, time.Time{}, 0, kline.OneDay)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetDeliveryFuturesCandlesticks(t.Context(), currency.USDT, getPair(t, asset.DeliveryFutures), time.Time{}, time.Time{}, 0, kline.OneWeek)
+		require.NoError(t, err, "GetDeliveryFuturesCandlesticks must not error against the live API")
+	})
 }
 
 func TestGetDeliveryFutureTickers(t *testing.T) {
@@ -1732,9 +3993,45 @@ func TestQueryDeliveryFuturesAccounts(t *testing.T) {
 
 func TestGetDeliveryAccountBooks(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetDeliveryAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Now(), "dnw")
-	assert.NoError(t, err, "GetDeliveryAccountBooks should not error")
+
+	_, err := e.GetDeliveryAccountBooks(t.Context(), currency.EMPTYCODE, 0, time.Time{}, time.Time{}, "")
+	require.ErrorIs(t, err, errEmptyOrInvalidSettlementCurrency, "GetDeliveryAccountBooks must reject an empty settlement currency")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetDeliveryAccountBooks(t.Context(), currency.USDT, 0, from, from.Add(-time.Minute), "")
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetDeliveryAccountBooks must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/delivery/usdt/account_book", `[{"text":"fixture","balance":"2"}]`)
+	records, err := ex.GetDeliveryAccountBooks(t.Context(), currency.USDT, 25, from, to, "dnw")
+	require.NoError(t, err, "GetDeliveryAccountBooks must not error")
+	require.Len(t, records, 1, "GetDeliveryAccountBooks must decode one record")
+	assert.Equal(t, "fixture", records[0].Text, "record text should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/delivery/usdt/account_book", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestFromQueryKey:  {"1700000000"},
+		gateIOTestLimitQueryKey: {"25"},
+		"to":                    {"1700000060"},
+		gateIOTestTypeQueryKey:  {"dnw"},
+	}, gotRequest.query, "request query should match")
+
+	records, err = ex.GetDeliveryAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Time{}, "")
+	require.NoError(t, err, "GetDeliveryAccountBooks must accept omitted optional parameters")
+	require.Len(t, records, 1, "GetDeliveryAccountBooks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/delivery/usdt/account_book", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetDeliveryAccountBooks(ctx, currency.USDT, 0, time.Time{}, time.Time{}, "")
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, true)
+		_, err := e.GetDeliveryAccountBooks(t.Context(), currency.USDT, 0, time.Time{}, time.Now(), "dnw")
+		require.NoError(t, err, "GetDeliveryAccountBooks must not error against the live API")
+	})
 }
 
 func TestGetAllDeliveryPositionsOfUser(t *testing.T) {
@@ -1780,13 +4077,13 @@ func TestGetExpirationTime(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetExpirationTime(t.Context(), "")
 	assert.ErrorIs(t, err, errInvalidUnderlying)
-	_, err = e.GetExpirationTime(t.Context(), "BTC_USDT")
+	_, err = e.GetExpirationTime(t.Context(), gateIOTestBTCUSDT)
 	assert.NoError(t, err, "GetExpirationTime should not error")
 }
 
 func TestGetAllContractOfUnderlyingWithinExpiryDate(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetAllContractOfUnderlyingWithinExpiryDate(t.Context(), "BTC_USDT", time.Time{}); err != nil {
+	if _, err := e.GetAllContractOfUnderlyingWithinExpiryDate(t.Context(), gateIOTestBTCUSDT, time.Time{}); err != nil {
 		t.Errorf("%s GetAllContractOfUnderlyingWithinExpiryDate() error %v", e.Name, err)
 	}
 }
@@ -1800,14 +4097,51 @@ func TestGetOptionsSpecifiedContractDetail(t *testing.T) {
 
 func TestGetSettlementHistory(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetSettlementHistory(t.Context(), "BTC_USDT", 0, 0, time.Time{}, time.Time{}); err != nil {
-		t.Errorf("%s GetSettlementHistory() error %v", e.Name, err)
-	}
+
+	_, err := e.GetSettlementHistory(t.Context(), "", 0, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errInvalidUnderlying, "GetSettlementHistory must reject an empty underlying")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetSettlementHistory(t.Context(), gateIOTestBTCUSDT, 0, 0, from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetSettlementHistory must reject a reversed time range")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/options/settlements", `[{"contract":"BTC_USDT","settle_price":"2"}]`)
+	settlements, err := ex.GetSettlementHistory(t.Context(), gateIOTestBTCUSDT, 3, 25, from, to)
+	require.NoError(t, err, "GetSettlementHistory must not error")
+	require.Len(t, settlements, 1, "GetSettlementHistory must decode one settlement")
+	assert.Equal(t, gateIOTestBTCUSDT, settlements[0].Contract, "settlement contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/options/settlements", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestFromQueryKey:  {"1700000000"},
+		gateIOTestLimitQueryKey: {"25"},
+		"offset":                {"3"},
+		"to":                    {"1700000060"},
+		"underlying":            {gateIOTestBTCUSDT},
+	}, gotRequest.query, "request query should match")
+
+	settlements, err = ex.GetSettlementHistory(t.Context(), gateIOTestBTCUSDT, 0, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetSettlementHistory must accept omitted optional parameters")
+	require.Len(t, settlements, 1, "GetSettlementHistory must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{"underlying": {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/options/settlements", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetSettlementHistory(ctx, gateIOTestBTCUSDT, 0, 0, time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetSettlementHistory(t.Context(), gateIOTestBTCUSDT, 0, 0, time.Time{}, time.Time{})
+		require.NoError(t, err, "GetSettlementHistory must not error against the live API")
+	})
 }
 
 func TestGetOptionsSpecifiedSettlementHistory(t *testing.T) {
 	t.Parallel()
-	underlying := "BTC_USDT"
+	underlying := gateIOTestBTCUSDT
 	optionsSettlement, err := e.GetSettlementHistory(t.Context(), underlying, 0, 1, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatal(err)
@@ -1880,7 +4214,7 @@ func TestInitiateFlashSwapOrderReview(t *testing.T) {
 func TestGetMyOptionsSettlements(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	if _, err := e.GetMyOptionsSettlements(t.Context(), "BTC_USDT", currency.EMPTYPAIR, 0, 0, time.Time{}); err != nil {
+	if _, err := e.GetMyOptionsSettlements(t.Context(), gateIOTestBTCUSDT, currency.EMPTYPAIR, 0, 0, time.Time{}); err != nil {
 		t.Errorf("%s GetMyOptionsSettlements() error %v", e.Name, err)
 	}
 }
@@ -1923,7 +4257,7 @@ func TestGetSpecifiedContractPosition(t *testing.T) {
 func TestGetUsersLiquidationHistoryForSpecifiedUnderlying(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	if _, err := e.GetUsersLiquidationHistoryForSpecifiedUnderlying(t.Context(), "BTC_USDT", currency.EMPTYPAIR); err != nil {
+	if _, err := e.GetUsersLiquidationHistoryForSpecifiedUnderlying(t.Context(), gateIOTestBTCUSDT, currency.EMPTYPAIR); err != nil {
 		t.Errorf("%s GetUsersLiquidationHistoryForSpecifiedUnderlying() error %v", e.Name, err)
 	}
 }
@@ -1983,7 +4317,7 @@ func TestGetMyOptionsTradingHistory(t *testing.T) {
 	t.Parallel()
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	_, err := e.GetMyOptionsTradingHistory(t.Context(), "BTC_USDT", currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
+	_, err := e.GetMyOptionsTradingHistory(t.Context(), gateIOTestBTCUSDT, currency.EMPTYPAIR, 0, 0, time.Time{}, time.Time{})
 	require.NoError(t, err)
 }
 
@@ -2019,37 +4353,158 @@ func TestGetOptionsOrderbook(t *testing.T) {
 
 func TestGetOptionsTickers(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetOptionsTickers(t.Context(), "BTC_USDT"); err != nil {
+	if _, err := e.GetOptionsTickers(t.Context(), gateIOTestBTCUSDT); err != nil {
 		t.Errorf("%s GetOptionsTickers() error %v", e.Name, err)
 	}
 }
 
 func TestGetOptionUnderlyingTickers(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetOptionUnderlyingTickers(t.Context(), "BTC_USDT"); err != nil {
+	if _, err := e.GetOptionUnderlyingTickers(t.Context(), gateIOTestBTCUSDT); err != nil {
 		t.Errorf("%s GetOptionUnderlyingTickers() error %v", e.Name, err)
 	}
 }
 
 func TestGetOptionFuturesCandlesticks(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetOptionFuturesCandlesticks(t.Context(), getPair(t, asset.Options), 0, time.Now().Add(-time.Hour*10), time.Time{}, kline.ThirtyMin); err != nil {
-		t.Error(err)
-	}
+
+	_, err := e.GetOptionFuturesCandlesticks(t.Context(), currency.EMPTYPAIR, 0, time.Time{}, time.Time{}, kline.OneDay)
+	require.ErrorIs(t, err, errInvalidOrMissingContractParam, "GetOptionFuturesCandlesticks must reject an empty contract")
+	pair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetOptionFuturesCandlesticks(t.Context(), pair, 0, from, from.Add(-time.Minute), kline.OneDay)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetOptionFuturesCandlesticks must reject a reversed time range")
+	_, err = e.GetOptionFuturesCandlesticks(t.Context(), pair, 0, time.Time{}, time.Time{}, kline.ThreeDay)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetOptionFuturesCandlesticks must reject an unsupported interval")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/options/candlesticks", `[{"t":1738108800,"c":"2","n":"BTC_USDT"}]`)
+	candlesticks, err := ex.GetOptionFuturesCandlesticks(t.Context(), pair, 25, from, to, kline.OneDay)
+	require.NoError(t, err, "GetOptionFuturesCandlesticks must not error")
+	require.Len(t, candlesticks, 1, "GetOptionFuturesCandlesticks must decode one candlestick")
+	assert.Equal(t, gateIOTestBTCUSDT, candlesticks[0].Name, "contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/options/candlesticks", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestIntervalQueryKey: {"1d"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+	}, gotRequest.query, "request query should match")
+
+	candlesticks, err = ex.GetOptionFuturesCandlesticks(t.Context(), pair, 0, time.Time{}, time.Time{}, kline.OneDay)
+	require.NoError(t, err, "GetOptionFuturesCandlesticks must accept omitted optional parameters")
+	require.Len(t, candlesticks, 1, "GetOptionFuturesCandlesticks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestContractQueryKey: {gateIOTestBTCUSDT}, gateIOTestIntervalQueryKey: {"1d"}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/options/candlesticks", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetOptionFuturesCandlesticks(ctx, pair, 0, time.Time{}, time.Time{}, kline.OneDay)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetOptionFuturesCandlesticks(t.Context(), getPair(t, asset.Options), 0, time.Now().Add(-10*time.Hour), time.Time{}, kline.ThirtyMin)
+		require.NoError(t, err, "GetOptionFuturesCandlesticks must not error against the live API")
+	})
 }
 
 func TestGetOptionFuturesMarkPriceCandlesticks(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetOptionFuturesMarkPriceCandlesticks(t.Context(), "BTC_USDT", 0, time.Time{}, time.Time{}, kline.OneMonth); err != nil {
-		t.Errorf("%s GetOptionFuturesMarkPriceCandlesticks() error %v", e.Name, err)
-	}
+
+	_, err := e.GetOptionFuturesMarkPriceCandlesticks(t.Context(), "", 0, time.Time{}, time.Time{}, 0)
+	require.ErrorIs(t, err, errInvalidUnderlying, "GetOptionFuturesMarkPriceCandlesticks must reject an empty underlying")
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err = e.GetOptionFuturesMarkPriceCandlesticks(t.Context(), gateIOTestBTCUSDT, 0, from, from.Add(-time.Minute), 0)
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetOptionFuturesMarkPriceCandlesticks must reject a reversed time range")
+	_, err = e.GetOptionFuturesMarkPriceCandlesticks(t.Context(), gateIOTestBTCUSDT, 0, time.Time{}, time.Time{}, kline.ThreeDay)
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "GetOptionFuturesMarkPriceCandlesticks must reject an unsupported interval")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/options/underlying/candlesticks", `[{"t":1738108800,"c":"2","n":"BTC_USDT"}]`)
+	candlesticks, err := ex.GetOptionFuturesMarkPriceCandlesticks(t.Context(), gateIOTestBTCUSDT, 25, from, to, kline.OneDay)
+	require.NoError(t, err, "GetOptionFuturesMarkPriceCandlesticks must not error")
+	require.Len(t, candlesticks, 1, "GetOptionFuturesMarkPriceCandlesticks must decode one candlestick")
+	assert.Equal(t, gateIOTestBTCUSDT, candlesticks[0].Name, "contract should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/options/underlying/candlesticks", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestIntervalQueryKey: {"1d"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"to":                       {"1700000060"},
+		"underlying":               {gateIOTestBTCUSDT},
+	}, gotRequest.query, "request query should match")
+
+	candlesticks, err = ex.GetOptionFuturesMarkPriceCandlesticks(t.Context(), gateIOTestBTCUSDT, 0, time.Time{}, time.Time{}, 0)
+	require.NoError(t, err, "GetOptionFuturesMarkPriceCandlesticks must accept omitted optional parameters")
+	require.Len(t, candlesticks, 1, "GetOptionFuturesMarkPriceCandlesticks must decode the response with omitted optional parameters")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{"underlying": {gateIOTestBTCUSDT}}, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/options/underlying/candlesticks", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetOptionFuturesMarkPriceCandlesticks(ctx, gateIOTestBTCUSDT, 0, time.Time{}, time.Time{}, kline.OneDay)
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetOptionFuturesMarkPriceCandlesticks(t.Context(), gateIOTestBTCUSDT, 0, time.Time{}, time.Time{}, kline.OneMonth)
+		require.NoError(t, err, "GetOptionFuturesMarkPriceCandlesticks must not error against the live API")
+	})
 }
 
 func TestGetOptionsTradeHistory(t *testing.T) {
 	t.Parallel()
-	if _, err := e.GetOptionsTradeHistory(t.Context(), getPair(t, asset.Options), "C", 0, 0, time.Time{}, time.Time{}); err != nil {
-		t.Errorf("%s GetOptionsTradeHistory() error %v", e.Name, err)
-	}
+
+	from := time.Unix(1_700_000_000, 0)
+	to := from.Add(time.Minute)
+	_, err := e.GetOptionsTradeHistory(t.Context(), currency.EMPTYPAIR, "C", 0, 0, from, from.Add(-time.Minute))
+	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetOptionsTradeHistory must reject a reversed time range")
+	_, err = e.GetOptionsTradeHistory(t.Context(), currency.EMPTYPAIR, "invalid", 0, 0, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, errInvalidOptionsCallType, "GetOptionsTradeHistory must reject an unsupported call type")
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/options/trades", `[{"id":7,"contract":"BTC_USDT","price":"2"}]`)
+	trades, err := ex.GetOptionsTradeHistory(t.Context(), currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter), "c", 3, 25, from, to)
+	require.NoError(t, err, "GetOptionsTradeHistory must not error")
+	require.Len(t, trades, 1, "GetOptionsTradeHistory must decode one trade")
+	assert.Equal(t, int64(7), trades[0].ID, "trade ID should match")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, "/api/v4/options/trades", gotRequest.path, "request path should match")
+	assert.Equal(t, url.Values{
+		gateIOTestContractQueryKey: {gateIOTestBTCUSDT},
+		gateIOTestFromQueryKey:     {"1700000000"},
+		gateIOTestLimitQueryKey:    {"25"},
+		"offset":                   {"3"},
+		"to":                       {"1700000060"},
+		gateIOTestTypeQueryKey:     {"C"},
+	}, gotRequest.query, "request query should match")
+
+	_, err = ex.GetOptionsTradeHistory(t.Context(), currency.EMPTYPAIR, "p", 0, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetOptionsTradeHistory must accept put call types")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Equal(t, url.Values{gateIOTestTypeQueryKey: {"P"}}, gotRequest.query, "put call type should be normalized")
+
+	_, err = ex.GetOptionsTradeHistory(t.Context(), currency.EMPTYPAIR, "", 0, 0, time.Time{}, time.Time{})
+	require.NoError(t, err, "GetOptionsTradeHistory must accept an omitted call type")
+	gotRequest = requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "zero-value optional parameters should be omitted")
+
+	requireGateIORequestErrors(t, "/api/v4/options/trades", true, func(ctx context.Context, ex *Exchange) error {
+		_, err := ex.GetOptionsTradeHistory(ctx, currency.EMPTYPAIR, "C", 0, 0, time.Time{}, time.Time{})
+		return err
+	})
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		_, err := e.GetOptionsTradeHistory(t.Context(), getPair(t, asset.Options), "C", 0, 0, time.Time{}, time.Time{})
+		require.NoError(t, err, "GetOptionsTradeHistory must not error against the live API")
+	})
 }
 
 // Sub-account endpoints
@@ -2084,17 +4539,139 @@ func TestGetSingleSubAccount(t *testing.T) {
 
 func TestFetchTradablePairs(t *testing.T) {
 	t.Parallel()
-	for _, a := range e.GetAssetTypes(false) {
-		pairs, err := e.FetchTradablePairs(t.Context(), a)
+	t.Run("margin product sources", testFetchTradablePairsUsesMarginProductSources)
+
+	responses := map[string]string{
+		gateIOTestSpotCurrencyPairsPath:     `[{"id":"BTC_USDT","base":"BTC","quote":"USDT","trade_status":"tradable"},{"id":"DOGE_USDT","base":"DOGE","quote":"USDT","trade_status":"untradable"}]`,
+		"/api/v4/margin/uni/currency_pairs": `[{"currency_pair":"BTC_USDT","status":"enabled","delisted_time":0},{"currency_pair":"DOGE_USDT","status":"disabled","delisted_time":0}]`,
+		gateIOTestCrossMarginCurrenciesPath: `[{"name":"BTC","min_borrow_amount":"1","loanable":true,"status":1},{"name":"USDT","min_borrow_amount":"1","loanable":true,"status":1}]`,
+		"/api/v4/futures/btc/contracts":     `[{"name":"BTC_USD","delisted_time":0},{"name":"DOGE_USD","delisted_time":1600000000}]`,
+		"/api/v4/futures/usdt/contracts":    `[{"name":"BTC_USDT","delisted_time":0},{"name":"DOGE_USDT","delisted_time":1600000000}]`,
+		gateIOTestDeliveryUSDTContractsPath: `[{"name":"BTC_USDT_20260925","in_delisting":false},{"name":"DOGE_USDT_20260925","in_delisting":true}]`,
+		gateIOTestOptionsUnderlyingsPath:    gateIOTestOptionsUnderlyingResponse,
+		gateIOTestOptionsContractsPath:      `[{"name":"BTC_USDT-20260925-50000-C"}]`,
+	}
+	ex := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response, ok := responses[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing tradable-pairs response should not error")
+	}))
+	expectedPairs := map[asset.Item]currency.Pair{
+		asset.Spot:                currency.NewBTCUSDT(),
+		asset.Margin:              currency.NewBTCUSDT(),
+		asset.CrossMargin:         currency.NewBTCUSDT(),
+		asset.CoinMarginedFutures: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter),
+		asset.USDTMarginedFutures: currency.NewBTCUSDT(),
+		asset.DeliveryFutures:     currency.NewPairWithDelimiter("BTC", "USDT_20260925", currency.UnderscoreDelimiter),
+		asset.Options:             currency.NewPairWithDelimiter("BTC", "USDT-20260925-50000-C", currency.UnderscoreDelimiter),
+	}
+	for _, a := range []asset.Item{asset.Spot, asset.Margin, asset.CrossMargin, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures, asset.Options} {
+		pairs, err := ex.FetchTradablePairs(t.Context(), a)
 		require.NoErrorf(t, err, "FetchTradablePairs must not error for %s", a)
-		require.NotEmptyf(t, pairs, "FetchTradablePairs must return some pairs for %s", a)
-		if a == asset.USDTMarginedFutures || a == asset.CoinMarginedFutures {
-			for _, p := range pairs {
-				_, err := getSettlementCurrency(p, a)
-				require.NoErrorf(t, err, "Fetched pair %s %s must not error on getSettlementCurrency", a, p)
+		require.Lenf(t, pairs, 1, "FetchTradablePairs must filter unavailable pairs for %s", a)
+		assert.Truef(t, pairs[0].Equal(expectedPairs[a]), "FetchTradablePairs should retain the expected contract for %s", a)
+	}
+
+	_, err := ex.FetchTradablePairs(t.Context(), asset.Empty)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "FetchTradablePairs must reject an unsupported asset")
+	ex.CurrencyPairs.Pairs[asset.Futures] = new(currency.PairStore)
+	_, err = ex.FetchTradablePairs(t.Context(), asset.Futures)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "FetchTradablePairs must reject an unsupported mapped asset")
+
+	failing := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := responses[r.URL.Path]; !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `{`)
+		assert.NoError(t, err, "writing invalid response should not error")
+	}))
+	for _, a := range []asset.Item{asset.Spot, asset.Margin, asset.CrossMargin, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures, asset.Options} {
+		_, err = failing.FetchTradablePairs(t.Context(), a)
+		require.Errorf(t, err, "FetchTradablePairs must return endpoint errors for %s", a)
+	}
+
+	crossSpotFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var response string
+		switch r.URL.Path {
+		case gateIOTestCrossMarginCurrenciesPath:
+			response = `[{"name":"BTC","min_borrow_amount":"1","loanable":true,"status":1}]`
+		case gateIOTestSpotCurrencyPairsPath:
+			response = `{`
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing cross-margin response should not error")
+	}))
+	_, err = crossSpotFailure.FetchTradablePairs(t.Context(), asset.CrossMargin)
+	require.Error(t, err, "FetchTradablePairs must return the spot endpoint error for cross margin")
+
+	deliveryParseFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != gateIOTestDeliveryUSDTContractsPath {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `[{"name":"","in_delisting":false}]`)
+		assert.NoError(t, err, "writing delivery response should not error")
+	}))
+	_, err = deliveryParseFailure.FetchTradablePairs(t.Context(), asset.DeliveryFutures)
+	require.Error(t, err, "FetchTradablePairs must return delivery pair parsing errors")
+
+	optionsFailures := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var response string
+		switch r.URL.Path {
+		case gateIOTestOptionsUnderlyingsPath:
+			response = gateIOTestOptionsUnderlyingResponse
+		case gateIOTestOptionsContractsPath:
+			response = `{`
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing options response should not error")
+	}))
+	_, err = optionsFailures.FetchTradablePairs(t.Context(), asset.Options)
+	require.Error(t, err, "FetchTradablePairs must return options contract endpoint errors")
+
+	optionsParseFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var response string
+		switch r.URL.Path {
+		case gateIOTestOptionsUnderlyingsPath:
+			response = gateIOTestOptionsUnderlyingResponse
+		case gateIOTestOptionsContractsPath:
+			response = `[{"name":""}]`
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing options response should not error")
+	}))
+	_, err = optionsParseFailure.FetchTradablePairs(t.Context(), asset.Options)
+	require.Error(t, err, "FetchTradablePairs must return options pair parsing errors")
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		for _, a := range e.GetAssetTypes(false) {
+			pairs, err := e.FetchTradablePairs(t.Context(), a)
+			require.NoErrorf(t, err, "FetchTradablePairs must not error for %s against the live API", a)
+			require.NotEmptyf(t, pairs, "FetchTradablePairs must return pairs for %s from the live API", a)
+			if a == asset.USDTMarginedFutures || a == asset.CoinMarginedFutures {
+				for _, p := range pairs {
+					_, err := getSettlementCurrency(p, a)
+					require.NoErrorf(t, err, "fetched pair %s %s must have a live settlement currency", a, p)
+				}
 			}
 		}
-	}
+	})
 }
 
 func TestUpdateTickers(t *testing.T) {
@@ -2103,6 +4680,11 @@ func TestUpdateTickers(t *testing.T) {
 		err := e.UpdateTickers(t.Context(), a)
 		assert.NoErrorf(t, err, "UpdateTickers should not error for %s", a)
 	}
+
+	ex, requests := setupGateIOHTTPTest(t, http.MethodGet, "/api/v4/futures/btc/tickers", `[{"contract":"BTC_USD","last":"2"}]`)
+	require.NoError(t, ex.UpdateTickers(t.Context(), asset.CoinMarginedFutures), "UpdateTickers must not error for coin-margined futures")
+	gotRequest := requireGateIOHTTPRequest(t, requests)
+	assert.Empty(t, gotRequest.query, "request query should be empty")
 }
 
 func TestUpdateOrderbook(t *testing.T) {
@@ -2967,66 +5549,245 @@ func TestUnlockSubAccount(t *testing.T) {
 
 func TestUpdateOrderExecutionLimits(t *testing.T) {
 	t.Parallel()
-	testexch.UpdatePairsOnce(t, e)
-	for _, a := range e.GetAssetTypes(false) {
-		t.Run(a.String(), func(t *testing.T) {
-			t.Parallel()
-			require.NoError(t, e.UpdateOrderExecutionLimits(t.Context(), a), "UpdateOrderExecutionLimits must not error")
-			pairs, err := e.GetAvailablePairs(a)
-			require.NoError(t, err, "GetAvailablePairs must not error")
-			for _, p := range pairs {
-				l, err := e.GetOrderExecutionLimits(a, p)
-				require.NoErrorf(t, err, "GetOrderExecutionLimits must not error for %s", p)
-				require.NotNilf(t, l, "GetOrderExecutionLimits %s result cannot be nil", p)
-				assert.Equalf(t, a, l.Key.Asset, "asset should equal for %s", p)
-				assert.Truef(t, p.Equal(l.Key.Pair()), "pair should equal for %s", p)
-				switch a {
-				case asset.Options:
-					assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
-					assert.Positivef(t, l.MaximumBaseAmount, "MaximumBaseAmount should be positive for %s", p)
-					assert.Positivef(t, l.PriceStepIncrementSize, "PriceStepIncrementSize should be positive for %s", p)
-					assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
-					assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
-				case asset.USDTMarginedFutures:
-					assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
-					assert.NotZerof(t, l.Listed, "Listed should be populated for %s", p)
-					fallthrough
-				case asset.CoinMarginedFutures:
-					if !l.Delisted.IsZero() {
-						assert.Truef(t, l.Delisted.After(l.Delisting), "Delisted should be after Delisting for %s", p)
-					}
-					assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
-				case asset.Spot:
-					assert.Positivef(t, l.MinimumQuoteAmount, "MinimumQuoteAmount should be positive for %s", p)
-					if l.QuoteStepIncrementSize != 0 {
-						assert.Positivef(t, l.QuoteStepIncrementSize, "QuoteStepIncrementSize should be positive for %s when set", p)
-					}
-					assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
-					assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
-				case asset.Margin, asset.CrossMargin:
-					assert.Positivef(t, l.MinimumQuoteAmount, "MinimumQuoteAmount should be positive for %s", p)
-					assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
-					assert.Positivef(t, l.PriceStepIncrementSize, "PriceStepIncrementSize should be positive for %s", p)
-					invalidPrice := l.PriceStepIncrementSize / 2
-					err = l.Validate(invalidPrice, l.MinimumBaseAmount, order.Limit)
-					assert.ErrorIsf(t, err, limits.ErrPriceExceedsStep, "Validate should reject an invalid price tick for %s", p)
-					if l.QuoteStepIncrementSize != 0 {
-						assert.Positivef(t, l.QuoteStepIncrementSize, "QuoteStepIncrementSize should be positive for %s when set", p)
-					}
-					if l.AmountStepIncrementSize != 0 {
-						assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s when set", p)
-					}
-					assert.Positivef(t, l.MinimumBorrowAmountBase, "MinimumBorrowAmountBase should be positive for %s", p)
-					assert.Positivef(t, l.MinimumBorrowAmountQuote, "MinimumBorrowAmountQuote should be positive for %s", p)
-				case asset.DeliveryFutures:
-					assert.NotZerof(t, l.Expiry, "Expiry should be populated for %s", p)
-					assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
-					assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
-					assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
-				}
-			}
-		})
+	t.Run("product borrow minimums", testUpdateOrderExecutionLimitsUsesProductBorrowMinimums)
+
+	responses := map[string]string{
+		gateIOTestSpotCurrencyPairsPath:     `[{"id":"BTC_USDT","base":"BTC","quote":"USDT","min_base_amount":"0","min_quote_amount":"1","max_base_amount":"5","max_quote_amount":"6","amount_precision":3,"precision":2,"trade_status":"tradable","sell_start":1700000000,"buy_start":1700000100,"delisting_time":1800000000,"up_rate":"0.2","down_rate":"0.1","market_order_max_stock":"7"},{"id":"ETH_USDT","base":"ETH","quote":"USDT","min_base_amount":"1","min_quote_amount":"1","amount_precision":3,"precision":2,"trade_status":"tradable"},{"id":"UNTRADEABLE_USDT","base":"UNTRADEABLE","quote":"USDT","trade_status":"untradable"}]`,
+		"/api/v4/margin/uni/currency_pairs": `[{"currency_pair":"BTC_USDT","base_min_borrow_amount":"0.01","quote_min_borrow_amount":"2","status":"enabled","delisted_time":0},{"currency_pair":"DOGE_USDT","base_min_borrow_amount":"1","quote_min_borrow_amount":"2","status":"enabled","delisted_time":0},{"currency_pair":"ETH_USDT","base_min_borrow_amount":"1","quote_min_borrow_amount":"2","status":"disabled","delisted_time":0}]`,
+		gateIOTestCrossMarginCurrenciesPath: `[{"name":"BTC","min_borrow_amount":"0.03","loanable":true,"status":1},{"name":"USDT","min_borrow_amount":"4","loanable":true,"status":1}]`,
+		"/api/v4/futures/btc/contracts":     `[{"name":"MBABYDOGE_USD","order_size_min":"1","order_size_max":"2","order_price_round":"0.1","quanto_multiplier":"1"},{"name":"BTC_USD","order_size_min":"1","order_size_max":"2","order_price_round":"0.1","quanto_multiplier":"1","launch_time":1700000000,"delisting_time":1750000000,"delisted_time":1800000000}]`,
+		"/api/v4/futures/usdt/contracts":    `[{"name":"MBABYDOGE_USDT","order_size_min":"1","order_size_max":"2","order_price_round":"0.1","quanto_multiplier":"1"},{"name":"BTC_USDT","order_size_min":"1","order_size_max":"2","order_price_round":"0.1","quanto_multiplier":"1","launch_time":1700000000,"delisting_time":1750000000,"delisted_time":1800000000}]`,
+		"/api/v4/delivery/btc/contracts":    `[{"name":"MBABYDOGE_USD_20260925","order_size_min":1,"order_size_max":2,"order_price_round":"0.1","quanto_multiplier":"1"},{"name":"BTC_USD_20260925","order_size_min":1,"order_size_max":2,"order_price_round":"0.1","quanto_multiplier":"1","expire_time":1800000000}]`,
+		gateIOTestDeliveryUSDTContractsPath: `[{"name":"MBABYDOGE_USDT_20260925","order_size_min":1,"order_size_max":2,"order_price_round":"0.1","quanto_multiplier":"1"},{"name":"BTC_USDT_20260925","order_size_min":1,"order_size_max":2,"order_price_round":"0.1","quanto_multiplier":"1","expire_time":1800000000}]`,
+		gateIOTestOptionsUnderlyingsPath:    gateIOTestOptionsUnderlyingResponse,
+		gateIOTestOptionsContractsPath:      `[{"name":"BTC_USDT-20260925-50000-C","order_size_min":"1","order_size_max":"2","order_price_round":"0.1","multiplier":"1"}]`,
 	}
+	ex := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response, ok := responses[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing execution-limits response should not error")
+	}))
+	for _, tc := range []struct {
+		asset                    asset.Item
+		pair                     currency.Pair
+		scaledPair               currency.Pair
+		minimumBaseAmount        float64
+		maximumBaseAmount        float64
+		minimumQuoteAmount       float64
+		maximumQuoteAmount       float64
+		priceStepIncrementSize   float64
+		amountStepIncrementSize  float64
+		multiplierDecimal        float64
+		priceDivisor             float64
+		minimumBorrowAmountBase  float64
+		minimumBorrowAmountQuote float64
+		multiplierUp             float64
+		multiplierDown           float64
+		marketMaxQty             float64
+		listedUnix               int64
+		delistingUnix            int64
+		delistedUnix             int64
+		expiryUnix               int64
+	}{
+		{asset: asset.Spot, pair: currency.NewBTCUSDT(), minimumBaseAmount: 0.001, maximumBaseAmount: 5, minimumQuoteAmount: 1, maximumQuoteAmount: 6, priceStepIncrementSize: 0.01, amountStepIncrementSize: 0.001, multiplierUp: 0.2, multiplierDown: 0.1, marketMaxQty: 7, listedUnix: 1_700_000_000, delistedUnix: 1_800_000_000},
+		{asset: asset.Margin, pair: currency.NewBTCUSDT(), minimumBaseAmount: 0.001, minimumQuoteAmount: 1, priceStepIncrementSize: 0.01, amountStepIncrementSize: 0.001, minimumBorrowAmountBase: 0.01, minimumBorrowAmountQuote: 2, delistedUnix: 1_800_000_000},
+		{asset: asset.CrossMargin, pair: currency.NewBTCUSDT(), minimumBaseAmount: 0.001, minimumQuoteAmount: 1, priceStepIncrementSize: 0.01, amountStepIncrementSize: 0.001, minimumBorrowAmountBase: 0.03, minimumBorrowAmountQuote: 4, delistedUnix: 1_800_000_000},
+		{asset: asset.CoinMarginedFutures, pair: currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter), scaledPair: currency.NewPairWithDelimiter(divisorCurrency.String(), "USD", currency.UnderscoreDelimiter), minimumBaseAmount: 1, maximumBaseAmount: 2, priceStepIncrementSize: 0.1, amountStepIncrementSize: 1, multiplierDecimal: 1, priceDivisor: 1, listedUnix: 1_700_000_000, delistingUnix: 1_750_000_000, delistedUnix: 1_800_000_000},
+		{asset: asset.USDTMarginedFutures, pair: currency.NewBTCUSDT(), scaledPair: currency.NewPair(divisorCurrency, currency.USDT), minimumBaseAmount: 1, maximumBaseAmount: 2, priceStepIncrementSize: 0.1, amountStepIncrementSize: 1, multiplierDecimal: 1, priceDivisor: 1, listedUnix: 1_700_000_000, delistingUnix: 1_750_000_000, delistedUnix: 1_800_000_000},
+		{asset: asset.DeliveryFutures, pair: currency.NewPairWithDelimiter("BTC", "USDT_20260925", currency.UnderscoreDelimiter), scaledPair: currency.NewPairWithDelimiter(divisorCurrency.String(), "USDT_20260925", currency.UnderscoreDelimiter), minimumBaseAmount: 1, maximumBaseAmount: 2, priceStepIncrementSize: 0.1, amountStepIncrementSize: 1, multiplierDecimal: 1, priceDivisor: 1, expiryUnix: 1_800_000_000},
+		{asset: asset.Options, pair: currency.NewPairWithDelimiter("BTC", "USDT-20260925-50000-C", currency.UnderscoreDelimiter), minimumBaseAmount: 1, maximumBaseAmount: 2, priceStepIncrementSize: 0.1, amountStepIncrementSize: 1, multiplierDecimal: 1, priceDivisor: 1},
+	} {
+		require.NoErrorf(t, ex.UpdateOrderExecutionLimits(t.Context(), tc.asset), "UpdateOrderExecutionLimits must not error for %s", tc.asset)
+		level, err := ex.GetOrderExecutionLimits(tc.asset, tc.pair)
+		require.NoErrorf(t, err, "GetOrderExecutionLimits must return %s for %s", tc.pair, tc.asset)
+		assert.InDeltaf(t, tc.minimumBaseAmount, level.MinimumBaseAmount, 1e-12, "minimum base amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.maximumBaseAmount, level.MaximumBaseAmount, 1e-12, "maximum base amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.minimumQuoteAmount, level.MinimumQuoteAmount, 1e-12, "minimum quote amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.maximumQuoteAmount, level.MaximumQuoteAmount, 1e-12, "maximum quote amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.priceStepIncrementSize, level.PriceStepIncrementSize, 1e-12, "price step increment should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.amountStepIncrementSize, level.AmountStepIncrementSize, 1e-12, "amount step increment should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.multiplierDecimal, level.MultiplierDecimal, 1e-12, "multiplier should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.priceDivisor, level.PriceDivisor, 1e-12, "price divisor should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.minimumBorrowAmountBase, level.MinimumBorrowAmountBase, 1e-12, "minimum base borrow amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.minimumBorrowAmountQuote, level.MinimumBorrowAmountQuote, 1e-12, "minimum quote borrow amount should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.multiplierUp, level.MultiplierUp, 1e-12, "upward multiplier should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.multiplierDown, level.MultiplierDown, 1e-12, "downward multiplier should match for %s", tc.asset)
+		assert.InDeltaf(t, tc.marketMaxQty, level.MarketMaxQty, 1e-12, "market maximum quantity should match for %s", tc.asset)
+		if tc.listedUnix == 0 {
+			assert.Truef(t, level.Listed.IsZero(), "listed time should be zero for %s", tc.asset)
+		} else {
+			assert.Equalf(t, tc.listedUnix, level.Listed.Unix(), "listed time should match for %s", tc.asset)
+		}
+		if tc.delistingUnix == 0 {
+			assert.Truef(t, level.Delisting.IsZero(), "delisting time should be zero for %s", tc.asset)
+		} else {
+			assert.Equalf(t, tc.delistingUnix, level.Delisting.Unix(), "delisting time should match for %s", tc.asset)
+		}
+		if tc.delistedUnix == 0 {
+			assert.Truef(t, level.Delisted.IsZero(), "delisted time should be zero for %s", tc.asset)
+		} else {
+			assert.Equalf(t, tc.delistedUnix, level.Delisted.Unix(), "delisted time should match for %s", tc.asset)
+		}
+		if tc.expiryUnix == 0 {
+			assert.Truef(t, level.Expiry.IsZero(), "expiry time should be zero for %s", tc.asset)
+		} else {
+			assert.Equalf(t, tc.expiryUnix, level.Expiry.Unix(), "expiry time should match for %s", tc.asset)
+		}
+		if tc.asset.IsFutures() {
+			scaled, err := ex.GetOrderExecutionLimits(tc.asset, tc.scaledPair)
+			require.NoErrorf(t, err, "GetOrderExecutionLimits must return the scaled contract for %s", tc.asset)
+			assert.Equalf(t, 1e6, scaled.PriceDivisor, "scaled contract price divisor should match for %s", tc.asset)
+		}
+	}
+
+	require.ErrorIs(t, ex.UpdateOrderExecutionLimits(t.Context(), asset.Empty), asset.ErrNotSupported, "UpdateOrderExecutionLimits must reject an unsupported asset")
+	ex.CurrencyPairs.Pairs[asset.Futures] = new(currency.PairStore)
+	require.ErrorIs(t, ex.UpdateOrderExecutionLimits(t.Context(), asset.Futures), asset.ErrNotSupported, "UpdateOrderExecutionLimits must reject an unsupported mapped asset")
+
+	failing := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := responses[r.URL.Path]; !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `{`)
+		assert.NoError(t, err, "writing invalid response should not error")
+	}))
+	for _, a := range []asset.Item{asset.Spot, asset.Margin, asset.CrossMargin, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures, asset.Options} {
+		require.Errorf(t, failing.UpdateOrderExecutionLimits(t.Context(), a), "UpdateOrderExecutionLimits must return endpoint errors for %s", a)
+	}
+
+	for _, a := range []asset.Item{asset.Margin, asset.CrossMargin} {
+		secondaryFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var response string
+			switch r.URL.Path {
+			case "/api/v4/margin/uni/currency_pairs":
+				response = `[{"currency_pair":"BTC_USDT","status":"enabled","delisted_time":0}]`
+			case gateIOTestCrossMarginCurrenciesPath:
+				response = `[{"name":"BTC","min_borrow_amount":"1","loanable":true,"status":1}]`
+			case gateIOTestSpotCurrencyPairsPath:
+				response = `{`
+			default:
+				http.NotFound(w, r)
+				return
+			}
+			_, err := fmt.Fprint(w, response)
+			assert.NoError(t, err, "writing secondary endpoint response should not error")
+		}))
+		require.Errorf(t, secondaryFailure.UpdateOrderExecutionLimits(t.Context(), a), "UpdateOrderExecutionLimits must return the secondary endpoint error for %s", a)
+	}
+
+	deliveryParseFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v4/delivery/btc/contracts" {
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, `[{"name":""}]`)
+		assert.NoError(t, err, "writing delivery response should not error")
+	}))
+	require.Error(t, deliveryParseFailure.UpdateOrderExecutionLimits(t.Context(), asset.DeliveryFutures), "UpdateOrderExecutionLimits must return delivery pair parsing errors")
+
+	optionsContractFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var response string
+		switch r.URL.Path {
+		case gateIOTestOptionsUnderlyingsPath:
+			response = gateIOTestOptionsUnderlyingResponse
+		case gateIOTestOptionsContractsPath:
+			response = `{`
+		default:
+			http.NotFound(w, r)
+			return
+		}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing options response should not error")
+	}))
+	require.Error(t, optionsContractFailure.UpdateOrderExecutionLimits(t.Context(), asset.Options), "UpdateOrderExecutionLimits must return options contract endpoint errors")
+
+	for _, contract := range []string{"", "MBABYDOGE_USDT"} {
+		optionsContractFailure := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var response string
+			switch r.URL.Path {
+			case gateIOTestOptionsUnderlyingsPath:
+				response = gateIOTestOptionsUnderlyingResponse
+			case gateIOTestOptionsContractsPath:
+				response = fmt.Sprintf(`[{"name":%q,"order_size_min":"1","order_size_max":"2","order_price_round":"0.1","multiplier":"1"}]`, contract)
+			default:
+				http.NotFound(w, r)
+				return
+			}
+			_, err := fmt.Fprint(w, response)
+			assert.NoError(t, err, "writing options response should not error")
+		}))
+		require.Errorf(t, optionsContractFailure.UpdateOrderExecutionLimits(t.Context(), asset.Options), "UpdateOrderExecutionLimits must return options contract conversion errors for %q", contract)
+	}
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		testexch.UpdatePairsOnce(t, e)
+		for _, a := range e.GetAssetTypes(false) {
+			t.Run(a.String(), func(t *testing.T) {
+				t.Parallel()
+				require.NoError(t, e.UpdateOrderExecutionLimits(t.Context(), a), "UpdateOrderExecutionLimits must not error")
+				pairs, err := e.GetAvailablePairs(a)
+				require.NoError(t, err, "GetAvailablePairs must not error")
+				for _, p := range pairs {
+					l, err := e.GetOrderExecutionLimits(a, p)
+					require.NoErrorf(t, err, "GetOrderExecutionLimits must not error for %s", p)
+					require.NotNilf(t, l, "GetOrderExecutionLimits result must not be nil for %s", p)
+					assert.Equalf(t, a, l.Key.Asset, "asset should equal for %s", p)
+					assert.Truef(t, p.Equal(l.Key.Pair()), "pair should equal for %s", p)
+					switch a {
+					case asset.Options:
+						assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
+						assert.Positivef(t, l.MaximumBaseAmount, "MaximumBaseAmount should be positive for %s", p)
+						assert.Positivef(t, l.PriceStepIncrementSize, "PriceStepIncrementSize should be positive for %s", p)
+						assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
+						assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
+					case asset.USDTMarginedFutures:
+						assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
+						assert.NotZerof(t, l.Listed, "Listed should be populated for %s", p)
+						fallthrough
+					case asset.CoinMarginedFutures:
+						if !l.Delisted.IsZero() {
+							assert.Truef(t, l.Delisted.After(l.Delisting), "Delisted should be after Delisting for %s", p)
+						}
+						assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
+					case asset.Spot:
+						assert.Positivef(t, l.MinimumQuoteAmount, "MinimumQuoteAmount should be positive for %s", p)
+						if l.QuoteStepIncrementSize != 0 {
+							assert.Positivef(t, l.QuoteStepIncrementSize, "QuoteStepIncrementSize should be positive for %s when set", p)
+						}
+						assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
+						assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
+					case asset.Margin, asset.CrossMargin:
+						assert.Positivef(t, l.MinimumQuoteAmount, "MinimumQuoteAmount should be positive for %s", p)
+						assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
+						assert.Positivef(t, l.PriceStepIncrementSize, "PriceStepIncrementSize should be positive for %s", p)
+						invalidPrice := l.PriceStepIncrementSize / 2
+						err = l.Validate(invalidPrice, l.MinimumBaseAmount, order.Limit)
+						assert.ErrorIsf(t, err, limits.ErrPriceExceedsStep, "Validate should reject an invalid price tick for %s", p)
+						if l.QuoteStepIncrementSize != 0 {
+							assert.Positivef(t, l.QuoteStepIncrementSize, "QuoteStepIncrementSize should be positive for %s when set", p)
+						}
+						if l.AmountStepIncrementSize != 0 {
+							assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s when set", p)
+						}
+						assert.Positivef(t, l.MinimumBorrowAmountBase, "MinimumBorrowAmountBase should be positive for %s", p)
+						assert.Positivef(t, l.MinimumBorrowAmountQuote, "MinimumBorrowAmountQuote should be positive for %s", p)
+					case asset.DeliveryFutures:
+						assert.NotZerof(t, l.Expiry, "Expiry should be populated for %s", p)
+						assert.Positivef(t, l.MinimumBaseAmount, "MinimumBaseAmount should be positive for %s", p)
+						assert.Positivef(t, l.AmountStepIncrementSize, "AmountStepIncrementSize should be positive for %s", p)
+						assert.Positivef(t, l.MultiplierDecimal, "MultiplierDecimal should be positive for %s", p)
+					}
+				}
+			})
+		}
+	})
 }
 
 func TestGetFuturesContractDetails(t *testing.T) {
@@ -3136,53 +5897,140 @@ func TestGetHistoricalFundingRates(t *testing.T) {
 
 func TestGetOpenInterest(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetOpenInterest(t.Context(), key.PairAsset{
+	coinPair := currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter)
+	usdtPair := currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter)
+	deliveryPair := currency.NewPairWithDelimiter("BTC", "USDT_20260925", currency.UnderscoreDelimiter)
+	fixtures := []struct {
+		name         string
+		asset        asset.Item
+		pair         currency.Pair
+		contractPath string
+		allPath      string
+		statsPath    string
+		singleWant   float64
+	}{
+		{name: gateIOTestCoinMarginedName, asset: asset.CoinMarginedFutures, pair: coinPair, contractPath: "/api/v4/futures/btc/contracts/BTC_USD", allPath: "/api/v4/futures/btc/contracts", statsPath: "/api/v4/futures/btc/contract_stats", singleWant: 3},
+		{name: gateIOTestUSDTMarginedName, asset: asset.USDTMarginedFutures, pair: usdtPair, contractPath: "/api/v4/futures/usdt/contracts/BTC_USDT", allPath: "/api/v4/futures/usdt/contracts", statsPath: "/api/v4/futures/usdt/contract_stats", singleWant: 3},
+		{name: "delivery", asset: asset.DeliveryFutures, pair: deliveryPair, contractPath: "/api/v4/delivery/usdt/contracts/BTC_USDT_20260925", allPath: gateIOTestDeliveryUSDTContractsPath, singleWant: 20},
+	}
+	responses := map[string]string{
+		"/api/v4/futures/btc/contracts":                     `[{"name":"BTC_USD","quanto_multiplier":"1","index_price":"10","position_size":2}]`,
+		"/api/v4/futures/btc/contracts/BTC_USD":             `{"name":"BTC_USD","quanto_multiplier":"1","index_price":"10","position_size":2}`,
+		"/api/v4/futures/btc/contract_stats":                `[{"time":1700000000,"open_interest":"3"}]`,
+		"/api/v4/futures/usdt/contracts":                    `[{"name":"BTC_USDT","quanto_multiplier":"1","index_price":"10","position_size":2}]`,
+		"/api/v4/futures/usdt/contracts/BTC_USDT":           `{"name":"BTC_USDT","quanto_multiplier":"1","index_price":"10","position_size":2}`,
+		"/api/v4/futures/usdt/contract_stats":               `[{"time":1700000000,"open_interest":"3"}]`,
+		gateIOTestDeliveryUSDTContractsPath:                 `[{"name":"BTC_USDT_20260925","quanto_multiplier":"1","index_price":"10","position_size":2}]`,
+		"/api/v4/delivery/usdt/contracts/BTC_USDT_20260925": `{"name":"BTC_USDT_20260925","quanto_multiplier":"1","index_price":"10","position_size":2}`,
+	}
+	requests := make(chan gateIOHTTPRequest, 32)
+	t.Cleanup(func() {
+		assert.Empty(t, requests, "all open-interest requests should be consumed")
+	})
+	ex := setupGateIOHandlerTest(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+			return
+		}
+		response, ok := responses[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		requests <- gateIOHTTPRequest{method: r.Method, path: r.URL.Path, query: r.URL.Query()}
+		_, err := fmt.Fprint(w, response)
+		assert.NoError(t, err, "writing an open-interest response should not error")
+	}))
+	assertRequest := func(path string, query url.Values) {
+		t.Helper()
+		gotRequest := requireGateIOHTTPRequest(t, requests)
+		assert.Equal(t, http.MethodGet, gotRequest.method, "request method should match")
+		assert.Equal(t, path, gotRequest.path, "request path should match")
+		assert.Equal(t, query, gotRequest.query, "request query should match")
+	}
+	for _, tc := range fixtures {
+		require.NoErrorf(t, ex.CurrencyPairs.StorePairs(tc.asset, currency.Pairs{tc.pair}, false), "StorePairs must not error for available %s fixture pairs", tc.asset)
+		require.NoErrorf(t, ex.CurrencyPairs.StorePairs(tc.asset, currency.Pairs{tc.pair}, true), "StorePairs must not error for enabled %s fixture pairs", tc.asset)
+	}
+
+	_, err := ex.GetOpenInterest(t.Context(), key.PairAsset{
 		Base:  currency.NewCode("GOLDFISH").Item,
 		Quote: currency.USDT.Item,
 		Asset: asset.USDTMarginedFutures,
 	})
-	assert.ErrorIs(t, err, currency.ErrPairNotFound, "GetOpenInterest should error correctly")
+	assert.ErrorIs(t, err, currency.ErrPairNotFound, "unavailable pair should return the expected error")
+	assert.Empty(t, requests, "an unavailable pair should not send an HTTP request")
 
 	var resp []futures.OpenInterest
-	for _, a := range []asset.Item{asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures} {
-		p := getPair(t, a)
-		resp, err = e.GetOpenInterest(t.Context(), key.PairAsset{
-			Base:  p.Base.Item,
-			Quote: p.Quote.Item,
-			Asset: a,
+	for _, tc := range fixtures {
+		resp, err = ex.GetOpenInterest(t.Context(), key.PairAsset{
+			Base:  tc.pair.Base.Item,
+			Quote: tc.pair.Quote.Item,
+			Asset: tc.asset,
 		})
-		assert.NoErrorf(t, err, "GetOpenInterest should not error for %s asset", a)
-		require.Lenf(t, resp, 1, "GetOpenInterest must return 1 item for %s asset", a)
-		assert.Positivef(t, resp[0].OpenInterest, "GetOpenInterest should return positive open interest for %s asset", a)
+		require.NoErrorf(t, err, "GetOpenInterest must not error for %s", tc.name)
+		require.Lenf(t, resp, 1, "GetOpenInterest must return one item for %s", tc.name)
+		assert.Equal(t, tc.asset, resp[0].Key.Asset, "asset should match")
+		assert.True(t, tc.pair.Equal(resp[0].Key.Pair()), "pair should match")
+		assert.Equal(t, tc.singleWant, resp[0].OpenInterest, "open interest should match")
+		assertRequest(tc.contractPath, url.Values{})
+		if tc.statsPath != "" {
+			assertRequest(tc.statsPath, url.Values{
+				gateIOTestContractQueryKey: {tc.pair.String()},
+				gateIOTestLimitQueryKey:    {"1"},
+			})
+		}
 	}
 
-	coinPair := getPair(t, asset.CoinMarginedFutures)
-	usdtPair := getPair(t, asset.USDTMarginedFutures)
-	resp, err = e.GetOpenInterest(
+	resp, err = ex.GetOpenInterest(
 		t.Context(),
 		key.PairAsset{Base: coinPair.Base.Item, Quote: coinPair.Quote.Item, Asset: asset.CoinMarginedFutures},
 		key.PairAsset{Base: usdtPair.Base.Item, Quote: usdtPair.Quote.Item, Asset: asset.USDTMarginedFutures},
 	)
-	assert.NoError(t, err, "GetOpenInterest should not error for multiple explicit perpetual pairs")
-	require.Len(t, resp, 2, "GetOpenInterest returns exactly the requested perpetual pairs")
-
-	expected := map[asset.Item]currency.Pair{
-		asset.CoinMarginedFutures: coinPair,
-		asset.USDTMarginedFutures: usdtPair,
+	require.NoError(t, err, "GetOpenInterest must not error for multiple explicit perpetual pairs")
+	require.Len(t, resp, 2, "GetOpenInterest must return exactly the requested perpetual pairs")
+	for i, tc := range fixtures[:2] {
+		assert.Equal(t, tc.asset, resp[i].Key.Asset, "asset should match")
+		assert.True(t, tc.pair.Equal(resp[i].Key.Pair()), "pair should match")
+		assert.Equal(t, 20.0, resp[i].OpenInterest, "contract-derived open interest should match")
+		assertRequest(tc.allPath, url.Values{})
 	}
-	found := make(map[asset.Item]bool, len(expected))
-	for _, oi := range resp {
-		expPair, ok := expected[oi.Key.Asset]
-		require.Truef(t, ok, "unexpected asset in OpenInterest response: %v", oi.Key.Asset)
-		assert.Truef(t, expPair.Equal(oi.Key.Pair()), "OpenInterest pair mismatch for asset %v", oi.Key.Asset)
-		assert.Positivef(t, oi.OpenInterest, "OpenInterest should return positive open interest for asset %v", oi.Key.Asset)
-		found[oi.Key.Asset] = true
-	}
-	require.Len(t, found, len(expected), "OpenInterest response missing expected assets")
 
-	resp, err = e.GetOpenInterest(t.Context())
-	assert.NoError(t, err, "GetOpenInterest should not error")
-	assert.NotEmpty(t, resp, "GetOpenInterest should return some items")
+	resp, err = ex.GetOpenInterest(t.Context())
+	require.NoError(t, err, "GetOpenInterest must not error without explicit pairs")
+	require.Len(t, resp, len(fixtures), "GetOpenInterest must return every enabled fixture pair")
+	for i, tc := range []struct {
+		asset asset.Item
+		pair  currency.Pair
+		path  string
+	}{
+		{asset: asset.DeliveryFutures, pair: deliveryPair, path: gateIOTestDeliveryUSDTContractsPath},
+		{asset: asset.CoinMarginedFutures, pair: coinPair, path: "/api/v4/futures/btc/contracts"},
+		{asset: asset.USDTMarginedFutures, pair: usdtPair, path: "/api/v4/futures/usdt/contracts"},
+	} {
+		assert.Equal(t, tc.asset, resp[i].Key.Asset, "asset should match")
+		assert.True(t, tc.pair.Equal(resp[i].Key.Pair()), "pair should match")
+		assert.Equal(t, 20.0, resp[i].OpenInterest, "contract-derived open interest should match")
+		assertRequest(tc.path, url.Values{})
+	}
+
+	t.Run("live", func(t *testing.T) {
+		t.Parallel()
+		skipGateIOLiveTest(t, false)
+		for _, tc := range []struct {
+			name  string
+			asset asset.Item
+		}{
+			{name: gateIOTestCoinMarginedName, asset: asset.CoinMarginedFutures},
+			{name: gateIOTestUSDTMarginedName, asset: asset.USDTMarginedFutures},
+			{name: "delivery", asset: asset.DeliveryFutures},
+		} {
+			pair := getPair(t, tc.asset)
+			got, err := e.GetOpenInterest(t.Context(), key.PairAsset{Base: pair.Base.Item, Quote: pair.Quote.Item, Asset: tc.asset})
+			require.NoErrorf(t, err, "GetOpenInterest must not error for %s against the live API", tc.name)
+			require.NotEmptyf(t, got, "GetOpenInterest must return data for %s from the live API", tc.name)
+		}
+	})
 }
 
 func TestGetClientOrderIDFromText(t *testing.T) {

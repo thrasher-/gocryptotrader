@@ -53,9 +53,7 @@ func (e *Exchange) SetDefaults() {
 	requestFmt := &currency.PairFormat{Delimiter: currency.UnderscoreDelimiter, Uppercase: true}
 	configFmt := &currency.PairFormat{Delimiter: currency.UnderscoreDelimiter, Uppercase: true}
 	err := e.SetGlobalPairsManager(requestFmt, configFmt, asset.Spot, asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.Margin, asset.CrossMargin, asset.DeliveryFutures, asset.Options)
-	if err != nil {
-		log.Errorln(log.ExchangeSys, err)
-	}
+	logSetDefaultsError(err)
 
 	e.Features = exchange.Features{
 		CurrencyTranslations: currency.NewTranslations(map[currency.Code]currency.Code{
@@ -152,23 +150,18 @@ func (e *Exchange) SetDefaults() {
 		},
 		Subscriptions: defaultSubscriptions.Clone(),
 	}
-	e.Requester, err = request.New(e.Name,
+	e.Requester, err = request.New(
+		e.Name,
 		common.NewHTTPClientWithTimeout(exchange.DefaultHTTPTimeout),
 		request.WithLimiter(packageRateLimits),
 	)
-	if err != nil {
-		log.Errorln(log.ExchangeSys, err)
-	}
+	logSetDefaultsError(err)
 	// TODO: Majority of margin REST endpoints are labelled as deprecated on the API docs. These will need to be removed.
 	err = e.DisableAssetWebsocketSupport(asset.Margin)
-	if err != nil {
-		log.Errorln(log.ExchangeSys, err)
-	}
+	logSetDefaultsError(err)
 	// TODO: Add websocket cross margin support.
 	err = e.DisableAssetWebsocketSupport(asset.CrossMargin)
-	if err != nil {
-		log.Errorln(log.ExchangeSys, err)
-	}
+	logSetDefaultsError(err)
 	e.API.Endpoints = e.NewEndpoints()
 	err = e.API.Endpoints.SetDefaultEndpoints(map[exchange.URL]string{
 		exchange.RestSpot:              gateioTradeURL,
@@ -177,9 +170,7 @@ func (e *Exchange) SetDefaults() {
 		exchange.WebsocketSpot:         gateioWebsocketEndpoint,
 		exchange.EdgeCase1:             frontEndURL,
 	})
-	if err != nil {
-		log.Errorln(log.ExchangeSys, err)
-	}
+	logSetDefaultsError(err)
 	e.Websocket = websocket.NewManager()
 	e.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	e.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
@@ -192,6 +183,13 @@ func (e *Exchange) SetDefaults() {
 		CheckPendingUpdate: checkPendingUpdate,
 		BufferInstance:     &e.Websocket.Orderbook,
 	})
+}
+
+// logSetDefaultsError reports errors encountered while applying defaults.
+func logSetDefaultsError(err error) {
+	if err != nil {
+		log.Errorln(log.ExchangeSys, err)
+	}
 }
 
 // Setup sets user configuration
@@ -469,10 +467,7 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 		}
 		return pairs, nil
 	case asset.CoinMarginedFutures, asset.USDTMarginedFutures:
-		settle, err := getSettlementCurrency(currency.EMPTYPAIR, a)
-		if err != nil {
-			return nil, err
-		}
+		settle := futuresSettlementCurrency(a)
 		contracts, err := e.GetAllFutureContracts(ctx, settle)
 		if err != nil {
 			return nil, err
@@ -756,10 +751,8 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, a asset.Item) (acc
 		}
 		setCrossMarginAccountBalances(&subAccts[0].Balances, crossMarginAccount)
 	case asset.CoinMarginedFutures, asset.USDTMarginedFutures, asset.DeliveryFutures:
-		settle, err := getSettlementCurrency(currency.EMPTYPAIR, a)
-		if err != nil {
-			return nil, err
-		}
+		settle := futuresSettlementCurrency(a)
+		var err error
 		var acc *FuturesAccount
 		if a == asset.DeliveryFutures {
 			acc, err = e.GetDeliveryFuturesAccounts(ctx, settle)
@@ -2121,21 +2114,13 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 			})
 		}
 	case asset.USDTMarginedFutures, asset.CoinMarginedFutures:
-		settlement := currency.USDT
-		if a == asset.CoinMarginedFutures {
-			settlement = currency.BTC
-		}
+		settlement := futuresSettlementCurrency(a)
 		contractInfo, err := e.GetAllFutureContracts(ctx, settlement)
 		if err != nil {
 			return err
 		}
 		l = make([]limits.MinMaxLevel, 0, len(contractInfo))
 		for i := range contractInfo {
-			pd, err := priceDivisor(a, contractInfo[i].Name)
-			if err != nil {
-				return err
-			}
-
 			l = append(l, limits.MinMaxLevel{
 				Key:                     key.NewExchangeAssetPair(e.Name, a, contractInfo[i].Name),
 				MinimumBaseAmount:       contractInfo[i].OrderSizeMin.Float64(),
@@ -2143,13 +2128,14 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 				PriceStepIncrementSize:  contractInfo[i].OrderPriceRound.Float64(),
 				AmountStepIncrementSize: 1, // 1 Contract
 				MultiplierDecimal:       contractInfo[i].QuantoMultiplier.Float64(),
-				PriceDivisor:            pd,
+				PriceDivisor:            futuresPriceDivisor(contractInfo[i].Name),
 				Delisting:               contractInfo[i].DelistingTime.Time(),
 				Delisted:                contractInfo[i].DelistedTime.Time(),
 				Listed:                  contractInfo[i].LaunchTime.Time(),
 			})
 		}
 	case asset.DeliveryFutures:
+		// GateIO exposes both delivery settlement catalogues for execution limits even though the configured tradable-pair surface is currently USDT-settled.
 		for _, settlement := range []currency.Code{currency.BTC, currency.USDT} {
 			contractInfo, err := e.GetAllDeliveryContracts(ctx, settlement)
 			if err != nil {
@@ -2162,10 +2148,6 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 				if err != nil {
 					return err
 				}
-				pd, err := priceDivisor(a, cp)
-				if err != nil {
-					return err
-				}
 				l = append(l, limits.MinMaxLevel{
 					Key:                     key.NewExchangeAssetPair(e.Name, a, cp),
 					MinimumBaseAmount:       float64(contractInfo[x].OrderSizeMin),
@@ -2173,7 +2155,7 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 					PriceStepIncrementSize:  contractInfo[x].OrderPriceRound.Float64(),
 					AmountStepIncrementSize: 1,
 					MultiplierDecimal:       contractInfo[x].QuantoMultiplier.Float64(),
-					PriceDivisor:            pd,
+					PriceDivisor:            futuresPriceDivisor(cp),
 					Expiry:                  contractInfo[x].ExpireTime.Time(),
 				})
 			}
@@ -2196,8 +2178,7 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 					return err
 				}
 
-				pd, err := priceDivisor(a, cp)
-				if err != nil {
+				if err := validateOptionsPriceDivisor(cp); err != nil {
 					return err
 				}
 
@@ -2209,7 +2190,7 @@ func (e *Exchange) UpdateOrderExecutionLimits(ctx context.Context, a asset.Item)
 					PriceStepIncrementSize:  contracts[c].OrderPriceRound.Float64(),
 					AmountStepIncrementSize: 1,
 					MultiplierDecimal:       contracts[c].Multiplier.Float64(),
-					PriceDivisor:            pd,
+					PriceDivisor:            1,
 				})
 			}
 		}
@@ -2238,15 +2219,32 @@ func earliestTime(now time.Time, times ...time.Time) time.Time {
 // MBABYDOGE price is 1e6 x spot price for futures contracts. This is the only currency that has this characteristic.
 var divisorCurrency = currency.NewCode("MBABYDOGE")
 
-// priceDivisor returns the price divisor for a given asset and currency pair
-func priceDivisor(a asset.Item, p currency.Pair) (float64, error) {
+// futuresSettlementCurrency returns the settlement code used by supported futures assets.
+func futuresSettlementCurrency(a asset.Item) currency.Code {
+	switch a {
+	case asset.CoinMarginedFutures:
+		return currency.BTC
+	case asset.USDTMarginedFutures, asset.DeliveryFutures:
+		return currency.USDT
+	default:
+		return currency.EMPTYCODE
+	}
+}
+
+// futuresPriceDivisor returns the contract-specific futures price divisor.
+func futuresPriceDivisor(p currency.Pair) float64 {
+	if p.Base.Equal(divisorCurrency) {
+		return 1e6
+	}
+	return 1
+}
+
+// validateOptionsPriceDivisor rejects options pairs whose futures price scaling cannot be applied.
+func validateOptionsPriceDivisor(p currency.Pair) error {
 	if !p.Base.Equal(divisorCurrency) {
-		return 1, nil
+		return nil
 	}
-	if a.IsFutures() {
-		return 1e6, nil
-	}
-	return 0, fmt.Errorf("price divisor %w: %q %q", currency.ErrCurrencyNotSupported, p, a)
+	return fmt.Errorf("price divisor %w: %q %q", currency.ErrCurrencyNotSupported, p, asset.Options)
 }
 
 // GetHistoricalFundingRates returns historical funding rates for a futures contract
@@ -2974,15 +2972,17 @@ func (e *Exchange) getSpotOrderRequest(s *order.Submit) (*CreateOrderRequest, er
 }
 
 func getSettlementCurrency(p currency.Pair, a asset.Item) (currency.Code, error) {
-	switch a {
-	case asset.DeliveryFutures:
-		return currency.USDT, nil
-	case asset.USDTMarginedFutures:
+	settlement := futuresSettlementCurrency(a)
+	if settlement.IsEmpty() {
+		return currency.EMPTYCODE, fmt.Errorf("%w: %s", asset.ErrNotSupported, a)
+	}
+	if a == asset.USDTMarginedFutures {
 		if p.IsEmpty() || p.Quote.Equal(currency.USDT) {
-			return currency.USDT, nil
+			return settlement, nil
 		}
 		return currency.EMPTYCODE, fmt.Errorf("%w %s %s", errInvalidSettlementQuote, a, p)
-	case asset.CoinMarginedFutures:
+	}
+	if a == asset.CoinMarginedFutures {
 		if !p.IsEmpty() {
 			if !p.Base.Equal(currency.BTC) { // Only BTC endpoint currently available
 				return currency.EMPTYCODE, fmt.Errorf("%w %s %s", errInvalidSettlementBase, a, p)
@@ -2991,9 +2991,9 @@ func getSettlementCurrency(p currency.Pair, a asset.Item) (currency.Code, error)
 				return currency.EMPTYCODE, fmt.Errorf("%w %s %s", errInvalidSettlementQuote, a, p)
 			}
 		}
-		return currency.BTC, nil
+		return settlement, nil
 	}
-	return currency.EMPTYCODE, fmt.Errorf("%w: %s", asset.ErrNotSupported, a)
+	return settlement, nil
 }
 
 // WebsocketSubmitOrders submits orders to the exchange through the websocket

@@ -2,7 +2,9 @@ package bybit
 
 import (
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
@@ -66,6 +68,15 @@ func (r *AmendOrderRequest) Validate() error {
 	}
 	if r.OrderID == "" && r.OrderLinkID == "" {
 		return errEitherOrderIDOROrderLinkIDRequired
+	}
+	if r.OrderQuantity == 0 && r.Price == 0 && r.TriggerPrice == 0 && r.TakeProfitPrice == nil && r.StopLossPrice == nil && r.TakeProfitLimitPrice == 0 && r.StopLossLimitPrice == 0 && r.OrderImpliedVolatility == "" && r.TakeProfitTriggerBy == "" && r.StopLossTriggerBy == "" && r.TriggerPriceType == "" && r.TPSLMode == "" {
+		return errAmendmentRequired
+	}
+	if r.OrderImpliedVolatility != "" {
+		value, err := strconv.ParseFloat(r.OrderImpliedVolatility, 64)
+		if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+			return errInvalidOrderImpliedVolatility
+		}
 	}
 	return nil
 }

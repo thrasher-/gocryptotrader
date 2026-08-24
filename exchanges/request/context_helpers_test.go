@@ -34,14 +34,15 @@ func TestWithHeaders(t *testing.T) {
 	headers.Set("User-Agent", "mutated")
 
 	got := headersFromContext(ctx)
-	assert.Equal(t, "custom", got.Get("User-Agent"))
-	assert.Equal(t, []string{"one", "two"}, got.Values("X-Values"))
-	assert.Nil(t, headersFromContext(t.Context()))
-	assert.Same(t, t.Context(), WithHeaders(t.Context(), nil))
+	assert.Equal(t, "custom", got.Get("User-Agent"), "cloned user agent should match")
+	assert.Equal(t, []string{"one", "two"}, got.Values("X-Values"), "cloned header values should match")
+	assert.Nil(t, headersFromContext(t.Context()), "context without headers should return nil")
+	assert.Same(t, t.Context(), WithHeaders(t.Context(), nil), "empty headers should preserve the context")
+	assert.Equal(t, "second", headersFromContext(WithHeaders(t.Context(), http.Header{"X-Test": {"second"}})).Get("X-Test"), "repeated header contexts should remain supported")
 
 	frozen := common.FreezeContext(ctx)
 	thawed := common.ThawContext(frozen)
-	assert.Equal(t, "custom", headersFromContext(thawed).Get("User-Agent"))
+	assert.Equal(t, "custom", headersFromContext(thawed).Get("User-Agent"), "thawed user agent should match")
 }
 
 func TestWithRetryNotAllowed(t *testing.T) {

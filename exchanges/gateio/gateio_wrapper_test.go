@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,8 +19,133 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
+	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
+
+var gateIOHandlerExchangeID atomic.Uint64
+
+func setupGateIOHandlerTest(t *testing.T, handler http.Handler) *Exchange {
+	t.Helper()
+
+	testPrefixes := map[exchange.URL]string{
+		exchange.RestSpot:    "/rest-spot/api/v4/",
+		exchange.RestFutures: "/rest-futures/api/v4/",
+		exchange.EdgeCase1:   "/edge-case-1/apiw/v2/",
+	}
+	productionPrefixes := map[exchange.URL]string{
+		exchange.RestSpot:    "/api/v4/",
+		exchange.RestFutures: "/api/v4/",
+		exchange.EdgeCase1:   "/apiw/v2/",
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var endpoint exchange.URL
+		var found bool
+		for candidate, prefix := range testPrefixes {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				endpoint = candidate
+				r.URL.Path = productionPrefixes[candidate] + strings.TrimPrefix(r.URL.Path, prefix)
+				found = true
+				break
+			}
+		}
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+
+		expectedEndpoint := exchange.RestSpot
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/apiw/v2/spot_loan/"):
+			expectedEndpoint = exchange.EdgeCase1
+		case strings.HasPrefix(r.URL.Path, "/api/v4/futures/") && strings.HasSuffix(r.URL.Path, "/candlesticks"):
+			expectedEndpoint = exchange.RestFutures
+		}
+		if endpoint != expectedEndpoint {
+			http.Error(w, fmt.Sprintf("unexpected endpoint %s for %s; expected %s", endpoint, r.URL.Path, expectedEndpoint), http.StatusInternalServerError)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+	ex.Name = fmt.Sprintf("%s-%d", t.Name(), gateIOHandlerExchangeID.Add(1))
+	ex.SkipAuthCheck = true
+	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+	for endpoint, prefix := range testPrefixes {
+		require.NoError(t, ex.API.Endpoints.SetRunningURL(endpoint.String(), server.URL+prefix), "SetRunningURL must not error")
+	}
+	return ex
+}
+
+func TestSetupGateIOHandlerTest(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v4/fixture", func(w http.ResponseWriter, _ *http.Request) {
+		_, err := fmt.Fprint(w, `{"result":"ok"}`)
+		assert.NoError(t, err, "writing fixture response should not error")
+	})
+	mux.HandleFunc("/api/v4/futures/usdt/candlesticks", func(w http.ResponseWriter, _ *http.Request) {
+		_, err := fmt.Fprint(w, `{"result":"futures"}`)
+		assert.NoError(t, err, "writing futures fixture response should not error")
+	})
+	mux.HandleFunc("/apiw/v2/spot_loan/margin/margin_loan_info", func(w http.ResponseWriter, _ *http.Request) {
+		_, err := fmt.Fprint(w, `{"result":"pool"}`)
+		assert.NoError(t, err, "writing pool fixture response should not error")
+	})
+	ex := setupGateIOHandlerTest(t, mux)
+	var response struct {
+		Result string `json:"result"`
+	}
+	require.NoError(t, ex.SendHTTPRequest(t.Context(), exchange.RestSpot, publicGetServerTimeEPL, "fixture", &response), "configured route must not error")
+	assert.Equal(t, "ok", response.Result, "response should match")
+	require.NoError(t, ex.SendHTTPRequest(t.Context(), exchange.RestFutures, publicGetServerTimeEPL, "futures/usdt/candlesticks", &response), "futures route must use its configured endpoint")
+	assert.Equal(t, "futures", response.Result, "futures response should match")
+	require.NoError(t, ex.SendHTTPRequest(t.Context(), exchange.EdgeCase1, publicGetServerTimeEPL, "spot_loan/margin/margin_loan_info", &response), "pool route must use its configured endpoint")
+	assert.Equal(t, "pool", response.Result, "pool response should match")
+	require.Error(t, ex.SendHTTPRequest(t.Context(), exchange.RestSpot, publicGetServerTimeEPL, "futures/usdt/candlesticks", &response), "futures route must reject the spot endpoint")
+	require.ErrorContains(t, ex.SendHTTPRequest(t.Context(), exchange.RestSpot, publicGetServerTimeEPL, "unknown", &response), "404", "unknown routes must return an HTTP error")
+}
+
+func TestSetDefaults(t *testing.T) {
+	t.Parallel()
+
+	ex := new(Exchange)
+	ex.SetDefaults()
+	for endpoint, expectedURL := range map[exchange.URL]string{
+		exchange.RestSpot:              gateioTradeURL,
+		exchange.RestFutures:           gateioFuturesLiveTradingAlternative,
+		exchange.RestSpotSupplementary: gateioFuturesTestnetTrading,
+		exchange.WebsocketSpot:         gateioWebsocketEndpoint,
+		exchange.EdgeCase1:             frontEndURL,
+	} {
+		actualURL, err := ex.API.Endpoints.GetURL(endpoint)
+		require.NoErrorf(t, err, "GetURL must not error for %s", endpoint)
+		assert.Equalf(t, expectedURL, actualURL, "endpoint URL should match for %s", endpoint)
+	}
+}
+
+func TestLogSetDefaultsError(t *testing.T) {
+	// The custom log hook is process-global, so this test must remain serial.
+	var logCalls atomic.Int64
+	log.SetCustomLogHook(func(_, _ string, args ...any) bool {
+		if strings.Contains(fmt.Sprint(args...), asset.ErrNotSupported.Error()) {
+			logCalls.Add(1)
+		}
+		return true
+	})
+	t.Cleanup(func() {
+		log.SetCustomLogHook(nil)
+	})
+
+	logSetDefaultsError(nil)
+	assert.Zero(t, logCalls.Load(), "nil errors should not be logged")
+	logSetDefaultsError(asset.ErrNotSupported)
+	assert.Equal(t, int64(1), logCalls.Load(), "non-nil errors should be logged once")
+}
 
 func TestCancelAllOrders(t *testing.T) {
 	t.Parallel()
@@ -119,7 +246,7 @@ func TestGetCrossMarginMinimums(t *testing.T) {
 	}
 }
 
-func TestUpdateOrderExecutionLimitsUsesProductBorrowMinimums(t *testing.T) {
+func testUpdateOrderExecutionLimitsUsesProductBorrowMinimums(t *testing.T) {
 	t.Parallel()
 
 	ex := new(Exchange)
@@ -161,7 +288,7 @@ func TestUpdateOrderExecutionLimitsUsesProductBorrowMinimums(t *testing.T) {
 	assert.Equal(t, 4.0, crossLimits.MinimumBorrowAmountQuote, "cross-margin quote borrow minimum should use the currency value")
 }
 
-func TestFetchTradablePairsUsesMarginProductSources(t *testing.T) {
+func testFetchTradablePairsUsesMarginProductSources(t *testing.T) {
 	t.Parallel()
 
 	ex := new(Exchange)
@@ -237,37 +364,20 @@ func TestMessageID(t *testing.T) {
 	require.Len(t, got.String(), 36, "UUID v7 string representation must be 36 characters long")
 }
 
-func TestPriceDivisor(t *testing.T) {
+func TestValidateOptionsPriceDivisor(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name   string
-		asset  asset.Item
-		pair   currency.Pair
-		expect float64
-		errIs  error
+		name  string
+		pair  currency.Pair
+		errIs error
 	}{
 		{
-			name:   "standard pair uses divisor 1",
-			asset:  asset.Spot,
-			pair:   currency.NewBTCUSDT(),
-			expect: 1,
+			name: "standard pair",
+			pair: currency.NewBTCUSDT(),
 		},
 		{
-			name:   "special futures pair uses scaled divisor",
-			asset:  asset.USDTMarginedFutures,
-			pair:   currency.NewPair(divisorCurrency, currency.USDT),
-			expect: 1e6,
-		},
-		{
-			name:   "special delivery pair uses scaled divisor",
-			asset:  asset.DeliveryFutures,
-			pair:   currency.NewPair(divisorCurrency, currency.USDT),
-			expect: 1e6,
-		},
-		{
-			name:  "special non futures pair returns unsupported error",
-			asset: asset.Spot,
+			name:  "special options pair returns unsupported error",
 			pair:  currency.NewPair(divisorCurrency, currency.USDT),
 			errIs: currency.ErrCurrencyNotSupported,
 		},
@@ -275,14 +385,40 @@ func TestPriceDivisor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := priceDivisor(tc.asset, tc.pair)
+			err := validateOptionsPriceDivisor(tc.pair)
 			if tc.errIs != nil {
 				require.ErrorIs(t, err, tc.errIs)
 				return
 			}
 
-			require.NoError(t, err, "priceDivisor must not error")
-			assert.Equal(t, tc.expect, got, "price divisor should match expected value")
+			require.NoError(t, err, "validateOptionsPriceDivisor must not error")
+		})
+	}
+}
+
+func TestFuturesPriceDivisor(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 1.0, futuresPriceDivisor(currency.NewBTCUSDT()), "standard pair price divisor should be one")
+	assert.Equal(t, 1e6, futuresPriceDivisor(currency.NewPair(divisorCurrency, currency.USDT)), "scaled pair price divisor should match")
+}
+
+func TestFuturesSettlementCurrency(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		asset    asset.Item
+		expected currency.Code
+	}{
+		{name: gateIOTestCoinMarginedName, asset: asset.CoinMarginedFutures, expected: currency.BTC},
+		{name: gateIOTestUSDTMarginedName, asset: asset.USDTMarginedFutures, expected: currency.USDT},
+		{name: "delivery", asset: asset.DeliveryFutures, expected: currency.USDT},
+		{name: "unsupported", asset: asset.Options, expected: currency.EMPTYCODE},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, futuresSettlementCurrency(tc.asset), "settlement currency should match")
 		})
 	}
 }
@@ -408,6 +544,10 @@ func TestFetchOrderbook(t *testing.T) {
 			assert.Equal(t, tc.a, got.Asset, "Asset should be correct")
 			assert.LessOrEqual(t, len(got.Asks), 1, "Asks count should not exceed limit, but may be empty especially for options")
 			assert.LessOrEqual(t, len(got.Bids), 1, "Bids count should not exceed limit, but may be empty especially for options")
+			if tc.a == asset.Options && len(got.Asks) == 0 && len(got.Bids) == 0 {
+				return
+			}
+			assert.Positive(t, len(got.Asks)+len(got.Bids), "orderbook should contain at least one side")
 			assert.NotZero(t, got.LastUpdated, "Last updated timestamp should be set")
 			assert.NotZero(t, got.LastUpdateID, "Last update ID should be set")
 			assert.NotZero(t, got.LastPushed, "Last pushed timestamp should be set")

@@ -11,7 +11,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/buger/jsonparser"
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/crypto"
@@ -273,11 +272,27 @@ func (e *Exchange) wsHandleAuthenticatedData(ctx context.Context, conn websocket
 	case chanExecution:
 		return e.wsProcessExecution(ctx, &result)
 	case chanOrder:
-		// Use first order's orderLinkId to match with an entire batch of order change requests
-		if id, err := jsonparser.GetString(respRaw, "data", "[0]", "orderLinkId"); err == nil {
-			if conn.IncomingWithData(id, respRaw) {
-				return nil // If the data has been routed, return
+		var rawUpdates []json.RawMessage
+		if err := json.Unmarshal(result.Data, &rawUpdates); err != nil {
+			return err
+		}
+		for i := range rawUpdates {
+			var update WebsocketOrderDetails
+			if err := json.Unmarshal(rawUpdates[i], &update); err != nil {
+				return err
 			}
+			if conn != nil {
+				matchedResponse := make([]byte, 0, len(rawUpdates[i])+11)
+				matchedResponse = append(matchedResponse, `{"data":[`...)
+				matchedResponse = append(matchedResponse, rawUpdates[i]...)
+				matchedResponse = append(matchedResponse, "]}"...)
+				if update.OrderLinkID == "" || !conn.IncomingWithData(update.OrderLinkID, matchedResponse) {
+					if update.OrderID != "" {
+						conn.IncomingWithData(update.OrderID, matchedResponse)
+					}
+				}
+			}
+			e.websocketOrderUpdates.publish(&update)
 		}
 		return e.wsProcessOrder(ctx, &result)
 	case chanWallet:

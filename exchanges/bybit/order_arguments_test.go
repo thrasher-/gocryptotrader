@@ -160,6 +160,8 @@ func TestDeriveSubmitOrderArguments(t *testing.T) {
 
 func TestDeriveAmendOrderArguments(t *testing.T) {
 	t.Parallel()
+	takeProfitPrice := 2.0
+	stopLossPrice := 3.0
 	for _, tc := range []struct {
 		action *order.Modify
 		exp    *AmendOrderRequest
@@ -181,11 +183,33 @@ func TestDeriveAmendOrderArguments(t *testing.T) {
 				AssetType: asset.USDCMarginedFutures,
 			},
 			exp: &AmendOrderRequest{
-				Category:          getCategoryName(asset.USDCMarginedFutures),
-				Symbol:            currency.NewBTCUSDT().Format(currency.PairFormat{Uppercase: true, Delimiter: currency.DashDelimiter}),
-				OrderID:           "69420",
-				StopLossTriggerBy: "LastPrice",
-				TriggerPriceType:  "LastPrice",
+				Category: getCategoryName(asset.USDCMarginedFutures),
+				Symbol:   currency.NewBTCUSDT().Format(currency.PairFormat{Uppercase: true, Delimiter: currency.DashDelimiter}),
+				OrderID:  "69420",
+			},
+		},
+		{
+			action: &order.Modify{
+				OrderID:          "69420",
+				Pair:             currency.NewBTCUSDT(),
+				AssetType:        asset.Spot,
+				TriggerPrice:     1,
+				TriggerPriceType: order.MarkPrice,
+				RiskManagementModes: order.RiskManagementModes{
+					TakeProfit: order.RiskManagement{Price: 2, TriggerPriceType: order.IndexPrice},
+					StopLoss:   order.RiskManagement{Price: 3, TriggerPriceType: order.LastPrice},
+				},
+			},
+			exp: &AmendOrderRequest{
+				Category:            getCategoryName(asset.Spot),
+				Symbol:              currency.NewBTCUSDT().Format(currency.PairFormat{Uppercase: true}),
+				OrderID:             "69420",
+				TriggerPrice:        1,
+				TriggerPriceType:    websocketTestMarkPrice,
+				TakeProfitPrice:     &takeProfitPrice,
+				TakeProfitTriggerBy: "IndexPrice",
+				StopLossPrice:       &stopLossPrice,
+				StopLossTriggerBy:   "LastPrice",
 			},
 		},
 	} {

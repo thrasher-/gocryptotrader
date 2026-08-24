@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -170,6 +171,15 @@ var (
 	errFetchingOrderbook                = errors.New("error fetching orderbook")
 	errNoSpotInstrument                 = errors.New("no spot instrument available")
 	errInvalidLoanType                  = errors.New("invalid loan type")
+	errOrderTypeNotLimit                = errors.New("only order type limit is allowed")
+	errOrderAccountInvalid              = errors.New("only spot, margin, and cross_margin are allowed")
+	errAmendAmountAndPriceSet           = errors.New("only one of amount or price can be set")
+	errTransferFromAccountRequired      = errors.New("from account is required")
+	errTransferToAccountRequired        = errors.New("to account is required")
+	errTransferAccountsIdentical        = errors.New("from and to account cannot be the same")
+	errTransferPairRequired             = errors.New("currency pair is required for margin account transfer")
+	errTransferSettlementRequired       = errors.New("settle is required for futures account transfer")
+	errInvalidOptionsCallType           = errors.New("invalid options call type: must be \"C\" or \"P\"")
 )
 
 // validTimesInForce holds a list of supported time-in-force values and corresponding string representations.
@@ -533,32 +543,33 @@ func (e *Exchange) CreateBatchOrders(ctx context.Context, args []CreateOrderRequ
 	if len(args) > 10 {
 		return nil, fmt.Errorf("%w only 10 orders are cancelled at once", errMultipleOrders)
 	}
-	for x := range args {
-		if (x != 0) && args[x-1].Account != args[x].Account {
+	payload := slices.Clone(args)
+	for x := range payload {
+		if (x != 0) && payload[x-1].Account != payload[x].Account {
 			return nil, errDifferentAccount
 		}
-		if args[x].CurrencyPair.IsEmpty() {
+		if payload[x].CurrencyPair.IsEmpty() {
 			return nil, currency.ErrCurrencyPairEmpty
 		}
-		if args[x].Type != "limit" {
-			return nil, errors.New("only order type limit is allowed")
+		if payload[x].Type != "limit" {
+			return nil, errOrderTypeNotLimit
 		}
-		args[x].Side = strings.ToLower(args[x].Side)
-		if args[x].Side != "buy" && args[x].Side != "sell" {
+		payload[x].Side = strings.ToLower(payload[x].Side)
+		if payload[x].Side != "buy" && payload[x].Side != "sell" {
 			return nil, order.ErrSideIsInvalid
 		}
-		if !isSpotOrderAccount(args[x].Account) {
-			return nil, errors.New("only spot, margin, and cross_margin area allowed")
+		if !isSpotOrderAccount(payload[x].Account) {
+			return nil, errOrderAccountInvalid
 		}
-		if args[x].Amount <= 0 {
+		if payload[x].Amount <= 0 {
 			return nil, errInvalidAmount
 		}
-		if args[x].Price <= 0 {
+		if payload[x].Price <= 0 {
 			return nil, errInvalidPrice
 		}
 	}
 	var response []SpotOrder
-	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotBatchOrdersEPL, http.MethodPost, gateioSpotBatchOrders, nil, &args, &response)
+	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotBatchOrdersEPL, http.MethodPost, gateioSpotBatchOrders, nil, &payload, &response)
 }
 
 // GetSpotOpenOrders retrieves all open orders
@@ -604,24 +615,25 @@ func (e *Exchange) PlaceSpotOrder(ctx context.Context, arg *CreateOrderRequest) 
 	if arg == nil {
 		return nil, errNilArgument
 	}
-	if arg.CurrencyPair.IsInvalid() {
+	wire := *arg
+	if wire.CurrencyPair.IsInvalid() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
-	arg.Side = strings.ToLower(arg.Side)
-	if arg.Side != "buy" && arg.Side != "sell" {
+	wire.Side = strings.ToLower(wire.Side)
+	if wire.Side != "buy" && wire.Side != "sell" {
 		return nil, order.ErrSideIsInvalid
 	}
-	if !isSpotOrderAccount(arg.Account) {
-		return nil, errors.New("only 'spot', 'cross_margin', and 'margin' area allowed")
+	if !isSpotOrderAccount(wire.Account) {
+		return nil, errOrderAccountInvalid
 	}
-	if arg.Amount <= 0 {
+	if wire.Amount <= 0 {
 		return nil, errInvalidAmount
 	}
-	if arg.Price < 0 {
+	if wire.Price < 0 {
 		return nil, errInvalidPrice
 	}
 	var response *SpotOrder
-	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotPlaceOrderEPL, http.MethodPost, gateioSpotOrders, nil, &arg, &response)
+	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotPlaceOrderEPL, http.MethodPost, gateioSpotOrders, nil, &wire, &response)
 }
 
 // GetSpotOrders retrieves spot orders.
@@ -654,8 +666,12 @@ func (e *Exchange) CancelAllOpenOrdersSpecifiedCurrencyPair(ctx context.Context,
 	if side == order.Buy || side == order.Sell {
 		params.Set("side", strings.ToLower(side.Title()))
 	}
-	if a == asset.Spot || a == asset.Margin || a == asset.CrossMargin {
+	switch a {
+	case asset.Empty:
+	case asset.Spot, asset.Margin, asset.CrossMargin:
 		params.Set("account", e.assetTypeToString(a))
+	default:
+		return nil, fmt.Errorf("%w: %s", asset.ErrNotSupported, a)
 	}
 	var response []SpotOrder
 	return response, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotCancelAllOpenOrdersEPL, http.MethodDelete, gateioSpotOrders, params, nil, &response)
@@ -715,7 +731,7 @@ func (e *Exchange) AmendSpotOrder(ctx context.Context, orderID string, currencyP
 		params.Set("account", crossMarginAccount)
 	}
 	if arg.Amount != 0 && arg.Price != 0 {
-		return nil, errors.New("only can chose one of amount or price")
+		return nil, errAmendAmountAndPriceSet
 	}
 	var resp *SpotOrder
 	return resp, e.SendAuthenticatedHTTPRequest(ctx, exchange.RestSpot, spotAmendOrderEPL, http.MethodPatch, gateioSpotOrders+"/"+orderID, params, arg, &resp)
@@ -1114,19 +1130,19 @@ func (e *Exchange) TransferCurrency(ctx context.Context, arg *TransferCurrencyPa
 		return nil, currency.ErrCurrencyCodeEmpty
 	}
 	if arg.From == "" {
-		return nil, errors.New("from account is required")
+		return nil, errTransferFromAccountRequired
 	}
 	if arg.To == "" {
-		return nil, errors.New("to account is required")
+		return nil, errTransferToAccountRequired
 	}
 	if arg.To == arg.From {
-		return nil, errors.New("from and to account cannot be the same")
+		return nil, errTransferAccountsIdentical
 	}
 	if (arg.To == marginAccount || arg.From == marginAccount) && arg.CurrencyPair.IsEmpty() {
-		return nil, errors.New("currency pair is required for margin account transfer")
+		return nil, errTransferPairRequired
 	}
 	if (arg.To == futuresAccount || arg.From == futuresAccount) && arg.Settle == "" {
-		return nil, errors.New("settle is required for futures account transfer")
+		return nil, errTransferSettlementRequired
 	}
 	if arg.Amount <= 0 {
 		return nil, errInvalidAmount
@@ -3298,7 +3314,10 @@ func (e *Exchange) GetOptionFuturesMarkPriceCandlesticks(ctx context.Context, un
 func (e *Exchange) GetOptionsTradeHistory(ctx context.Context, contract currency.Pair, callType string, offset, limit uint64, from, to time.Time) ([]TradingHistoryItem, error) {
 	params := url.Values{}
 	callType = strings.ToUpper(callType)
-	if callType == "C" || callType == "P" {
+	if callType != "" && callType != "C" && callType != "P" {
+		return nil, fmt.Errorf("%w: %q", errInvalidOptionsCallType, callType)
+	}
+	if callType != "" {
 		params.Set("type", callType)
 	}
 	if contract.IsPopulated() {

@@ -30,7 +30,8 @@ import (
 type Exchange struct {
 	exchange.Base
 
-	account accountTypeHolder
+	account               accountTypeHolder
+	websocketOrderUpdates websocketOrderUpdateStore
 }
 
 const (
@@ -89,6 +90,11 @@ var (
 	errInvalidAutoAddMarginValue          = errors.New("invalid add auto margin value")
 	errDisconnectTimeWindowNotSet         = errors.New("disconnect time window not set")
 	errAPIKeyIsNotUnified                 = errors.New("api key is not unified")
+	errAmendmentRequired                  = errors.New("at least one amendment field is required")
+	errInvalidOrderImpliedVolatility      = errors.New("invalid order implied volatility")
+	errWebsocketOrderUpdateListenerExists = errors.New("websocket order update listener already exists")
+	errWebsocketOrderRejected             = errors.New("websocket order rejected")
+	errWebsocketOrderTerminalState        = errors.New("websocket order reached a terminal state")
 	errInvalidContractLength              = errors.New("contract length cannot be less than or equal to zero")
 )
 

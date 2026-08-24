@@ -936,15 +936,16 @@ func (e *Exchange) ModifyOrder(ctx context.Context, action *order.Modify) (*orde
 
 // WebsocketModifyOrder modifies an existing order
 func (e *Exchange) WebsocketModifyOrder(ctx context.Context, action *order.Modify) (*order.ModifyResponse, error) {
+	if action == nil {
+		return nil, order.ErrModifyOrderIsNil
+	}
+	// DeriveModifyResponse only errors for a nil receiver, which is rejected above.
+	resp, _ := action.DeriveModifyResponse()
 	arg, err := e.deriveAmendOrderArguments(action)
 	if err != nil {
 		return nil, err
 	}
 	result, err := e.WSAmendOrder(ctx, arg)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := action.DeriveModifyResponse()
 	if err != nil {
 		return nil, err
 	}
