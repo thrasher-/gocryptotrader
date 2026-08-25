@@ -27,6 +27,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -120,7 +121,7 @@ func (e *Exchange) WsConnect(ctx context.Context, conn websocket.Connection) err
 	}
 
 	if conn.GetURL() != instances.InstanceServers[0].Endpoint {
-		log.Warnf(log.WebsocketMgr, "%s websocket endpoint has changed, overriding old: %s with new: %s", e.Name, conn.GetURL(), instances.InstanceServers[0].Endpoint)
+		log.Warnf(log.WebsocketMgr, "%s websocket endpoint has changed, overriding old: %s with new: %s", e.Name, logsafe.URL(conn.GetURL()), logsafe.URL(instances.InstanceServers[0].Endpoint))
 		conn.SetURL(instances.InstanceServers[0].Endpoint)
 	}
 

@@ -19,7 +19,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
-	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -27,6 +26,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -48,6 +48,8 @@ var defaultSubscriptions = subscription.List{
 	// Authenticated connection is directly to the orders URI, so this is implicit
 	// {Enabled: true, Channel: subscription.MyOrdersChannel, Authenticated: true},
 }
+
+var getWebsocketHMAC = crypto.GetHMAC
 
 var subscriptionNames = map[string]string{
 	subscription.CandlesChannel:   candlesChannel,
@@ -145,13 +147,8 @@ func (e *Exchange) WsAuth(ctx context.Context, dialer *gws.Dialer) error {
 	if err != nil {
 		return fmt.Errorf("%v sendAuthenticatedHTTPRequest: Unable to JSON request", e.Name)
 	}
-	wsEndpoint, err := e.API.Endpoints.GetURL(exchange.WebsocketSpot)
-	if err != nil {
-		return err
-	}
-	endpoint := wsEndpoint + geminiWsOrderEvents
 	payloadB64 := base64.StdEncoding.EncodeToString(payloadJSON)
-	hmac, err := crypto.GetHMAC(crypto.HashSHA512_384, []byte(payloadB64), []byte(creds.Secret))
+	hmac, err := getWebsocketHMAC(crypto.HashSHA512_384, []byte(payloadB64), []byte(creds.Secret))
 	if err != nil {
 		return err
 	}
@@ -166,7 +163,7 @@ func (e *Exchange) WsAuth(ctx context.Context, dialer *gws.Dialer) error {
 
 	err = e.Websocket.AuthConn.Dial(ctx, dialer, headers, nil)
 	if err != nil {
-		return fmt.Errorf("%v Websocket connection %v error. Error %v", e.Name, endpoint, err)
+		return fmt.Errorf("%v websocket connection to %s failed: %w", e.Name, logsafe.URL(e.Websocket.AuthConn.GetURL()), logsafe.Error(err))
 	}
 	e.Websocket.Wg.Add(1)
 	go e.wsReadData(ctx, e.Websocket.AuthConn)

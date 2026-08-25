@@ -37,6 +37,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
 )
@@ -85,7 +86,7 @@ func (b *Base) SetClientProxyAddress(addr string) error {
 	}
 	proxy, err := url.Parse(addr)
 	if err != nil {
-		return fmt.Errorf("%w %w", ErrSettingProxyAddress, err)
+		return fmt.Errorf("%w: %w", ErrSettingProxyAddress, logsafe.URLRequestError(err))
 	}
 
 	err = b.Requester.SetProxy(proxy)
@@ -797,7 +798,7 @@ func (b *Base) SetAPIURL() error {
 		if strings.Contains(endpoint, "https") || strings.Contains(endpoint, "wss") {
 			return
 		}
-		log.Warnf(log.ExchangeSys, "%s is using HTTP instead of HTTPS or WS instead of WSS [%s] for API functionality, an attacker could eavesdrop on this connection. Use at your own risk.", b.Name, endpoint)
+		log.Warnf(log.ExchangeSys, "%s is using HTTP instead of HTTPS or WS instead of WSS [%s] for API functionality, an attacker could eavesdrop on this connection. Use at your own risk.", b.Name, logsafe.URL(endpoint))
 	}
 	var err error
 	if b.Config.API.OldEndPoints != nil {
@@ -840,7 +841,7 @@ func (b *Base) SetAPIURL() error {
 			var defaultURL string
 			defaultURL, err = b.API.Endpoints.GetURL(u)
 			if err != nil {
-				log.Warnf(log.ExchangeSys, "%s: Config cannot match with default endpoint URL: [%s] with key: [%s], please remove or update core support endpoints.", b.Name, val, u)
+				log.Warnf(log.ExchangeSys, "%s: Config cannot match with default endpoint URL: [%s] with key: [%s], please remove or update core support endpoints.", b.Name, logsafe.URL(val), u)
 				continue
 			}
 
@@ -848,7 +849,7 @@ func (b *Base) SetAPIURL() error {
 				continue
 			}
 
-			log.Warnf(log.ExchangeSys, "%s: Config is overwriting default endpoint URL values from: [%s] to: [%s] for: [%s]", b.Name, defaultURL, val, u)
+			log.Warnf(log.ExchangeSys, "%s: Config is overwriting default endpoint URL values from: [%s] to: [%s] for: [%s]", b.Name, logsafe.URL(defaultURL), logsafe.URL(val), u)
 
 			checkInsecureEndpoint(val)
 
@@ -1244,7 +1245,7 @@ func (e *Endpoints) SetRunningURL(endpoint, val string) error {
 		return err
 	}
 	if _, err := url.ParseRequestURI(val); err != nil {
-		return fmt.Errorf("parse request URI for %s=%q (exchange %s): %w", endpoint, val, e.Exchange, err)
+		return fmt.Errorf("parse request URI for %s (exchange %s): %w", endpoint, e.Exchange, logsafe.URLRequestError(err))
 	}
 	e.defaults[endpoint] = val
 	return nil
@@ -1798,11 +1799,17 @@ func Bootstrap(ctx context.Context, b IBotExchange) error {
 			wsURL := ""
 			wsEnabled := false
 			if w, err := b.GetWebsocket(); err == nil {
-				wsURL = w.GetWebsocketURL()
-				if wsURL == "" {
+				runningURL := w.GetWebsocketURL()
+				if runningURL != "" {
+					wsURL = logsafe.URL(runningURL)
+				} else {
 					urls, getErr := w.GetConfiguredWebsocketURLs()
 					if getErr == nil {
-						wsURL = strings.Join(urls, ",")
+						safeURLs := make([]string, len(urls))
+						for i := range urls {
+							safeURLs[i] = logsafe.URL(urls[i])
+						}
+						wsURL = strings.Join(safeURLs, ",")
 					}
 				}
 				wsEnabled = w.IsEnabled()

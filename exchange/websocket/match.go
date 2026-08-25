@@ -57,7 +57,7 @@ func (m *Match) RequireMatchWithData(signature any, data []byte) error {
 	if m.IncomingWithData(signature, data) {
 		return nil
 	}
-	return fmt.Errorf("'%v' %w with data %v", signature, ErrSignatureNotMatched, string(data))
+	return fmt.Errorf("%w for signature type %T with %d-byte response", ErrSignatureNotMatched, signature, len(data))
 }
 
 // Set the signature response channel for incoming data

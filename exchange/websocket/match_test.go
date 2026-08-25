@@ -57,8 +57,10 @@ func TestRequireMatchWithData(t *testing.T) {
 	match := NewMatch()
 	err := match.RequireMatchWithData("hello", []byte("world"))
 	require.ErrorIs(t, err, ErrSignatureNotMatched, "Must error on unmatched signature")
-	assert.Contains(t, err.Error(), "world", "Should contain the data in the error message")
-	assert.Contains(t, err.Error(), "hello", "Should contain the signature in the error message")
+	assert.NotContains(t, err.Error(), "world", "RequireMatchWithData should omit response data")
+	assert.NotContains(t, err.Error(), "hello", "RequireMatchWithData should omit the signature value")
+	assert.Contains(t, err.Error(), "signature type string", "RequireMatchWithData should retain signature type metadata")
+	assert.Contains(t, err.Error(), "5-byte response", "RequireMatchWithData should retain response length metadata")
 
 	ch, err := match.Set("hello", 1)
 	require.NoError(t, err, "Set must not error")

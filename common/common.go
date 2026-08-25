@@ -24,6 +24,7 @@ import (
 	"unsafe"
 
 	"github.com/thrasher-corp/gocryptotrader/common/file"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -261,7 +262,7 @@ func SendHTTPRequest(ctx context.Context, method, urlPath string, headers map[st
 
 	req, err := http.NewRequestWithContext(ctx, method, urlPath, body)
 	if err != nil {
-		return nil, err
+		return nil, logsafe.URLRequestError(err)
 	}
 
 	for k, v := range headers {
@@ -269,14 +270,7 @@ func SendHTTPRequest(ctx context.Context, method, urlPath string, headers map[st
 	}
 
 	if verbose {
-		log.Debugf(log.Global, "Request path: %s", urlPath)
-		for k, d := range req.Header {
-			log.Debugf(log.Global, "Request header [%s]: %s", k, d)
-		}
-		log.Debugf(log.Global, "Request type: %s", method)
-		if body != nil {
-			log.Debugf(log.Global, "Request body: %v", body)
-		}
+		log.Debugf(log.Global, "HTTP request method=%s endpoint=%s headers=%d content-length=%d", method, logsafe.URL(urlPath), len(req.Header), req.ContentLength)
 	}
 
 	m.RLock()
@@ -296,17 +290,14 @@ func SendHTTPRequest(ctx context.Context, method, urlPath string, headers map[st
 	resp, err := _HTTPClient.Do(req)
 	m.RUnlock()
 	if err != nil {
-		return nil, err
+		return nil, logsafe.URLRequestError(err)
 	}
 	defer resp.Body.Close()
 
 	contents, err := io.ReadAll(resp.Body)
 
 	if verbose {
-		log.Debugf(log.Global, "HTTP status: %s, Code: %v",
-			resp.Status,
-			resp.StatusCode)
-		log.Debugf(log.Global, "Raw response: %s", string(contents))
+		log.Debugf(log.Global, "HTTP response status=%d headers=%d body-bytes=%d", resp.StatusCode, len(resp.Header), len(contents))
 	}
 
 	return contents, err

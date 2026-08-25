@@ -16,6 +16,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -120,7 +121,7 @@ func (m *WebsocketRoutineManager) websocketRoutine(ctx context.Context) {
 	}
 	exchanges, err := m.exchangeManager.GetExchanges()
 	if err != nil {
-		log.Errorf(log.WebsocketMgr, "websocket routine manager cannot get exchanges: %v", err)
+		log.Errorf(log.WebsocketMgr, "websocket routine manager cannot get exchanges error=%v", logsafe.Error(err))
 	}
 	var wg sync.WaitGroup
 	for _, exch := range exchanges {
@@ -140,9 +141,9 @@ func (m *WebsocketRoutineManager) websocketRoutine(ctx context.Context) {
 
 		ws, err := exch.GetWebsocket()
 		if err != nil {
-			log.Errorf(log.WebsocketMgr, "Exchange %s GetWebsocket error: %s",
+			log.Errorf(log.WebsocketMgr, "exchange %s GetWebsocket failed error=%v",
 				exch.GetName(),
-				err)
+				logsafe.Error(err))
 			continue
 		}
 
@@ -155,14 +156,14 @@ func (m *WebsocketRoutineManager) websocketRoutine(ctx context.Context) {
 				if errors.Is(err, errRoutineManagerNotStarted) && ctx.Err() != nil {
 					return
 				}
-				log.Errorf(log.WebsocketMgr, "%v", err)
+				log.Errorf(log.WebsocketMgr, "exchange %s websocket data receiver failed error=%v", ws.GetName(), logsafe.Error(err))
 			}
 
 			if err := ws.Connect(ctx); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
-				log.Errorf(log.WebsocketMgr, "%v", err)
+				log.Errorf(log.WebsocketMgr, "exchange %s websocket connect failed error=%v", ws.GetName(), logsafe.Error(logsafe.URLRequestError(err)))
 			}
 		})
 	}
@@ -203,7 +204,7 @@ func (m *WebsocketRoutineManager) websocketDataReceiver(ws *websocket.Manager) e
 				m.mu.RLock()
 				for x := range m.dataHandlers {
 					if err := m.dataHandlers[x](ws.GetName(), payload.Data); err != nil {
-						log.Errorln(log.WebsocketMgr, err)
+						log.Errorf(log.WebsocketMgr, "exchange %s websocket data handler failed error=%v", ws.GetName(), logsafe.Error(err))
 					}
 				}
 				m.mu.RUnlock()
@@ -219,9 +220,9 @@ func (m *WebsocketRoutineManager) websocketDataReceiver(ws *websocket.Manager) e
 func (m *WebsocketRoutineManager) websocketDataHandler(exchName string, data any) error {
 	switch d := data.(type) {
 	case string:
-		log.Infoln(log.WebsocketMgr, d)
+		log.Infof(log.WebsocketMgr, "%s websocket message bytes=%d", exchName, len(d))
 	case error:
-		return fmt.Errorf("exchange %s websocket error - %s", exchName, data)
+		return fmt.Errorf("exchange %s websocket error: %w", exchName, logsafe.Error(d))
 	case websocket.FundingData:
 		if m.verbose {
 			log.Infof(log.WebsocketMgr, "%s websocket %s %s funding updated %+v",
@@ -356,7 +357,7 @@ func (m *WebsocketRoutineManager) websocketDataHandler(exchName string, data any
 	case order.ClassificationError:
 		return fmt.Errorf("%w %s", d.Err, d.Error())
 	case websocket.UnhandledMessageWarning:
-		log.Warnf(log.WebsocketMgr, "%s unhandled message - %s", exchName, d.Message)
+		log.Warnf(log.WebsocketMgr, "%s unhandled websocket message bytes=%d", exchName, len(d.Message))
 	case []accounts.Change, accounts.Change:
 		if m.verbose {
 			log.Debugf(log.WebsocketMgr, "%s %+v", exchName, d)
@@ -371,7 +372,7 @@ func (m *WebsocketRoutineManager) websocketDataHandler(exchName string, data any
 		}
 	default:
 		if m.verbose {
-			log.Warnf(log.WebsocketMgr, "%s websocket Unknown type: %+v", exchName, d)
+			log.Warnf(log.WebsocketMgr, "%s websocket unknown type=%T", exchName, d)
 		}
 	}
 	return nil

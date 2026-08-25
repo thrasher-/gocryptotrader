@@ -7,8 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,12 +31,14 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	mockws "github.com/thrasher-corp/gocryptotrader/internal/testing/websocket"
+	gctlog "github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
 	Ping               = "ping"
 	useProxyTests      = false                     // Disabled by default. Freely available proxy servers that work all the time are difficult to find
 	proxyURL           = "http://212.186.171.4:80" // Replace with a usable proxy server
+	testString         = "test"
 	testTrafficTimeout = time.Second
 )
 
@@ -114,6 +120,44 @@ func cleanupManagerMonitors(t *testing.T, ws *Manager) {
 type testStruct struct {
 	Error error
 	WC    connection
+}
+
+type diagnosticConnection struct {
+	Connection
+	url           string
+	proxy         string
+	responses     []Response
+	subscriptions *subscription.Store
+	shutdownErr   error
+}
+
+func (d *diagnosticConnection) ReadMessage() Response {
+	if len(d.responses) == 0 {
+		return Response{}
+	}
+	response := d.responses[0]
+	d.responses = d.responses[1:]
+	return response
+}
+
+func (d *diagnosticConnection) GetURL() string {
+	return d.url
+}
+
+func (d *diagnosticConnection) SetURL(u string) {
+	d.url = u
+}
+
+func (d *diagnosticConnection) SetProxy(proxy string) {
+	d.proxy = proxy
+}
+
+func (d *diagnosticConnection) Shutdown() error {
+	return d.shutdownErr
+}
+
+func (d *diagnosticConnection) Subscriptions() *subscription.Store {
+	return d.subscriptions
 }
 
 type testRequest struct {
@@ -216,7 +260,7 @@ func TestSetup(t *testing.T) {
 	err = w.Setup(websocketSetup)
 	assert.ErrorIs(t, err, errDefaultURLIsEmpty)
 
-	websocketSetup.DefaultURL = "test"
+	websocketSetup.DefaultURL = testString
 	err = w.Setup(websocketSetup)
 	assert.ErrorIs(t, err, errRunningURLIsEmpty)
 
@@ -370,7 +414,7 @@ func TestConnectionMessageErrors(t *testing.T) { //nolint:tparallel // top-level
 			return conn.Dial(ctx, gws.DefaultDialer, nil, nil)
 		}
 		noopHandler := func(context.Context, Connection, []byte) error { return nil }
-		testSubs := subscription.List{{Channel: "test"}}
+		testSubs := subscription.List{{Channel: testString}}
 
 		t.Run("no pending connections", func(t *testing.T) {
 			ws := newConfiguredMultiManager(t, nil)
@@ -522,13 +566,13 @@ func TestConnectionMessageErrors(t *testing.T) { //nolint:tparallel // top-level
 			})
 			ws.connectionManager[0].subscriptions = subscription.NewStore()
 			ws.connectionManager[0].setup.Subscriber = func(context.Context, Connection, subscription.List) error {
-				return ws.connectionManager[0].subscriptions.Add(&subscription.Subscription{Channel: "test"})
+				return ws.connectionManager[0].subscriptions.Add(&subscription.Subscription{Channel: testString})
 			}
 
 			err := ws.Connect(t.Context())
 			require.NoError(t, err)
 
-			err = ws.connectionManager[0].connections[0].SendRawMessage(t.Context(), request.Unset, gws.TextMessage, []byte("test"))
+			err = ws.connectionManager[0].connections[0].SendRawMessage(t.Context(), request.Unset, gws.TextMessage, []byte(testString))
 			require.NoError(t, err)
 			require.NoError(t, ws.Shutdown())
 		})
@@ -842,7 +886,8 @@ func TestManager(t *testing.T) {
 	ws := NewManager()
 
 	err := ws.SetProxyAddress(t.Context(), "garbagio")
-	assert.ErrorContains(t, err, "invalid URI for request", "SetProxyAddress should error correctly")
+	assert.Error(t, err, "SetProxyAddress should error correctly")
+	assert.NotContains(t, err.Error(), "garbagio", "SetProxyAddress should omit the invalid proxy address")
 
 	ws.setEnabled(true)
 	defaultSetup := newDefaultSetup()
@@ -939,6 +984,327 @@ func TestManager(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestSetWebsocketURLAllPaths(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager()
+	manager.exchangeName = testString
+	manager.defaultURL = "wss://default.example.com/path"
+	manager.defaultURLAuth = "wss://auth.example.com/path"
+	manager.verbose = true
+	manager.Conn = &diagnosticConnection{}
+	manager.AuthConn = &diagnosticConnection{}
+
+	require.NoError(t, manager.SetWebsocketURL(config.WebsocketURLNonDefaultMessage, false, false), "SetWebsocketURL must accept the default unauthenticated URL")
+	require.Equal(t, manager.defaultURL, manager.Conn.GetURL(), "SetWebsocketURL must update the unauthenticated connection")
+	require.NoError(t, manager.SetWebsocketURL(config.WebsocketURLNonDefaultMessage, true, false), "SetWebsocketURL must accept the default authenticated URL")
+	require.Equal(t, manager.defaultURLAuth, manager.AuthConn.GetURL(), "SetWebsocketURL must update the authenticated connection")
+
+	manager.useMultiConnectionManagement = true
+	require.ErrorIs(t, manager.SetWebsocketURL("wss://example.com", false, false), errCannotChangeConnectionURL, "SetWebsocketURL must reject managed connections")
+}
+
+func TestSetProxyAddressAllPaths(t *testing.T) {
+	t.Parallel()
+
+	manager := NewManager()
+	manager.exchangeName = testString
+	publicConn := &diagnosticConnection{subscriptions: subscription.NewStore()}
+	authConn := &diagnosticConnection{subscriptions: subscription.NewStore()}
+	managedConn := &diagnosticConnection{subscriptions: subscription.NewStore()}
+	managed := &websocket{setup: &ConnectionSetup{}, subscriptions: subscription.NewStore(), connections: []Connection{managedConn}}
+	manager.Conn = publicConn
+	manager.AuthConn = authConn
+	manager.connectionManager = []*websocket{managed}
+
+	const firstProxy = "http://127.0.0.1:8080"
+	require.NoError(t, manager.SetProxyAddress(t.Context(), firstProxy), "SetProxyAddress must update disconnected connections")
+	require.Equal(t, firstProxy, publicConn.proxy, "SetProxyAddress must update the public connection")
+	require.Equal(t, firstProxy, authConn.proxy, "SetProxyAddress must update the authenticated connection")
+	require.Equal(t, firstProxy, managedConn.proxy, "SetProxyAddress must update managed connections")
+
+	manager.setState(connectedState)
+	err := manager.SetProxyAddress(t.Context(), "http://127.0.0.1:8081")
+	require.ErrorIs(t, err, common.ErrTypeAssertFailure, "SetProxyAddress must return shutdown failures")
+}
+
+func TestConnectDirectAllPaths(t *testing.T) {
+	const (
+		setupURL     = "wss://setup-user-token:setup-password-token@setup.example.com/setup-path-token?signature=setup-query-token#setup-fragment-token"
+		safeSetupURL = "wss://setup.example.com"
+	)
+	newManager := func() *Manager {
+		manager := NewManager()
+		manager.exchangeName = testString
+		manager.setEnabled(true)
+		manager.connectionMonitorRunning.Store(true)
+		manager.trafficTimeout = time.Hour
+		manager.verbose = true
+		close(manager.ShutdownC)
+		return manager
+	}
+	waitForMonitor := func(t *testing.T, manager *Manager) {
+		t.Helper()
+		manager.Wg.Wait()
+	}
+	configuredSetup := func(generate func() (subscription.List, error)) *ConnectionSetup {
+		return &ConnectionSetup{
+			URL:                   setupURL,
+			Connector:             func(context.Context, Connection) error { return nil },
+			GenerateSubscriptions: generate,
+			Subscriber:            func(context.Context, Connection, subscription.List) error { return nil },
+			Handler:               func(context.Context, Connection, []byte) error { return nil },
+		}
+	}
+	assertSafeSetupURL := func(t *testing.T, err error) {
+		t.Helper()
+		require.Error(t, err, "connect must return the managed setup failure")
+		assert.Contains(t, err.Error(), safeSetupURL, "connect errors should retain the safe setup origin")
+		for _, secret := range []string{"setup-user-token", "setup-password-token", "setup-path-token", "setup-query-token", "setup-fragment-token"} {
+			assert.NotContains(t, err.Error(), secret, "connect errors should omit setup URL secrets")
+		}
+	}
+
+	t.Run("missing connector", func(t *testing.T) {
+		manager := newManager()
+		require.ErrorIs(t, manager.connect(t.Context()), errNoConnectFunc, "connect must reject a missing connector")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("subscription generator failure", func(t *testing.T) {
+		manager := newManager()
+		manager.connector = noopConnect
+		manager.GenerateSubs = func() (subscription.List, error) { return nil, errDastardlyReason }
+		require.ErrorIs(t, manager.connect(t.Context()), errDastardlyReason, "connect must return subscription generator failures")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("subscriber failure", func(t *testing.T) {
+		manager := newManager()
+		manager.connector = noopConnect
+		manager.GenerateSubs = func() (subscription.List, error) { return subscription.List{{Channel: "A"}}, nil }
+		manager.Subscriber = func(subscription.List) error { return errDastardlyReason }
+		require.ErrorIs(t, manager.connect(t.Context()), errDastardlyReason, "connect must return subscriber failures")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("managed setup failures redact URL", func(t *testing.T) {
+		for _, tc := range []struct {
+			name        string
+			setup       func() *ConnectionSetup
+			expectedErr error
+		}{
+			{
+				name: "missing generator",
+				setup: func() *ConnectionSetup {
+					return configuredSetup(nil)
+				},
+				expectedErr: errWebsocketSubscriptionsGeneratorUnset,
+			},
+			{
+				name: "missing connector",
+				setup: func() *ConnectionSetup {
+					setup := configuredSetup(func() (subscription.List, error) { return subscription.List{{Channel: "A"}}, nil })
+					setup.Connector = nil
+					return setup
+				},
+				expectedErr: errNoConnectFunc,
+			},
+			{
+				name: "missing handler",
+				setup: func() *ConnectionSetup {
+					setup := configuredSetup(func() (subscription.List, error) { return subscription.List{{Channel: "A"}}, nil })
+					setup.Handler = nil
+					return setup
+				},
+				expectedErr: errWebsocketDataHandlerUnset,
+			},
+			{
+				name: "missing subscriber",
+				setup: func() *ConnectionSetup {
+					setup := configuredSetup(func() (subscription.List, error) { return subscription.List{{Channel: "A"}}, nil })
+					setup.Subscriber = nil
+					return setup
+				},
+				expectedErr: errWebsocketSubscriberUnset,
+			},
+			{
+				name: "subscription-free connector failure",
+				setup: func() *ConnectionSetup {
+					setup := configuredSetup(nil)
+					setup.SubscriptionsNotRequired = true
+					setup.Connector = func(context.Context, Connection) error { return errDastardlyReason }
+					return setup
+				},
+				expectedErr: errDastardlyReason,
+			},
+			{
+				name: "subscription connector failure",
+				setup: func() *ConnectionSetup {
+					setup := configuredSetup(func() (subscription.List, error) { return subscription.List{{Channel: "A"}}, nil })
+					setup.Connector = func(context.Context, Connection) error { return errDastardlyReason }
+					return setup
+				},
+				expectedErr: errDastardlyReason,
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				manager := newManager()
+				manager.useMultiConnectionManagement = true
+				manager.connectionManager = []*websocket{{setup: tc.setup(), subscriptions: subscription.NewStore()}}
+
+				err := manager.connect(t.Context())
+				require.ErrorIs(t, err, tc.expectedErr, "connect must retain the managed setup failure")
+				assertSafeSetupURL(t, err)
+				waitForMonitor(t, manager)
+			})
+		}
+	})
+
+	t.Run("empty generated subscriptions", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		manager.connectionManager = []*websocket{{setup: configuredSetup(func() (subscription.List, error) { return nil, nil }), subscriptions: subscription.NewStore()}}
+		require.NoError(t, manager.connect(t.Context()), "connect must skip empty generated subscriptions")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("initial tracking failure", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		sub := &subscription.Subscription{Channel: "A"}
+		setup := configuredSetup(func() (subscription.List, error) { return subscription.List{sub}, nil })
+		setup.TrackOnExistingConnection = func(context.Context, Connection, subscription.List) (subscription.List, subscription.List, error) {
+			return nil, nil, errDastardlyReason
+		}
+		ws := &websocket{setup: setup, subscriptions: subscription.NewStore()}
+		manager.trackConnection(&diagnosticConnection{subscriptions: subscription.NewStore()}, ws)
+		manager.connectionManager = []*websocket{ws}
+		err := manager.connect(t.Context())
+		require.ErrorIs(t, err, errDastardlyReason, "connect must return initial tracking failures")
+		assertSafeSetupURL(t, err)
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("initial tracking absorbs subscriptions", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		sub := &subscription.Subscription{Channel: "A"}
+		setup := configuredSetup(func() (subscription.List, error) { return subscription.List{sub}, nil })
+		setup.TrackOnExistingConnection = func(_ context.Context, _ Connection, subs subscription.List) (subscription.List, subscription.List, error) {
+			return nil, subs, nil
+		}
+		ws := &websocket{setup: setup, subscriptions: subscription.NewStore()}
+		manager.trackConnection(&diagnosticConnection{subscriptions: subscription.NewStore()}, ws)
+		manager.connectionManager = []*websocket{ws}
+		require.NoError(t, manager.connect(t.Context()), "connect must accept subscriptions tracked on an existing connection")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("batch tracking failure", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		manager.MaxSubscriptionsPerConnection = 1
+		sub := &subscription.Subscription{Channel: "A"}
+		setup := configuredSetup(func() (subscription.List, error) { return subscription.List{sub}, nil })
+		calls := 0
+		setup.TrackOnExistingConnection = func(_ context.Context, _ Connection, subs subscription.List) (subscription.List, subscription.List, error) {
+			calls++
+			if calls == 2 {
+				return nil, nil, errDastardlyReason
+			}
+			return subs, nil, nil
+		}
+		store, err := subscription.NewStoreFromList(subscription.List{{Channel: "occupied"}})
+		require.NoError(t, err, "NewStoreFromList must create the full connection store")
+		ws := &websocket{setup: setup, subscriptions: subscription.NewStore()}
+		manager.trackConnection(&diagnosticConnection{subscriptions: store}, ws)
+		manager.connectionManager = []*websocket{ws}
+		err = manager.connect(t.Context())
+		require.ErrorIs(t, err, errDastardlyReason, "connect must return batch tracking failures")
+		assertSafeSetupURL(t, err)
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("batch tracking absorbs subscriptions", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		manager.MaxSubscriptionsPerConnection = 1
+		sub := &subscription.Subscription{Channel: "A"}
+		setup := configuredSetup(func() (subscription.List, error) { return subscription.List{sub}, nil })
+		calls := 0
+		setup.TrackOnExistingConnection = func(_ context.Context, _ Connection, subs subscription.List) (subscription.List, subscription.List, error) {
+			calls++
+			if calls == 2 {
+				return nil, subs, nil
+			}
+			return subs, nil, nil
+		}
+		store, err := subscription.NewStoreFromList(subscription.List{{Channel: "occupied"}})
+		require.NoError(t, err, "NewStoreFromList must create the full connection store")
+		ws := &websocket{setup: setup, subscriptions: subscription.NewStore()}
+		manager.trackConnection(&diagnosticConnection{subscriptions: store}, ws)
+		manager.connectionManager = []*websocket{ws}
+		require.NoError(t, manager.connect(t.Context()), "connect must accept subscriptions tracked during batching")
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("successful managed connections", func(t *testing.T) {
+		echoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mockws.WsMockUpgrader(t, w, r, mockws.EchoHandler)
+		}))
+		t.Cleanup(echoServer.Close)
+		endpoint := "ws" + echoServer.URL[len("http"):] + "/ws"
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		noSubscriptions := &websocket{
+			setup: &ConnectionSetup{
+				URL:                      endpoint,
+				SubscriptionsNotRequired: true,
+				Connector:                func(ctx context.Context, conn Connection) error { return conn.Dial(ctx, gws.DefaultDialer, nil, nil) },
+				Handler:                  func(context.Context, Connection, []byte) error { return nil },
+			},
+			subscriptions: subscription.NewStore(),
+		}
+		sub := &subscription.Subscription{Channel: "A"}
+		withSubscriptions := &websocket{
+			setup: &ConnectionSetup{
+				URL:                   endpoint,
+				Connector:             func(ctx context.Context, conn Connection) error { return conn.Dial(ctx, gws.DefaultDialer, nil, nil) },
+				GenerateSubscriptions: func() (subscription.List, error) { return subscription.List{sub}, nil },
+				Subscriber: func(_ context.Context, conn Connection, subs subscription.List) error {
+					return manager.AddSuccessfulSubscriptions(conn, subs...)
+				},
+				Handler: func(context.Context, Connection, []byte) error { return nil },
+			},
+			subscriptions: subscription.NewStore(),
+		}
+		manager.connectionManager = []*websocket{noSubscriptions, withSubscriptions}
+		require.NoError(t, manager.connect(t.Context()), "connect must establish managed connections")
+		for _, ws := range manager.connectionManager {
+			for _, conn := range ws.connections {
+				require.NoError(t, conn.Shutdown(), "Shutdown must close managed test connections")
+			}
+		}
+		waitForMonitor(t, manager)
+	})
+
+	t.Run("rollback shutdown failure", func(t *testing.T) {
+		manager := newManager()
+		manager.useMultiConnectionManagement = true
+		ws := &websocket{
+			setup:         &ConnectionSetup{URL: setupURL},
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{&diagnosticConnection{subscriptions: subscription.NewStore(), shutdownErr: errDastardlyReason}},
+		}
+		manager.connectionManager = []*websocket{ws}
+		err := manager.connect(t.Context())
+		require.ErrorIs(t, err, errWebsocketSubscriptionsGeneratorUnset, "connect must return fatal setup failures")
+		assertSafeSetupURL(t, err)
+		waitForMonitor(t, manager)
+	})
+}
+
 // TestSetCanUseAuthenticatedEndpoints logic test
 func TestSetCanUseAuthenticatedEndpoints(t *testing.T) {
 	t.Parallel()
@@ -955,7 +1321,8 @@ func TestDial(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mockws.WsMockUpgrader(t, w, r, mockws.EchoHandler) }))
 	defer mock.Close()
 
-	testCases := []testStruct{
+	// Mock server rejects parallel connections
+	for _, tc := range []*testStruct{
 		{
 			WC: connection{
 				ExchangeName:     "test1",
@@ -966,7 +1333,7 @@ func TestDial(t *testing.T) {
 			},
 		},
 		{
-			Error: errors.New(" Error: malformed ws or wss URL"),
+			Error: errors.New("websocket connection to [redacted URL] failed"),
 			WC: connection{
 				ExchangeName:     "test2",
 				Verbose:          true,
@@ -983,17 +1350,15 @@ func TestDial(t *testing.T) {
 				ResponseMaxLimit: 7000000000,
 			},
 		},
-	}
-	// Mock server rejects parallel connections
-	for i := range testCases {
-		if testCases[i].WC.ProxyURL != "" && !useProxyTests {
+	} {
+		if tc.WC.ProxyURL != "" && !useProxyTests {
 			t.Log("Proxy testing not enabled, skipping")
 			continue
 		}
-		err := testCases[i].WC.Dial(t.Context(), &gws.Dialer{}, http.Header{}, nil)
+		err := tc.WC.Dial(t.Context(), &gws.Dialer{}, http.Header{}, nil)
 		if err != nil {
-			if testCases[i].Error != nil && strings.Contains(err.Error(), testCases[i].Error.Error()) {
-				return
+			if tc.Error != nil && strings.Contains(err.Error(), tc.Error.Error()) {
+				continue
 			}
 			t.Fatal(err)
 		}
@@ -1007,7 +1372,8 @@ func TestSendMessage(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mockws.WsMockUpgrader(t, w, r, mockws.EchoHandler) }))
 	defer mock.Close()
 
-	testCases := []testStruct{
+	// Mock server rejects parallel connections
+	for _, tc := range []*testStruct{
 		{
 			WC: connection{
 				ExchangeName:     "test1",
@@ -1018,7 +1384,7 @@ func TestSendMessage(t *testing.T) {
 			},
 		},
 		{
-			Error: errors.New(" Error: malformed ws or wss URL"),
+			Error: errors.New("websocket connection to [redacted URL] failed"),
 			WC: connection{
 				ExchangeName:     "test2",
 				Verbose:          true,
@@ -1035,24 +1401,315 @@ func TestSendMessage(t *testing.T) {
 				ResponseMaxLimit: 7000000000,
 			},
 		},
-	}
-	// Mock server rejects parallel connections
-	for x := range testCases {
-		if testCases[x].WC.ProxyURL != "" && !useProxyTests {
+	} {
+		if tc.WC.ProxyURL != "" && !useProxyTests {
 			t.Log("Proxy testing not enabled, skipping")
 			continue
 		}
-		err := testCases[x].WC.Dial(t.Context(), &gws.Dialer{}, http.Header{}, nil)
+		err := tc.WC.Dial(t.Context(), &gws.Dialer{}, http.Header{}, nil)
 		if err != nil {
-			if testCases[x].Error != nil && strings.Contains(err.Error(), testCases[x].Error.Error()) {
-				return
+			if tc.Error != nil && strings.Contains(err.Error(), tc.Error.Error()) {
+				continue
 			}
 			t.Fatal(err)
 		}
-		err = testCases[x].WC.SendJSONMessage(t.Context(), request.Unset, Ping)
+		err = tc.WC.SendJSONMessage(t.Context(), request.Unset, Ping)
 		require.NoError(t, err)
-		err = testCases[x].WC.SendRawMessage(t.Context(), request.Unset, gws.TextMessage, []byte(Ping))
+		err = tc.WC.SendRawMessage(t.Context(), request.Unset, gws.TextMessage, []byte(Ping))
 		require.NoError(t, err)
+	}
+}
+
+func TestWebsocketDiagnostics(t *testing.T) {
+	const diagnosticName = "diagnostic-test"
+
+	require.NoError(t, gctlog.SetGlobalLogConfig(gctlog.GenDefaultSettings()), "SetGlobalLogConfig must enable diagnostic capture")
+	var logMu sync.Mutex
+	var entries []string
+	gctlog.SetCustomLogHook(func(_, _ string, a ...any) bool {
+		logMu.Lock()
+		entries = append(entries, fmt.Sprint(a...))
+		logMu.Unlock()
+		return true
+	})
+	t.Cleanup(func() {
+		gctlog.SetCustomLogHook(nil)
+		assert.NoError(t, gctlog.SetGlobalLogConfig(&gctlog.Config{}), "SetGlobalLogConfig should disable diagnostic capture")
+	})
+
+	echoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockws.WsMockUpgrader(t, w, r, mockws.EchoHandler)
+	}))
+	t.Cleanup(echoServer.Close)
+	endpoint := "ws" + echoServer.URL[len("http"):] + "/path-token?signature=query-token"
+	wc := &connection{ExchangeName: diagnosticName, Verbose: true, URL: endpoint, ResponseMaxLimit: time.Second, Match: NewMatch()}
+	require.NoError(t, wc.Dial(t.Context(), &gws.Dialer{}, http.Header{"X-Handshake-Header-Token": {"handshake-header-value-token"}}, nil), "Dial must connect to the diagnostic server")
+	t.Cleanup(func() { assert.NoError(t, wc.Shutdown(), "Shutdown should close the diagnostic connection") })
+
+	const jsonPayload = "{\"credential\":\"json-payload-token\"}\n"
+	require.NoError(t, wc.SendJSONMessage(t.Context(), request.Unset, map[string]string{"credential": "json-payload-token"}), "SendJSONMessage must send the diagnostic frame")
+	response := wc.ReadMessage()
+	require.True(t, bytes.Equal([]byte(jsonPayload), response.Raw), "SendJSONMessage must emit the exact JSON payload")
+	require.NoError(t, wc.SendRawMessage(t.Context(), request.Unset, gws.TextMessage, []byte("raw-payload-token")), "SendRawMessage must send the diagnostic frame")
+	response = wc.ReadMessage()
+	require.Equal(t, "raw-payload-token", string(response.Raw), "ReadMessage must preserve the raw frame")
+
+	matched := make(chan []byte, 1)
+	matched <- []byte("matched-response-token")
+	responses, err := wc.waitForResponses(request.WithVerbose(t.Context()), "signature-value-token", matched, 1, nil)
+	require.NoError(t, err, "waitForResponses must receive the diagnostic response")
+	require.Equal(t, "matched-response-token", string(responses[0]), "waitForResponses must preserve matched data")
+
+	handshakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Response-Header-Token", "response-header-value-token")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, "handshake-body-token")
+	}))
+	t.Cleanup(handshakeServer.Close)
+	failedEndpoint := "ws" + handshakeServer.URL[len("http"):] + "/handshake-path-token"
+	failedConn := &connection{ExchangeName: diagnosticName, URL: failedEndpoint}
+	err = failedConn.Dial(t.Context(), &gws.Dialer{}, http.Header{"X-Request-Header-Token": {"request-header-value-token"}}, url.Values{"signature": {"handshake-query-token"}})
+	require.Error(t, err, "Dial must return the failed handshake")
+	assert.Contains(t, err.Error(), "status 401", "Dial errors should retain the handshake status code")
+	for _, secret := range []string{"handshake-path-token", "handshake-query-token", "Request-Header-Token", "request-header-value-token", "Response-Header-Token", "response-header-value-token", "handshake-body-token"} {
+		assert.NotContains(t, err.Error(), secret, "Dial errors should omit handshake wire data")
+	}
+
+	pingConn := &connection{ExchangeName: diagnosticName, URL: endpoint, Wg: &sync.WaitGroup{}, shutdown: make(chan struct{})}
+	pingConn.SetupPingHandler(request.Unset, PingHandler{MessageType: gws.TextMessage, Message: []byte("ping-payload-token"), Delay: time.Millisecond})
+	pingConn.Wg.Wait()
+
+	manager := NewManager()
+	manager.exchangeName = diagnosticName
+	manager.verbose = true
+	require.NoError(t, manager.SetWebsocketURL("wss://url-user-token:url-password-token@example.com/manager-path-token?signature=manager-query-token#manager-fragment-token", false, false), "SetWebsocketURL must preserve the configured URL")
+	require.NoError(t, manager.SetProxyAddress(t.Context(), "http://proxy-user-token:proxy-password-token@example.com:8080/proxy-path-token?key=proxy-query-token"), "SetProxyAddress must preserve the configured proxy")
+	err = manager.SetProxyAddress(t.Context(), "http://proxy-user-token:proxy-password-token@example.com:8080/proxy-path-token?key=proxy-query-token")
+	require.ErrorIs(t, err, errSameProxyAddress, "SetProxyAddress must reject a duplicate proxy")
+	assert.NotContains(t, err.Error(), "proxy-user-token", "SetProxyAddress errors should omit proxy credentials")
+	require.NoError(t, manager.SetWebsocketURL("wss://auth-user-token:auth-password-token@auth.example.com/auth-path-token?signature=auth-query-token#auth-fragment-token", true, false), "SetWebsocketURL must preserve the authenticated URL")
+	manager.setState(connectedState)
+	require.NoError(t, manager.SetWebsocketURL("wss://reconnect-user-token:reconnect-password-token@reconnect.example.com/reconnect-path-token?signature=reconnect-query-token#reconnect-fragment-token", false, true), "SetWebsocketURL must reconnect after updating the public URL")
+
+	reconnectErrorCanary := "reconnect-error-secret-token"
+	reconnectManager := NewManager()
+	reconnectManager.exchangeName = diagnosticName
+	reconnectManager.trafficTimeout = time.Hour
+	reconnectManager.connectionMonitorRunning.Store(true)
+	reconnectManager.connector = func() error { return errors.New(reconnectErrorCanary) }
+	reconnectManager.setEnabled(true)
+	close(reconnectManager.ShutdownC)
+	reconnectManager.ReadMessageErrors <- errDastardlyReason
+	reconnectTimer := time.NewTimer(time.Hour)
+	require.False(t, reconnectManager.observeConnection(t.Context(), reconnectTimer), "observeConnection must continue after a reconnect failure")
+	require.True(t, reconnectTimer.Stop(), "reconnectTimer must remain active after reconnect-error handling")
+	reconnectManager.Wg.Wait()
+
+	setupURL := "wss://setup-user-token:setup-password-token@setup.example.com/setup-path-token?signature=setup-query-token#setup-fragment-token"
+	setupManager := NewManager()
+	setupManager.exchangeName = diagnosticName
+	setupManager.verbose = true
+	setupManager.useMultiConnectionManagement = true
+	setupManager.connectionMonitorRunning.Store(true)
+	setupManager.trafficTimeout = time.Hour
+	setupManager.setEnabled(true)
+	close(setupManager.ShutdownC)
+	setupManager.connectionManager = []*websocket{{
+		setup: &ConnectionSetup{
+			URL:                   setupURL,
+			Connector:             func(context.Context, Connection) error { return nil },
+			GenerateSubscriptions: func() (subscription.List, error) { return nil, nil },
+			Subscriber:            func(context.Context, Connection, subscription.List) error { return nil },
+			Handler:               func(context.Context, Connection, []byte) error { return nil },
+		},
+		subscriptions: subscription.NewStore(),
+	}}
+	require.NoError(t, setupManager.connect(t.Context()), "connect must skip a managed setup without generated subscriptions")
+	setupManager.Wg.Wait()
+
+	rollbackErrorCanary := "rollback-shutdown-error-secret-token"
+	rollbackManager := NewManager()
+	rollbackManager.exchangeName = diagnosticName
+	rollbackManager.useMultiConnectionManagement = true
+	rollbackManager.connectionMonitorRunning.Store(true)
+	rollbackManager.trafficTimeout = time.Hour
+	rollbackManager.setEnabled(true)
+	close(rollbackManager.ShutdownC)
+	rollbackManager.connectionManager = []*websocket{{
+		setup:         &ConnectionSetup{URL: setupURL},
+		subscriptions: subscription.NewStore(),
+		connections: []Connection{
+			&diagnosticConnection{
+				url:           "wss://rollback-user-token:rollback-password-token@rollback.example.com/rollback-path-token?signature=rollback-query-token#rollback-fragment-token",
+				subscriptions: subscription.NewStore(),
+				shutdownErr:   errors.New(rollbackErrorCanary),
+			},
+		},
+	}}
+	err = rollbackManager.connect(t.Context())
+	require.ErrorIs(t, err, errWebsocketSubscriptionsGeneratorUnset, "connect must return the managed setup failure")
+	assert.Contains(t, err.Error(), "wss://setup.example.com", "connect errors should retain the safe setup origin")
+	for _, secret := range []string{"setup-user-token", "setup-password-token", "setup-path-token", "setup-query-token", "setup-fragment-token"} {
+		assert.NotContains(t, err.Error(), secret, "connect errors should omit setup URL secrets")
+	}
+	rollbackManager.Wg.Wait()
+
+	handlerConn := &diagnosticConnection{
+		url:       "wss://reader-user-token:reader-password-token@example.com/reader-path-token?signature=reader-query-token",
+		responses: []Response{{Type: gws.TextMessage, Raw: []byte("reader-frame-token")}, {}},
+	}
+	manager.Wg.Add(1)
+	handlerSourceErr := &connectionTestNetError{timeout: true, temporary: true}
+	manager.Reader(t.Context(), handlerConn, func(context.Context, Connection, []byte) error {
+		return fmt.Errorf("handler-payload-token: %w", handlerSourceErr)
+	})
+	relayed := <-manager.DataHandler.C
+	relayedErr, ok := relayed.Data.(error)
+	require.True(t, ok, "Reader must relay handler failures as errors")
+	require.Error(t, relayedErr, "Reader must preserve the handler failure")
+	assert.Contains(t, relayedErr.Error(), "endpoint=[wss://example.com]", "Reader errors should include the safe endpoint")
+	assert.ErrorIs(t, relayedErr, handlerSourceErr, "Reader should preserve the handler source error")
+	var handlerTarget *connectionTestNetError
+	require.ErrorAs(t, relayedErr, &handlerTarget, "Reader must preserve handler source error inspection")
+	assert.Same(t, handlerSourceErr, handlerTarget, "Reader should preserve the handler source error value")
+	var handlerNetErr net.Error
+	require.ErrorAs(t, relayedErr, &handlerNetErr, "Reader must preserve net.Error compatibility")
+	assert.True(t, handlerNetErr.Timeout(), "Reader should preserve handler timeout classification")
+	var handlerTemporaryErr interface{ Temporary() bool }
+	require.ErrorAs(t, relayedErr, &handlerTemporaryErr, "Reader must preserve temporary error compatibility")
+	assert.True(t, handlerTemporaryErr.Temporary(), "Reader should preserve handler temporary classification")
+	for _, secret := range []string{"reader-user-token", "reader-password-token", "reader-path-token", "reader-query-token", "reader-frame-token", "handler-payload-token"} {
+		assert.NotContains(t, relayedErr.Error(), secret, "Reader errors should omit endpoint and handler data")
+	}
+
+	fullRelay := stream.NewRelay(1)
+	require.NoError(t, fullRelay.Send(t.Context(), "occupied"), "Send must fill the diagnostic relay")
+	fullManager := NewManager()
+	fullManager.exchangeName = diagnosticName
+	fullManager.DataHandler = fullRelay
+	fullManager.Wg.Add(1)
+	fullManager.Reader(t.Context(), &diagnosticConnection{responses: []Response{{Type: gws.TextMessage, Raw: []byte("reader-frame-token")}, {}}}, func(context.Context, Connection, []byte) error {
+		return errors.New("handler-payload-token")
+	})
+
+	readErrorCanary := "read-error-secret-token"
+	readError := fmt.Errorf("%s: %w", readErrorCanary, errConnectionFault)
+	readManager := NewManager()
+	readManager.exchangeName = diagnosticName
+	readManager.ReadMessageErrors <- readError
+	readTimer := time.NewTimer(time.Hour)
+	require.False(t, readManager.observeConnection(t.Context(), readTimer), "observeConnection must continue after a sanitized read error")
+	require.True(t, readTimer.Stop(), "readTimer must remain active after read-error handling")
+
+	fullReadRelay := stream.NewRelay(1)
+	relayBufferCanary := "relay-buffer-secret-token"
+	require.NoError(t, fullReadRelay.Send(t.Context(), relayBufferCanary), "Send must fill the read-error diagnostic relay")
+	fullReadManager := NewManager()
+	fullReadManager.exchangeName = diagnosticName
+	fullReadManager.DataHandler = fullReadRelay
+	fullReadManager.ReadMessageErrors <- readError
+	fullReadTimer := time.NewTimer(time.Hour)
+	require.False(t, fullReadManager.observeConnection(t.Context(), fullReadTimer), "observeConnection must continue after a read-error relay failure")
+	require.True(t, fullReadTimer.Stop(), "fullReadTimer must remain active after read-error relay handling")
+
+	shutdownCanary := "shutdown-close-secret-token"
+	shutdownManager := NewManager()
+	shutdownManager.exchangeName = diagnosticName
+	shutdownManager.connectionManager = []*websocket{{
+		subscriptions: subscription.NewStore(),
+		connections: []Connection{
+			&diagnosticConnection{
+				url:           "wss://managed-one-user-token:managed-one-password-token@managed-one.example.com/managed-one-path-token?signature=managed-one-query-token",
+				subscriptions: subscription.NewStore(),
+				shutdownErr:   errors.New(shutdownCanary),
+			},
+			&diagnosticConnection{
+				url:           "wss://managed-two-user-token:managed-two-password-token@managed-two.example.com/managed-two-path-token?signature=managed-two-query-token",
+				subscriptions: subscription.NewStore(),
+				shutdownErr:   errors.New(shutdownCanary),
+			},
+		},
+	}}
+	shutdownManager.setState(connectedState)
+	require.NoError(t, shutdownManager.shutdown(), "shutdown must treat diagnostic connection close failures as non-fatal")
+
+	publicShutdownCanary := "public-shutdown-close-secret-token"
+	authenticatedShutdownCanary := "authenticated-shutdown-close-secret-token"
+	roleShutdownManager := NewManager()
+	roleShutdownManager.exchangeName = diagnosticName
+	roleShutdownManager.Conn = &diagnosticConnection{
+		url:         "wss://public-user-token:public-password-token@public-shutdown.example.com/public-path-token?signature=public-query-token",
+		shutdownErr: errors.New(publicShutdownCanary),
+	}
+	roleShutdownManager.AuthConn = &diagnosticConnection{
+		url:         "wss://authenticated-user-token:authenticated-password-token@authenticated-shutdown.example.com/authenticated-path-token?signature=authenticated-query-token",
+		shutdownErr: errors.New(authenticatedShutdownCanary),
+	}
+	roleShutdownManager.setState(connectedState)
+	require.Error(t, roleShutdownManager.shutdown(), "shutdown must report unsupported custom connection reset after logging close failures")
+
+	trafficManager := NewManager()
+	trafficManager.exchangeName = diagnosticName
+	trafficManager.trafficTimeout = 0
+	trafficManager.setState(connectedState)
+	trafficManager.m.Lock()
+	monitorExited := trafficManager.monitorTraffic(t.Context())()
+	trafficManager.setState(connectingState)
+	trafficManager.m.Unlock()
+	require.True(t, monitorExited, "monitorTraffic must exit after a traffic timeout")
+	require.Eventually(t, func() bool {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return slices.ContainsFunc(entries, func(entry string) bool {
+			return strings.Contains(entry, "traffic monitor shutdown failed")
+		})
+	}, time.Second, time.Millisecond, "monitorTraffic must report shutdown failures")
+
+	logMu.Lock()
+	diagnostics := strings.Join(entries, "\n")
+	logMu.Unlock()
+	for _, metadata := range []string{
+		"websocket connected to ws://",
+		"outbound JSON frame type=map[string]string",
+		"outbound frame opcode=1 bytes=17",
+		"inbound frame opcode=1",
+		"matched response [1/1] bytes=22",
+		"ping handler failed opcode=1 bytes=18",
+		"setting unauthenticated websocket URL: wss://example.com",
+		"setting authenticated websocket URL: wss://auth.example.com",
+		"flushing websocket connection to wss://reconnect.example.com",
+		"setting websocket proxy: http://example.com:8080",
+		"websocket reconnect failed error=operation failed (",
+		"no subscriptions generated for [conn:1] [URL:wss://setup.example.com], skipping",
+		"managed connection rollback shutdown failed setup=1 connection=1 endpoint=wss://rollback.example.com error=operation failed (",
+		"websocket handler error relay failed handler-error=connection endpoint=[[redacted URL]] error: operation failed (",
+		"websocket has been disconnected read-error=operation failed (",
+		"connection monitor error relay failed read-error=operation failed (",
+		"managed connection shutdown failed setup=1 connection=1 endpoint=wss://managed-one.example.com error=operation failed (",
+		"managed connection shutdown failed setup=1 connection=2 endpoint=wss://managed-two.example.com error=operation failed (",
+		"connection shutdown failed role=public endpoint=wss://public-shutdown.example.com error=operation failed (",
+		"connection shutdown failed role=authenticated endpoint=wss://authenticated-shutdown.example.com error=operation failed (",
+		"websocket: shutdown encountered connection close failures count=2",
+	} {
+		assert.Contains(t, diagnostics, metadata, "websocket diagnostics should include safe metadata")
+	}
+	assert.Equal(t, 2, strings.Count(diagnostics, "websocket: shutdown encountered connection close failures count=2"), "shutdown diagnostics should summarise managed and role-specific connection failures")
+	for _, secret := range []string{
+		"path-token", "query-token", "fragment-token", "Handshake-Header-Token", "handshake-header-value-token",
+		"json-payload-token", "raw-payload-token", "matched-response-token", "signature-value-token", "ping-payload-token",
+		"url-user-token", "url-password-token", "manager-path-token", "manager-query-token", "proxy-user-token",
+		"proxy-password-token", "proxy-path-token", "proxy-query-token", "handler-payload-token",
+		"auth-user-token", "auth-password-token", "auth-path-token", "auth-query-token", "auth-fragment-token",
+		"reconnect-user-token", "reconnect-password-token", "reconnect-path-token", "reconnect-query-token", "reconnect-fragment-token",
+		"setup-user-token", "setup-password-token", "setup-path-token", "setup-query-token", "setup-fragment-token",
+		"rollback-user-token", "rollback-password-token", "rollback-path-token", "rollback-query-token", "rollback-fragment-token",
+		"managed-one-user-token", "managed-one-password-token", "managed-one-path-token", "managed-one-query-token",
+		"managed-two-user-token", "managed-two-password-token", "managed-two-path-token", "managed-two-query-token",
+		"public-user-token", "public-password-token", "public-path-token", "public-query-token",
+		"authenticated-user-token", "authenticated-password-token", "authenticated-path-token", "authenticated-query-token",
+		readErrorCanary, relayBufferCanary, shutdownCanary, publicShutdownCanary, authenticatedShutdownCanary, reconnectErrorCanary, rollbackErrorCanary,
+	} {
+		assert.NotContains(t, diagnostics, secret, "websocket diagnostics should omit wire and credential data")
 	}
 }
 
@@ -1113,8 +1770,9 @@ func TestWaitForResponses(t *testing.T) {
 		ResponseMaxLimit: time.Nanosecond,
 		Match:            NewMatch(),
 	}
-	_, err := dummy.waitForResponses(t.Context(), "silly", nil, 1, inspection{})
+	_, err := dummy.waitForResponses(t.Context(), "signature-value-token", nil, 1, inspection{})
 	require.ErrorIs(t, err, ErrSignatureTimeout)
+	assert.NotContains(t, err.Error(), "signature-value-token", "waitForResponses should omit the signature value")
 
 	dummy.ResponseMaxLimit = time.Second
 	ctx, cancel := context.WithCancel(t.Context())
@@ -1131,6 +1789,16 @@ func TestWaitForResponses(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, "hello", string(got[0]))
+}
+
+func TestSendMessageReturnResponseMarshalError(t *testing.T) {
+	t.Parallel()
+
+	wc := &connection{}
+	_, err := wc.SendMessageReturnResponse(t.Context(), request.Unset, "signature-value-token", make(chan int))
+	require.Error(t, err, "SendMessageReturnResponse must return marshal errors")
+	assert.NotContains(t, err.Error(), "signature-value-token", "SendMessageReturnResponse should omit the signature value")
+	assert.NotContains(t, err.Error(), "unsupported type", "SendMessageReturnResponse should omit marshal error text")
 }
 
 type inspection struct {
@@ -1287,10 +1955,13 @@ func TestCheckWebsocketURL(t *testing.T) {
 	assert.ErrorIs(t, err, errInvalidWebsocketURL, "checkWebsocketURL should error correctly on bad format")
 
 	err = checkWebsocketURL("://")
-	assert.ErrorContains(t, err, "missing protocol scheme", "checkWebsocketURL should error correctly on bad proto")
+	assert.ErrorIs(t, err, errInvalidWebsocketURL, "checkWebsocketURL should error correctly on bad proto")
+	assert.NotContains(t, err.Error(), "://", "checkWebsocketURL should omit the invalid URL")
+	assert.Contains(t, err.Error(), "[redacted URL]", "checkWebsocketURL should identify a redacted malformed URL")
 
 	err = checkWebsocketURL("http://www.google.com")
 	assert.ErrorIs(t, err, errInvalidWebsocketURL, "checkWebsocketURL should error correctly on wrong proto")
+	assert.Contains(t, err.Error(), "http://www.google.com", "checkWebsocketURL should retain the rejected endpoint origin")
 
 	err = checkWebsocketURL("wss://websocketconnection.place")
 	assert.NoError(t, err, "checkWebsocketURL should not error")
@@ -1364,7 +2035,7 @@ func TestSetupNewConnection(t *testing.T) {
 	err = nonsenseWebsock.SetupNewConnection(&ConnectionSetup{URL: "urlstring"})
 	assert.ErrorIs(t, err, errExchangeConfigNameEmpty, "SetupNewConnection should error correctly")
 
-	nonsenseWebsock = &Manager{exchangeName: "test"}
+	nonsenseWebsock = &Manager{exchangeName: testString}
 	err = nonsenseWebsock.SetupNewConnection(&ConnectionSetup{URL: "urlstring"})
 	assert.ErrorIs(t, err, errTrafficAlertNil, "SetupNewConnection should error correctly")
 
@@ -1498,7 +2169,8 @@ func TestConnectionShutdown(t *testing.T) {
 	assert.NoError(t, err, "Shutdown should not error when connection.Connection is nil")
 
 	err = wc.Dial(t.Context(), &gws.Dialer{}, nil, nil)
-	assert.ErrorContains(t, err, "malformed ws or wss URL", "Dial should error correctly")
+	assert.Error(t, err, "Dial should error correctly")
+	assert.NotContains(t, err.Error(), "malformed ws or wss URL", "Dial should omit transport error text")
 
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { mockws.WsMockUpgrader(t, w, r, mockws.EchoHandler) }))
 	defer mock.Close()
@@ -1551,13 +2223,6 @@ func TestLatency(t *testing.T) {
 	require.Equal(t, exch, r.name, "Latency must have the correct exchange name")
 }
 
-func TestRemoveURLQueryString(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "https://www.google.com", removeURLQueryString("https://www.google.com?test=1"), "removeURLQueryString should remove query string")
-	assert.Equal(t, "https://www.google.com", removeURLQueryString("https://www.google.com"), "removeURLQueryString should not change URL")
-	assert.Empty(t, removeURLQueryString(""), "removeURLQueryString should be empty")
-}
-
 func TestWriteToConn(t *testing.T) {
 	t.Parallel()
 	wc := connection{}
@@ -1593,7 +2258,7 @@ func TestDrain(t *testing.T) {
 	require.Empty(t, ch, "Drain must empty the channel")
 	ch = make(chan error, 10)
 	for range 10 {
-		ch <- errors.New("test")
+		ch <- errors.New(testString)
 	}
 	drain(ch)
 	require.Empty(t, ch, "Drain must empty the channel")
@@ -1645,6 +2310,27 @@ func TestMonitorConnection(t *testing.T) {
 	timer = time.NewTimer(time.Second)
 	require.False(t, ws.observeConnection(t.Context(), timer))
 	require.Equal(t, disconnectedState, ws.state.Load())
+
+	shutdownFailureManager := NewManager()
+	shutdownFailureManager.Conn = &diagnosticConnection{subscriptions: subscription.NewStore()}
+	shutdownFailureManager.setState(connectedState)
+	shutdownFailureManager.ReadMessageErrors <- errConnectionFault
+	require.False(t, shutdownFailureManager.observeConnection(t.Context(), time.NewTimer(time.Second)), "observeConnection must continue after shutdown failures")
+	require.Equal(t, disconnectedState, shutdownFailureManager.state.Load(), "observeConnection must leave a failed shutdown disconnected")
+
+	disabledShutdownFailure := NewManager()
+	disabledShutdownFailure.Conn = &diagnosticConnection{subscriptions: subscription.NewStore()}
+	disabledShutdownFailure.verbose = true
+	disabledShutdownFailure.connectionMonitorRunning.Store(true)
+	disabledShutdownFailure.setState(connectedState)
+	require.True(t, disabledShutdownFailure.observeConnection(t.Context(), time.NewTimer(0)), "observeConnection must exit after a disabled websocket shutdown failure")
+	require.Equal(t, disconnectedState, disabledShutdownFailure.state.Load(), "observeConnection must leave a disabled failed shutdown disconnected")
+
+	fullRelayManager := NewManager()
+	fullRelayManager.DataHandler = stream.NewRelay(1)
+	require.NoError(t, fullRelayManager.DataHandler.Send(t.Context(), "occupied"), "Send must fill the connection monitor relay")
+	fullRelayManager.ReadMessageErrors <- errDastardlyReason
+	require.False(t, fullRelayManager.observeConnection(t.Context(), time.NewTimer(time.Second)), "observeConnection must continue after relay failures")
 
 	// Handle outta closure shell
 	innerShell := ws.monitorConnection(t.Context())
@@ -1719,50 +2405,62 @@ func TestGetConnection(t *testing.T) {
 	t.Parallel()
 	var ws *Manager
 	_, err := ws.GetConnection(nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
-	require.ErrorContains(t, err, fmt.Sprintf("%T", ws))
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetConnection must reject a nil manager")
+	require.ErrorContains(t, err, fmt.Sprintf("%T", ws), "GetConnection must retain nil manager type metadata")
 
 	ws = &Manager{}
 
 	_, err = ws.GetConnection(nil)
-	require.ErrorIs(t, err, common.ErrNilPointer)
-	require.ErrorContains(t, err, "messageFilter")
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetConnection must reject a nil message filter")
+	require.ErrorContains(t, err, "messageFilter", "GetConnection must identify a nil message filter")
 
 	_, err = ws.GetConnection("testURL")
-	require.ErrorIs(t, err, errCannotObtainOutboundConnection)
+	require.ErrorIs(t, err, errCannotObtainOutboundConnection, "GetConnection must reject disabled multi-connection management")
 
 	ws.useMultiConnectionManagement = true
 
 	_, err = ws.GetConnection("testURL")
-	require.ErrorIs(t, err, ErrNotConnected)
+	require.ErrorIs(t, err, ErrNotConnected, "GetConnection must reject a disconnected manager")
 
 	ws.setState(connectedState)
 
-	_, err = ws.GetConnection("testURL")
-	require.ErrorIs(t, err, ErrRequestRouteNotFound)
+	const messageFilterCanary = "message-filter-secret-token"
+	_, err = ws.GetConnection(messageFilterCanary)
+	require.ErrorIs(t, err, ErrRequestRouteNotFound, "GetConnection must reject an unmatched message filter")
+	assert.Contains(t, err.Error(), "message filter type string", "GetConnection errors should retain message-filter type metadata")
+	assert.NotContains(t, err.Error(), messageFilterCanary, "GetConnection errors should omit message-filter values")
 
-	ws.connectionManager = []*websocket{{
-		setup: &ConnectionSetup{MessageFilter: "testURL", URL: "testURL"},
-	}}
+	ws.connectionManager = []*websocket{
+		{setup: &ConnectionSetup{MessageFilter: "differentURL", URL: "differentURL"}},
+		{setup: &ConnectionSetup{
+			MessageFilter: messageFilterCanary,
+			URL:           "wss://filter-user-token:filter-password-token@filter.example.com/filter-path-token?signature=filter-query-token#filter-fragment-token",
+		}},
+	}
 
-	_, err = ws.GetConnection("testURL")
-	require.ErrorIs(t, err, ErrNotConnected)
+	_, err = ws.GetConnection(messageFilterCanary)
+	require.ErrorIs(t, err, ErrNotConnected, "GetConnection must reject a matched setup without a connection")
+	assert.Contains(t, err.Error(), "wss://filter.example.com", "GetConnection errors should retain the safe setup origin")
+	assert.Contains(t, err.Error(), "message filter type string", "GetConnection errors should retain message-filter type metadata")
+	for _, secret := range []string{messageFilterCanary, "filter-user-token", "filter-password-token", "filter-path-token", "filter-query-token", "filter-fragment-token"} {
+		assert.NotContains(t, err.Error(), secret, "GetConnection errors should omit filter and setup values")
+	}
 
 	expected := &connection{subscriptions: subscription.NewStore()}
-	ws.connectionManager[0].connections = []Connection{expected}
+	ws.connectionManager[1].connections = []Connection{expected}
 
-	conn, err := ws.GetConnection("testURL")
-	require.NoError(t, err)
-	assert.Same(t, expected, conn)
+	conn, err := ws.GetConnection(messageFilterCanary)
+	require.NoError(t, err, "GetConnection must return a matching connection")
+	assert.Same(t, expected, conn, "GetConnection should return the matching connection")
 }
 
 func TestShutdown(t *testing.T) {
 	t.Parallel()
 	m := Manager{}
 	m.setState(connectingState)
-	require.ErrorIs(t, m.Shutdown(), errAlreadyReconnecting, "Shutdown must error correctly")
+	require.ErrorIs(t, m.shutdown(), errAlreadyReconnecting, "shutdown must error correctly")
 	m.setState(disconnectedState)
-	require.ErrorIs(t, m.Shutdown(), ErrNotConnected, "Shutdown must error correctly")
+	require.ErrorIs(t, m.shutdown(), ErrNotConnected, "shutdown must error correctly")
 	m.setState(connectedState)
 	require.Panics(t, func() { _ = m.Shutdown() }, "Shutdown must panic on nil shutdown channel")
 	m.ShutdownC = make(chan struct{})
@@ -1808,4 +2506,12 @@ func TestShutdown(t *testing.T) {
 
 	require.Equal(t, m.ShutdownC, authConn.shutdown, "shutdown channels must be the same after original shutdown channel is closed")
 	require.Equal(t, m.ShutdownC, unauthConn.shutdown, "shutdown channels must be the same after original shutdown channel is closed")
+
+	m.connectionManager = []*websocket{{
+		setup:         &ConnectionSetup{},
+		subscriptions: subscription.NewStore(),
+		connections:   []Connection{&diagnosticConnection{subscriptions: subscription.NewStore(), shutdownErr: errDastardlyReason}},
+	}}
+	m.setState(connectedState)
+	require.NoError(t, m.shutdown(), "shutdown must treat connection close failures as non-fatal")
 }

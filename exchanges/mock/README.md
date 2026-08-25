@@ -137,7 +137,7 @@ func TestMain(m *testing.M) {
 var s SomeExchange
 
 func TestDummyTest(t *testing.T) {
-	s.Verbose = true // This will show you some fancy debug output
+	s.Verbose = true // This will show request and response metadata
 	s.HTTPRecording = true // This will record the request and response payloads
 	s.API.Endpoints.URL = apiURL // This will overwrite the current mock url at localhost
 	s.API.Endpoints.URLSecondary = secondAPIURL // This is only if your API has multiple endpoints
@@ -146,6 +146,11 @@ func TestDummyTest(t *testing.T) {
 	// check error
 }
 ```
+
+Only record against public, unauthenticated endpoints. Credential-shaped values
+in local fixtures must be synthetic and non-secret. HTTP recordings persist
+request and response data and must not contain API keys, signatures, tokens, or
+private account data.
 
 + This will store the request and results under the freshly created `testdata/http_mock/your_current_exchange/your_current_exchange.json`
 
@@ -157,7 +162,7 @@ func TestDummyTest(t *testing.T) {
 var s SomeExchange
 
 func TestDummyTest(t *testing.T) {
-	s.Verbose = true // This will show you some fancy debug output
+	s.Verbose = true // This will show request and response metadata
 	// s.HTTPRecording = true // This will record the request and response payloads
 	// s.API.Endpoints.URL = apiURL // This will overwrite the current mock url at localhost
 	// s.API.Endpoints.URLSecondary = secondAPIURL // This is only if your API has multiple endpoints

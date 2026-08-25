@@ -41,13 +41,14 @@ type Requester struct {
 
 // Item is a temp item for requests
 type Item struct {
-	Method                 string
-	Path                   string
-	Headers                map[string]string
-	Body                   io.Reader
-	Result                 any
-	NonceEnabled           bool
-	Verbose                bool
+	Method       string
+	Path         string
+	Headers      map[string]string
+	Body         io.Reader
+	Result       any
+	NonceEnabled bool
+	Verbose      bool
+	// HTTPDebugging enables the same metadata-only diagnostics as Verbose.
 	HTTPDebugging          bool
 	HTTPRecording          bool
 	HTTPMockDataSliceLimit int // Limits slices per HTTP record to reduce mock data size.

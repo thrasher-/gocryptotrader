@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/user"
@@ -12,13 +14,21 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common/file"
+	gctlog "github.com/thrasher-corp/gocryptotrader/log"
 )
+
+type commonRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f commonRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestSendHTTPRequest(t *testing.T) {
 	// t.Parallel() not used to maintain code coverage for assigning the default
@@ -76,6 +86,91 @@ func TestSendHTTPRequest(t *testing.T) {
 	)
 	if err == nil {
 		t.Error("Common HTTPRequest accepted invalid protocol")
+	}
+}
+
+func TestSendHTTPRequestDiagnostics(t *testing.T) {
+	type receivedRequest struct {
+		path, query, header, body string
+	}
+	received := make(chan receivedRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		received <- receivedRequest{path: r.URL.Path, query: r.URL.RawQuery, header: r.Header.Get("X-Header-Name-Token"), body: string(body)}
+		w.Header().Set("X-Response-Header-Token", "response-header-value-token")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, "response-body-token")
+	}))
+	t.Cleanup(server.Close)
+
+	m.Lock()
+	previousClient := _HTTPClient
+	m.Unlock()
+	require.NoError(t, SetHTTPClient(server.Client()), "SetHTTPClient must configure the diagnostic test client")
+	t.Cleanup(func() {
+		m.Lock()
+		_HTTPClient = previousClient
+		m.Unlock()
+	})
+
+	require.NoError(t, gctlog.SetGlobalLogConfig(gctlog.GenDefaultSettings()), "SetGlobalLogConfig must enable diagnostic capture")
+	var logMu sync.Mutex
+	var entries []string
+	gctlog.SetCustomLogHook(func(_, _ string, a ...any) bool {
+		logMu.Lock()
+		entries = append(entries, fmt.Sprint(a...))
+		logMu.Unlock()
+		return true
+	})
+	t.Cleanup(func() {
+		gctlog.SetCustomLogHook(nil)
+		assert.NoError(t, gctlog.SetGlobalLogConfig(&gctlog.Config{}), "SetGlobalLogConfig should disable diagnostic capture")
+	})
+
+	response, err := SendHTTPRequest(t.Context(), http.MethodPost, server.URL+"/path-token?signature=query-token", map[string]string{"X-Header-Name-Token": "header-value-token"}, strings.NewReader("request-body-token"), true)
+	require.NoError(t, err, "SendHTTPRequest must complete the test request")
+	assert.Equal(t, "response-body-token", string(response), "SendHTTPRequest should return the response unchanged")
+	request := <-received
+	assert.Equal(t, "/path-token", request.path, "SendHTTPRequest should preserve the request path")
+	assert.Equal(t, "signature=query-token", request.query, "SendHTTPRequest should preserve the request query")
+	assert.Equal(t, "header-value-token", request.header, "SendHTTPRequest should preserve request headers")
+	assert.Equal(t, "request-body-token", request.body, "SendHTTPRequest should preserve the request body")
+
+	logMu.Lock()
+	diagnostics := strings.Join(entries, "\n")
+	logMu.Unlock()
+	assert.Contains(t, diagnostics, "method=POST", "SendHTTPRequest diagnostics should include the request method")
+	assert.Contains(t, diagnostics, "endpoint="+server.URL, "SendHTTPRequest diagnostics should include the safe endpoint")
+	assert.Contains(t, diagnostics, "status=201", "SendHTTPRequest diagnostics should include the response status code")
+	assert.Contains(t, diagnostics, "body-bytes=19", "SendHTTPRequest diagnostics should include the response body length")
+	for _, secret := range []string{"path-token", "query-token", "Header-Name-Token", "header-value-token", "request-body-token", "Response-Header-Token", "response-header-value-token", "response-body-token"} {
+		assert.NotContains(t, diagnostics, secret, "SendHTTPRequest diagnostics should omit wire data")
+	}
+
+	transportCause := errors.New("transport-cause-token")
+	require.NoError(t, SetHTTPClient(&http.Client{Transport: commonRoundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, transportCause
+	})}), "SetHTTPClient must configure the failing test transport")
+	_, err = SendHTTPRequest(t.Context(), http.MethodGet, server.URL+"/transport-path-token?key=transport-query-token", nil, nil, false)
+	require.ErrorIs(t, err, transportCause, "SendHTTPRequest must preserve the transport error chain")
+	var transportURLError *url.Error
+	require.ErrorAs(t, err, &transportURLError, "SendHTTPRequest must preserve transport URL error inspection")
+	assert.Equal(t, server.URL+"/transport-path-token?key=transport-query-token", transportURLError.URL, "SendHTTPRequest should preserve the transport URL through errors.As")
+	assert.Contains(t, err.Error(), server.URL, "SendHTTPRequest should retain the safe transport endpoint")
+	for _, secret := range []string{"transport-path-token", "transport-query-token", "transport-cause-token"} {
+		assert.NotContains(t, err.Error(), secret, "SendHTTPRequest should omit sensitive transport error text")
+	}
+
+	const malformedURL = "https://malformed-user-token:malformed-password-token@example.com/malformed-path-token%zz?signature=malformed-query-token"
+	_, err = SendHTTPRequest(t.Context(), http.MethodGet, malformedURL, nil, nil, false)
+	malformedCause := url.EscapeError("%zz")
+	require.ErrorIs(t, err, malformedCause, "SendHTTPRequest must preserve the malformed URL cause")
+	var malformedURLError *url.Error
+	require.ErrorAs(t, err, &malformedURLError, "SendHTTPRequest must preserve malformed URL error inspection")
+	assert.Equal(t, malformedURL, malformedURLError.URL, "SendHTTPRequest should preserve the malformed URL through errors.As")
+	assert.Contains(t, err.Error(), "[redacted URL]", "SendHTTPRequest should fail closed when the endpoint cannot be parsed safely")
+	for _, secret := range []string{"malformed-user-token", "malformed-password-token", "malformed-path-token", "malformed-query-token", "%zz", "invalid URL escape"} {
+		assert.NotContains(t, err.Error(), secret, "SendHTTPRequest should omit malformed URL and cause text")
 	}
 }
 

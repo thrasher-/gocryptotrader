@@ -3,7 +3,11 @@ package exchange
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,6 +36,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	gctlog "github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
@@ -66,7 +71,7 @@ func TestSetRunningURL(t *testing.T) {
 	t.Parallel()
 	b := Base{Name: "HELOOOOOOOO"}
 	b.API.Endpoints = b.NewEndpoints()
-	assert.ErrorIs(t, b.API.Endpoints.SetRunningURL("meep", "http://google.com/"), errInvalidEndpointKey)
+	assert.ErrorIs(t, b.API.Endpoints.SetRunningURL("meep", "http://google.com/"), errInvalidEndpointKey, "SetRunningURL should reject an invalid endpoint key")
 
 	err := b.API.Endpoints.SetDefaultEndpoints(map[URL]string{
 		EdgeCase1: "http://test1url.com/",
@@ -78,10 +83,19 @@ func TestSetRunningURL(t *testing.T) {
 
 	val, ok := b.API.Endpoints.defaults[EdgeCase2.String()]
 	assert.True(t, ok, "SetRunningURL should have set the value in defaults")
-	assert.Equal(t, "http://google.com/", val)
+	assert.Equal(t, "http://google.com/", val, "SetRunningURL should store the running URL")
 
-	err = b.API.Endpoints.SetRunningURL(EdgeCase3.String(), "Added Edgecase3")
-	assert.ErrorContains(t, err, "invalid URI for request", "SetRunningURL should error on invalid endpoint key")
+	const invalidURL = "https://endpoint-user-canary:endpoint-password-canary@example.com/endpoint-path-canary%zz?signature=endpoint-query-canary"
+	err = b.API.Endpoints.SetRunningURL(EdgeCase3.String(), invalidURL)
+	require.Error(t, err, "SetRunningURL must reject an invalid running URL")
+	assert.Contains(t, err.Error(), EdgeCase3.String(), "SetRunningURL should retain the endpoint key")
+	assert.Contains(t, err.Error(), b.Name, "SetRunningURL should retain the exchange name")
+	var parseErr *url.Error
+	require.ErrorAs(t, err, &parseErr, "SetRunningURL must preserve URL parse error inspection")
+	assert.Equal(t, invalidURL, parseErr.URL, "SetRunningURL should preserve the original URL error in the error chain")
+	for _, canary := range []string{"endpoint-user-canary", "endpoint-password-canary", "endpoint-path-canary", "endpoint-query-canary"} {
+		assert.NotContainsf(t, err.Error(), canary, "SetRunningURL should omit %s from its error display", canary)
+	}
 }
 
 func TestGetURL(t *testing.T) {
@@ -157,7 +171,10 @@ func TestSetDefaultEndpoints(t *testing.T) {
 	err = b.API.Endpoints.SetDefaultEndpoints(map[URL]string{
 		EdgeCase1: "",
 	})
-	assert.ErrorContains(t, err, "empty url")
+	require.Error(t, err, "SetDefaultEndpoints must reject an empty URL")
+	var parseErr *url.Error
+	require.ErrorAs(t, err, &parseErr, "SetDefaultEndpoints must preserve URL parse error inspection")
+	assert.Empty(t, parseErr.URL, "SetDefaultEndpoints should preserve the empty URL in the error chain")
 }
 
 func TestSetClientProxyAddress(t *testing.T) {
@@ -165,43 +182,42 @@ func TestSetClientProxyAddress(t *testing.T) {
 
 	requester, err := request.New("rawr",
 		common.NewHTTPClientWithTimeout(time.Second*15))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err, "New must configure the proxy test requester")
+	t.Cleanup(func() {
+		assert.NoError(t, requester.Shutdown(), "Shutdown should close the proxy test requester")
+	})
 
 	newBase := Base{
 		Name:      "rawr",
 		Requester: requester,
 	}
 
-	newBase.Websocket = websocket.NewManager()
 	err = newBase.SetClientProxyAddress("")
-	if err != nil {
-		t.Error(err)
-	}
-	err = newBase.SetClientProxyAddress(":invalid")
-	if err == nil {
-		t.Error("SetClientProxyAddress parsed invalid URL")
+	assert.NoError(t, err, "SetClientProxyAddress should ignore an empty proxy address")
+
+	const invalidProxy = "http://proxy-user-canary:proxy-password-canary@proxy.example/proxy-path-canary%zz?signature=proxy-query-canary"
+	err = newBase.SetClientProxyAddress(invalidProxy)
+	require.ErrorIs(t, err, ErrSettingProxyAddress, "SetClientProxyAddress must classify a malformed proxy address")
+	var parseErr *url.Error
+	require.ErrorAs(t, err, &parseErr, "SetClientProxyAddress must preserve URL parse error inspection")
+	assert.Equal(t, invalidProxy, parseErr.URL, "SetClientProxyAddress should preserve the original URL error in the error chain")
+	for _, canary := range []string{"proxy-user-canary", "proxy-password-canary", "proxy-path-canary", "proxy-query-canary"} {
+		assert.NotContainsf(t, err.Error(), canary, "SetClientProxyAddress should omit %s from its error display", canary)
 	}
 
-	if newBase.Websocket.GetProxyAddress() != "" {
-		t.Error("SetClientProxyAddress error", err)
-	}
+	err = (&Base{}).SetClientProxyAddress("http://requester-error.example")
+	assert.ErrorIs(t, err, request.ErrRequestSystemIsNil, "SetClientProxyAddress should return a requester error")
 
 	err = newBase.SetClientProxyAddress("http://www.valid.com")
-	if err != nil {
-		t.Error("SetClientProxyAddress error", err)
-	}
+	assert.NoError(t, err, "SetClientProxyAddress should configure a REST proxy without a websocket")
 
-	// calling this again will cause the ws check to fail
+	newBase.Websocket = websocket.NewManager()
 	err = newBase.SetClientProxyAddress("http://www.valid.com")
-	if err == nil {
-		t.Error("trying to set the same proxy addr should thrown an err for ws")
-	}
+	assert.NoError(t, err, "SetClientProxyAddress should configure a websocket proxy")
 
-	if newBase.Websocket.GetProxyAddress() != "http://www.valid.com" {
-		t.Error("SetClientProxyAddress error", err)
-	}
+	err = newBase.SetClientProxyAddress("http://www.valid.com")
+	assert.Error(t, err, "SetClientProxyAddress should reject the same websocket proxy address")
+	assert.Equal(t, "http://www.valid.com", newBase.Websocket.GetProxyAddress(), "SetClientProxyAddress should preserve the configured websocket proxy")
 }
 
 func TestSetFeatureDefaults(t *testing.T) {
@@ -1721,7 +1737,7 @@ func TestSetAPIURL(t *testing.T) {
 	mappy.Mappymap["RestSpotURL"] = "http://google.com/"
 	b.API.Endpoints = b.NewEndpoints()
 	b.Config.API.OldEndPoints.URL = "heloo"
-	assert.ErrorContains(t, b.SetAPIURL(), "invalid URI for request")
+	assert.Error(t, b.SetAPIURL(), "SetAPIURL should reject an invalid legacy endpoint")
 
 	mappy.Mappymap = make(map[string]string)
 	b.Config.API.OldEndPoints = &config.APIEndpointsConfig{}
@@ -1748,6 +1764,141 @@ func TestSetAPIURL(t *testing.T) {
 	if urlData != "https://www.bitstamp.net/" {
 		t.Error("oldendpoints url setting failed")
 	}
+}
+
+func TestSetAPIURLDiagnostics(t *testing.T) {
+	require.NoError(t, gctlog.SetGlobalLogConfig(gctlog.GenDefaultSettings()), "SetGlobalLogConfig must enable SetAPIURL diagnostic capture")
+	var logMu sync.Mutex
+	var entries []string
+	gctlog.SetCustomLogHook(func(_, _ string, a ...any) bool {
+		logMu.Lock()
+		entries = append(entries, fmt.Sprint(a...))
+		logMu.Unlock()
+		return true
+	})
+	t.Cleanup(func() {
+		gctlog.SetCustomLogHook(nil)
+		assert.NoError(t, gctlog.SetGlobalLogConfig(&gctlog.Config{}), "SetGlobalLogConfig should disable SetAPIURL diagnostic capture")
+	})
+
+	diagnosticsFor := func(name string) string {
+		logMu.Lock()
+		defer logMu.Unlock()
+		var matching []string
+		for _, entry := range entries {
+			if strings.Contains(entry, name) {
+				matching = append(matching, entry)
+			}
+		}
+		return strings.Join(matching, "\n")
+	}
+
+	t.Run("configured endpoints", func(t *testing.T) {
+		const (
+			name           = "set-api-url-configured-diagnostics"
+			defaultURL     = "https://default-user-canary:default-password-canary@default.example/default-path-canary?signature=default-query-canary"
+			replacementURL = "http://replacement-user-canary:replacement-password-canary@replacement.example/replacement-path-canary?signature=replacement-query-canary"
+			sameURL        = "https://same.example/same-path-canary?signature=same-query-canary"
+			unmatchedURL   = "https://unmatched.example/unmatched-path-canary?signature=unmatched-query-canary"
+		)
+		b := Base{Name: name, Config: &config.Exchange{}}
+		b.API.Endpoints = b.NewEndpoints()
+		require.NoError(t, b.API.Endpoints.SetDefaultEndpoints(map[URL]string{
+			RestSpot:              defaultURL,
+			RestSpotSupplementary: sameURL,
+		}), "SetDefaultEndpoints must configure SetAPIURL defaults")
+		b.Config.API.Endpoints = map[string]string{
+			RestSpot.String():              replacementURL,
+			RestSpotSupplementary.String(): sameURL,
+			RestSwap.String():              unmatchedURL,
+			RestSandbox.String():           "",
+			WebsocketPrivate.String():      config.APIURLNonDefaultMessage,
+			WebsocketTrade.String():        config.WebsocketURLNonDefaultMessage,
+		}
+
+		require.NoError(t, b.SetAPIURL(), "SetAPIURL must apply configured endpoint overrides")
+		assert.Equal(t, replacementURL, b.Config.API.Endpoints[RestSpot.String()], "SetAPIURL should preserve the configured replacement URL")
+		diagnostics := diagnosticsFor(name)
+		assert.Contains(t, diagnostics, "https://default.example", "SetAPIURL should log the default endpoint origin")
+		assert.Contains(t, diagnostics, "http://replacement.example", "SetAPIURL should log the replacement endpoint origin")
+		assert.Contains(t, diagnostics, "https://unmatched.example", "SetAPIURL should log the unmatched endpoint origin")
+		for _, canary := range []string{
+			"default-user-canary", "default-password-canary", "default-path-canary", "default-query-canary",
+			"replacement-user-canary", "replacement-password-canary", "replacement-path-canary", "replacement-query-canary",
+			"unmatched-path-canary", "unmatched-query-canary",
+		} {
+			assert.NotContainsf(t, diagnostics, canary, "SetAPIURL should omit %s from configured endpoint diagnostics", canary)
+		}
+	})
+
+	t.Run("legacy endpoints", func(t *testing.T) {
+		const (
+			name               = "set-api-url-legacy-diagnostics"
+			legacyURL          = "http://legacy.example/legacy-path-canary?signature=legacy-query-canary"
+			legacySecondaryURL = "http://legacy-secondary.example/secondary-path-canary?signature=secondary-query-canary"
+			legacyWebsocketURL = "ws://legacy-websocket.example/websocket-path-canary?listenKey=websocket-query-canary"
+		)
+		b := Base{Name: name, Config: &config.Exchange{}}
+		b.API.Endpoints = b.NewEndpoints()
+		b.Config.API.OldEndPoints = &config.APIEndpointsConfig{
+			URL:          legacyURL,
+			URLSecondary: legacySecondaryURL,
+			WebsocketURL: legacyWebsocketURL,
+		}
+
+		require.NoError(t, b.SetAPIURL(), "SetAPIURL must apply legacy endpoint overrides")
+		assert.Nil(t, b.Config.API.OldEndPoints, "SetAPIURL should clear legacy endpoint configuration")
+		diagnostics := diagnosticsFor(name)
+		assert.Contains(t, diagnostics, "http://legacy.example", "SetAPIURL should log the legacy endpoint origin")
+		assert.Contains(t, diagnostics, "http://legacy-secondary.example", "SetAPIURL should log the legacy secondary endpoint origin")
+		assert.Contains(t, diagnostics, "ws://legacy-websocket.example", "SetAPIURL should log the legacy websocket origin")
+		for _, canary := range []string{"legacy-path-canary", "legacy-query-canary", "secondary-path-canary", "secondary-query-canary", "websocket-path-canary", "listenKey", "websocket-query-canary"} {
+			assert.NotContainsf(t, diagnostics, canary, "SetAPIURL should omit %s from legacy endpoint diagnostics", canary)
+		}
+	})
+
+	t.Run("legacy secondary endpoint error", func(t *testing.T) {
+		const invalidURL = "https://secondary-user-canary:secondary-password-canary@example.com/secondary-path-canary%zz?signature=secondary-query-canary"
+		b := Base{Name: "set-api-url-secondary-error", Config: &config.Exchange{}}
+		b.API.Endpoints = b.NewEndpoints()
+		b.Config.API.OldEndPoints = &config.APIEndpointsConfig{URLSecondary: invalidURL}
+		err := b.SetAPIURL()
+		require.Error(t, err, "SetAPIURL must error for an invalid legacy secondary endpoint")
+		var parseErr *url.Error
+		require.ErrorAs(t, err, &parseErr, "SetAPIURL must preserve legacy secondary URL parse error inspection")
+		for _, canary := range []string{"secondary-user-canary", "secondary-password-canary", "secondary-path-canary", "secondary-query-canary"} {
+			assert.NotContainsf(t, err.Error(), canary, "SetAPIURL should omit %s from a legacy secondary endpoint error", canary)
+		}
+	})
+
+	t.Run("legacy websocket endpoint error", func(t *testing.T) {
+		const invalidURL = "wss://websocket-user-canary:websocket-password-canary@example.com/websocket-path-canary%zz?listenKey=websocket-query-canary"
+		b := Base{Name: "set-api-url-websocket-error", Config: &config.Exchange{}}
+		b.API.Endpoints = b.NewEndpoints()
+		b.Config.API.OldEndPoints = &config.APIEndpointsConfig{WebsocketURL: invalidURL}
+		err := b.SetAPIURL()
+		require.Error(t, err, "SetAPIURL must error for an invalid legacy websocket endpoint")
+		var parseErr *url.Error
+		require.ErrorAs(t, err, &parseErr, "SetAPIURL must preserve legacy websocket URL parse error inspection")
+		for _, canary := range []string{"websocket-user-canary", "websocket-password-canary", "websocket-path-canary", "websocket-query-canary"} {
+			assert.NotContainsf(t, err.Error(), canary, "SetAPIURL should omit %s from a legacy websocket endpoint error", canary)
+		}
+	})
+
+	t.Run("configured endpoint update error", func(t *testing.T) {
+		const invalidURL = "https://override-user-canary:override-password-canary@example.com/override-path-canary%zz?signature=override-query-canary"
+		b := Base{Name: "set-api-url-update-error", Config: &config.Exchange{}}
+		b.API.Endpoints = b.NewEndpoints()
+		require.NoError(t, b.API.Endpoints.SetDefaultEndpoints(map[URL]string{RestSpot: "https://default.example"}), "SetDefaultEndpoints must configure the SetAPIURL error case")
+		b.Config.API.Endpoints = map[string]string{RestSpot.String(): invalidURL}
+		err := b.SetAPIURL()
+		require.Error(t, err, "SetAPIURL must error for an invalid configured endpoint override")
+		var parseErr *url.Error
+		require.ErrorAs(t, err, &parseErr, "SetAPIURL must preserve configured URL parse error inspection")
+		for _, canary := range []string{"override-user-canary", "override-password-canary", "override-path-canary", "override-query-canary"} {
+			assert.NotContainsf(t, err.Error(), canary, "SetAPIURL should omit %s from a configured endpoint error", canary)
+		}
+	})
 }
 
 func TestAssetWebsocketFunctionality(t *testing.T) {
@@ -2696,6 +2847,79 @@ func TestSubscribeAccountBalances(t *testing.T) {
 // FakeBase is used to override functions
 type FakeBase struct{ Base }
 
+type bootstrapTestExchange struct {
+	FakeBase
+
+	continueBootstrap  bool
+	bootstrapErr       error
+	verbose            bool
+	supportedFeatures  FeaturesSupported
+	enabledFeatures    FeaturesEnabled
+	websocket          *websocket.Manager
+	websocketErr       error
+	assetTypes         asset.Items
+	tradablePairsErr   error
+	executionLimitErrs map[asset.Item]error
+	callMu             sync.Mutex
+	calls              map[string]int
+}
+
+func (b *bootstrapTestExchange) recordCall(name string) {
+	b.callMu.Lock()
+	b.calls[name]++
+	b.callMu.Unlock()
+}
+
+func (b *bootstrapTestExchange) callCount(name string) int {
+	b.callMu.Lock()
+	defer b.callMu.Unlock()
+	return b.calls[name]
+}
+
+func (b *bootstrapTestExchange) Bootstrap(context.Context) (bool, error) {
+	b.recordCall("Bootstrap")
+	return b.continueBootstrap, b.bootstrapErr
+}
+
+func (b *bootstrapTestExchange) IsVerbose() bool {
+	b.recordCall("IsVerbose")
+	return b.verbose
+}
+
+func (b *bootstrapTestExchange) GetSupportedFeatures() FeaturesSupported {
+	b.recordCall("GetSupportedFeatures")
+	return b.supportedFeatures
+}
+
+func (b *bootstrapTestExchange) GetEnabledFeatures() FeaturesEnabled {
+	b.recordCall("GetEnabledFeatures")
+	return b.enabledFeatures
+}
+
+func (b *bootstrapTestExchange) GetWebsocket() (*websocket.Manager, error) {
+	b.recordCall("GetWebsocket")
+	return b.websocket, b.websocketErr
+}
+
+func (b *bootstrapTestExchange) PrintEnabledPairs() {
+	b.recordCall("PrintEnabledPairs")
+}
+
+func (b *bootstrapTestExchange) UpdateTradablePairs(context.Context) error {
+	b.recordCall("UpdateTradablePairs")
+	return b.tradablePairsErr
+}
+
+func (b *bootstrapTestExchange) GetAssetTypes(enabled bool) asset.Items {
+	b.recordCall(fmt.Sprintf("GetAssetTypes:%t", enabled))
+	return b.assetTypes
+}
+
+func (b *bootstrapTestExchange) UpdateOrderExecutionLimits(_ context.Context, a asset.Item) error {
+	b.recordCall("UpdateOrderExecutionLimits:" + a.String())
+	return b.executionLimitErrs[a]
+}
+
 func (f *FakeBase) GetOpenInterest(context.Context, ...key.PairAsset) ([]futures.OpenInterest, error) {
 	return []futures.OpenInterest{
 		{
@@ -2836,6 +3060,232 @@ func (f *FakeBase) UpdateOrderExecutionLimits(context.Context, asset.Item) error
 	return nil
 }
 
+func newBootstrapTestWebsocket(t *testing.T, runningURL string, configuredURLs ...string) *websocket.Manager {
+	t.Helper()
+
+	w := websocket.NewManager()
+	setup := &websocket.ManagerSetup{
+		ExchangeConfig: &config.Exchange{
+			Name:                    "bootstrap-websocket-test",
+			Features:                &config.FeaturesConfig{Enabled: config.FeaturesEnabledConfig{Websocket: true}},
+			WebsocketTrafficTimeout: time.Second,
+		},
+		Features: &protocol.Features{},
+	}
+	if len(configuredURLs) == 0 {
+		setup.DefaultURL = runningURL
+		setup.RunningURL = runningURL
+		setup.Connector = func() error { return nil }
+		setup.Subscriber = func(subscription.List) error { return nil }
+		setup.GenerateSubscriptions = func() (subscription.List, error) { return nil, nil }
+	} else {
+		setup.UseMultiConnectionManagement = true
+	}
+	require.NoError(t, w.Setup(setup), "Manager.Setup must configure the Bootstrap websocket")
+
+	for _, configuredURL := range configuredURLs {
+		require.NoError(t, w.SetupNewConnection(&websocket.ConnectionSetup{
+			URL:                      configuredURL,
+			Connector:                func(context.Context, websocket.Connection) error { return nil },
+			Handler:                  func(context.Context, websocket.Connection, []byte) error { return nil },
+			SubscriptionsNotRequired: true,
+			MessageFilter:            configuredURL,
+		}), "Manager.SetupNewConnection must configure a Bootstrap websocket URL")
+	}
+	return w
+}
+
+func TestBootstrap(t *testing.T) {
+	require.NoError(t, gctlog.SetGlobalLogConfig(gctlog.GenDefaultSettings()), "SetGlobalLogConfig must enable Bootstrap diagnostic capture")
+	var logMu sync.Mutex
+	var entries []string
+	gctlog.SetCustomLogHook(func(_, _ string, a ...any) bool {
+		logMu.Lock()
+		entries = append(entries, fmt.Sprint(a...))
+		logMu.Unlock()
+		return true
+	})
+	t.Cleanup(func() {
+		gctlog.SetCustomLogHook(nil)
+		assert.NoError(t, gctlog.SetGlobalLogConfig(&gctlog.Config{}), "SetGlobalLogConfig should disable Bootstrap diagnostic capture")
+	})
+
+	newExchange := func(name string) *bootstrapTestExchange {
+		return &bootstrapTestExchange{
+			FakeBase:          FakeBase{Base: Base{Name: name}},
+			continueBootstrap: true,
+			calls:             make(map[string]int),
+		}
+	}
+	diagnosticsFor := func(name string) string {
+		logMu.Lock()
+		defer logMu.Unlock()
+		var matching []string
+		for _, entry := range entries {
+			if strings.Contains(entry, name) {
+				matching = append(matching, entry)
+			}
+		}
+		return strings.Join(matching, "\n")
+	}
+
+	errBootstrap := errors.New("bootstrap failed")
+	errTradablePairs := errors.New("tradable pairs failed")
+	errExecutionLimits := errors.New("execution limits failed")
+
+	t.Run("early stop", func(t *testing.T) {
+		b := newExchange("bootstrap-early-stop")
+		b.continueBootstrap = false
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error for an exchange-requested early stop")
+		assert.Equal(t, 1, b.callCount("Bootstrap"), "Bootstrap should call the exchange bootstrap once")
+		assert.Zero(t, b.callCount("IsVerbose"), "Bootstrap should not inspect verbosity after an early stop")
+		assert.Empty(t, diagnosticsFor(b.Name), "Bootstrap should not log after an early stop")
+	})
+
+	t.Run("exchange bootstrap error", func(t *testing.T) {
+		b := newExchange("bootstrap-exchange-error")
+		b.bootstrapErr = errBootstrap
+
+		err := Bootstrap(t.Context(), b)
+		assert.ErrorIs(t, err, errBootstrap, "Bootstrap should return the exchange bootstrap error")
+		assert.Zero(t, b.callCount("IsVerbose"), "Bootstrap should not inspect verbosity after an exchange bootstrap error")
+	})
+
+	t.Run("verbose disabled", func(t *testing.T) {
+		b := newExchange("bootstrap-not-verbose")
+		b.supportedFeatures.Websocket = true
+		b.websocket = newBootstrapTestWebsocket(t, "wss://not-logged.example/path?signature=not-logged-token")
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error with verbose logging disabled")
+		assert.Zero(t, b.callCount("GetSupportedFeatures"), "Bootstrap should not inspect supported features with verbose logging disabled")
+		assert.Zero(t, b.callCount("GetWebsocket"), "Bootstrap should not inspect the websocket with verbose logging disabled")
+		assert.Zero(t, b.callCount("PrintEnabledPairs"), "Bootstrap should not print enabled pairs with verbose logging disabled")
+		assert.Empty(t, diagnosticsFor(b.Name), "Bootstrap should not log with verbose logging disabled")
+	})
+
+	t.Run("unsupported websocket", func(t *testing.T) {
+		b := newExchange("bootstrap-unsupported-websocket")
+		b.verbose = true
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error for an unsupported websocket")
+		assert.Zero(t, b.callCount("GetWebsocket"), "Bootstrap should not fetch an unsupported websocket")
+		assert.Equal(t, 1, b.callCount("PrintEnabledPairs"), "Bootstrap should print enabled pairs in verbose mode")
+		assert.Contains(t, diagnosticsFor(b.Name), "Websocket: Unsupported", "Bootstrap should log unsupported websocket metadata")
+	})
+
+	t.Run("websocket lookup failure", func(t *testing.T) {
+		const websocketErrorCanary = "websocket-lookup-signature-token"
+		b := newExchange("bootstrap-websocket-error")
+		b.verbose = true
+		b.supportedFeatures.Websocket = true
+		b.websocketErr = errors.New(websocketErrorCanary)
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should tolerate a websocket lookup failure")
+		assert.Equal(t, 1, b.callCount("GetWebsocket"), "Bootstrap should fetch a supported websocket once")
+		diagnostics := diagnosticsFor(b.Name)
+		assert.Contains(t, diagnostics, "Websocket: Disabled", "Bootstrap should log disabled websocket metadata after a lookup failure")
+		assert.NotContains(t, diagnostics, websocketErrorCanary, "Bootstrap should omit websocket lookup error details from diagnostics")
+	})
+
+	t.Run("running websocket URL", func(t *testing.T) {
+		const runningURL = "wss://user-canary:password-canary@running.example/private-path-canary?listenKey=query-canary#fragment-canary"
+		b := newExchange("bootstrap-running-websocket")
+		b.verbose = true
+		b.supportedFeatures.Websocket = true
+		b.websocket = newBootstrapTestWebsocket(t, runningURL)
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error for a running websocket URL")
+		assert.Equal(t, runningURL, b.websocket.GetWebsocketURL(), "Bootstrap should preserve the running websocket URL")
+		diagnostics := diagnosticsFor(b.Name)
+		assert.Contains(t, diagnostics, "wss://running.example", "Bootstrap should log the running websocket origin")
+		for _, canary := range []string{"user-canary", "password-canary", "private-path-canary", "listenKey", "query-canary", "fragment-canary"} {
+			assert.NotContainsf(t, diagnostics, canary, "Bootstrap should omit %s from running websocket diagnostics", canary)
+		}
+	})
+
+	t.Run("configured websocket URL fallback", func(t *testing.T) {
+		configuredURLs := []string{
+			"wss://first.example/private-first?signature=first-query-canary",
+			"wss://second.example/private-second?listenKey=second-query-canary",
+		}
+		b := newExchange("bootstrap-configured-websockets")
+		b.verbose = true
+		b.supportedFeatures.Websocket = true
+		b.websocket = newBootstrapTestWebsocket(t, "", configuredURLs...)
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error for configured websocket URL fallbacks")
+		retainedURLs, err := b.websocket.GetConfiguredWebsocketURLs()
+		require.NoError(t, err, "GetConfiguredWebsocketURLs must return the configured websocket URLs")
+		assert.ElementsMatch(t, configuredURLs, retainedURLs, "Bootstrap should preserve configured websocket URLs")
+		diagnostics := diagnosticsFor(b.Name)
+		assert.Contains(t, diagnostics, "wss://first.example", "Bootstrap should log the first configured websocket origin")
+		assert.Contains(t, diagnostics, "wss://second.example", "Bootstrap should log the second configured websocket origin")
+		for _, canary := range []string{"private-first", "signature", "first-query-canary", "private-second", "listenKey", "second-query-canary"} {
+			assert.NotContainsf(t, diagnostics, canary, "Bootstrap should omit %s from configured websocket diagnostics", canary)
+		}
+	})
+
+	t.Run("automatic pair update success", func(t *testing.T) {
+		b := newExchange("bootstrap-pair-update-success")
+		b.enabledFeatures.AutoPairUpdates = true
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error after a successful tradable pair update")
+		assert.Equal(t, 1, b.callCount("UpdateTradablePairs"), "Bootstrap should update tradable pairs once")
+		assert.Equal(t, 1, b.callCount("GetAssetTypes:true"), "Bootstrap should fetch enabled asset types after updating pairs")
+	})
+
+	t.Run("automatic pair update error", func(t *testing.T) {
+		b := newExchange("bootstrap-pair-update-error")
+		b.enabledFeatures.AutoPairUpdates = true
+		b.tradablePairsErr = errTradablePairs
+		b.assetTypes = asset.Items{asset.Spot}
+
+		err := Bootstrap(t.Context(), b)
+		assert.ErrorIs(t, err, errTradablePairs, "Bootstrap should return a tradable pair update error")
+		assert.Zero(t, b.callCount("GetAssetTypes:true"), "Bootstrap should not fetch asset types after a tradable pair update error")
+		assert.Zero(t, b.callCount("UpdateOrderExecutionLimits:spot"), "Bootstrap should not update execution limits after a tradable pair update error")
+	})
+
+	t.Run("execution limit success", func(t *testing.T) {
+		b := newExchange("bootstrap-execution-limit-success")
+		b.assetTypes = asset.Items{asset.Spot, asset.Futures}
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should not error after successful execution limit updates")
+		assert.Equal(t, 1, b.callCount("UpdateOrderExecutionLimits:spot"), "Bootstrap should update spot execution limits once")
+		assert.Equal(t, 1, b.callCount("UpdateOrderExecutionLimits:futures"), "Bootstrap should update futures execution limits once")
+	})
+
+	t.Run("execution limits not implemented", func(t *testing.T) {
+		b := newExchange("bootstrap-execution-limits-not-implemented")
+		b.assetTypes = asset.Items{asset.Spot}
+		b.executionLimitErrs = map[asset.Item]error{asset.Spot: common.ErrNotYetImplemented}
+
+		err := Bootstrap(t.Context(), b)
+		assert.NoError(t, err, "Bootstrap should ignore unimplemented execution limit updates")
+		assert.Equal(t, 1, b.callCount("UpdateOrderExecutionLimits:spot"), "Bootstrap should attempt an unimplemented execution limit update once")
+	})
+
+	t.Run("execution limit error", func(t *testing.T) {
+		b := newExchange("bootstrap-execution-limit-error")
+		b.assetTypes = asset.Items{asset.Spot, asset.Futures}
+		b.executionLimitErrs = map[asset.Item]error{asset.Futures: errExecutionLimits}
+
+		err := Bootstrap(t.Context(), b)
+		assert.ErrorIs(t, err, errExecutionLimits, "Bootstrap should return an execution limit update error")
+		assert.Equal(t, 1, b.callCount("UpdateOrderExecutionLimits:spot"), "Bootstrap should update successful execution limits once")
+		assert.Equal(t, 1, b.callCount("UpdateOrderExecutionLimits:futures"), "Bootstrap should attempt failing execution limits once")
+	})
+}
+
 func (f *FakeBase) GetLatestFundingRates(context.Context, *fundingrate.LatestRateRequest) ([]fundingrate.LatestRateResponse, error) {
 	return nil, nil
 }
@@ -2940,7 +3390,7 @@ func TestWebsocketCancelOrder(t *testing.T) {
 
 func TestMessageID(t *testing.T) {
 	t.Parallel()
-	id := (new(Base)).MessageID()
+	id := new(Base).MessageID()
 	require.NotEmpty(t, id, "MessageID must return a non-empty message ID")
 	u, err := uuid.FromString(id)
 	require.NoError(t, err, "MessageID must return a valid UUID")

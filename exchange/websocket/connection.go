@@ -8,19 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	gws "github.com/gorilla/websocket"
-	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -141,25 +139,48 @@ func (c *connection) Dial(ctx context.Context, dialer *gws.Dialer, headers http.
 	if c.ProxyURL != "" {
 		proxy, err := url.Parse(c.ProxyURL)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s websocket connection: proxy URL is invalid: %w", c.ExchangeName, logsafe.Error(err))
 		}
 		dialer.Proxy = http.ProxyURL(proxy)
 	}
 
-	path := common.EncodeURLValues(c.URL, values)
+	path := c.URL
+	// Explicit values replace matching keys and canonicalize the merged query.
+	// Opaque or signed queries that require byte preservation must be supplied
+	// entirely in c.URL with no explicit values.
+	if len(values) != 0 {
+		endpoint, err := url.Parse(c.URL)
+		if err != nil {
+			return fmt.Errorf("%s websocket connection: endpoint URL is invalid: %w", c.ExchangeName, logsafe.Error(err))
+		}
+		query, err := url.ParseQuery(endpoint.RawQuery)
+		if err != nil {
+			return fmt.Errorf("%s websocket connection: endpoint query is invalid: %w", c.ExchangeName, logsafe.Error(err))
+		}
+		for key, explicitValues := range values {
+			query.Del(key)
+			for _, value := range explicitValues {
+				query.Add(key, value)
+			}
+		}
+		endpoint.RawQuery = query.Encode()
+		path = endpoint.String()
+	}
 	conn, resp, err := dialer.DialContext(ctx, path, headers)
 	if err != nil {
 		if resp != nil {
 			_ = resp.Body.Close()
-			return fmt.Errorf("%s websocket connection: %v %v %v Error: %w", c.ExchangeName, path, resp, resp.StatusCode, err)
+			return fmt.Errorf("%s websocket connection to %s failed with status %d: %w", c.ExchangeName, logsafe.URL(path), resp.StatusCode, logsafe.Error(logsafe.URLRequestError(err)))
 		}
-		return fmt.Errorf("%s websocket connection: %v Error: %w", c.ExchangeName, path, err)
+		return fmt.Errorf("%s websocket connection to %s failed: %w", c.ExchangeName, logsafe.URL(path), logsafe.Error(logsafe.URLRequestError(err)))
 	}
-	_ = resp.Body.Close()
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	c.Connection = conn
 
 	if c.Verbose {
-		log.Infof(log.WebsocketMgr, "%v Websocket connected to %s\n", c.ExchangeName, path)
+		log.Infof(log.WebsocketMgr, "%v websocket connected to %s\n", c.ExchangeName, logsafe.URL(path))
 	}
 	select {
 	case c.Traffic <- struct{}{}:
@@ -173,11 +194,12 @@ func (c *connection) Dial(ctx context.Context, dialer *gws.Dialer, headers http.
 func (c *connection) SendJSONMessage(ctx context.Context, epl request.EndpointLimit, data any) error {
 	return c.writeToConn(ctx, epl, func() error {
 		if request.IsVerbose(ctx, c.Verbose) {
-			if msg, err := json.Marshal(data); err == nil { // WriteJSON will error for us anyway
-				log.Debugf(log.WebsocketMgr, "%v %v: Sending message: %v", c.ExchangeName, removeURLQueryString(c.URL), string(msg))
-			}
+			log.Debugf(log.WebsocketMgr, "%v %v: outbound JSON frame type=%T", c.ExchangeName, logsafe.URL(c.URL), data)
 		}
-		return c.Connection.WriteJSON(data)
+		if err := c.Connection.WriteJSON(data); err != nil {
+			return fmt.Errorf("websocket JSON write failed: %w", logsafe.Error(err))
+		}
+		return nil
 	})
 }
 
@@ -185,7 +207,7 @@ func (c *connection) SendJSONMessage(ctx context.Context, epl request.EndpointLi
 func (c *connection) SendRawMessage(ctx context.Context, epl request.EndpointLimit, messageType int, message []byte) error {
 	return c.writeToConn(ctx, epl, func() error {
 		if request.IsVerbose(ctx, c.Verbose) {
-			log.Debugf(log.WebsocketMgr, "%v %v: Sending message: %v", c.ExchangeName, removeURLQueryString(c.URL), string(message))
+			log.Debugf(log.WebsocketMgr, "%v %v: outbound frame opcode=%d bytes=%d", c.ExchangeName, logsafe.URL(c.URL), messageType, len(message))
 		}
 		return c.Connection.WriteMessage(messageType, message)
 	})
@@ -227,15 +249,7 @@ func (c *connection) writeToConn(ctx context.Context, epl request.EndpointLimit,
 // WebsocketPingHandler configuration
 func (c *connection) SetupPingHandler(epl request.EndpointLimit, handler PingHandler) {
 	if handler.UseGorillaHandler {
-		c.Connection.SetPingHandler(func(msg string) error {
-			err := c.Connection.WriteControl(handler.MessageType, []byte(msg), time.Now().Add(handler.Delay))
-			if err == gws.ErrCloseSent {
-				return nil
-			} else if e, ok := err.(net.Error); ok && e.Timeout() {
-				return nil
-			}
-			return err
-		})
+		c.Connection.SetPingHandler(newGorillaPingHandler(c.Connection.WriteControl, handler))
 		return
 	}
 	c.Wg.Go(func() {
@@ -245,12 +259,25 @@ func (c *connection) SetupPingHandler(epl request.EndpointLimit, handler PingHan
 				return
 			case <-time.After(handler.Delay):
 				if err := c.SendRawMessage(context.Background(), epl, handler.MessageType, handler.Message); err != nil {
-					log.Errorf(log.WebsocketMgr, "%v websocket connection: ping handler failed to send message [%s]: %v", c.ExchangeName, handler.Message, err)
+					log.Errorf(log.WebsocketMgr, "%v websocket connection: ping handler failed opcode=%d bytes=%d cause-type=%T", c.ExchangeName, handler.MessageType, len(handler.Message), err)
 					return
 				}
 			}
 		}
 	})
+}
+
+func newGorillaPingHandler(writeControl func(int, []byte, time.Time) error, handler PingHandler) func(string) error {
+	return func(msg string) error {
+		err := writeControl(handler.MessageType, []byte(msg), time.Now().Add(handler.Delay))
+		if err == gws.ErrCloseSent {
+			return nil
+		}
+		if logsafe.IsTimeout(err) {
+			return nil
+		}
+		return err
+	}
 }
 
 // setConnectedStatus sets connection status if changed it will return true.
@@ -284,11 +311,11 @@ func (c *connection) ReadMessage() Response {
 			// method on WebsocketConnection type has been called and can
 			// be skipped.
 			select {
-			case c.readMessageErrors <- fmt.Errorf("%w: %w (%q)", err, errConnectionFault, c.URL):
+			case c.readMessageErrors <- fmt.Errorf("%w: %w endpoint=%s", logsafe.Error(err), errConnectionFault, logsafe.URL(c.URL)):
 			default:
 				// bypass if there is no receiver, as this stops it returning
 				// when shutdown is called.
-				log.Warnf(log.WebsocketMgr, "%s failed to relay error: %v", c.ExchangeName, err)
+				log.Warnf(log.WebsocketMgr, "%s failed to relay websocket read error cause-type=%T", c.ExchangeName, err)
 			}
 		}
 		return Response{}
@@ -299,6 +326,7 @@ func (c *connection) ReadMessage() Response {
 	default: // Non-Blocking write ensures 1 buffered signal per trafficCheckInterval to avoid flooding
 	}
 
+	wireBytes := len(resp)
 	var standardMessage []byte
 	switch mType {
 	case gws.TextMessage:
@@ -306,12 +334,12 @@ func (c *connection) ReadMessage() Response {
 	case gws.BinaryMessage:
 		standardMessage, err = c.parseBinaryResponse(resp)
 		if err != nil {
-			log.Errorf(log.WebsocketMgr, "%v %v: Parse binary response error: %v", c.ExchangeName, removeURLQueryString(c.URL), err)
+			log.Errorf(log.WebsocketMgr, "%v %v: binary frame parse failure wire-bytes=%d cause-type=%T", c.ExchangeName, logsafe.URL(c.URL), wireBytes, err)
 			return Response{Raw: []byte(``)} // Non-nil response to avoid the reader returning on this case.
 		}
 	}
 	if c.Verbose {
-		log.Debugf(log.WebsocketMgr, "%v %v: Message received: %v", c.ExchangeName, removeURLQueryString(c.URL), string(standardMessage))
+		log.Debugf(log.WebsocketMgr, "%v %v: inbound frame opcode=%d wire-bytes=%d decoded-bytes=%d", c.ExchangeName, logsafe.URL(c.URL), mType, wireBytes, len(standardMessage))
 	}
 	return Response{Raw: standardMessage, Type: mType}
 }
@@ -381,7 +409,7 @@ func (c *connection) SendMessageReturnResponses(ctx context.Context, epl request
 func (c *connection) SendMessageReturnResponsesWithInspector(ctx context.Context, epl request.EndpointLimit, signature, payload any, expected int, messageInspector Inspector) ([][]byte, error) {
 	outbound, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("error marshaling json for %s: %w", signature, err)
+		return nil, fmt.Errorf("error marshaling websocket request: %w", logsafe.Error(err))
 	}
 
 	ch, err := c.Match.Set(signature, expected)
@@ -425,7 +453,7 @@ inspection:
 			}
 		case <-timeout.C:
 			c.Match.RemoveSignature(signature)
-			return nil, fmt.Errorf("%s %w %v", c.ExchangeName, ErrSignatureTimeout, signature)
+			return nil, fmt.Errorf("%s %w", c.ExchangeName, ErrSignatureTimeout)
 		case <-ctx.Done():
 			c.Match.RemoveSignature(signature)
 			return nil, ctx.Err()
@@ -435,7 +463,7 @@ inspection:
 	// Only check context verbosity. If the exchange is verbose, it will log the responses in the ReadMessage() call.
 	if request.IsVerbose(ctx, false) {
 		for i := range resps {
-			log.Debugf(log.WebsocketMgr, "%v %v: Received response [%d/%d]: %v", c.ExchangeName, removeURLQueryString(c.URL), i+1, len(resps), string(resps[i]))
+			log.Debugf(log.WebsocketMgr, "%v %v: matched response [%d/%d] bytes=%d", c.ExchangeName, logsafe.URL(c.URL), i+1, len(resps), len(resps[i]))
 		}
 	}
 
@@ -464,11 +492,6 @@ func (c *connection) MatchReturnResponses(ctx context.Context, signature any, ex
 	}()
 
 	return out, nil
-}
-
-func removeURLQueryString(u string) string {
-	baseURL, _, _ := strings.Cut(u, "?")
-	return baseURL
 }
 
 // RequireMatchWithData routes incoming data using the connection specific match system to the correct handler

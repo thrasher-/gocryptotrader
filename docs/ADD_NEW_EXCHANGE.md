@@ -319,23 +319,17 @@ Create a test function in `rest_test.go` to see if the data is received and unma
 ```go
 func TestGetExchangeInfo(t *testing.T) {
     t.Parallel() // adding t.Parallel() is preferred as it allows tests to run simultaneously, speeding up package test time
-    e.Verbose = true
     result, err := e.GetExchangeInfo(t.Context())
     require.NoError(t, err)
-    t.Log(result)
     assert.NotNil(t, result)
 }
 ```
 
-Set `Verbose` to `true` to view received data during unmarshalling errors.
-After testing, remove `Verbose`, the result variable, and `t.Log(result)`, or replace the log with `assert.NotNil(t, result)` to avoid unnecessary output when running GCT.
-Alternatively you can use `request.WithVerbose(t.Context())` as the `context` param to achieve the same result.
-
-```go
-    result, err := e.GetExchangeInfo(t.Context())
-    require.NoError(t, err)
-    assert.NotNil(t, result)
-```
+Verbose HTTP diagnostics contain request and response metadata only; headers and
+wire payloads are intentionally omitted. To inspect an unknown response shape
+during local test development, temporarily set the request result to a
+`json.RawMessage` and log that result from the test. Remove the temporary raw
+result and log once the response type is known.
 
 Ensure each endpoint is implemented and has an associated test to improve test coverage and increase confidence
 
@@ -641,32 +635,29 @@ func (e *Exchange) WsConnect() error {
     }
 
     dialer := gws.Dialer{
-        HandshakeTimeout: e.Config.HTTPTimeout
-        Proxy:            http.ProxyFromEnvironment
+        HandshakeTimeout: e.Config.HTTPTimeout,
+        Proxy:            http.ProxyFromEnvironment,
     }
 
+    var dialValues url.Values
     if e.Websocket.CanUseAuthenticatedEndpoints() {
         listenKey, err := e.GetWsAuthStreamKey(ctx)
         if err != nil {
             e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-            log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, err)
+            log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated websocket cause-type=%T", e.Name, err)
         } else {
-            // cleans on failed connection
-            clean := strings.Split(b.Websocket.GetWebsocketURL(), "?streams=")
-            authPayload := clean[0] + "?streams=" + listenKey
-            if err := e.Websocket.SetWebsocketURL(authPayload, false, false); err != nil {
-                return err
-            }
+            dialValues = url.Values{"streams": {listenKey}}
         }
     }
 
-    if err := e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
-        return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s", e.Name, err)
+    if err := e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, dialValues); err != nil {
+        return fmt.Errorf("%v unable to connect to websocket: %w", e.Name, err)
     }
 
     if e.Websocket.CanUseAuthenticatedEndpoints() {
         // Start a goroutine to keep the WebSocket auth key alive
         // for accessing authenticated endpoints.
+        e.Websocket.Wg.Add(1)
         go e.KeepAuthKeyAlive(ctx)
     }
 
@@ -677,12 +668,18 @@ func (e *Exchange) WsConnect() error {
     })
 
     e.Websocket.Wg.Add(1)
-    go e.wsReadData()
+    go e.Websocket.Reader(ctx, e.Websocket.Conn, func(ctx context.Context, _ websocket.Connection, message []byte) error {
+        return e.wsHandleData(ctx, message)
+    })
 
     e.setupOrderbookManager(ctx)
     return nil
 }
 ```
+
+Authentication values belong in the `Dial` values argument, not in a
+connection or manager URL. This keeps keys and tokens out of long-lived state
+and endpoint diagnostics.
 
 - Create the authentication function based on the [Binance Spot WebSocket Authentication Requests](https://developers.binance.com/docs/binance-spot-api-docs/websocket-api/authentication-requests) documentation.
 
@@ -698,14 +695,19 @@ func (e *Exchange) KeepAuthKeyAlive(ctx context.Context) {
         case <-time.After(time.Minute * 30):
             if err := e.MaintainWsAuthStreamKey(ctx); err != nil {
                 if errSend := e.Websocket.DataHandler.Send(ctx, err); errSend != nil {
-                    log.Errorf(log.WebsocketMgr, "%s %s: %s %s", e.Name, e.Websocket.Conn.GetURL(), errSend, err)
+                    log.Errorf(log.WebsocketMgr, "%s websocket auth renewal error relay failed cause-type=%T renewal-cause-type=%T", e.Name, errSend, err)
                 }
-                log.Warnf(log.ExchangeSys, "%s %s: Unable to renew auth websocket token, may experience shutdown", e.Name, e.Websocket.Conn.GetURL())
+                log.Warnf(log.ExchangeSys, "%s unable to renew auth websocket token; the connection may close", e.Name)
             }
         }
     }
 }
 ```
+
+Never log request headers, authentication payloads, signatures, raw frames, or
+raw handler errors. Use metadata such as operation, endpoint origin, payload
+type, byte count, status code, and error type. Prefer `websocket.Manager.Reader`
+to a hand-written read/relay loop so this policy is enforced centrally.
 
 - Create function to generate default subscriptions:
 
@@ -807,30 +809,9 @@ Run gocryptotrader with the following settings enabled in config
 - Trades and order events are handled by populating an order.Detail
   struct by [the following rules](./WS_ORDER_EVENTS.md).
 
-- Function to read data received from websocket:
-
-```go
-// wsReadData gets and passes on websocket messages for processing
-func (e *Exchange) wsReadData() {
-    defer e.Websocket.Wg.Done()
-    for {
-        select {
-        case <-e.Websocket.ShutdownC:
-            return
-        default:
-            resp := e.Websocket.Conn.ReadMessage()
-            if resp.Raw == nil {
-                return
-            }
-            if err := e.wsHandleData(ctx, resp.Raw); err != nil {
-                if errSend := e.Websocket.DataHandler.Send(ctx, err); errSend != nil {
-                    log.Errorf(log.WebsocketMgr, "%s %s: %s %s", e.Name, e.Websocket.Conn.GetURL(), errSend, err)
-                }
-            }
-        }
-    }
-}
-```
+- Register `e.wsHandleData` with `websocket.Manager.Reader` in `WsConnect`, as
+  shown above. The shared reader relays handler errors without exposing their
+  raw frame text.
 
 - Simple Examples of data handling:
 

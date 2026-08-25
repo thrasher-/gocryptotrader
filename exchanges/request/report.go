@@ -4,8 +4,9 @@ import (
 	"time"
 )
 
-// Reporter interface groups observability functionality over
-// HTTP request latency.
+// Reporter interface groups observability functionality over HTTP request
+// latency. The path argument is the raw request path and can contain
+// credentials; reporter implementations must treat it as sensitive data.
 type Reporter interface {
 	Latency(name, method, path string, t time.Duration)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"text/template"
@@ -24,6 +25,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -60,35 +62,40 @@ func (e *Exchange) WsConnect() error {
 	var dialer gws.Dialer
 	dialer.HandshakeTimeout = e.Config.HTTPTimeout
 	dialer.Proxy = http.ProxyFromEnvironment
+	previousListenKey := listenKey
+	if persistentURL, removed := removeLegacyListenKey(e.Websocket.GetWebsocketURL(), previousListenKey); removed {
+		if err := e.Websocket.SetWebsocketURL(persistentURL, false, false); err != nil {
+			return err
+		}
+	}
 	var err error
+	var dialValues url.Values
 	if e.Websocket.CanUseAuthenticatedEndpoints() {
 		listenKey, err = e.GetWsAuthStreamKey(ctx)
 		if err != nil {
 			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
 			log.Errorf(log.ExchangeSys,
-				"%v unable to connect to authenticated Websocket. Error: %s",
+				"%v unable to connect to authenticated Websocket. Error: %v",
 				e.Name,
-				err)
+				logsafe.Error(err))
 		} else {
-			// cleans on failed connection
-			clean := strings.Split(e.Websocket.GetWebsocketURL(), "?streams=")
-			authPayload := clean[0] + "?streams=" + listenKey
-			err = e.Websocket.SetWebsocketURL(authPayload, false, false)
-			if err != nil {
-				return err
-			}
+			// The manager subscribes public channels after this connector returns. Preserve legacy behaviour by
+			// overriding handshake streams while keeping the configured URL secret-free for reconnects and fallback.
+			dialValues = url.Values{"streams": {listenKey}}
 		}
 	}
 
-	err = e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, nil)
+	err = e.Websocket.Conn.Dial(ctx, &dialer, http.Header{}, dialValues)
 	if err != nil {
-		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %s",
+		return fmt.Errorf("%v - Unable to connect to Websocket. Error: %w",
 			e.Name,
-			err)
+			logsafe.Error(err))
 	}
 
 	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		go e.KeepAuthKeyAlive(ctx)
+		// KeepAuthKeyAlive retains legacy internal wait-group accounting for direct callers.
+		// The outer task prevents Wait from returning before that internal count is added.
+		e.Websocket.Wg.Go(func() { e.KeepAuthKeyAlive(ctx) })
 	}
 
 	e.Websocket.Conn.SetupPingHandler(request.Unset, websocket.PingHandler{
@@ -102,6 +109,46 @@ func (e *Exchange) WsConnect() error {
 
 	e.setupOrderbookManager(ctx)
 	return nil
+}
+
+func removeLegacyListenKey(endpoint, previousListenKey string) (string, bool) {
+	if previousListenKey == "" {
+		return endpoint, false
+	}
+	queryStart := strings.IndexByte(endpoint, '?')
+	if queryStart == -1 {
+		return endpoint, false
+	}
+	queryEnd := len(endpoint)
+	if fragmentStart := strings.IndexByte(endpoint, '#'); fragmentStart != -1 {
+		if fragmentStart < queryStart {
+			return endpoint, false
+		}
+		queryEnd = fragmentStart
+	}
+
+	queryParts := strings.Split(endpoint[queryStart+1:queryEnd], "&")
+	remaining := make([]string, 0, len(queryParts))
+	removed := false
+	for _, part := range queryParts {
+		rawKey, rawValue, hasValue := strings.Cut(part, "=")
+		key, keyErr := url.QueryUnescape(rawKey)
+		value, valueErr := url.QueryUnescape(rawValue)
+		if hasValue && keyErr == nil && valueErr == nil && key == "streams" && value == previousListenKey {
+			removed = true
+			continue
+		}
+		remaining = append(remaining, part)
+	}
+	if !removed {
+		return endpoint, false
+	}
+
+	persistentURL := endpoint[:queryStart]
+	if len(remaining) != 0 {
+		persistentURL += "?" + strings.Join(remaining, "&")
+	}
+	return persistentURL + endpoint[queryEnd:], true
 }
 
 func (e *Exchange) setupOrderbookManager(ctx context.Context) {

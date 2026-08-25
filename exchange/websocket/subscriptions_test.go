@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	mockws "github.com/thrasher-corp/gocryptotrader/internal/testing/websocket"
+	gctlog "github.com/thrasher-corp/gocryptotrader/log"
 )
 
 func TestSubscribeUnsubscribe(t *testing.T) {
@@ -93,6 +95,14 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 	assert.ErrorIs(t, new(Manager).UnsubscribeChannels(t.Context(), nil, subs), common.ErrNilPointer, "Should error when unsubscribing with nil unsubscribe function")
 	assert.ErrorIs(t, new(Manager).UnsubscribeChannels(t.Context(), amazingConn, subs), common.ErrNilPointer, "Should error when unsubscribing with nil unsubscribe function")
 	assert.NoError(t, multi.UnsubscribeChannels(t.Context(), amazingConn, nil), "Unsubscribing from nil should not error")
+	assert.ErrorIs(t, multi.UnsubscribeChannels(t.Context(), nil, subs), common.ErrNilPointer, "Unsubscribing on a managed websocket should require a connection")
+	amazingConn.SetURL("wss://user-token:password-token@example.com/path-token?signature=query-token")
+	err = multiEmpty.UnsubscribeChannels(t.Context(), amazingConn, subs)
+	assert.ErrorIs(t, err, errConnectionNotFound, "Unsubscribing on a managed websocket should require a tracked connection")
+	assert.Contains(t, err.Error(), "wss://example.com", "UnsubscribeChannels should retain safe connection origin metadata")
+	for _, secret := range []string{"user-token", "password-token", "path-token", "query-token"} {
+		assert.NotContains(t, err.Error(), secret, "UnsubscribeChannels should omit connection URL secrets")
+	}
 	assert.ErrorIs(t, multi.UnsubscribeChannels(t.Context(), amazingConn, subs), subscription.ErrNotFound, "Unsubscribing should error when not subscribed")
 	assert.Nil(t, multi.GetSubscription(42), "GetSubscription on empty internal map should return")
 
@@ -787,11 +797,12 @@ type fakeConnection struct {
 	subscriptions     *subscription.Store
 	subscriptionsHook func()
 	shutdownCalled    bool
+	shutdownErr       error
 }
 
 func (f *fakeConnection) Shutdown() error {
 	f.shutdownCalled = true
-	return nil
+	return f.shutdownErr
 }
 
 func (f *fakeConnection) Subscriptions() *subscription.Store {
@@ -1407,6 +1418,154 @@ func TestScaleConnectionsToSubscriptions(t *testing.T) {
 		assert.NotContains(t, m.connections, emptyConn)
 		assert.Same(t, ws, m.connections[freshConn])
 	})
+
+	t.Run("Global Unsubscribe Removal Error", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		sub := &subscription.Subscription{Channel: "A", Key: "original"}
+		ws := &websocket{setup: &ConnectionSetup{}, subscriptions: subscription.NewStore()}
+		require.NoError(t, ws.subscriptions.Add(sub), "Add must store the subscription")
+		sub.Key = "changed"
+
+		require.ErrorIs(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, nil), subscription.ErrNotFound, "scaleConnectionsToSubscriptions must return global removal failures")
+	})
+
+	t.Run("Initial Tracking Error", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		conn := &fakeConnection{subscriptions: subscription.NewStore()}
+		ws := &websocket{
+			setup: &ConnectionSetup{
+				TrackOnExistingConnection: func(context.Context, Connection, subscription.List) (subscription.List, subscription.List, error) {
+					return nil, nil, errDastardlyReason
+				},
+			},
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{conn},
+		}
+
+		require.ErrorIs(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, subscription.List{{Channel: "A"}}), errDastardlyReason, "scaleConnectionsToSubscriptions must return initial tracking failures")
+	})
+
+	t.Run("Batch Tracking Error", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		m.MaxSubscriptionsPerConnection = 1
+		fullStore, err := subscription.NewStoreFromList(subscription.List{{Channel: "occupied"}})
+		require.NoError(t, err, "NewStoreFromList must create the full connection store")
+		conn := &fakeConnection{subscriptions: fullStore}
+		calls := 0
+		ws := &websocket{
+			setup: &ConnectionSetup{
+				TrackOnExistingConnection: func(_ context.Context, _ Connection, subs subscription.List) (subscription.List, subscription.List, error) {
+					calls++
+					if calls == 2 {
+						return nil, nil, errDastardlyReason
+					}
+					return subs, nil, nil
+				},
+			},
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{conn},
+		}
+
+		require.ErrorIs(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, subscription.List{{Channel: "A"}}), errDastardlyReason, "scaleConnectionsToSubscriptions must return batch tracking failures")
+	})
+
+	t.Run("Batch Tracking Absorbs Subscriptions", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		m.MaxSubscriptionsPerConnection = 1
+		fullStore, err := subscription.NewStoreFromList(subscription.List{{Channel: "occupied"}})
+		require.NoError(t, err, "NewStoreFromList must create the full connection store")
+		conn := &fakeConnection{subscriptions: fullStore}
+		calls := 0
+		ws := &websocket{
+			setup: &ConnectionSetup{
+				TrackOnExistingConnection: func(_ context.Context, _ Connection, subs subscription.List) (subscription.List, subscription.List, error) {
+					calls++
+					if calls == 2 {
+						return nil, subs, nil
+					}
+					return subs, nil, nil
+				},
+			},
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{conn},
+		}
+		m.connections[conn] = ws
+
+		require.NoError(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, subscription.List{{Channel: "A"}}), "scaleConnectionsToSubscriptions must accept subscriptions tracked during batching")
+	})
+
+	t.Run("Missing Subscription After Existing Connection Subscribe", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		conn := &fakeConnection{subscriptions: subscription.NewStore()}
+		ws := &websocket{
+			setup: &ConnectionSetup{
+				Subscriber: func(context.Context, Connection, subscription.List) error { return nil },
+			},
+			subscriptions: subscription.NewStore(),
+			connections:   []Connection{conn},
+		}
+		m.connections[conn] = ws
+
+		require.ErrorIs(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, subscription.List{{Channel: "A"}}), ErrSubscriptionsNotAdded, "scaleConnectionsToSubscriptions must detect missing manager subscriptions")
+	})
+
+	t.Run("Cleanup Shutdown Error", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewManager()
+		conn := &fakeConnection{subscriptions: subscription.NewStore(), shutdownErr: errDastardlyReason}
+		ws := &websocket{setup: &ConnectionSetup{}, subscriptions: subscription.NewStore(), connections: []Connection{conn}}
+		m.connections[conn] = ws
+
+		require.NoError(t, m.scaleConnectionsToSubscriptions(t.Context(), ws, nil), "scaleConnectionsToSubscriptions must treat stale connection shutdown failures as non-fatal")
+		require.True(t, conn.shutdownCalled, "scaleConnectionsToSubscriptions must attempt to close stale connections")
+	})
+}
+
+func TestScaleConnectionsToSubscriptionsShutdownDiagnostics(t *testing.T) {
+	const (
+		diagnosticName = "stale-shutdown-diagnostic"
+		shutdownCanary = "stale-shutdown-error-secret-token"
+	)
+
+	require.NoError(t, gctlog.SetGlobalLogConfig(gctlog.GenDefaultSettings()), "SetGlobalLogConfig must enable stale-shutdown diagnostic capture")
+	var logMu sync.Mutex
+	var entries []string
+	gctlog.SetCustomLogHook(func(_, _ string, a ...any) bool {
+		logMu.Lock()
+		entries = append(entries, fmt.Sprint(a...))
+		logMu.Unlock()
+		return true
+	})
+	t.Cleanup(func() {
+		gctlog.SetCustomLogHook(nil)
+		assert.NoError(t, gctlog.SetGlobalLogConfig(&gctlog.Config{}), "SetGlobalLogConfig should disable stale-shutdown diagnostic capture")
+	})
+
+	manager := NewManager()
+	manager.exchangeName = diagnosticName
+	conn := &fakeConnection{subscriptions: subscription.NewStore(), shutdownErr: errors.New(shutdownCanary)}
+	ws := &websocket{setup: &ConnectionSetup{}, subscriptions: subscription.NewStore(), connections: []Connection{conn}}
+	manager.connections[conn] = ws
+
+	require.NoError(t, manager.scaleConnectionsToSubscriptions(t.Context(), ws, nil), "scaleConnectionsToSubscriptions must treat stale connection shutdown failures as non-fatal")
+	require.True(t, conn.shutdownCalled, "scaleConnectionsToSubscriptions must attempt to close stale connections")
+
+	logMu.Lock()
+	diagnostics := strings.Join(entries, "\n")
+	logMu.Unlock()
+	assert.Contains(t, diagnostics, diagnosticName+" websocket: failed to shutdown connection cause-type=*errors.errorString", "stale-shutdown diagnostics should retain cause-type metadata")
+	assert.NotContains(t, diagnostics, shutdownCanary, "stale-shutdown diagnostics should omit shutdown error text")
 }
 
 func TestConnectTracksOnExistingConnectionBeforeNewConnection(t *testing.T) {

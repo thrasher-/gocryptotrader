@@ -7,7 +7,6 @@ import (
 	"io"
 	"maps"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/mock"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/nonce"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -35,7 +35,9 @@ type AuthType uint8
 var (
 	ErrRequestSystemIsNil = errors.New("request system is nil")
 	ErrAuthRequestFailed  = errors.New("authenticated request failed")
-	ErrBadStatus          = errors.New("unsuccessful HTTP status code")
+	// ErrBadStatus errors retain the raw response body for caller compatibility.
+	// Treat their display text as sensitive and do not log it directly.
+	ErrBadStatus = errors.New("unsuccessful HTTP status code")
 )
 
 var (
@@ -118,13 +120,7 @@ func (i *Item) validateRequest(ctx context.Context, r *Requester) (*http.Request
 	}
 	req, err := http.NewRequestWithContext(ctx, i.Method, i.Path, i.Body)
 	if err != nil {
-		return nil, err
-	}
-
-	if i.HTTPDebugging {
-		// Err not evaluated due to validation check above
-		dump, _ := httputil.DumpRequestOut(req, true)
-		log.Debugf(log.RequestSys, "DumpRequest:\n%s", dump)
+		return nil, logsafe.URLRequestError(err)
 	}
 
 	for k, v := range i.Headers {
@@ -187,26 +183,9 @@ func (r *Requester) doRequest(ctx context.Context, endpoint EndpointLimit, newRe
 // executeRequest performs one HTTP request attempt and reports whether the
 // caller should retry. Any response body is closed before this method returns.
 func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Request, attempt int, verbose bool) (bool, error) {
-	if verbose {
-		log.Debugf(log.RequestSys, "%s attempt %d request path: %s", r.name, attempt, p.Path)
-		for k, d := range req.Header {
-			log.Debugf(log.RequestSys, "%s request header [%s]: %s", r.name, k, d)
-		}
-		log.Debugf(log.RequestSys, "%s request type: %s", r.name, p.Method)
-		if req.GetBody != nil {
-			bodyCopy, bodyErr := req.GetBody()
-			if bodyErr != nil {
-				return false, bodyErr
-			}
-			payload, bodyErr := io.ReadAll(bodyCopy)
-			if closeErr := bodyCopy.Close(); closeErr != nil {
-				log.Errorf(log.RequestSys, "%s failed to close request body %s", r.name, closeErr)
-			}
-			if bodyErr != nil {
-				return false, bodyErr
-			}
-			log.Debugf(log.RequestSys, "%s request body: %s", r.name, payload)
-		}
+	diagnostics := verbose || p.HTTPDebugging
+	if diagnostics {
+		log.Debugf(log.RequestSys, "%s HTTP request attempt=%d method=%s endpoint=%s headers=%d content-length=%d", r.name, attempt, p.Method, logsafe.URL(p.Path), len(req.Header), req.ContentLength)
 	}
 
 	start := time.Now()
@@ -217,7 +196,7 @@ func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Reque
 		r.reporter.Latency(r.name, p.Method, p.Path, time.Since(start))
 	}
 
-	if retry, err := r.evaluateRetry(ctx, resp, requestErr, attempt, verbose); err != nil {
+	if retry, err := r.evaluateRetry(ctx, resp, requestErr, attempt, diagnostics); err != nil {
 		return false, err
 	} else if retry {
 		return true, nil
@@ -225,7 +204,10 @@ func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Reque
 
 	contents, readErr := io.ReadAll(resp.Body)
 	if closeErr := resp.Body.Close(); closeErr != nil {
-		log.Errorf(log.RequestSys, "%s failed to close response body %s", r.name, closeErr)
+		log.Errorf(log.RequestSys, "%s failed to close response body (%T)", r.name, closeErr)
+	}
+	if diagnostics {
+		log.Debugf(log.RequestSys, "%s HTTP response status=%d headers=%d body-bytes=%d", r.name, resp.StatusCode, len(resp.Header), len(contents))
 	}
 	if readErr != nil {
 		return false, readErr
@@ -241,7 +223,7 @@ func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Reque
 	if p.HTTPRecording {
 		// This dumps http responses for future mocking implementations
 		if err := mock.HTTPRecord(resp, r.name, contents, p.HTTPMockDataSliceLimit); err != nil {
-			return false, fmt.Errorf("mock recording failure %w, request %v: resp: %v", err, req, resp)
+			return false, fmt.Errorf("mock recording failure: %w", logsafe.Error(err))
 		}
 	}
 
@@ -253,25 +235,6 @@ func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Reque
 		return false, fmt.Errorf("%s %w: %d raw response: %s", r.name, ErrBadStatus, resp.StatusCode, string(contents))
 	}
 
-	if p.HTTPDebugging {
-		dump, dumpErr := httputil.DumpResponse(resp, false)
-		if dumpErr != nil {
-			log.Errorf(log.RequestSys, "DumpResponse invalid response: %v:", dumpErr)
-		} else {
-			log.Debugf(log.RequestSys, "DumpResponse (%v):\n%s", p.Path, dump)
-		}
-		log.Debugf(log.RequestSys, "DumpResponse Body (%v):\n %s", p.Path, string(contents))
-	}
-
-	if verbose {
-		for k, d := range resp.Header {
-			log.Debugf(log.RequestSys, "%s response header [%s]: %s", r.name, k, d)
-		}
-		log.Debugf(log.RequestSys, "HTTP status: %s, Code: %v", resp.Status, resp.StatusCode)
-		if !p.HTTPDebugging {
-			log.Debugf(log.RequestSys, "%s raw response: %s", r.name, string(contents))
-		}
-	}
 	return false, unmarshallError
 }
 
@@ -281,10 +244,12 @@ func (r *Requester) executeRequest(ctx context.Context, p *Item, req *http.Reque
 // a retry-decision error.
 func (r *Requester) evaluateRetry(ctx context.Context, resp *http.Response, incomingErr error, attempt int, verbose bool) (bool, error) {
 	if hasRetryNotAllowed(ctx) {
-		return false, incomingErr
+		return false, logsafe.URLRequestError(incomingErr)
 	}
 
 	retry, err := r.retryPolicy(resp, incomingErr)
+	incomingErr = logsafe.URLRequestError(incomingErr)
+	err = logsafe.URLRequestError(err)
 	if err != nil {
 		if incomingErr == nil && resp != nil {
 			r.drainBody(resp.Body)
@@ -305,7 +270,7 @@ func (r *Requester) evaluateRetry(ctx context.Context, resp *http.Response, inco
 		if incomingErr != nil {
 			return false, fmt.Errorf("%w %w: err: %w", errFailedToRetryRequest, errExceedsMaxRetries, incomingErr)
 		}
-		return false, fmt.Errorf("%w %w: status %q", errFailedToRetryRequest, errExceedsMaxRetries, resp.Status)
+		return false, fmt.Errorf("%w %w: status %d", errFailedToRetryRequest, errExceedsMaxRetries, resp.StatusCode)
 	}
 
 	after := RetryAfter(resp, time.Now())
@@ -316,14 +281,14 @@ func (r *Requester) evaluateRetry(ctx context.Context, resp *http.Response, inco
 		if incomingErr != nil {
 			return false, fmt.Errorf("%w %w: err: %w", errFailedToRetryRequest, context.DeadlineExceeded, incomingErr)
 		}
-		return false, fmt.Errorf("%w %w: status %q", errFailedToRetryRequest, context.DeadlineExceeded, resp.Status)
+		return false, fmt.Errorf("%w %w: status %d", errFailedToRetryRequest, context.DeadlineExceeded, resp.StatusCode)
 	}
 
 	if verbose {
 		if incomingErr != nil {
-			log.Errorf(log.RequestSys, "%s request has failed. Retrying request in %s, attempt %d, cause: %s", r.name, delay, attempt, incomingErr)
+			log.Errorf(log.RequestSys, "%s HTTP request failed; retrying in %s, attempt %d, cause=%v", r.name, delay, attempt, logsafe.Error(incomingErr))
 		} else {
-			log.Errorf(log.RequestSys, "%s request has failed. Retrying request in %s, attempt %d, status: %q", r.name, delay, attempt, resp.Status)
+			log.Errorf(log.RequestSys, "%s HTTP request failed; retrying in %s, attempt %d, status=%d", r.name, delay, attempt, resp.StatusCode)
 		}
 	}
 
@@ -341,10 +306,10 @@ func (r *Requester) evaluateRetry(ctx context.Context, resp *http.Response, inco
 
 func (r *Requester) drainBody(body io.ReadCloser) {
 	if _, err := io.Copy(io.Discard, io.LimitReader(body, drainBodyLimit)); err != nil {
-		log.Errorf(log.RequestSys, "%s failed to drain request body %s", r.name, err)
+		log.Errorf(log.RequestSys, "%s failed to drain request body (%T)", r.name, err)
 	}
 	if err := body.Close(); err != nil {
-		log.Errorf(log.RequestSys, "%s failed to close request body %s", r.name, err)
+		log.Errorf(log.RequestSys, "%s failed to close request body (%T)", r.name, err)
 	}
 }
 

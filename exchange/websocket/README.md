@@ -21,6 +21,21 @@ Join our slack to discuss all things related to GoCryptoTrader! [GoCryptoTrader 
 
 The `websocket` package provides methods to manage connections and subscriptions for exchange websockets.
 
+## Diagnostic safety
+
+Built-in diagnostics emitted by the shared `Connection` and `Manager.Reader`
+must never include request headers, authentication payloads, signatures, tokens,
+raw frames, or raw handler errors. Log only safe metadata such as the endpoint
+origin, operation, payload type, byte count, status code, and error type. Legacy
+exchange-specific readers that do not use `Manager.Reader` remain outside this
+guarantee and must apply equivalent sanitisation locally until migrated.
+
+Pass short-lived authentication values through the `Connection.Dial` values
+argument instead of storing them in a connection URL. Use `Manager.Reader` for
+read-and-relay loops so handler errors are sanitised in one place. Reporter
+callbacks receive raw frames for compatibility and must treat them as sensitive
+data.
+
 ## Features
 
 - Handle real-time market data streams

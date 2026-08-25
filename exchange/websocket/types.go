@@ -33,7 +33,9 @@ type UnhandledMessageWarning struct {
 	Message string
 }
 
-// Reporter interface groups observability functionality over Websocket request latency.
+// Reporter interface groups observability functionality over Websocket request
+// latency. The message argument is the raw outbound frame and can contain
+// credentials; reporter implementations must treat it as sensitive data.
 type Reporter interface {
 	Latency(name string, message []byte, t time.Duration)
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
@@ -36,7 +37,7 @@ func (m *Manager) UnsubscribeChannels(ctx context.Context, conn Connection, chan
 		}
 		ws, ok := m.managedWebsocket(conn)
 		if !ok {
-			return fmt.Errorf("%w: %q", errConnectionNotFound, conn.GetURL())
+			return fmt.Errorf("%w: %s", errConnectionNotFound, logsafe.URL(conn.GetURL()))
 		}
 		return m.unsubscribe(ws.subscriptions, channels, func(channels subscription.List) error {
 			return ws.setup.Unsubscriber(ctx, conn, channels)
@@ -545,7 +546,7 @@ func (m *Manager) scaleConnectionsToSubscriptions(ctx context.Context, ws *webso
 	m.connectionManagerMu.Unlock()
 	for _, conn := range stale {
 		if err := conn.Shutdown(); err != nil {
-			log.Warnf(log.WebsocketMgr, "%v websocket: failed to shutdown connection: %v", m.exchangeName, err)
+			log.Warnf(log.WebsocketMgr, "%v websocket: failed to shutdown connection cause-type=%T", m.exchangeName, err)
 		}
 	}
 	return nil

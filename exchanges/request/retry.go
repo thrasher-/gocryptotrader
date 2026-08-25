@@ -1,10 +1,11 @@
 package request
 
 import (
-	"net"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/thrasher-corp/gocryptotrader/internal/logsafe"
 )
 
 const headerRetryAfter = "Retry-After"
@@ -12,7 +13,7 @@ const headerRetryAfter = "Retry-After"
 // DefaultRetryPolicy determines whether the request should be retried, implemented with a default strategy.
 func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
-		if timeoutErr, ok := err.(net.Error); ok && timeoutErr.Timeout() {
+		if logsafe.IsTimeout(err) {
 			return true, nil
 		}
 		return false, err
