@@ -788,6 +788,12 @@ const (
 	book = "%s %s %s %s ORDERBOOK: Bids len: %d Amount: %f %s. Total value: %s Asks len: %d Amount: %f %s. Total value: %s"
 )
 
+// NeedsOrderbookSummary reports whether PrintOrderbookSummary would produce output, letting callers
+// skip materialising a snapshot that would be discarded
+func (m *SyncManager) NeedsOrderbookSummary() bool {
+	return m != nil && m.started.Load() && m.config.SynchronizeOrderbook && m.config.LogSyncUpdateEvents
+}
+
 // PrintOrderbookSummary outputs orderbook results
 func (m *SyncManager) PrintOrderbookSummary(result *orderbook.Book, protocol string, err error) {
 	if m == nil || !m.started.Load() {

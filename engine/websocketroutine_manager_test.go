@@ -337,3 +337,47 @@ func TestSetWebsocketDataHandler(t *testing.T) {
 		t.Fatal("unexpected data handler count")
 	}
 }
+
+// TestWebsocketDataHandlerOrderbookDepth covers the *orderbook.Depth branch of websocketDataHandler,
+// which the existing handler test never reaches as it passes an *orderbook.Book
+func TestWebsocketDataHandlerOrderbookDepth(t *testing.T) {
+	t.Parallel()
+
+	em := NewExchangeManager()
+	const exchName = "Bitstamp"
+	exch, err := em.NewExchangeByName(exchName)
+	require.NoError(t, err)
+	exch.SetDefaults()
+	require.NoError(t, em.Add(exch))
+
+	syncer := &SyncManager{}
+	m, err := setupWebsocketRoutineManager(em, &OrderManager{}, syncer, &currency.Config{
+		CurrencyPairFormat: &currency.PairFormat{Uppercase: true},
+	}, false)
+	require.NoError(t, err)
+
+	pair := currency.NewBTCUSD()
+	depth, err := orderbook.DeployDepth(exchName, pair, asset.Spot)
+	require.NoError(t, err)
+	depth.AssignOptions(&orderbook.Book{Exchange: exchName, Pair: pair, Asset: asset.Spot})
+	require.NoError(t, depth.LoadSnapshot(&orderbook.Book{
+		Bids:        orderbook.Levels{{Price: 100, Amount: 1}},
+		Asks:        orderbook.Levels{{Price: 101, Amount: 1}},
+		LastUpdated: time.Now(),
+	}))
+
+	// Neither running nor logging, so the handler must skip materialising the book
+	assert.NoError(t, m.websocketDataHandler(exchName, depth), "handling a valid depth should not error")
+
+	// Running and logging, so the book must be materialised for the summary
+	syncer.started.Store(true)
+	syncer.config.SynchronizeOrderbook = true
+	syncer.config.LogSyncUpdateEvents = true
+	assert.NoError(t, m.websocketDataHandler(exchName, depth), "handling a valid depth should not error when a summary is wanted")
+
+	// An invalidated book must still surface as a handler error
+	invalidationErr := depth.Invalidate(errors.New("test invalidation"))
+	require.Error(t, invalidationErr, "Invalidate must return an error")
+	err = m.websocketDataHandler(exchName, depth)
+	assert.ErrorIs(t, err, orderbook.ErrOrderbookInvalid, "handling an invalidated depth should return the invalidation")
+}

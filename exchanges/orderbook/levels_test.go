@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -1779,4 +1780,121 @@ func TestFinalizeFields(t *testing.T) {
 	mov, err := m.finalizeFields(20000*151.11585, 20000, 151.08, 0, false)
 	assert.NoError(t, err, "finalizeFields should not error")
 	assert.InDelta(t, 717.0, mov.SlippageCost, 0.000000001, "SlippageCost should be correct")
+}
+
+func TestLocate(t *testing.T) {
+	t.Parallel()
+	asks := Levels{{Price: 10}, {Price: 20}, {Price: 30}, {Price: 40}}
+	bids := Levels{{Price: 40}, {Price: 30}, {Price: 20}, {Price: 10}}
+
+	for _, tc := range []struct {
+		name  string
+		side  Levels
+		asc   bool
+		price float64
+		exp   int
+	}{
+		{"ask head hit", asks, ascending, 10, 0},
+		{"ask exact mid", asks, ascending, 30, 2},
+		{"ask exact tail", asks, ascending, 40, 3},
+		{"ask gap", asks, ascending, 25, 2},
+		{"ask before head", asks, ascending, 5, 0},
+		{"ask past tail", asks, ascending, 50, 4},
+		{"bid head hit", bids, descending, 40, 0},
+		{"bid exact mid", bids, descending, 20, 2},
+		{"bid gap", bids, descending, 25, 2},
+		{"bid before head", bids, descending, 50, 0},
+		{"bid past tail", bids, descending, 5, 4},
+	} {
+		assert.Equalf(t, tc.exp, tc.side.locate(tc.price, tc.asc), "locate should return the correct index for %s", tc.name)
+	}
+
+	assert.Equal(t, 0, Levels{}.locate(10, ascending), "locate should return zero for an empty side")
+}
+
+// TestLocateMatchesLinearBound guards the search against the scan it replaced, sweeping depths past
+// the point locate stops galloping so both halves are exercised
+func TestLocateMatchesLinearBound(t *testing.T) {
+	t.Parallel()
+	for length := range 40 {
+		asks := make(Levels, length)
+		bids := make(Levels, length)
+		for i := range length {
+			asks[i] = Level{Price: float64(10 * (i + 1))}
+			bids[i] = Level{Price: float64(10 * (length - i))}
+		}
+		// probe below the head, on and between every stored price, and past the tail
+		for price := 5.0; price <= float64(10*length)+10; price += 5 {
+			assert.Equalf(t, asks.linearBound(price, ascending), asks.locate(price, ascending),
+				"locate should agree with linearBound for ask price %v at depth %d", price, length)
+			assert.Equalf(t, bids.linearBound(price, descending), bids.locate(price, descending),
+				"locate should agree with linearBound for bid price %v at depth %d", price, length)
+		}
+	}
+}
+
+// TestLocateNonFinitePriceDoesNotReachHead guards the failure mode a bare bisect introduces: NaN
+// compares false against every price, so an unguarded lower bound returns index 0 and installs it as
+// the best price, where GetBestBid and every slippage traversal read it. The scan parked it at the tail.
+func TestLocateNonFinitePriceDoesNotReachHead(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		side Levels
+		asc  bool
+	}{
+		{"asks", Levels{{Price: 10, Amount: 1}, {Price: 20, Amount: 2}, {Price: 30, Amount: 3}}, ascending},
+		{"bids", Levels{{Price: 30, Amount: 3}, {Price: 20, Amount: 2}, {Price: 10, Amount: 1}}, descending},
+	} {
+		assert.Equalf(t, len(tc.side), tc.side.linearBound(math.NaN(), tc.asc),
+			"the scan should place a NaN price at the tail for %s", tc.name)
+
+		levels := append(Levels(nil), tc.side...)
+		ordered := levels.updateInsertByPrice(Levels{{Price: math.NaN(), Amount: 9}}, 3, tc.asc, true)
+		assert.Falsef(t, math.IsNaN(levels[0].Price),
+			"a NaN update must not become the best price for %s", tc.name)
+		assert.Equalf(t, tc.side[0].Price, levels[0].Price,
+			"the best price should be unchanged by a NaN update for %s", tc.name)
+		assert.Falsef(t, ordered, "a side holding a NaN should not remain searchable for %s", tc.name)
+	}
+}
+
+func TestIsOrdered(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		side Levels
+		asc  bool
+		exp  bool
+	}{
+		{"empty", Levels{}, ascending, true},
+		{"single", Levels{{Price: 10}}, ascending, true},
+		{"ascending", Levels{{Price: 10}, {Price: 20}, {Price: 30}}, ascending, true},
+		{"ascending with duplicates", Levels{{Price: 10}, {Price: 10}, {Price: 30}}, ascending, true},
+		{"ascending inverted", Levels{{Price: 10}, {Price: 30}, {Price: 20}}, ascending, false},
+		{"descending", Levels{{Price: 30}, {Price: 20}, {Price: 10}}, descending, true},
+		{"descending inverted", Levels{{Price: 30}, {Price: 10}, {Price: 20}}, descending, false},
+		{"lone NaN", Levels{{Price: math.NaN()}}, ascending, false},
+		{"NaN among ordered", Levels{{Price: 10}, {Price: math.NaN()}, {Price: 30}}, ascending, false},
+		{"infinity is orderable", Levels{{Price: 10}, {Price: math.Inf(1)}}, ascending, true},
+	} {
+		assert.Equalf(t, tc.exp, tc.side.isOrdered(tc.asc), "isOrdered should report %v for %s", tc.exp, tc.name)
+	}
+}
+
+// TestUnorderedSideKeepsScanBehaviour covers an out of order side with entirely finite prices. A
+// bisect over it has no defined answer and inserts a duplicate; the scan fallback does not.
+func TestUnorderedSideKeepsScanBehaviour(t *testing.T) {
+	t.Parallel()
+	d := NewDepth(id)
+	require.NoError(t, d.LoadSnapshot(&Book{
+		Asks:        Levels{{Price: 10, Amount: 1}, {Price: 30, Amount: 3}, {Price: 20, Amount: 2}, {Price: 40, Amount: 4}},
+		Bids:        Levels{{Price: 9, Amount: 1}},
+		LastUpdated: time.Now(),
+	}), "LoadSnapshot must not error")
+	assert.False(t, d.askLevels.ordered, "an unordered ask side should not be marked searchable")
+
+	d.askLevels.updateInsertByPrice(Levels{{Price: 30, Amount: 99}}, 0)
+	assert.Len(t, d.askLevels.Levels, 4, "amending an existing price should not insert a duplicate")
+	assert.Equal(t, 99.0, d.askLevels.Levels[1].Amount, "the existing level should have been amended")
 }

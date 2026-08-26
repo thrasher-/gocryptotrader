@@ -549,6 +549,9 @@ func (e *Exchange) wsProcessOrderBookPartial(pair currency.Pair, obSnapshot *wsS
 	return e.Websocket.Orderbook.LoadSnapshot(&base)
 }
 
+// krakenChecksumLevels is how many levels of each side Kraken folds into its checksum
+const krakenChecksumLevels = 10
+
 // wsProcessOrderBookUpdate updates an orderbook entry for a given currency pair
 func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate) error {
 	obUpdate := orderbook.Update{
@@ -595,44 +598,51 @@ func (e *Exchange) wsProcessOrderBookUpdate(pair currency.Pair, wsUpdt *wsUpdate
 		return err
 	}
 
-	book, err := e.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
+	// The checksum reads the leading levels only, so copying the whole book would cost far more than
+	// the check itself
+	var bids, asks [krakenChecksumLevels]orderbook.Level
+	nBids, nAsks, err := e.Websocket.Orderbook.TopLevels(pair, asset.Spot, bids[:], asks[:])
 	if err != nil {
 		return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w", pair, asset.Spot, err)
 	}
 
-	return validateCRC32(book, wsUpdt.Checksum)
+	return validateCRC32(bids[:nBids], asks[:nAsks], pair, wsUpdt.Checksum)
 }
 
-func validateCRC32(b *orderbook.Book, token uint32) error {
-	if b == nil {
-		return common.ErrNilPointer
+func validateCRC32(bids, asks orderbook.Levels, pair currency.Pair, token uint32) error {
+	h := crc32.NewIEEE()
+	var scratch [64]byte
+	for i := range asks {
+		// Historically the ask price was trimmed after the trimmed amount was appended to it. With
+		// the amount's point already gone the outer pass can only reach the price's, so trimming
+		// each in turn produces the same digits.
+		_, _ = h.Write(appendTrimmed(scratch[:0], asks[i].StrPrice))
+		_, _ = h.Write(appendTrimmed(scratch[:0], asks[i].StrAmount))
 	}
-	var checkStr strings.Builder
-	for i := 0; i < 10 && i < len(b.Asks); i++ {
-		_, err := checkStr.WriteString(trim(b.Asks[i].StrPrice + trim(b.Asks[i].StrAmount)))
-		if err != nil {
-			return err
-		}
+	for i := range bids {
+		_, _ = h.Write(appendTrimmed(scratch[:0], bids[i].StrPrice))
+		_, _ = h.Write(appendTrimmed(scratch[:0], bids[i].StrAmount))
 	}
-
-	for i := 0; i < 10 && i < len(b.Bids); i++ {
-		_, err := checkStr.WriteString(trim(b.Bids[i].StrPrice) + trim(b.Bids[i].StrAmount))
-		if err != nil {
-			return err
-		}
-	}
-
-	if check := crc32.ChecksumIEEE([]byte(checkStr.String())); check != token {
-		return fmt.Errorf("%s %s %w %d, expected %d", b.Pair, b.Asset, errInvalidChecksum, check, token)
+	if check := h.Sum32(); check != token {
+		return fmt.Errorf("%s %s %w %d, expected %d", pair, asset.Spot, errInvalidChecksum, check, token)
 	}
 	return nil
 }
 
-// trim removes '.' and prefixed '0' from subsequent string
-func trim(s string) string {
-	s = strings.Replace(s, ".", "", 1)
-	s = strings.TrimLeft(s, "0")
-	return s
+// appendTrimmed appends s without its first point or any leading zeroes, which is the form Kraken
+// checksums. It writes into the caller's buffer so the hot path allocates nothing.
+func appendTrimmed(dst []byte, s string) []byte {
+	point := strings.IndexByte(s, '.')
+	lead := 0
+	for lead < len(s) && (s[lead] == '0' || lead == point) {
+		lead++
+	}
+	for i := lead; i < len(s); i++ {
+		if i != point {
+			dst = append(dst, s[i])
+		}
+	}
+	return dst
 }
 
 // wsProcessCandle converts candle data and sends it to the data handler

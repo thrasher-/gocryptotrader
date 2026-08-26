@@ -2,13 +2,14 @@ package bitfinex
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1585,15 +1586,7 @@ func (e *Exchange) WsUpdateOrderbook(ctx context.Context, c *subscription.Subscr
 	if checkme.Sequence+1 == sequenceNo {
 		// Sequence numbers get dropped, if checksum is not in line with
 		// sequence, do not check.
-		ob, err := e.Websocket.Orderbook.GetOrderbook(p, assetType)
-		if err != nil {
-			return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w",
-				p,
-				assetType,
-				err)
-		}
-
-		if err = validateCRC32(ob, checkme.Token); err != nil {
+		if err := e.checksumOrderbook(p, assetType, fundingRate, checkme.Token); err != nil {
 			log.Errorf(log.WebsocketMgr, "%s websocket orderbook update error, will resubscribe orderbook: %v", e.Name, err)
 			if e2 := e.resubOrderbook(ctx, c); e2 != nil {
 				log.Errorf(log.WebsocketMgr, "%s error resubscribing orderbook: %v", e.Name, e2)
@@ -1603,6 +1596,61 @@ func (e *Exchange) WsUpdateOrderbook(ctx context.Context, c *subscription.Subscr
 	}
 
 	return e.Websocket.Orderbook.Update(&orderbookUpdate)
+}
+
+// bitfinexChecksumLevels is how many levels of each side Bitfinex folds into its checksum
+const bitfinexChecksumLevels = 25
+
+// checksumWindow is how many levels of each side are read to cover the run of equal priced levels
+// that can straddle the last one the checksum reads. That whole run has to be ordered by ID before
+// the leading levels can be taken from it, so reading exactly bitfinexChecksumLevels is not enough.
+const checksumWindow = 64
+
+// checksumOrderbook verifies the stored book against the token Bitfinex sent. The checksum covers
+// the leading levels only, for which a copy of every level costs many times the check itself.
+func (e *Exchange) checksumOrderbook(p currency.Pair, a asset.Item, fundingRate bool, token uint32) error {
+	var bidBuf, askBuf [checksumWindow]orderbook.Level
+	nBids, nAsks, err := e.Websocket.Orderbook.TopLevels(p, a, bidBuf[:], askBuf[:])
+	if err != nil {
+		return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w", p, a, err)
+	}
+
+	bids, bidsWhole := orderTopByID(bidBuf[:nBids], bitfinexChecksumLevels, nBids == checksumWindow)
+	asks, asksWhole := orderTopByID(askBuf[:nAsks], bitfinexChecksumLevels, nAsks == checksumWindow)
+	if !bidsWhole || !asksWhole {
+		// A run of equal prices reached the end of the window and may continue past it, so the
+		// leading levels cannot be ordered without seeing the rest of it. Rare enough that paying
+		// for a copy of the book when it happens is cheaper than reading a wider window always.
+		book, err := e.Websocket.Orderbook.GetOrderbook(p, a)
+		if err != nil {
+			return fmt.Errorf("cannot calculate websocket checksum: book not found for %s %s %w", p, a, err)
+		}
+		reOrderByID(book.Bids)
+		reOrderByID(book.Asks)
+		bids = book.Bids[:min(bitfinexChecksumLevels, len(book.Bids))]
+		asks = book.Asks[:min(bitfinexChecksumLevels, len(book.Asks))]
+	}
+	return validateCRC32(bids, asks, fundingRate, p, a, token)
+}
+
+// orderTopByID orders each run of equal priced levels by ID and returns the leading need of them.
+// mayContinue states that the window filled, so a run reaching its end might carry on past it; when
+// one does the leading levels cannot be ordered from the window alone and false is returned.
+func orderTopByID(side []orderbook.Level, need int, mayContinue bool) ([]orderbook.Level, bool) {
+	if len(side) <= need {
+		reOrderByID(side) // The whole side is no longer than what the checksum reads
+		return side, true
+	}
+	// Close the run holding the last level the checksum reads, so that it is ordered in full
+	end := need
+	for end < len(side) && side[end].Price == side[need-1].Price && side[end].Period == side[need-1].Period {
+		end++
+	}
+	if end == len(side) && mayContinue {
+		return nil, false
+	}
+	reOrderByID(side[:end])
+	return side[:need], true
 }
 
 // resubOrderbook resubscribes the orderbook after a consistency error, probably a failed checksum,
@@ -2013,100 +2061,68 @@ func makeRequestInterface(channelName string, data any) []any {
 	return []any{0, channelName, nil, data}
 }
 
-func validateCRC32(book *orderbook.Book, token uint32) error {
-	// Order ID's need to be sub-sorted in ascending order, this needs to be
-	// done on the main book to ensure that we do not cut price levels out below
-	reOrderByID(book.Bids)
-	reOrderByID(book.Asks)
+// validateCRC32 folds the leading bids and asks, already ordered by ID within each run of equal
+// prices, into Bitfinex's CRC32. R0 precision is checksummed over order IDs and amounts.
+//
+// The fields are streamed into the hash rather than concatenated into a string first, so a checksum
+// costs no allocation for the fifty numbers it formats.
+func validateCRC32(bids, asks orderbook.Levels, fundingRate bool, p currency.Pair, a asset.Item, token uint32) error {
+	// A negative amount has to reach the hash as its '-'; the two sides swap for a funding rate
+	bidMod, askMod := float64(1), float64(-1)
+	if fundingRate {
+		bidMod, askMod = -1, 1
+	}
 
-	// R0 precision calculation is based on order ID's and amount values
-	var bids, asks []orderbook.Level
-	for i := range 25 {
-		if i < len(book.Bids) {
-			bids = append(bids, book.Bids[i])
+	h := crc32.NewIEEE()
+	var scratch [64]byte
+	written := false
+	field := func(b []byte) {
+		if written {
+			_, _ = h.Write(checksumSeparator)
 		}
-		if i < len(book.Asks) {
-			asks = append(asks, book.Asks[i])
-		}
+		written = true
+		_, _ = h.Write(b)
 	}
 
-	// ensure '-' (negative amount) is passed back to string buffer as
-	// this is needed for calcs - These get swapped if funding rate
-	bidmod := float64(1)
-	if book.IsFundingRate {
-		bidmod = -1
-	}
-
-	askMod := float64(-1)
-	if book.IsFundingRate {
-		askMod = 1
-	}
-
-	var check strings.Builder
-	for i := range 25 {
+	for i := range bitfinexChecksumLevels {
 		if i < len(bids) {
-			check.WriteString(strconv.FormatInt(bids[i].ID, 10))
-			check.WriteString(":")
-			check.WriteString(strconv.FormatFloat(bidmod*bids[i].Amount, 'f', -1, 64))
-			check.WriteString(":")
+			field(strconv.AppendInt(scratch[:0], bids[i].ID, 10))
+			field(strconv.AppendFloat(scratch[:0], bidMod*bids[i].Amount, 'f', -1, 64))
 		}
-
 		if i < len(asks) {
-			check.WriteString(strconv.FormatInt(asks[i].ID, 10))
-			check.WriteString(":")
-			check.WriteString(strconv.FormatFloat(askMod*asks[i].Amount, 'f', -1, 64))
-			check.WriteString(":")
+			field(strconv.AppendInt(scratch[:0], asks[i].ID, 10))
+			field(strconv.AppendFloat(scratch[:0], askMod*asks[i].Amount, 'f', -1, 64))
 		}
 	}
 
-	checksumStr := strings.TrimSuffix(check.String(), ":")
-	checksum := crc32.ChecksumIEEE([]byte(checksumStr))
-	if checksum == token {
-		return nil
+	if checksum := h.Sum32(); checksum != token {
+		return fmt.Errorf("invalid checksum for %s %s: calculated [%d] does not match [%d]", a, p, checksum, token)
 	}
-	return fmt.Errorf("invalid checksum for %s %s: calculated [%d] does not match [%d]",
-		book.Asset,
-		book.Pair,
-		checksum,
-		token)
+	return nil
 }
+
+// checksumSeparator joins the fields Bitfinex checksums
+var checksumSeparator = []byte(":")
 
 // reOrderByID sub sorts orderbook items by its corresponding ID when price
 // levels are the same. TODO: Deprecate and shift to buffer level insertion
 // based off ascending ID.
+// reOrderByID sorts each run of levels sharing a price by ID ascending, which is the order the
+// checksum is built from. Period is matched alongside price for funding rates, which was
+// undocumented but is needed for the IDs to line up.
+//
+// A run was previously only sorted once a differing level was found after it, so a run reaching the
+// end of the side was left as it arrived and checksummed in the wrong order.
 func reOrderByID(depth []orderbook.Level) {
-subSort:
 	for x := 0; x < len(depth); {
-		var subset []orderbook.Level
-		// Traverse forward elements
-		for y := x + 1; y < len(depth); y++ {
-			if depth[x].Price == depth[y].Price &&
-				// Period matching is for funding rates, this was undocumented
-				// but these need to be matched with price for the correct ID
-				// alignment
-				depth[x].Period == depth[y].Period {
-				// Append element to subset when price match occurs
-				subset = append(subset, depth[y])
-				// Traverse next
-				continue
-			}
-			if len(subset) != 0 {
-				// Append root element
-				subset = append(subset, depth[x])
-				// Sort IDs by ascending
-				sort.Slice(subset, func(i, j int) bool {
-					return subset[i].ID < subset[j].ID
-				})
-				// Re-align elements with sorted ID subset
-				for z := range subset {
-					depth[x+z] = subset[z]
-				}
-			}
-			// When price is not matching change checked element to root
-			x = y
-			continue subSort
+		y := x + 1
+		for y < len(depth) && depth[x].Price == depth[y].Price && depth[x].Period == depth[y].Period {
+			y++
 		}
-		break
+		if y-x > 1 {
+			slices.SortFunc(depth[x:y], func(a, b orderbook.Level) int { return cmp.Compare(a.ID, b.ID) })
+		}
+		x = y
 	}
 }
 

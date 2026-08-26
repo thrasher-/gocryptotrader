@@ -29,6 +29,7 @@ type Orderbook struct {
 	exchangeName          string
 	dataHandler           *stream.Relay
 	verbose               bool
+	validateOrderbook     bool // From the config, so a Book literal cannot silently skip verification
 
 	m sync.RWMutex
 }
@@ -38,4 +39,7 @@ type Orderbook struct {
 type orderbookHolder struct {
 	ob     *orderbook.Depth
 	buffer []orderbook.Update
+	// m serialises work on this book. The map lock only guards the lookup, so without this two
+	// routines feeding the same pair race on buffer and can lose, duplicate or reorder updates.
+	m sync.Mutex
 }

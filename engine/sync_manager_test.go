@@ -346,3 +346,21 @@ func TestSyncManagerWebsocketUpdate(t *testing.T) {
 	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemTrade, errors.New("test"))
 	require.NoError(t, err)
 }
+
+func TestNeedsOrderbookSummary(t *testing.T) {
+	t.Parallel()
+	var nilManager *SyncManager
+	assert.False(t, nilManager.NeedsOrderbookSummary(), "a nil manager should not need a summary")
+
+	m := &SyncManager{}
+	assert.False(t, m.NeedsOrderbookSummary(), "a stopped manager should not need a summary")
+
+	m.started.Store(true)
+	assert.False(t, m.NeedsOrderbookSummary(), "orderbook sync disabled should not need a summary")
+
+	m.config.SynchronizeOrderbook = true
+	assert.False(t, m.NeedsOrderbookSummary(), "update event logging disabled should not need a summary")
+
+	m.config.LogSyncUpdateEvents = true
+	assert.True(t, m.NeedsOrderbookSummary(), "a started manager syncing orderbooks and logging updates should need a summary")
+}

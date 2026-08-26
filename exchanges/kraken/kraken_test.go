@@ -1452,20 +1452,14 @@ const krakenAPIDocChecksum = 974947235
 
 func TestChecksumCalculation(t *testing.T) {
 	t.Parallel()
-	expected := "5005"
-	if v := trim("0.05005"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
+	assert.Equal(t, "5005", string(appendTrimmed(nil, "0.05005")), "appendTrimmed should drop the point and leading zeroes")
+	assert.Equal(t, "500", string(appendTrimmed(nil, "0.00000500")), "appendTrimmed should drop the point and leading zeroes")
+	assert.Empty(t, string(appendTrimmed(nil, "0.0")), "appendTrimmed should reduce a zero to nothing")
+	assert.Equal(t, "1234", string(appendTrimmed(nil, "1234")), "appendTrimmed should leave a pointless value alone")
 
-	expected = "500"
-	if v := trim("0.00000500"); v != expected {
-		t.Errorf("expected %s but received %s", expected, v)
-	}
-
-	err := validateCRC32(&testOb, krakenAPIDocChecksum)
-	if err != nil {
-		t.Error(err)
-	}
+	// Checksum published in Kraken's own websocket documentation
+	assert.NoError(t, validateCRC32(testOb.Bids, testOb.Asks, testOb.Pair, krakenAPIDocChecksum),
+		"validateCRC32 should reproduce the documented checksum")
 }
 
 func TestGetCharts(t *testing.T) {

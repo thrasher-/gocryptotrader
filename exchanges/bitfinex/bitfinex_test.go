@@ -2152,10 +2152,16 @@ var testOb = orderbook.Book{
 }
 
 func TestChecksum(t *testing.T) {
-	err := validateCRC32(&testOb, 190468240)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	// The token is the one the previous whole book implementation produced for this fixture, so it
+	// holds the streamed hash to the string it replaced
+	reOrderByID(testOb.Bids)
+	reOrderByID(testOb.Asks)
+	err := validateCRC32(testOb.Bids, testOb.Asks, testOb.IsFundingRate, testOb.Pair, testOb.Asset, 190468240)
+	require.NoError(t, err, "validateCRC32 must match the token the string built implementation produced")
+
+	err = validateCRC32(testOb.Bids, testOb.Asks, testOb.IsFundingRate, testOb.Pair, testOb.Asset, 1)
+	assert.Error(t, err, "validateCRC32 should reject a token that does not match")
 }
 
 func TestReOrderbyID(t *testing.T) {
@@ -2365,4 +2371,107 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
 	}
+}
+
+// TestReOrderByID covers runs of levels sharing a price, which the checksum needs in ID order. A run
+// reaching the end of the side was previously left as it arrived, because the old implementation
+// only sorted a run once it found a differing level after it.
+func TestReOrderByID(t *testing.T) {
+	t.Parallel()
+
+	ids := func(d []orderbook.Level) []int64 {
+		out := make([]int64, len(d))
+		for i := range d {
+			out[i] = d[i].ID
+		}
+		return out
+	}
+
+	for name, tc := range map[string]struct {
+		in   []orderbook.Level
+		want []int64
+	}{
+		"terminal run": {
+			in:   []orderbook.Level{{Price: 100, ID: 2}, {Price: 100, ID: 1}},
+			want: []int64{1, 2},
+		},
+		"run followed by another price": {
+			in:   []orderbook.Level{{Price: 100, ID: 2}, {Price: 100, ID: 1}, {Price: 101, ID: 3}},
+			want: []int64{1, 2, 3},
+		},
+		"runs at both ends": {
+			in: []orderbook.Level{{Price: 100, ID: 3}, {Price: 100, ID: 1}, {Price: 101, ID: 9},
+				{Price: 102, ID: 8}, {Price: 102, ID: 5}, {Price: 102, ID: 7}},
+			want: []int64{1, 3, 9, 5, 7, 8},
+		},
+		"period separates equal prices": {
+			in: []orderbook.Level{{Price: 100, Period: 2, ID: 5}, {Price: 100, Period: 2, ID: 4},
+				{Price: 100, Period: 30, ID: 9}, {Price: 100, Period: 30, ID: 6}},
+			want: []int64{4, 5, 6, 9},
+		},
+		"no duplicates is left alone": {
+			in:   []orderbook.Level{{Price: 100, ID: 3}, {Price: 101, ID: 1}, {Price: 102, ID: 2}},
+			want: []int64{3, 1, 2},
+		},
+		"single level": {in: []orderbook.Level{{Price: 100, ID: 1}}, want: []int64{1}},
+		"empty":        {in: []orderbook.Level{}, want: []int64{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			reOrderByID(tc.in)
+			assert.Equalf(t, tc.want, ids(tc.in), "%s should order each equal priced run by ID", name)
+		})
+	}
+}
+
+func TestOrderTopByID(t *testing.T) {
+	t.Parallel()
+
+	run := func(price float64, ids ...int64) []orderbook.Level {
+		out := make([]orderbook.Level, len(ids))
+		for i, id := range ids {
+			out[i] = orderbook.Level{Price: price, ID: id}
+		}
+		return out
+	}
+	ids := func(d []orderbook.Level) []int64 {
+		out := make([]int64, len(d))
+		for i := range d {
+			out[i] = d[i].ID
+		}
+		return out
+	}
+
+	t.Run("side shorter than the checksum reads", func(t *testing.T) {
+		t.Parallel()
+		side := run(100, 3, 1, 2)
+		got, whole := orderTopByID(side, 5, false)
+		require.True(t, whole, "a side that fits must be usable")
+		assert.Equal(t, []int64{1, 2, 3}, ids(got), "the whole side should be ordered by ID")
+	})
+
+	t.Run("run closes before the window ends", func(t *testing.T) {
+		t.Parallel()
+		// need is 2, and the run holding index 1 closes at index 3
+		side := append(run(100, 9), run(101, 7, 5, 6)...)
+		side = append(side, run(102, 1)...)
+		got, whole := orderTopByID(side, 2, true)
+		require.True(t, whole, "a closed run must be usable even when the window filled")
+		assert.Equal(t, []int64{9, 5}, ids(got), "the straddling run should be ordered in full before it is cut")
+	})
+
+	t.Run("run reaches the end of a filled window", func(t *testing.T) {
+		t.Parallel()
+		side := append(run(100, 9), run(101, 7, 5, 6)...)
+		_, whole := orderTopByID(side, 2, true)
+		assert.False(t, whole, "a run that may continue past the window should not be used")
+	})
+
+	t.Run("run reaches the end of the whole side", func(t *testing.T) {
+		t.Parallel()
+		side := append(run(100, 9), run(101, 7, 5, 6)...)
+		got, whole := orderTopByID(side, 2, false)
+		require.True(t, whole, "a run ending with the side must be usable")
+		assert.Equal(t, []int64{9, 5}, ids(got), "the terminal run should be ordered before it is cut")
+	})
 }

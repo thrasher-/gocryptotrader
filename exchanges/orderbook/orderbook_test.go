@@ -596,23 +596,23 @@ func TestReverse(t *testing.T) {
 func TestCheckAlignment(t *testing.T) {
 	t.Parallel()
 	itemWithFunding := Levels{{Amount: 1337, Price: 0, Period: 1337}}
-	err := checkAlignment(itemWithFunding, true, true, false, false, isDsc, "Bitfinex")
+	err := checkAlignment(itemWithFunding, true, true, false, false, descending, "Bitfinex")
 	if err != nil {
 		t.Error(err)
 	}
-	err = checkAlignment(itemWithFunding, false, true, false, false, isDsc, "Bitfinex")
+	err = checkAlignment(itemWithFunding, false, true, false, false, descending, "Bitfinex")
 	require.ErrorIs(t, err, ErrPriceZero)
 
-	err = checkAlignment(itemWithFunding, true, true, false, false, isDsc, "Binance")
+	err = checkAlignment(itemWithFunding, true, true, false, false, descending, "Binance")
 	require.ErrorIs(t, err, ErrPriceZero)
 
 	itemWithFunding[0].Price = 1337
-	err = checkAlignment(itemWithFunding, true, true, false, true, isDsc, "Binance")
+	err = checkAlignment(itemWithFunding, true, true, false, true, descending, "Binance")
 	require.ErrorIs(t, err, errChecksumStringNotSet)
 
 	itemWithFunding[0].StrAmount = "1337.0000000"
 	itemWithFunding[0].StrPrice = "1337.0000000"
-	err = checkAlignment(itemWithFunding, true, true, false, true, isDsc, "Binance")
+	err = checkAlignment(itemWithFunding, true, true, false, true, descending, "Binance")
 	require.NoError(t, err)
 }
 

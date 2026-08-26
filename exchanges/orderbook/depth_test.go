@@ -84,6 +84,7 @@ func TestRetrieve(t *testing.T) {
 		idAligned:              true,
 		maxDepth:               10,
 		checksumStringRequired: true,
+		trackInsertTime:        true,
 	}
 
 	// If we add anymore options to the options struct later this will complain
@@ -104,6 +105,7 @@ func TestRetrieve(t *testing.T) {
 	assert.Equal(t, d.options.lastUpdated, ob.LastUpdated, "Should have correct LastUpdated")
 	assert.Equal(t, d.options.lastPushed, ob.LastPushed, "Should have correct LastPushed")
 	assert.Equal(t, d.options.insertedAt, ob.InsertedAt, "Should have correct InsertedAt")
+	assert.True(t, ob.TrackInsertTime, "Should have correct TrackInsertTime")
 	assert.EqualValues(t, 1337, ob.LastUpdateID, "Should have correct LastUpdateID")
 	assert.True(t, ob.PriceDuplication, "Should have correct PriceDuplication")
 	assert.True(t, ob.IsFundingRate, "Should have correct IsFundingRate")
@@ -766,4 +768,92 @@ func TestKey(t *testing.T) {
 	require.Equal(t,
 		key.NewExchangeAssetPair(depth.exchange, depth.asset, depth.pair),
 		depth.Key())
+}
+
+func TestValidationError(t *testing.T) {
+	t.Parallel()
+	d := NewDepth(id)
+	assert.NoError(t, d.ValidationError(), "ValidationError should be nil for a fresh depth")
+
+	require.NoError(t, d.LoadSnapshot(&Book{
+		Bids: Levels{{Price: 10, Amount: 1}}, Asks: Levels{{Price: 11, Amount: 1}},
+		LastUpdated: time.Now(),
+	}), "LoadSnapshot must not error")
+	assert.NoError(t, d.ValidationError(), "ValidationError should be nil after a valid snapshot")
+
+	err := d.Invalidate(errors.New("test reason"))
+	require.Error(t, err, "Invalidate must return the invalidation error")
+	assert.ErrorIs(t, d.ValidationError(), ErrOrderbookInvalid, "ValidationError should report the invalidation")
+	assert.Equal(t, err, d.ValidationError(), "ValidationError should match the error Invalidate returned")
+}
+
+func TestTopLevels(t *testing.T) {
+	t.Parallel()
+	d := NewDepth(id)
+	require.NoError(t, d.LoadSnapshot(newSnapshot(5)))
+
+	// a buffer shorter than the book takes only what fits
+	bids, asks := make(Levels, 2), make(Levels, 2)
+	gotBids, gotAsks, err := d.TopLevels(bids, asks)
+	require.NoError(t, err)
+	assert.Equal(t, 2, gotBids, "should fill the whole buffer when the book is deeper")
+	assert.Equal(t, 2, gotAsks, "should fill the whole buffer when the book is deeper")
+	assert.Equal(t, 1337.0, bids[0].Price, "should copy from the top of the book")
+
+	// a buffer longer than the book reports how much it actually wrote
+	bids, asks = make(Levels, 50), make(Levels, 50)
+	gotBids, gotAsks, err = d.TopLevels(bids, asks)
+	require.NoError(t, err)
+	assert.Equal(t, 5, gotBids, "should report the levels available")
+	assert.Equal(t, 5, gotAsks, "should report the levels available")
+
+	// the caller's buffer is its own, so mutating it must not reach the book
+	bids[0].Price = 1
+	stored, err := d.Retrieve()
+	require.NoError(t, err)
+	assert.Equal(t, 1337.0, stored.Bids[0].Price, "the copy should not alias the book")
+
+	require.Error(t, d.Invalidate(errors.New("test")))
+	_, _, err = d.TopLevels(bids, asks)
+	assert.ErrorIs(t, err, ErrOrderbookInvalid, "should refuse an invalidated book")
+}
+
+func TestDepthLastUpdated(t *testing.T) {
+	t.Parallel()
+	d := NewDepth(id)
+	when := time.Now().Truncate(time.Millisecond)
+	require.NoError(t, d.LoadSnapshot(&Book{
+		Bids: Levels{{Price: 100, Amount: 1}}, Asks: Levels{{Price: 101, Amount: 1}}, LastUpdated: when,
+	}))
+	got, err := d.LastUpdated()
+	require.NoError(t, err)
+	assert.Equal(t, when, got, "should return the time the book was last changed")
+
+	require.Error(t, d.Invalidate(errors.New("test")))
+	_, err = d.LastUpdated()
+	assert.ErrorIs(t, err, ErrOrderbookInvalid, "should refuse an invalidated book")
+}
+
+func TestTrackInsertTime(t *testing.T) {
+	t.Parallel()
+
+	for _, track := range []bool{false, true} {
+		d := NewDepth(id)
+		d.AssignOptions(&Book{
+			Exchange: "test", Pair: currency.NewBTCUSD(), Asset: asset.Spot,
+			LastUpdated: time.Now(), TrackInsertTime: track,
+		})
+		require.NoError(t, d.LoadSnapshot(newSnapshot(4)), "LoadSnapshot must not error")
+		require.NoError(t, d.ProcessUpdate(&Update{
+			UpdateTime: time.Now(), Bids: Levels{{Price: 1337, Amount: 2}},
+		}), "ProcessUpdate must not error")
+
+		book, err := d.Retrieve()
+		require.NoError(t, err, "Retrieve must not error")
+		if track {
+			assert.False(t, book.InsertedAt.IsZero(), "InsertedAt should be stamped when tracking is on")
+		} else {
+			assert.True(t, book.InsertedAt.IsZero(), "InsertedAt should be left unset when tracking is off")
+		}
+	}
 }

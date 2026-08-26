@@ -27,6 +27,14 @@ var (
 	ErrEmptyUpdate   = errors.New("update contains no bids or asks")
 )
 
+// windowedCheckRatio is the share of a book an update may touch before walking it in full is the
+// cheaper check, expressed as its reciprocal.
+const windowedCheckRatio = 5
+
+// fullValidationInterval bounds how many windowed checks run before a full walk. At a thousand
+// levels that walk costs around five microseconds, so amortised it is a few nanoseconds an update.
+const fullValidationInterval = 1024
+
 var (
 	errInvalidAction          = errors.New("invalid action")
 	errUpdateFailed           = errors.New("orderbook update failed")
@@ -87,21 +95,20 @@ func (d *Depth) ProcessUpdate(u *Update) error {
 		return d.invalidate(errRESTSnapshot)
 	}
 
-	if u.Action != UnknownAction {
-		if err := d.update(u); err != nil {
-			return d.invalidate(err)
-		}
-	} else {
+	priceKeyed := u.Action == UnknownAction
+	if priceKeyed {
 		if err := d.updateBidAskByPrice(u); err != nil {
 			return d.invalidate(err)
 		}
+	} else if err := d.update(u); err != nil {
+		return d.invalidate(err)
 	}
 
-	if !d.validateOrderbook {
-		return nil
-	}
-
-	if u.ExpectedChecksum != 0 {
+	// A checksum verifies the wire data rather than our own bookkeeping, so it is honoured even when
+	// structural validation has been bypassed
+	// A supplied generator is what marks a checksum as present. Testing the expected value against
+	// zero skipped verification whenever the venue's CRC32 legitimately came out zero.
+	if u.GenerateChecksum != nil || u.ExpectedChecksum != 0 {
 		if u.GenerateChecksum == nil {
 			return d.invalidate(errChecksumGeneratorUnset)
 		}
@@ -110,11 +117,30 @@ func (d *Depth) ProcessUpdate(u *Update) error {
 		}
 	}
 
-	if err := validate(d.snapshot()); err != nil {
+	if !d.validateOrderbook {
+		return nil
+	}
+
+	if err := d.validateUpdated(u, priceKeyed); err != nil {
 		return d.invalidate(err)
 	}
 
 	return nil
+}
+
+// validateUpdated checks the book after an update. A price keyed update over searchable sides only
+// needs the neighbourhoods it touched checked, since the rest was validated when last written; the
+// periodic full walk catches a fault outside those, such as a mistake in our own shifting.
+func (d *Depth) validateUpdated(u *Update, priceKeyed bool) error {
+	d.updatesSinceFullValidation++
+	// Each touched level costs a search and a three level window, so a wide enough update is dearer
+	// to check piecemeal than to walk. Measured, the two meet at about a fifth of the book.
+	wide := windowedCheckRatio*(len(u.Bids)+len(u.Asks)) >= len(d.bidLevels.Levels)+len(d.askLevels.Levels)
+	if wide || !priceKeyed || !d.bidLevels.searchable() || !d.askLevels.searchable() || d.updatesSinceFullValidation >= fullValidationInterval {
+		d.updatesSinceFullValidation = 0
+		return validate(d.snapshot())
+	}
+	return validateAround(d.snapshot(), u.Bids, u.Asks)
 }
 
 func (d *Depth) snapshot() *Book {

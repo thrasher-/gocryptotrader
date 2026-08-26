@@ -83,13 +83,13 @@ func (e *Exchange) applyBufferUpdate(pair currency.Pair) error {
 		return e.obm.fetchBookViaREST(pair)
 	}
 
-	recent, err := e.Websocket.Orderbook.GetOrderbook(pair, asset.Spot)
+	// Only the last update time is read from the stored book, so fetching a copy of every level to
+	// find it costs far more than the check it feeds.
+	lastUpdated, err := e.Websocket.Orderbook.LastUpdated(pair, asset.Spot)
 	if err != nil {
 		log.Errorf(log.WebsocketMgr, "%s error fetching recent orderbook when applying updates: %s\n", e.Name, err)
-	}
-
-	if recent != nil {
-		err = e.obm.checkAndProcessOrderbookUpdate(e.processBooks, pair, recent)
+	} else {
+		err = e.obm.checkAndProcessOrderbookUpdate(e.processBooks, pair, lastUpdated)
 		if err != nil {
 			log.Errorf(log.WebsocketMgr, "%s error processing update - initiating new orderbook sync via REST: %s\n", e.Name, err)
 			err = e.obm.setNeedsFetchingBook(pair)
@@ -331,7 +331,7 @@ func (o *orderbookManager) fetchBookViaREST(pair currency.Pair) error {
 	}
 }
 
-func (o *orderbookManager) checkAndProcessOrderbookUpdate(processor func(*WsOrderbooks) error, pair currency.Pair, recent *orderbook.Book) error {
+func (o *orderbookManager) checkAndProcessOrderbookUpdate(processor func(*WsOrderbooks) error, pair currency.Pair, lastUpdated time.Time) error {
 	o.Lock()
 	defer o.Unlock()
 	state, ok := o.state[pair.Base][pair.Quote][asset.Spot]
@@ -346,7 +346,7 @@ buffer:
 	for {
 		select {
 		case d := <-state.buffer:
-			if !state.validate(d, recent) {
+			if !state.validate(d, lastUpdated) {
 				continue
 			}
 			err := processor(d)
@@ -362,8 +362,8 @@ buffer:
 }
 
 // validate checks for correct update alignment
-func (u *update) validate(updt *WsOrderbooks, recent *orderbook.Book) bool {
-	return updt.DateTime.Time().After(recent.LastUpdated)
+func (u *update) validate(updt *WsOrderbooks, lastUpdated time.Time) bool {
+	return updt.DateTime.Time().After(lastUpdated)
 }
 
 // cleanup cleans up buffer and reset fetch and init

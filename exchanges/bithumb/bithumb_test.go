@@ -19,6 +19,7 @@ import (
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/banking"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 // Please supply your own keys here for due diligence testing
@@ -676,4 +677,16 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
 	}
+}
+
+func TestUpdateValidate(t *testing.T) {
+	t.Parallel()
+	stored := time.Now()
+	u := &update{}
+	assert.False(t, u.validate(&WsOrderbooks{DateTime: types.Time(stored.Add(-time.Second))}, stored),
+		"an update older than the stored book should be dropped")
+	assert.True(t, u.validate(&WsOrderbooks{DateTime: types.Time(stored.Add(time.Second))}, stored),
+		"an update newer than the stored book should process")
+	assert.False(t, u.validate(&WsOrderbooks{DateTime: types.Time(stored)}, stored),
+		"an update at the stored time should be dropped")
 }
