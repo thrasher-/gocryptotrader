@@ -32,6 +32,7 @@ var v1Compat = jsonv2.JoinOptions(
 	jsontext.EscapeForJS(true),                   // and U+2028/U+2029
 	jsontext.PreserveRawStrings(true),            // a RawMessage keeps the escaping it arrived with
 	jsontext.AllowInvalidUTF8(true),              // v1 substituted U+FFFD rather than failing the decode
+	jsonv1.ParseTimeWithLooseRFC3339(true),       // a rejected timestamp fails the whole payload, not the field
 )
 
 // The three name-matching options are interdependent: matching case-insensitively makes "e" and "E"
@@ -126,11 +127,15 @@ func (e *Encoder) Encode(v any) error {
 // Decoder reads and decodes JSON values from an input stream
 type Decoder struct {
 	dec           *jsontext.Decoder
+	r             *readLatch
 	rejectUnknown bool
 }
 
 // NewDecoder returns a new decoder that reads from r
-func NewDecoder(r io.Reader) *Decoder { return &Decoder{dec: jsontext.NewDecoder(r)} }
+func NewDecoder(r io.Reader) *Decoder {
+	latch := &readLatch{r: r}
+	return &Decoder{dec: jsontext.NewDecoder(latch), r: latch}
+}
 
 // DisallowUnknownFields causes the Decoder to error when the destination is a struct and the
 // input contains object members matching no non-ignored, exported field
@@ -142,9 +147,15 @@ func (d *Decoder) More() bool {
 	case ']', '}':
 		return false
 	case 0:
-		// PeekKind reports 0 for a malformed token as well as for end of input; v1 reported the
-		// former as more, so `for d.More()` surfaces the decode error rather than exiting silently
-		return len(bytes.TrimLeft(d.dec.UnreadBuffer(), " \t\r\n")) > 0
+		// PeekKind reports 0 for end of input, for a malformed token and for a failed read alike.
+		// v1 reports the latter two as more, so `for d.More()` surfaces the error from the next
+		// Decode rather than exiting silently. Reading the token is what tells them apart, and it
+		// consumes nothing, there being no token to read
+		if d.r.err != nil {
+			return true
+		}
+		_, err := d.dec.ReadToken()
+		return err != io.EOF
 	default:
 		return true
 	}
@@ -152,6 +163,11 @@ func (d *Decoder) More() bool {
 
 // Decode reads the next JSON-encoded value from its input and stores it in the value pointed to by v
 func (d *Decoder) Decode(v any) error {
+	// The latched failure is the reader's own error rather than what jsontext wraps it in, and it is
+	// reported by every later call, both as v1 does it
+	if d.r.err != nil {
+		return d.r.err
+	}
 	if d.rejectUnknown {
 		return jsonv2.UnmarshalDecode(d.dec, v, v1Compat, jsonv2.RejectUnknownMembers(true))
 	}

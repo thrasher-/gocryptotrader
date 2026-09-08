@@ -118,32 +118,44 @@ type OHLC struct {
 
 // Usage holds usage statistical data
 type Usage struct {
-	Status int `json:"status"`
-	Data   struct {
-		AppID  string `json:"app_id"`
-		Status string `json:"status"`
-		Plan   struct {
-			Name            string `json:"name"`
-			Quota           string `json:"quota"`
-			UpdateFrequency string `json:"update_frequency"`
-			Features        struct {
-				Base         bool `json:"base"`
-				Symbols      bool `json:"symbols"`
-				Experimental bool `json:"experimental"`
-				Timeseries   bool `json:"time-series"`
-				Convert      bool `json:"convert"`
-			} `json:"features"`
-		} `json:"plan"`
-		Usages struct {
-			Requests          int64 `json:"requests"`
-			RequestQuota      int   `json:"requests_quota"`
-			RequestsRemaining int   `json:"requests_remaining"`
-			DaysElapsed       int   `json:"days_elapsed"`
-			DaysRemaining     int   `json:"days_remaining"`
-			DailyAverage      int   `json:"daily_average"`
-		} `json:"usage"`
-	} `json:"data"`
-	Error       bool   `json:"error"`
-	Message     string `json:"message"`
-	Description string `json:"description"`
+	Status      int       `json:"status"`
+	Data        UsageData `json:"data"`
+	Error       bool      `json:"error"`
+	Message     string    `json:"message"`
+	Description string    `json:"description"`
+}
+
+// UsageData holds the account the key belongs to, its plan and its consumption to date
+type UsageData struct {
+	AppID  string          `json:"app_id"`
+	Status string          `json:"status"`
+	Plan   UsagePlan       `json:"plan"`
+	Usages UsageStatistics `json:"usage"`
+}
+
+// UsagePlan holds the subscription plan an account is on
+type UsagePlan struct {
+	Name            string           `json:"name"`
+	Quota           string           `json:"quota"`
+	UpdateFrequency string           `json:"update_frequency"`
+	Features        UsagePlanFeature `json:"features"`
+}
+
+// UsagePlanFeature holds the endpoints a plan grants access to
+type UsagePlanFeature struct {
+	Base         bool `json:"base"`
+	Symbols      bool `json:"symbols"`
+	Experimental bool `json:"experimental"`
+	Timeseries   bool `json:"time-series"`
+	Convert      bool `json:"convert"`
+}
+
+// UsageStatistics holds an account's request consumption for the current period
+type UsageStatistics struct {
+	Requests          int64 `json:"requests"`
+	RequestQuota      int   `json:"requests_quota"`
+	RequestsRemaining int   `json:"requests_remaining"`
+	DaysElapsed       int   `json:"days_elapsed"`
+	DaysRemaining     int   `json:"days_remaining"`
+	DailyAverage      int   `json:"daily_average"`
 }

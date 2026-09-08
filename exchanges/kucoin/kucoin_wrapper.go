@@ -289,6 +289,16 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, assetType 
 	return ticker.GetTicker(e.Name, p, assetType)
 }
 
+// contractVolumes maps a futures contract's two volume figures onto base and quote. KuCoin reports
+// volumeOf24h in the base currency and turnoverOf24h in the quote, except on an inverse contract,
+// which is worth one unit of its quote currency, where the two swap over
+func contractVolumes(c *Contract) (baseVolume, quoteVolume float64) {
+	if c.IsInverse {
+		return c.TurnoverOf24Hour, c.VolumeOf24Hour
+	}
+	return c.VolumeOf24Hour, c.TurnoverOf24Hour
+}
+
 // UpdateTickers updates all currency pairs of a given asset type
 func (e *Exchange) UpdateTickers(ctx context.Context, assetType asset.Item) error {
 	var errs error
@@ -308,11 +318,13 @@ func (e *Exchange) UpdateTickers(ctx context.Context, assetType asset.Item) erro
 			if !pairs.Contains(pair, true) {
 				continue
 			}
+			baseVolume, quoteVolume := contractVolumes(&ticks[x])
 			err = ticker.ProcessTicker(&ticker.Price{
 				Last:         ticks[x].LastTradePrice,
 				High:         ticks[x].HighPrice,
 				Low:          ticks[x].LowPrice,
-				BaseVolume:   ticks[x].VolumeOf24Hour,
+				BaseVolume:   baseVolume,
+				QuoteVolume:  quoteVolume,
 				OpenInterest: ticks[x].OpenInterest.Float64(),
 				Pair:         pair,
 				ExchangeName: e.Name,

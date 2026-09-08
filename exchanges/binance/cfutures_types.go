@@ -301,14 +301,14 @@ type AutoCancelAllOrdersData struct {
 
 // FuturesAccountBalanceData stores account balance data for futures
 type FuturesAccountBalanceData struct {
-	AccountAlias       string     `json:"accountAlias"`
-	Asset              string     `json:"asset"`
-	Balance            float64    `json:"balance,string"`
-	WithdrawAvailable  float64    `json:"withdrawAvailable,string"`
-	CrossWalletBalance float64    `json:"crossWalletBalance,string"`
-	CrossUnPNL         float64    `json:"crossUnPnl,string"`
-	AvailableBalance   float64    `json:"availableBalance,string"`
-	UpdateTime         types.Time `json:"updateTime"`
+	AccountAlias       string       `json:"accountAlias"`
+	Asset              string       `json:"asset"`
+	Balance            types.Number `json:"balance"`
+	WithdrawAvailable  types.Number `json:"withdrawAvailable"`
+	CrossWalletBalance types.Number `json:"crossWalletBalance"`
+	CrossUnPNL         types.Number `json:"crossUnPnl"`
+	AvailableBalance   types.Number `json:"availableBalance"`
+	UpdateTime         types.Time   `json:"updateTime"`
 }
 
 // FuturesAccountInformationPosition holds account position data

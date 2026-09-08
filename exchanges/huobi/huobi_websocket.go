@@ -276,18 +276,23 @@ func (e *Exchange) wsHandleTickerMsg(ctx context.Context, s *subscription.Subscr
 	if err := json.Unmarshal(respRaw, &wsTicker); err != nil {
 		return err
 	}
-	return e.Websocket.DataHandler.Send(ctx, &ticker.Price{
+	price := &ticker.Price{
 		ExchangeName: e.Name,
 		Open:         wsTicker.Tick.Open,
 		Close:        wsTicker.Tick.Close,
 		BaseVolume:   wsTicker.Tick.Amount,
-		QuoteVolume:  wsTicker.Tick.Volume,
 		High:         wsTicker.Tick.High,
 		Low:          wsTicker.Tick.Low,
 		LastUpdated:  wsTicker.Timestamp.Time(),
 		AssetType:    s.Asset,
 		Pair:         s.Pairs[0],
-	})
+	}
+	// vol is the quote currency on spot but counts contracts on the derivative channels, where the
+	// quote figure is served as trade_turnover and this message carries none
+	if s.Asset == asset.Spot {
+		price.QuoteVolume = wsTicker.Tick.Volume
+	}
+	return e.Websocket.DataHandler.Send(ctx, price)
 }
 
 func (e *Exchange) wsHandleOrderbookMsg(s *subscription.Subscription, respRaw []byte) error {

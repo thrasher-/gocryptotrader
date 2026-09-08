@@ -321,6 +321,7 @@ func (e *Exchange) processTicker(ctx context.Context, result *SubscriptionRespon
 	tickerData := make([]ticker.Price, len(resp))
 	for x, r := range resp {
 		tickerData[x] = ticker.Price{
+			Last:         r.Close.Float64(),
 			MarkPrice:    r.MarkPrice.Float64(),
 			High:         r.High.Float64(),
 			Low:          r.Low.Float64(),

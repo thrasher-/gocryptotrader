@@ -1,6 +1,7 @@
 package order
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"reflect"
@@ -507,7 +508,8 @@ func TestFilterOrdersByTimeRange(t *testing.T) {
 	t.Parallel()
 
 	orders := make([]Detail, 0, 4)
-	orders = append(orders,
+	orders = append(
+		orders,
 		Detail{
 			Date: time.Unix(100, 0),
 		},
@@ -1817,4 +1819,44 @@ func TestPosition(t *testing.T) {
 			assert.ErrorIs(t, err, a.err)
 		}
 	}
+}
+
+func TestSortOrders(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		reverse bool
+		want    []float64
+	}{
+		{
+			name: "ascending",
+			want: []float64{1, 2, 2, 3},
+		},
+		{
+			name:    "descending",
+			reverse: true,
+			want:    []float64{3, 2, 2, 1},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			orders := []Detail{
+				{Price: 2},
+				{Price: 3},
+				{Price: 1},
+				{Price: 2},
+			}
+			sortOrders(&orders, tc.reverse, func(a, b Detail) int { return cmp.Compare(a.Price, b.Price) })
+
+			got := make([]float64, len(orders))
+			for i := range orders {
+				got[i] = orders[i].Price
+			}
+			assert.Equal(t, tc.want, got, "sortOrders should order the prices")
+		})
+	}
+
+	var empty []Detail
+	assert.NotPanics(t, func() { sortOrders(&empty, false, func(a, b Detail) int { return cmp.Compare(a.Price, b.Price) }) },
+		"sortOrders should accept an empty slice")
 }

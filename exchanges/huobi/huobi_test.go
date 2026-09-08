@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"sync"
@@ -1429,6 +1431,29 @@ func TestWSTicker(t *testing.T) {
 	assert.Equal(t, exp, tick)
 }
 
+// TestWSTickerDerivativeRecordsNoQuoteVolume covers the derivative branch of the ticker handler,
+// which the spot fixture never reaches. vol counts contracts on those channels, so recording it as
+// a quote volume would state a contract count as turnover
+func TestWSTickerDerivativeRecordsNoQuoteVolume(t *testing.T) {
+	t.Parallel()
+	e := new(Exchange)
+	require.NoError(t, testexch.Setup(e), "Setup Instance must not error")
+	sub := &subscription.Subscription{Key: "market.BTC-USD.detail", Asset: asset.CoinMarginedFutures, Pairs: currency.Pairs{currency.NewBTCUSD()}, Channel: subscription.TickerChannel}
+	require.NoError(t, e.Websocket.AddSubscriptions(e.Websocket.Conn, sub), "AddSubscriptions must not error")
+
+	// Trimmed from the coin margined swap detail channel, where vol is a count of contracts
+	payload := []byte(`{"ch":"market.BTC-USD.detail","ts":1630998026649,"tick":{"low":51000,"high":52924.14,"open":51823.62,"close":52379.99,"vol":727676,"amount":13991.028076056185}}`)
+	require.NoError(t, e.wsHandleData(t.Context(), payload), "wsHandleData must not error")
+
+	e.Websocket.DataHandler.Close()
+	require.Len(t, e.Websocket.DataHandler.C, 1, "Must see correct number of records")
+	tickAny := <-e.Websocket.DataHandler.C
+	tick, ok := tickAny.Data.(*ticker.Price)
+	require.True(t, ok, "Must get the correct type from DataHandler")
+	assert.Equal(t, 13991.028076056185, tick.BaseVolume, "amount should be recorded as the base volume")
+	assert.Zero(t, tick.QuoteVolume, "vol counts contracts here, so no quote volume should be recorded")
+}
+
 func TestWSAccountUpdate(t *testing.T) {
 	t.Parallel()
 	e := new(Exchange)
@@ -2132,4 +2157,86 @@ func updatePairsOnce(tb testing.TB, h *Exchange) {
 
 	err := h.CurrencyPairs.EnablePair(asset.Futures, btcFutureDatedPair) // Must enable every time we refresh the CurrencyPairs from cache
 	require.NoError(tb, common.ExcludeError(err, currency.ErrPairAlreadyEnabled))
+}
+
+// TestBookLevel covers a futures tick whose book side is short or absent. Huobi omits the side
+// entirely when nothing rests there, so neither element can be indexed unconditionally
+func TestBookLevel(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                string
+		level               []float64
+		wantPrice, wantSize float64
+	}{
+		{name: "price and size", level: []float64{78553, 12}, wantPrice: 78553, wantSize: 12},
+		{name: "price only", level: []float64{78553}, wantPrice: 78553},
+		{name: "empty side", level: []float64{}},
+		{name: "absent side"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			price, size := bookLevel(tc.level)
+			assert.Equal(t, tc.wantPrice, price, "bookLevel should return the resting price")
+			assert.Equal(t, tc.wantSize, size, "bookLevel should return the resting size")
+		})
+	}
+}
+
+// TestUpdateTickerVolumeUnits runs UpdateTicker end to end for spot and for a coin margined swap.
+// vol is the quote currency on the spot endpoint but counts contracts on the swap one, so only spot
+// has a quote volume to record, and the spot merged response carries the bid and ask the summary
+// endpoint omits
+func TestUpdateTickerVolumeUnits(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                       string
+		a                          asset.Item
+		pair                       currency.Pair
+		endpoint                   exchange.URL
+		body                       string
+		wantBase, wantQuote        float64
+		wantBid, wantBidSize       float64
+		wantLastUpdatedFromPayload bool
+	}{
+		{
+			// trimmed from GET /market/detail/merged?symbol=btcusdt
+			name: "spot records the quote turnover and the book", a: asset.Spot,
+			pair: currency.NewBTCUSDT(), endpoint: exchange.RestSpot,
+			body:     `{"status":"ok","ts":1788926189000,"tick":{"amount":6454.5661,"vol":506778563.47,"high":79000,"low":78000,"open":78500,"close":78616.33,"bid":[78615,1.5],"ask":[78617,2.5]}}`,
+			wantBase: 6454.5661, wantQuote: 506778563.47, wantBid: 78615, wantBidSize: 1.5,
+			wantLastUpdatedFromPayload: true,
+		},
+		{
+			// trimmed from GET /swap-ex/market/detail/merged?contract_code=BTC-USD, where vol is
+			// 65744 contracts of 100 USD against amount 83.81 BTC
+			name: "coin margined records no quote volume", a: asset.CoinMarginedFutures,
+			pair: currency.NewBTCUSD(), endpoint: exchange.RestFutures,
+			body:     `{"status":"ok","ts":1788926189000,"tick":{"amount":"83.8102","vol":"65744","high":"79434.2","low":"77567.2","open":"79212.4","close":"78741.1","bid":[78740,3600],"ask":[78742,1200]}}`,
+			wantBase: 83.8102, wantQuote: 0, wantBid: 78740, wantBidSize: 3600,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, err := fmt.Fprint(w, tc.body)
+				assert.NoError(t, err, "writing the ticker response should not error")
+			}))
+			ex := new(Exchange)
+			require.NoError(t, testexch.Setup(ex), "Setup must not error")
+			ex.Name = "huobi-" + tc.a.String()
+			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+			require.NoError(t, ex.API.Endpoints.SetRunningURL(tc.endpoint.String(), server.URL), "SetRunningURL must not error")
+
+			got, err := ex.UpdateTicker(t.Context(), tc.pair, tc.a)
+			require.NoError(t, err, "UpdateTicker must not error")
+			assert.Equal(t, tc.wantBase, got.BaseVolume, "amount should be recorded as the base volume")
+			assert.Equal(t, tc.wantQuote, got.QuoteVolume, "only an endpoint serving the quote currency should set a quote volume")
+			assert.Equal(t, tc.wantBid, got.Bid, "the resting bid should reach the store")
+			assert.Equal(t, tc.wantBidSize, got.BidSize, "the resting bid size should reach the store")
+			if tc.wantLastUpdatedFromPayload {
+				assert.Equal(t, int64(1788926189000), got.LastUpdated.UnixMilli(), "the response timestamp should reach the store")
+			}
+		})
+	}
 }

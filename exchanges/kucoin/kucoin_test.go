@@ -3,7 +3,10 @@ package kucoin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -4213,4 +4216,76 @@ func TestStringToTimeInForce(t *testing.T) {
 		result := StringToTimeInForce(tifMap[a].String, tifMap[a].PostOnly)
 		assert.Equal(t, tifMap[a].TimeInForce, result)
 	}
+}
+
+// TestContractVolumes pins which currency each of KuCoin's two futures volume figures carries. An
+// inverse contract is worth one unit of its quote currency, so volumeOf24h counts that currency
+// there while turnoverOf24h carries the base, the reverse of a linear contract
+func TestContractVolumes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                string
+		contract            Contract
+		wantBase, wantQuote float64
+	}{
+		{
+			// XBTUSDM: 2,564,398 USD against 32.7393 XBT at 79,118
+			name:      "inverse reports the quote currency in volumeOf24h",
+			contract:  Contract{IsInverse: true, VolumeOf24Hour: 2564398, TurnoverOf24Hour: 32.7393},
+			wantBase:  32.7393,
+			wantQuote: 2564398,
+		},
+		{
+			// XBTUSDTM: 4,837.85 XBT against 379,665,862.5284 USDT
+			name:      "linear reports the base currency in volumeOf24h",
+			contract:  Contract{VolumeOf24Hour: 4837.85, TurnoverOf24Hour: 379665862.5284},
+			wantBase:  4837.85,
+			wantQuote: 379665862.5284,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			baseVolume, quoteVolume := contractVolumes(&tc.contract)
+			assert.Equal(t, tc.wantBase, baseVolume, "contractVolumes should return the base currency volume")
+			assert.Equal(t, tc.wantQuote, quoteVolume, "contractVolumes should return the quote currency volume")
+		})
+	}
+}
+
+// TestUpdateTickersFuturesVolumes covers the wiring into the store, which contractVolumes' own
+// test does not reach
+func TestUpdateTickersFuturesVolumes(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Trimmed from GET /api/v1/contracts/active
+		_, err := fmt.Fprint(w, `{"code":"200000","data":[
+			{"symbol":"XBTUSDM","baseCurrency":"XBT","isInverse":true,"lastTradePrice":79118,"volumeOf24h":2564398,"turnoverOf24h":32.7393},
+			{"symbol":"SOLUSDTM","baseCurrency":"SOL","isInverse":false,"lastTradePrice":78.5,"volumeOf24h":4837.85,"turnoverOf24h":379665862.5284}
+		]}`)
+		assert.NoError(t, err, "writing the contract response should not error")
+	}))
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestFutures.String(), server.URL), "SetRunningURL must not error")
+
+	inverse := currency.NewPairWithDelimiter("XBT", "USDM", "_")
+	linear := currency.NewPairWithDelimiter("SOL", "USDTM", "_")
+	pairs := currency.Pairs{inverse, linear}
+	require.NoError(t, ex.CurrencyPairs.StorePairs(asset.Futures, pairs, false), "StorePairs must not error for available pairs")
+	require.NoError(t, ex.CurrencyPairs.StorePairs(asset.Futures, pairs, true), "StorePairs must not error for enabled pairs")
+
+	require.NoError(t, ex.UpdateTickers(t.Context(), asset.Futures), "UpdateTickers must not error")
+
+	got, err := ticker.GetTicker(ex.Name, inverse, asset.Futures)
+	require.NoError(t, err, "GetTicker must not error for the inverse contract")
+	assert.Equal(t, 32.7393, got.BaseVolume, "the inverse contract's turnoverOf24h should reach the store as base volume")
+	assert.Equal(t, 2564398.0, got.QuoteVolume, "the inverse contract's volumeOf24h should reach the store as quote volume")
+
+	got, err = ticker.GetTicker(ex.Name, linear, asset.Futures)
+	require.NoError(t, err, "GetTicker must not error for the linear contract")
+	assert.Equal(t, 4837.85, got.BaseVolume, "the linear contract's volumeOf24h should reach the store as base volume")
+	assert.Equal(t, 379665862.5284, got.QuoteVolume, "the linear contract's turnoverOf24h should reach the store as quote volume")
 }

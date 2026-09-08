@@ -474,3 +474,48 @@ func TestFuturesPublicTradesDataUnmarshal(t *testing.T) {
 	}
 	assert.Equal(t, exp, x, "FuturesPublicTradesData should unmarshal correctly")
 }
+
+func TestFuturesAccountBalanceDataUnmarshal(t *testing.T) {
+	t.Parallel()
+	want := FuturesAccountBalanceData{
+		AccountAlias:       "test-account",
+		Asset:              "BTC",
+		Balance:            0.0025,
+		WithdrawAvailable:  0.0024,
+		CrossWalletBalance: 0.00241969,
+		CrossUnPNL:         -0.00001,
+		AvailableBalance:   0.00240969,
+		UpdateTime:         types.Time(time.UnixMilli(1592468353979)),
+	}
+	for _, tc := range []struct {
+		name, input string
+		want        FuturesAccountBalanceData
+	}{
+		{
+			name:  "quoted numbers",
+			input: `[{"accountAlias":"test-account","asset":"BTC","balance":"0.00250000","withdrawAvailable":"0.00240000","crossWalletBalance":"0.00241969","crossUnPnl":"-0.00001000","availableBalance":"0.00240969","updateTime":1592468353979}]`,
+			want:  want,
+		},
+		{
+			name:  "bare numbers",
+			input: `[{"accountAlias":"test-account","asset":"BTC","balance":0.0025,"withdrawAvailable":0.0024,"crossWalletBalance":0.00241969,"crossUnPnl":-0.00001,"availableBalance":0.00240969,"updateTime":1592468353979}]`,
+			want:  want,
+		},
+		{
+			name:  "empty numbers",
+			input: `[{"accountAlias":"test-account","asset":"BTC","balance":"","withdrawAvailable":"","crossWalletBalance":"","crossUnPnl":"","availableBalance":"","updateTime":1592468353979}]`,
+			want: FuturesAccountBalanceData{
+				AccountAlias: "test-account",
+				Asset:        "BTC",
+				UpdateTime:   types.Time(time.UnixMilli(1592468353979)),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var got []FuturesAccountBalanceData
+			require.NoError(t, json.Unmarshal([]byte(tc.input), &got), "Unmarshal must not error")
+			assert.Equal(t, []FuturesAccountBalanceData{tc.want}, got, "FuturesAccountBalanceData should decode every field")
+		})
+	}
+}

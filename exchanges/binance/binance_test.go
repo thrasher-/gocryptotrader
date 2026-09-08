@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/core"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/collateral"
@@ -3483,4 +3486,191 @@ func TestGetCurrencyTradeURL(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, resp)
 	}
+}
+
+func TestUpdateAccountBalancesMocked(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		asset asset.Item
+		path  string
+		input string
+		alias string
+		want  accounts.Balance
+	}{
+		{
+			asset: asset.Spot,
+			path:  accountInfo,
+			input: `{
+  "balances": [
+    {
+      "asset": "USDT",
+      "free": "3.5",
+      "locked": "1.25"
+    }
+  ]
+}`,
+			want: accounts.Balance{
+				Currency: currency.USDT,
+				Total:    4.75,
+				Hold:     1.25,
+				Free:     3.5,
+			},
+		},
+		{
+			asset: asset.CoinMarginedFutures,
+			path:  cfuturesAccountInfo,
+			input: `{
+  "assets": [
+    {
+      "asset": "BTC",
+      "walletBalance": "5.5",
+      "availableBalance": "4.25"
+    }
+  ]
+}`,
+			want: accounts.Balance{
+				Currency: currency.BTC,
+				Total:    5.5,
+				Hold:     1.25,
+				Free:     4.25,
+			},
+		},
+		{
+			asset: asset.USDTMarginedFutures,
+			path:  ufuturesAccountBalance,
+			input: `[
+  {
+    "accountAlias": "test-account",
+    "asset": "USDT",
+    "balance": 125.5,
+    "availableBalance": 115.75
+  }
+]`,
+			alias: "test-account",
+			want: accounts.Balance{
+				Currency: currency.USDT,
+				Total:    125.5,
+				Hold:     9.75,
+				Free:     115.75,
+			},
+		},
+		{
+			asset: asset.Margin,
+			path:  marginAccountInfo,
+			input: `{
+  "userAssets": [
+    {
+      "asset": "USDT",
+      "free": "5.5",
+      "locked": "1.25",
+      "borrowed": "2.25"
+    }
+  ]
+}`,
+			want: accounts.Balance{
+				Currency:               currency.USDT,
+				Total:                  6.75,
+				Hold:                   1.25,
+				Free:                   5.5,
+				AvailableWithoutBorrow: 3.25,
+				Borrowed:               2.25,
+			},
+		},
+	} {
+		for _, mode := range []string{"balances", "empty", "error"} {
+			t.Run(tc.asset.String()+"/"+mode, func(t *testing.T) {
+				t.Parallel()
+				e := new(Exchange)
+				require.NoError(t, testexch.Setup(e), "Setup must not error")
+				e.SkipAuthCheck = true
+				e.SetCredentials(&accounts.Credentials{
+					Key:    "test-key",
+					Secret: "test-secret",
+				})
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					assert.Equal(t, http.MethodGet, r.Method, "balances should use GET")
+					assert.Equal(t, tc.path, r.URL.Path, "balances should use the asset endpoint")
+					body := tc.input
+					switch mode {
+					case "error":
+						body = `{
+  "code": -1,
+  "msg": "balance rejected"
+}`
+					case "empty":
+						body = `{}`
+						if tc.asset == asset.USDTMarginedFutures {
+							body = `[]`
+						}
+					}
+					_, err := w.Write([]byte(body))
+					assert.NoError(t, err, "the mock response should be written")
+				}))
+				t.Cleanup(server.Close)
+				require.NoError(t, e.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+				for endpoint := range e.API.Endpoints.GetURLMap() {
+					require.NoError(t, e.API.Endpoints.SetRunningURL(endpoint, server.URL), "SetRunningURL must not error")
+				}
+				started := time.Now()
+				got, err := e.UpdateAccountBalances(t.Context(), tc.asset)
+				if mode == "error" {
+					assert.ErrorContains(t, err, "balance rejected", "UpdateAccountBalances should propagate the API error")
+					assert.Nil(t, got, "a failed request should return no balances")
+					return
+				}
+				require.NoError(t, err, "UpdateAccountBalances must not error")
+				if mode == "empty" {
+					exp := accounts.SubAccounts{accounts.NewSubAccount(tc.asset, tc.alias)}
+					if tc.asset == asset.USDTMarginedFutures {
+						exp = accounts.SubAccounts{}
+					}
+					assert.Equal(t, exp, got, "UpdateAccountBalances should accept empty balances")
+					return
+				}
+				require.Len(t, got, 1, "UpdateAccountBalances must return one account")
+				want := tc.want
+				want.UpdatedAt = got[0].Balances[want.Currency].UpdatedAt
+				assert.WithinRange(t, want.UpdatedAt, started, time.Now(), "the balance timestamp should reflect this update")
+				exp := accounts.SubAccounts{{
+					ID:        tc.alias,
+					AssetType: tc.asset,
+					Balances:  accounts.CurrencyBalances{want.Currency: want},
+				}}
+				assert.Equal(t, exp, got, "UpdateAccountBalances should preserve the decoded balances")
+				if tc.asset == asset.USDTMarginedFutures {
+					e.Accounts = nil
+					_, err = e.UpdateAccountBalances(t.Context(), tc.asset)
+					assert.ErrorIs(t, err, common.ErrNilPointer, "UpdateAccountBalances should propagate a save failure")
+				}
+			})
+		}
+	}
+
+	t.Run("validation", func(t *testing.T) {
+		t.Parallel()
+		e := new(Exchange)
+		require.NoError(t, testexch.Setup(e), "Setup must not error")
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			assert.Fail(t, "validation should not make HTTP requests")
+			w.WriteHeader(http.StatusBadRequest)
+		}))
+		t.Cleanup(server.Close)
+		require.NoError(t, e.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+		for endpoint := range e.API.Endpoints.GetURLMap() {
+			require.NoError(t, e.API.Endpoints.SetRunningURL(endpoint, server.URL), "SetRunningURL must not error")
+		}
+		e.LoadedByConfig = false
+		e.SetCredentials(&accounts.Credentials{})
+		_, err := e.UpdateAccountBalances(t.Context(), asset.Spot)
+		assert.ErrorIs(t, err, exchange.ErrCredentialsAreEmpty, "UpdateAccountBalances should reject missing credentials")
+		e.SkipAuthCheck = true
+		e.SetCredentials(&accounts.Credentials{
+			Key:        "test-key",
+			SubAccount: "test-subaccount",
+		})
+		_, err = e.UpdateAccountBalances(t.Context(), asset.Spot)
+		assert.ErrorIs(t, err, common.ErrNotYetImplemented, "UpdateAccountBalances should reject spot subaccounts")
+		_, err = e.UpdateAccountBalances(t.Context(), asset.Options)
+		assert.ErrorIs(t, err, asset.ErrNotSupported, "UpdateAccountBalances should reject unsupported assets")
+	})
 }

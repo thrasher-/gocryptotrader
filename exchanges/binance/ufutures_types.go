@@ -248,11 +248,11 @@ type UFuturesOrderData struct {
 type UAccountBalanceV2Data struct {
 	AccountAlias       string        `json:"accountAlias"`
 	Asset              currency.Code `json:"asset"`
-	Balance            float64       `json:"balance,string"`
-	CrossWalletBalance float64       `json:"crossWalletBalance,string"`
-	CrossUnrealizedPNL float64       `json:"crossUnPnl,string"`
-	AvailableBalance   float64       `json:"availableBalance,string"`
-	MaxWithdrawAmount  float64       `json:"maxWithdrawAmount,string"`
+	Balance            types.Number  `json:"balance"`
+	CrossWalletBalance types.Number  `json:"crossWalletBalance"`
+	CrossUnrealizedPNL types.Number  `json:"crossUnPnl"`
+	AvailableBalance   types.Number  `json:"availableBalance"`
+	MaxWithdrawAmount  types.Number  `json:"maxWithdrawAmount"`
 }
 
 // UAccountInformationV2Data stores account info for ufutures

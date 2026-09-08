@@ -2,7 +2,9 @@ package json
 
 import (
 	"bytes"
+	jsonv1 "encoding/json" //nolint:depguard // the wrapper is compared against what it stands in for
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -301,7 +303,17 @@ func TestEncoderDecoderSettings(t *testing.T) {
 		assert.False(t, dec.More(), "an exhausted stream should not report more")
 
 		assert.False(t, NewDecoder(bytes.NewReader([]byte(" \n\t"))).More(), "trailing whitespace should not report more")
-		assert.True(t, NewDecoder(bytes.NewReader([]byte("xyz"))).More(), "malformed input should report more, so a `for More` loop surfaces the decode error as it did in v1")
+
+		// telling these apart costs a ReadToken, so check the value the loop would go on to decode
+		// is still there afterwards
+		malformed := NewDecoder(bytes.NewReader([]byte("xyz")))
+		assert.True(t, malformed.More(), "malformed input should report more, so a `for More` loop surfaces the decode error as it did in v1")
+		assert.Error(t, malformed.Decode(&m), "the decode the loop goes on to make should still report the malformed input")
+
+		trailing := NewDecoder(bytes.NewReader([]byte(`{"a":1} xyz`)))
+		require.NoError(t, trailing.Decode(&m), "Decode must not error")
+		assert.True(t, trailing.More(), "a malformed value after a good one should report more")
+		assert.Error(t, trailing.Decode(&m), "the malformed value should still error after More read it")
 	})
 }
 
@@ -430,3 +442,263 @@ func TestMarshalIndentReturnsNilOnMarshalError(t *testing.T) {
 		assert.Nilf(t, out, "MarshalIndent should return nil bytes on error for prefix %q indent %q", ind[0], ind[1])
 	}
 }
+
+// The compatibility options are load-bearing: dropping one changes exchange parsing or an outbound
+// body without erroring. Each case below fails if its option is removed
+
+// v2 matches field names exactly; Binance sends "e" alongside "E"
+func TestCaseInsensitiveNameMatch(t *testing.T) {
+	t.Parallel()
+	var v struct {
+		Event int64 `json:"e"`
+	}
+	require.NoError(t, Unmarshal([]byte(`{"E":7}`), &v), "Unmarshal must not error")
+	assert.Equal(t, int64(7), v.Event, "a differently cased member should match the tag")
+}
+
+// with the delimiter insignificant, a protobuf available_exchanges would match availableExchanges
+func TestDelimiterIsSignificant(t *testing.T) {
+	t.Parallel()
+	var v struct {
+		Exchanges int64 `json:"available_exchanges"`
+	}
+	require.NoError(t, Unmarshal([]byte(`{"availableExchanges":7}`), &v), "Unmarshal must not error")
+	assert.Zero(t, v.Exchanges, "an underscore should be significant, so the camel cased member should not match")
+}
+
+// v1 read omitempty as the zero Go value; v2 reads it as empty JSON, which an empty struct is
+func TestOmitEmptyTestsTheGoValue(t *testing.T) {
+	t.Parallel()
+	out, err := Marshal(struct {
+		Empty *struct{} `json:"empty,omitempty"`
+	}{Empty: &struct{}{}})
+	require.NoError(t, err, "Marshal must not error")
+	assert.JSONEq(t, `{"empty":{}}`, string(out), "a pointer that is not nil should be kept, though it encodes as empty JSON")
+}
+
+// mock recordings and signed bodies compare against a fixed byte sequence
+func TestMapKeysAreSorted(t *testing.T) {
+	t.Parallel()
+	m := map[string]int{"h": 8, "g": 7, "f": 6, "e": 5, "d": 4, "c": 3, "b": 2, "a": 1}
+	const want = `{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8}`
+	for range 20 {
+		out, err := Marshal(m)
+		require.NoError(t, err, "Marshal must not error")
+		require.Equal(t, want, string(out), "map keys must marshal in sorted order")
+	}
+}
+
+// v2 returns whatever it managed to write alongside the error; v1 returned nothing
+func TestMarshalReturnsNoOutputOnError(t *testing.T) {
+	t.Parallel()
+	out, err := Marshal(struct {
+		Padding string   `json:"padding"`
+		Channel chan int `json:"channel"`
+	}{Padding: strings.Repeat("x", 100)})
+	require.Error(t, err, "Marshal must error on an unsupported type")
+	assert.Nil(t, out, "a failed marshal should return no output")
+}
+
+// a timestamp v1 accepted and v2 rejects fails the whole payload rather than the one field
+func TestLooseRFC3339(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		input string
+		want  time.Time
+	}{
+		{
+			input: `"2020-01-02T3:04:05Z"`,
+			want:  time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC),
+		},
+		{
+			input: `"2020-01-02T03:04:05,123Z"`,
+			want:  time.Date(2020, 1, 2, 3, 4, 5, 123000000, time.UTC),
+		},
+	} {
+		var v struct {
+			Time time.Time `json:"t"`
+		}
+		require.NoErrorf(t, Unmarshal([]byte(`{"t":`+tc.input+`}`), &v), "Unmarshal must accept the timestamp %s", tc.input)
+		assert.Equal(t, tc.want, v.Time, "Unmarshal should decode the timestamp")
+	}
+}
+
+// errStreamFailed stands in for an upstream that fails rather than ending
+var errStreamFailed = errors.New("stream failed")
+
+// errStreamLater stands in for a second, different failure from the same upstream
+var errStreamLater = errors.New("stream failed again")
+
+// stoppedReader serves r, then fails where the reader underneath would have reported end of input
+type stoppedReader struct{ r io.Reader }
+
+func (f *stoppedReader) Read(p []byte) (int, error) {
+	n, err := f.r.Read(p)
+	if errors.Is(err, io.EOF) {
+		return n, errStreamFailed
+	}
+	return n, err
+}
+
+// TestMoreReportsAFailedRead covers both builds. A reader that fails is neither end of input nor a
+// malformed token, and reporting it as exhausted loses the error: `for More` exits without ever
+// calling the Decode that would surface it
+func TestMoreReportsAFailedRead(t *testing.T) {
+	t.Parallel()
+	for _, prefix := range []string{"", `{"a":1}`} {
+		dec := NewDecoder(&stoppedReader{r: strings.NewReader(prefix)})
+		var m map[string]int
+		if prefix != "" {
+			require.NoErrorf(t, dec.Decode(&m), "the value ahead of the failure must decode for prefix %q", prefix)
+		}
+		assert.Truef(t, dec.More(), "a failed read should report more for prefix %q", prefix)
+		assert.ErrorIsf(t, dec.Decode(&m), errStreamFailed, "the loop should go on to surface the read failure for prefix %q", prefix)
+	}
+}
+
+// TestMoreRepeatsAFailedRead covers More being called again once a failure is remembered. Telling a
+// failed read from the end of one costs a token read, and the stream has none left to give, so the
+// answer has to come from what was remembered rather than from reading again
+func TestMoreRepeatsAFailedRead(t *testing.T) {
+	t.Parallel()
+	dec := NewDecoder(&stoppedReader{r: strings.NewReader(`{"a":1}`)})
+	var m map[string]int
+	require.NoError(t, dec.Decode(&m), "the value ahead of the failure must decode")
+
+	assert.True(t, dec.More(), "a failed read should report more")
+	assert.True(t, dec.More(), "a second call should agree rather than report the stream exhausted")
+	assert.ErrorIs(t, dec.Decode(&m), errStreamFailed, "the loop should still surface the read failure")
+}
+
+// readStep is one read a scriptedReader serves, so a reader can fail with data or without it
+type readStep struct {
+	data string
+	err  error
+}
+
+// scriptedReader serves a fixed sequence of reads, then reports the end of the stream
+type scriptedReader struct {
+	steps []readStep
+	i     int
+}
+
+func (s *scriptedReader) Read(p []byte) (int, error) {
+	if s.i >= len(s.steps) {
+		return 0, io.EOF
+	}
+	step := s.steps[s.i]
+	s.i++
+	return copy(p, step.data), step.err
+}
+
+// streamDecoder is the part of a Decoder this comparison drives, satisfied by the wrapper on either
+// build and by the v1 Decoder it stands in for
+type streamDecoder interface {
+	More() bool
+	Decode(any) error
+}
+
+// decodeScript drives a decoder to exhaustion, recording what each call reported
+func decodeScript(d streamDecoder, callMore bool) []string {
+	out := make([]string, 0, 8)
+	for range 4 {
+		if callMore {
+			out = append(out, fmt.Sprintf("more=%v", d.More()))
+		}
+		var v any
+		if err := d.Decode(&v); err != nil {
+			out = append(out, "err="+err.Error())
+			continue
+		}
+		out = append(out, fmt.Sprintf("val=%v", v))
+	}
+	return out
+}
+
+// TestDecoderMatchesV1OnReadFailures compares the wrapper against the v1 Decoder it stands in for,
+// over the readers PeekKind cannot tell from the end of a stream. v1 latches a failure it needed
+// the read for, so every later Decode reports it and reports the reader's own error rather than
+// what the decoder wrapped it in, while a failure served alongside data lets the value that data
+// completed decode first
+func TestDecoderMatchesV1OnReadFailures(t *testing.T) {
+	t.Parallel()
+	for name, steps := range map[string][]readStep{
+		"fails then recovers":      {{data: "1 "}, {err: errStreamFailed}, {data: "2 3 "}},
+		"fails alongside its data": {{data: `{"a":1}`, err: errStreamFailed}},
+		"fails before serving any": {{err: errStreamFailed}},
+		"fails after its values":   {{data: "1 2 "}, {err: errStreamFailed}},
+		"ends without failing":     {{data: "1 2 "}},
+	} {
+		for _, callMore := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/More=%v", name, callMore), func(t *testing.T) {
+				t.Parallel()
+				want := decodeScript(jsonv1.NewDecoder(&scriptedReader{steps: steps}), callMore)
+				got := decodeScript(NewDecoder(&scriptedReader{steps: steps}), callMore)
+				assert.Equal(t, want, got, "the wrapper should report what the v1 Decoder reports")
+			})
+		}
+	}
+}
+
+// TestReadLatchRemembersTheFirstFailure covers the latch directly. Neither backend can tell a failed
+// read from the end of a stream, so the failure is kept, and a failure served alongside data is not
+// kept: v1 reports the value that data completed before it reports the failure
+func TestReadLatchRemembersTheFirstFailure(t *testing.T) {
+	t.Parallel()
+	l := &readLatch{r: &stoppedReader{r: strings.NewReader(`{"a":1}`)}}
+	b := make([]byte, 16)
+
+	n, err := l.Read(b)
+	require.NoError(t, err, "the first read must not error")
+	assert.Equal(t, `{"a":1}`, string(b[:n]), "the payload should pass through unchanged")
+	assert.NoError(t, l.err, "nothing should be remembered while reads succeed")
+
+	_, err = l.Read(b)
+	require.ErrorIs(t, err, errStreamFailed, "the failure must reach the caller")
+	assert.ErrorIs(t, l.err, errStreamFailed, "the first failure should be remembered")
+
+	// The first is what v1 reports, so a later one must not displace it
+	l.r = &scriptedReader{steps: []readStep{{err: errStreamLater}}}
+	_, err = l.Read(b)
+	require.ErrorIs(t, err, errStreamLater, "the later failure must still reach the caller")
+	assert.ErrorIs(t, l.err, errStreamFailed, "the first failure should be the one remembered")
+
+	l = &readLatch{r: strings.NewReader("")}
+	_, err = l.Read(b)
+	require.ErrorIs(t, err, io.EOF, "an exhausted reader must report io.EOF")
+	assert.NoError(t, l.err, "the end of the stream is not a failure to remember")
+
+	l = &readLatch{r: &scriptedReader{steps: []readStep{{data: "1 ", err: errStreamFailed}}}}
+	_, err = l.Read(b)
+	require.ErrorIs(t, err, errStreamFailed, "the failure must reach the caller alongside the data")
+	assert.NoError(t, l.err, "a failure served with data should not be remembered until a read needs more")
+}
+
+// TestRepeatedMoreAtEndOfInput covers More being called twice on an exhausted stream. Telling a
+// failed read from the end of one costs a token read, and remembering that end as a failure would
+// make the second call report input that is not there
+func TestRepeatedMoreAtEndOfInput(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"", "   ", `{"a":1}`} {
+		dec := NewDecoder(strings.NewReader(in))
+		if in == `{"a":1}` {
+			var m map[string]int
+			require.NoErrorf(t, dec.Decode(&m), "the value must decode for %q", in)
+		}
+		assert.Falsef(t, dec.More(), "an exhausted stream should not report more for %q", in)
+		assert.Falsef(t, dec.More(), "a second call should agree for %q", in)
+	}
+}
+
+// TestMoreOnReaderWrappingEOF covers a reader that wraps io.EOF rather than returning it. v1
+// compares against io.EOF exactly, so that is a failure to report rather than the end of the stream
+func TestMoreOnReaderWrappingEOF(t *testing.T) {
+	t.Parallel()
+	dec := NewDecoder(&wrappedEOFReader{})
+	assert.True(t, dec.More(), "a reader wrapping io.EOF should report more, as v1 reports it")
+}
+
+// wrappedEOFReader returns an error wrapping io.EOF rather than io.EOF itself
+type wrappedEOFReader struct{}
+
+func (*wrappedEOFReader) Read([]byte) (int, error) { return 0, fmt.Errorf("reader: %w", io.EOF) }

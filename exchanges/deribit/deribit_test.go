@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
@@ -27,6 +29,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	testsubs "github.com/thrasher-corp/gocryptotrader/internal/testing/subscriptions"
@@ -5015,4 +5018,65 @@ func TestAppendCandles(t *testing.T) {
 	resp, err = appendCandles(candles, time.Unix(1338, 0))
 	assert.NoError(t, err)
 	assert.Empty(t, resp)
+}
+
+// TestQuoteVolume pins which instruments have a quote volume to report. get_instruments gives
+// quote_currency USD for a future, BTC for a BTC option and USDC for a USDC one, and Deribit serves
+// volume_notional only where that currency is the one volume_usd is denominated in
+func TestQuoteVolume(t *testing.T) {
+	t.Parallel()
+	const volumeUSD = 4.7
+	for _, a := range []asset.Item{asset.Options, asset.OptionCombo} {
+		// a BTC quoted option: Deribit serves no volume_notional, its premium turnover in BTC
+		assert.Zerof(t, quoteVolume(volumeUSD, 0, a), "%s quoted in the base currency should report no turnover, having none in it", a)
+		// a USDC quoted one, where volume_notional is that turnover
+		assert.Equalf(t, 23.25, quoteVolume(23.25, 23.25, a), "%s quoted in USDC should report volume_notional", a)
+	}
+	for _, a := range []asset.Item{asset.Futures, asset.FutureCombo, asset.Spot} {
+		assert.Equalf(t, volumeUSD, quoteVolume(volumeUSD, 0, a), "%s should fall back to volume_usd where no volume_notional is served", a)
+		// A USDC quoted instrument, where volume_usd differs by the USDC price
+		assert.Equalf(t, 27088304.60512001, quoteVolume(27085692.54, 27088304.60512001, a),
+			"%s quoted in USDC should report volume_notional rather than volume_usd", a)
+	}
+}
+
+// TestQuoteVolumeReachesTheTicker covers both assignments, which the helper's own test cannot reach
+func TestQuoteVolumeReachesTheTicker(t *testing.T) {
+	t.Parallel()
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+
+	// A BTC quoted option, whose USD premium turnover is not its quote currency
+	const instrument = "BTC-27JUN25-100000-C"
+	const stats = `"stats":{"volume_usd":4.7,"volume_notional":23.25,"volume":0.5}`
+
+	// Both channels carry the same stats, and ticker is the one defaultSubscriptions subscribes
+	for _, ch := range []string{"ticker." + instrument + ".100ms", "incremental_ticker." + instrument} {
+		payload := []byte(`{"params":{"data":{` + stats + `},"channel":"` + ch + `"},"method":"subscription","jsonrpc":"2.0"}`)
+		require.NoErrorf(t, ex.wsHandleData(t.Context(), payload), "wsHandleData must not error for the %s channel", ch)
+
+		select {
+		case msg := <-ex.Websocket.DataHandler.C:
+			got, ok := msg.Data.(*ticker.Price)
+			require.Truef(t, ok, "the %s handler must send a ticker price", ch)
+			require.Equalf(t, asset.Options, got.AssetType, "the instrument must resolve to the options asset for %s", ch)
+			assert.Equalf(t, 23.25, got.QuoteVolume, "an option's volume_notional should reach the ticker as quote volume for %s", ch)
+		default:
+			require.Failf(t, "no ticker price sent", "the %s handler must send a ticker price", ch)
+		}
+	}
+
+	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Trimmed from GET /api/v2/public/ticker
+		_, err := fmt.Fprint(w, `{"result":{"instrument_name":"`+instrument+`",`+stats+`}}`)
+		assert.NoError(t, err, "writing the ticker response should not error")
+	}))
+	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestFutures.String(), server.URL), "SetRunningURL must not error")
+
+	p, err := currency.NewPairFromString(instrument)
+	require.NoError(t, err, "NewPairFromString must not error")
+	tick, err := ex.UpdateTicker(t.Context(), p, asset.Options)
+	require.NoError(t, err, "UpdateTicker must not error")
+	assert.Equal(t, 23.25, tick.QuoteVolume, "an option's volume_notional should reach the ticker as quote volume")
 }

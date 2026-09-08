@@ -360,6 +360,16 @@ type VolatilityIndexData struct {
 	Close       float64   `json:"close"`
 }
 
+// TickerStats holds a ticker's 24 hour aggregates
+type TickerStats struct {
+	VolumeNotional float64 `json:"volume_notional"`
+	VolumeUSD      float64 `json:"volume_usd"`
+	Volume         float64 `json:"volume"`
+	PriceChange    float64 `json:"price_change"`
+	Low            float64 `json:"low"`
+	High           float64 `json:"high"`
+}
+
 // TickerData stores data for ticker
 type TickerData struct {
 	AskIV          float64 `json:"ask_iv"`
@@ -378,29 +388,22 @@ type TickerData struct {
 		Theta float64 `json:"theta"`
 		Vega  float64 `json:"vega"`
 	} `json:"greeks"`
-	IndexPrice      float64 `json:"index_price"`
-	InstrumentName  string  `json:"instrument_name"`
-	LastPrice       float64 `json:"last_price"`
-	MarkIV          float64 `json:"mark_iv"`
-	MarkPrice       float64 `json:"mark_price"`
-	MaxPrice        float64 `json:"max_price"`
-	MinPrice        float64 `json:"min_price"`
-	OpenInterest    float64 `json:"open_interest"`
-	SettlementPrice float64 `json:"settlement_price"`
-	State           string  `json:"state"`
-	Stats           struct {
-		VolumeNotional float64 `json:"volume_notional"`
-		VolumeUSD      float64 `json:"volume_usd"`
-		Volume         float64 `json:"volume"`
-		PriceChange    float64 `json:"price_change"`
-		Low            float64 `json:"low"`
-		High           float64 `json:"high"`
-	} `json:"stats"`
-	Timestamp              types.Time `json:"timestamp"`
-	UnderlyingIndex        string     `json:"underlying_index"`
-	UnderlyingPrice        float64    `json:"underlying_price"`
-	EstimatedDeliveryPrice float64    `json:"estimated_delivery_price"`
-	InterestValue          float64    `json:"interest_value"`
+	IndexPrice             float64     `json:"index_price"`
+	InstrumentName         string      `json:"instrument_name"`
+	LastPrice              float64     `json:"last_price"`
+	MarkIV                 float64     `json:"mark_iv"`
+	MarkPrice              float64     `json:"mark_price"`
+	MaxPrice               float64     `json:"max_price"`
+	MinPrice               float64     `json:"min_price"`
+	OpenInterest           float64     `json:"open_interest"`
+	SettlementPrice        float64     `json:"settlement_price"`
+	State                  string      `json:"state"`
+	Stats                  TickerStats `json:"stats"`
+	Timestamp              types.Time  `json:"timestamp"`
+	UnderlyingIndex        string      `json:"underlying_index"`
+	UnderlyingPrice        float64     `json:"underlying_price"`
+	EstimatedDeliveryPrice float64     `json:"estimated_delivery_price"`
+	InterestValue          float64     `json:"interest_value"`
 }
 
 // CancelWithdrawalData stores cancel request data for a withdrawal
@@ -1505,50 +1508,40 @@ type wsEstimatedExpirationPrice struct {
 
 // wsTicker represents changes in ticker (key information about the instrument).
 type wsTicker struct {
-	Timestamp types.Time `json:"timestamp"`
-	Stats     struct {
-		VolumeUsd   float64 `json:"volume_usd"`
-		Volume      float64 `json:"volume"`
-		PriceChange float64 `json:"price_change"`
-		Low         float64 `json:"low"`
-		High        float64 `json:"high"`
-	} `json:"stats"`
-	State                  string  `json:"state"`
-	SettlementPrice        float64 `json:"settlement_price"`
-	OpenInterest           float64 `json:"open_interest"`
-	MinPrice               float64 `json:"min_price"`
-	MaxPrice               float64 `json:"max_price"`
-	MarkPrice              float64 `json:"mark_price"`
-	LastPrice              float64 `json:"last_price"`
-	InstrumentName         string  `json:"instrument_name"`
-	IndexPrice             float64 `json:"index_price"`
-	ImpliedBid             float64 `json:"implied_bid"`
-	ImpliedAsk             float64 `json:"implied_ask"`
-	EstimatedDeliveryPrice float64 `json:"estimated_delivery_price"`
-	ComboState             string  `json:"combo_state"`
-	BestBidPrice           float64 `json:"best_bid_price"`
-	BestBidAmount          float64 `json:"best_bid_amount"`
-	BestAskPrice           float64 `json:"best_ask_price"`
-	BestAskAmount          float64 `json:"best_ask_amount"`
+	Timestamp              types.Time  `json:"timestamp"`
+	Stats                  TickerStats `json:"stats"`
+	State                  string      `json:"state"`
+	SettlementPrice        float64     `json:"settlement_price"`
+	OpenInterest           float64     `json:"open_interest"`
+	MinPrice               float64     `json:"min_price"`
+	MaxPrice               float64     `json:"max_price"`
+	MarkPrice              float64     `json:"mark_price"`
+	LastPrice              float64     `json:"last_price"`
+	InstrumentName         string      `json:"instrument_name"`
+	IndexPrice             float64     `json:"index_price"`
+	ImpliedBid             float64     `json:"implied_bid"`
+	ImpliedAsk             float64     `json:"implied_ask"`
+	EstimatedDeliveryPrice float64     `json:"estimated_delivery_price"`
+	ComboState             string      `json:"combo_state"`
+	BestBidPrice           float64     `json:"best_bid_price"`
+	BestBidAmount          float64     `json:"best_bid_amount"`
+	BestAskPrice           float64     `json:"best_ask_price"`
+	BestAskAmount          float64     `json:"best_ask_amount"`
 }
 
 // WsIncrementalTicker represents a ticker information for incremental ticker subscriptions.
 type WsIncrementalTicker struct {
-	Type      string     `json:"type"`
-	Timestamp types.Time `json:"timestamp"`
-	Stats     struct {
-		VolumeUsd   float64 `json:"volume_usd"`
-		Volume      float64 `json:"volume"`
-		PriceChange float64 `json:"price_change"`
-	} `json:"stats"`
-	MinPrice               float64 `json:"min_price"`
-	MaxPrice               float64 `json:"max_price"`
-	MarkPrice              float64 `json:"mark_price"`
-	InstrumentName         string  `json:"instrument_name"`
-	IndexPrice             float64 `json:"index_price"`
-	EstimatedDeliveryPrice float64 `json:"estimated_delivery_price"`
-	BestBidAmount          float64 `json:"best_bid_amount"`
-	BestAskAmount          float64 `json:"best_ask_amount"`
+	Type                   string      `json:"type"`
+	Timestamp              types.Time  `json:"timestamp"`
+	Stats                  TickerStats `json:"stats"`
+	MinPrice               float64     `json:"min_price"`
+	MaxPrice               float64     `json:"max_price"`
+	MarkPrice              float64     `json:"mark_price"`
+	InstrumentName         string      `json:"instrument_name"`
+	IndexPrice             float64     `json:"index_price"`
+	EstimatedDeliveryPrice float64     `json:"estimated_delivery_price"`
+	BestBidAmount          float64     `json:"best_bid_amount"`
+	BestAskAmount          float64     `json:"best_ask_amount"`
 
 	// For future_combo instruments
 	ImpliedAsk float64 `json:"implied_ask"`

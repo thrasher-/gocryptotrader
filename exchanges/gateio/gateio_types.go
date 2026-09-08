@@ -26,6 +26,10 @@ const (
 	// Loan sides
 	sideLend   = "lend"
 	sideBorrow = "borrow"
+
+	// FuturesContract.Type: a direct contract is worth QuantoMultiplier of its base currency,
+	// an inverse one a single unit of its quote currency
+	contractTypeInverse = "inverse"
 )
 
 // WithdrawalFees the large list of predefined withdrawal fees

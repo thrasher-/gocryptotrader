@@ -371,6 +371,14 @@ func TestNewPairDelimiter(t *testing.T) {
 	pair, err = NewPairDelimiter("sETH-USDT", "-")
 	require.NoError(t, err)
 	assert.Equal(t, "SETH-USDT", pair.String(), "If any upper case is found in set this forces the pair to be uppercase")
+
+	pair, err = NewPairDelimiter("BTC::USD", "::")
+	require.NoError(t, err)
+	assert.Equal(t, "USD", pair.Quote.String(), "a multi-rune delimiter should be consumed whole")
+
+	pair, err = NewPairDelimiter("BTCΔUSD", "Δ")
+	require.NoError(t, err)
+	assert.Equal(t, "USD", pair.Quote.String(), "a multi-byte delimiter should not leave a partial rune on the quote")
 }
 
 func TestNewPairFromString(t *testing.T) {

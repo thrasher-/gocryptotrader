@@ -102,6 +102,7 @@ type FuturesTicker struct {
 	Ask                   float64       `json:"ask"`
 	AskSize               float64       `json:"askSize"`
 	Volume24Hour          float64       `json:"vol24h"`
+	VolumeQuote           float64       `json:"volumeQuote"`
 	OpenInterest          float64       `json:"openInterest"`
 	Open24Hour            float64       `json:"open24h"`
 	Last                  float64       `json:"last"`
@@ -134,7 +135,7 @@ type FuturesSendOrderData struct {
 // FuturesOrderData stores order data
 type FuturesOrderData struct {
 	OrderID             string    `json:"orderId"`
-	ClientOrderID       string    `json:"cliOrderId"`
+	ClientOrderID       string    `json:"cliOrdId"`
 	OrderType           string    `json:"type"`
 	Symbol              string    `json:"symbol"`
 	Side                string    `json:"side"`
@@ -238,20 +239,30 @@ type AccountsData struct {
 
 // CancelAllOrdersData stores order data for all cancelled orders
 type CancelAllOrdersData struct {
-	CancelStatus struct {
-		ReceivedTime    time.Time `json:"receivedTime"`
-		CancelOnly      string    `json:"cancelOnly"`
-		Status          string    `json:"status"`
-		CancelledOrders []struct {
-			OrderID string `json:"order_id"`
-		} `json:"cancelledOrders"`
-		OrderEvents []struct {
-			UID string `json:"uid"`
-		} `json:"uid"`
-		Order    FuturesOrderData `json:"order"`
-		DataType string           `json:"type"`
-	} `json:"cancelStatus"`
-	ServerTime time.Time `json:"serverTime"`
+	CancelStatus CancelAllOrdersStatus `json:"cancelStatus"`
+	ServerTime   time.Time             `json:"serverTime"`
+}
+
+// CancelAllOrdersStatus stores the outcome of a cancel all orders request
+type CancelAllOrdersStatus struct {
+	ReceivedTime    time.Time             `json:"receivedTime"`
+	CancelOnly      string                `json:"cancelOnly"`
+	Status          string                `json:"status"`
+	CancelledOrders []CancelledOrder      `json:"cancelledOrders"`
+	OrderEvents     []CancelAllOrderEvent `json:"orderEvents"`
+}
+
+// CancelledOrder holds the identifiers of an order that was cancelled
+type CancelledOrder struct {
+	OrderID       string `json:"order_id"`
+	ClientOrderID string `json:"cliOrdId"`
+}
+
+// CancelAllOrderEvent holds a single event from a cancel all orders request
+type CancelAllOrderEvent struct {
+	UID      string           `json:"uid"`
+	Order    FuturesOrderData `json:"order"`
+	DataType string           `json:"type"`
 }
 
 // CancelOrdersAfterData stores data of all orders after a certain time that are cancelled
@@ -330,23 +341,30 @@ type FuturesRecentOrdersData struct {
 
 // BatchOrderData stores batch order data
 type BatchOrderData struct {
-	Result      string    `json:"result"`
-	ServerTime  time.Time `json:"serverTime"`
-	BatchStatus []struct {
-		Status           string    `json:"status"`
-		OrderTag         string    `json:"order_tag"`
-		OrderID          string    `json:"order_id"`
-		DateTimeReceived time.Time `json:"dateTimeReceived"`
-		OrderEvents      []struct {
-			OrderPlaced    FuturesOrderData `json:"orderPlaced"`
-			ReduceOnly     bool             `json:"reduceOnly"`
-			Timestamp      time.Time        `json:"timestamp"`
-			OldEditedOrder FuturesOrderData `json:"old"`
-			NewEditedOrder FuturesOrderData `json:"new"`
-			UID            string           `json:"uid"`
-			RequestType    string           `json:"requestType"`
-		} `json:"orderEvents"`
-	} `json:"batchStatus"`
+	Result      string                 `json:"result"`
+	ServerTime  time.Time              `json:"serverTime"`
+	BatchStatus []BatchInstructionData `json:"batchStatus"`
+}
+
+// BatchInstructionData holds the outcome of one instruction in a batch order request
+type BatchInstructionData struct {
+	Status           string            `json:"status"`
+	OrderTag         string            `json:"order_tag"`
+	OrderID          string            `json:"order_id"`
+	ClientOrderID    string            `json:"cliOrdId"`
+	DateTimeReceived time.Time         `json:"dateTimeReceived"`
+	OrderEvents      []BatchOrderEvent `json:"orderEvents"`
+}
+
+// BatchOrderEvent holds a single event from a batch order instruction. A place or cancel event
+// carries "order", an edit event "old" and "new"
+type BatchOrderEvent struct {
+	DataType        string           `json:"type"`
+	UID             string           `json:"uid"`
+	Order           FuturesOrderData `json:"order"`
+	OldEditedOrder  FuturesOrderData `json:"old"`
+	NewEditedOrder  FuturesOrderData `json:"new"`
+	ReducedQuantity float64          `json:"reducedQuantity"`
 }
 
 // PlaceBatchOrderData stores data required to place a batch order

@@ -1,8 +1,10 @@
 package stats
 
 import (
+	"cmp"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 )
@@ -120,4 +122,43 @@ func TestSortExchangesByPrice(t *testing.T) {
 	if topPrice[0].Exchange != testExchange {
 		t.Error("stats SortExchangesByPrice incorrectly sorted values.")
 	}
+}
+
+func TestSortItems(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		reverse bool
+		want    []float64
+	}{
+		{
+			name: "ascending",
+			want: []float64{1, 2, 2, 3},
+		},
+		{
+			name:    "descending",
+			reverse: true,
+			want:    []float64{3, 2, 2, 1},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			items := []Item{
+				{Price: 2},
+				{Price: 3},
+				{Price: 1},
+				{Price: 2},
+			}
+			sortItems(items, tc.reverse, func(a, b Item) int { return cmp.Compare(a.Price, b.Price) })
+
+			got := make([]float64, len(items))
+			for i := range items {
+				got[i] = items[i].Price
+			}
+			assert.Equal(t, tc.want, got, "sortItems should order the prices")
+		})
+	}
+
+	assert.NotPanics(t, func() { sortItems(nil, true, func(a, b Item) int { return cmp.Compare(a.Price, b.Price) }) },
+		"sortItems should accept a nil slice")
 }

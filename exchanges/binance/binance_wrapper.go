@@ -593,9 +593,9 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, assetType asset.It
 		for i := range resp {
 			a := accounts.NewSubAccount(assetType, resp[i].AccountAlias)
 			a.Balances.Set(resp[i].Asset, accounts.Balance{
-				Total: resp[i].Balance,
-				Hold:  resp[i].Balance - resp[i].AvailableBalance,
-				Free:  resp[i].AvailableBalance,
+				Total: resp[i].Balance.Float64(),
+				Hold:  resp[i].Balance.Float64() - resp[i].AvailableBalance.Float64(),
+				Free:  resp[i].AvailableBalance.Float64(),
 			})
 			subAccts = subAccts.Merge(a)
 		}

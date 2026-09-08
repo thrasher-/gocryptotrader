@@ -552,8 +552,14 @@ func updateTicker(tick *ticker.Price, resp *TickerWebsocket) {
 	if resp.LowPrice24Hour.Float64() != 0 {
 		tick.Low = resp.LowPrice24Hour.Float64()
 	}
-	if resp.Volume24Hour.Float64() != 0 {
-		tick.BaseVolume = resp.Volume24Hour.Float64()
+	// volume24h counts the quote currency on the inverse category and turnover24h the base, the
+	// reverse of everywhere else, so the two are mapped together rather than one field at a time
+	baseVolume, quoteVolume := tickerVolumes(&resp.TickerCommon, tick.AssetType)
+	if baseVolume != 0 {
+		tick.BaseVolume = baseVolume
+	}
+	if quoteVolume != 0 {
+		tick.QuoteVolume = quoteVolume
 	}
 
 	if tick.AssetType == asset.Spot {

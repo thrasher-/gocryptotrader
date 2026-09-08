@@ -194,6 +194,8 @@ func (e *Exchange) GetMarketDetailMerged(ctx context.Context, symbol currency.Pa
 	if result.ErrorMessage != "" {
 		return result.Tick, errors.New(result.ErrorMessage)
 	}
+	// the tick carries no time of its own on this endpoint, only the envelope does
+	result.Tick.Timestamp = result.Timestamp
 	return result.Tick, err
 }
 

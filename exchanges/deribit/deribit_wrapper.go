@@ -242,6 +242,16 @@ func (e *Exchange) UpdateTickers(_ context.Context, _ asset.Item) error {
 	return common.ErrFunctionNotSupported
 }
 
+// quoteVolume returns the 24 hour volume in the instrument's quote currency. Deribit serves
+// volume_notional in that currency wherever it applies, while volume_usd is the USD premium
+// turnover, which a BTC or ETH quoted option must not report as its own
+func quoteVolume(volumeUSD, volumeNotional float64, a asset.Item) float64 {
+	if volumeNotional != 0 || a == asset.Options || a == asset.OptionCombo {
+		return volumeNotional
+	}
+	return volumeUSD
+}
+
 // UpdateTicker updates and returns the ticker for a currency pair
 func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, assetType asset.Item) (*ticker.Price, error) {
 	if !e.SupportsAsset(assetType) {
@@ -276,7 +286,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, assetType 
 		Close:        tickerData.LastPrice,
 		IndexPrice:   tickerData.IndexPrice,
 		MarkPrice:    tickerData.MarkPrice,
-		QuoteVolume:  tickerData.Stats.VolumeUSD,
+		QuoteVolume:  quoteVolume(tickerData.Stats.VolumeUSD, tickerData.Stats.VolumeNotional, assetType),
 	}
 	err = ticker.ProcessTicker(&resp)
 	if err != nil {

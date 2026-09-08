@@ -246,3 +246,36 @@ func TestGetTradesInRange(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestSortByDate(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	trades := []Data{
+		{
+			TID:       "later",
+			Timestamp: base.Add(time.Hour),
+		},
+		{
+			TID:       "equal first",
+			Timestamp: base,
+		},
+		{
+			TID:       "earliest",
+			Timestamp: base.Add(-time.Hour),
+		},
+		{
+			TID:       "equal second",
+			Timestamp: base,
+		},
+	}
+	SortByDate(trades)
+
+	got := make([]time.Time, len(trades))
+	for i := range trades {
+		got[i] = trades[i].Timestamp
+	}
+	assert.Equal(t, []time.Time{base.Add(-time.Hour), base, base, base.Add(time.Hour)}, got,
+		"SortByDate should order oldest first")
+
+	assert.NotPanics(t, func() { SortByDate(nil) }, "SortByDate should accept a nil slice")
+}

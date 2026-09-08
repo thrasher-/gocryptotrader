@@ -463,6 +463,19 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 	return errs
 }
 
+// bookLevel returns the price and size one side of a futures tick carries. Huobi serves each side
+// as a two element array and omits it entirely when nothing rests there, so neither element can be
+// indexed unconditionally
+func bookLevel(level []float64) (price, size float64) {
+	if len(level) > 0 {
+		price = level[0]
+	}
+	if len(level) > 1 {
+		size = level[1]
+	}
+	return price, size
+}
+
 // UpdateTicker updates and returns the ticker for a currency pair
 func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.Item) (*ticker.Price, error) {
 	if p.IsEmpty() {
@@ -473,22 +486,31 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 	}
 	switch a {
 	case asset.Spot:
-		tickerData, err := e.Get24HrMarketSummary(ctx, p)
+		// the merged endpoint rather than the 24 hour summary, since the store overwrites a pair
+		// wholesale and the summary carries no bid or ask for UpdateTickers' entry to keep
+		tickerData, err := e.GetMarketDetailMerged(ctx, p)
 		if err != nil {
 			return nil, err
 		}
-		err = ticker.ProcessTicker(&ticker.Price{
-			High:         tickerData.Tick.High,
-			Low:          tickerData.Tick.Low,
-			BaseVolume:   tickerData.Tick.Amount,
-			QuoteVolume:  tickerData.Tick.Volume,
-			Open:         tickerData.Tick.Open,
-			Close:        tickerData.Tick.Close,
+		price := &ticker.Price{
+			High:         tickerData.High,
+			Low:          tickerData.Low,
+			BaseVolume:   tickerData.Amount,
+			QuoteVolume:  tickerData.Volume,
+			Open:         tickerData.Open,
+			Close:        tickerData.Close,
 			Pair:         p,
 			ExchangeName: e.Name,
 			AssetType:    asset.Spot,
-		})
-		if err != nil {
+			LastUpdated:  tickerData.Timestamp.Time(),
+		}
+		if len(tickerData.Bid) == 2 {
+			price.Bid, price.BidSize = tickerData.Bid[0], tickerData.Bid[1]
+		}
+		if len(tickerData.Ask) == 2 {
+			price.Ask, price.AskSize = tickerData.Ask[0], tickerData.Ask[1]
+		}
+		if err := ticker.ProcessTicker(price); err != nil {
 			return nil, err
 		}
 	case asset.CoinMarginedFutures:
@@ -504,16 +526,21 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			return nil, errors.New("invalid data for Ask")
 		}
 
+		bid, bidSize := bookLevel(marketData.Tick.Bid)
+		ask, askSize := bookLevel(marketData.Tick.Ask)
 		err = ticker.ProcessTicker(&ticker.Price{
-			High:         marketData.Tick.High,
-			Low:          marketData.Tick.Low,
-			BaseVolume:   marketData.Tick.Amount,
-			QuoteVolume:  marketData.Tick.Vol,
+			High:       marketData.Tick.High,
+			Low:        marketData.Tick.Low,
+			BaseVolume: marketData.Tick.Amount,
+			// vol counts contracts on this endpoint, unlike the batch one where it is the quote
+			// currency, and no turnover is served here, so no quote volume is recorded
 			Open:         marketData.Tick.Open,
 			Close:        marketData.Tick.Close,
 			Pair:         p,
-			Bid:          marketData.Tick.Bid[0],
-			Ask:          marketData.Tick.Ask[0],
+			Bid:          bid,
+			BidSize:      bidSize,
+			Ask:          ask,
+			AskSize:      askSize,
 			ExchangeName: e.Name,
 			AssetType:    a,
 		})
@@ -526,16 +553,21 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			return nil, err
 		}
 
+		bid, bidSize := bookLevel(marketData.Tick.Bid[:])
+		ask, askSize := bookLevel(marketData.Tick.Ask[:])
 		err = ticker.ProcessTicker(&ticker.Price{
-			High:         marketData.Tick.High,
-			Low:          marketData.Tick.Low,
-			BaseVolume:   marketData.Tick.Amount,
-			QuoteVolume:  marketData.Tick.Vol,
+			High:       marketData.Tick.High,
+			Low:        marketData.Tick.Low,
+			BaseVolume: marketData.Tick.Amount,
+			// vol counts contracts on this endpoint, unlike the batch one where it is the quote
+			// currency, and no turnover is served here, so no quote volume is recorded
 			Open:         marketData.Tick.Open,
 			Close:        marketData.Tick.Close,
 			Pair:         p,
-			Bid:          marketData.Tick.Bid[0],
-			Ask:          marketData.Tick.Ask[0],
+			Bid:          bid,
+			BidSize:      bidSize,
+			Ask:          ask,
+			AskSize:      askSize,
 			ExchangeName: e.Name,
 			AssetType:    a,
 		})
