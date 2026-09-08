@@ -14,6 +14,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/margin"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
@@ -371,9 +372,7 @@ func parseOrderActionStatuses(response *exchangeActionResponse, expected int) ([
 		return nil, err
 	}
 	if len(actionData.Data.Statuses) == 1 && expected > 1 {
-		var failure struct {
-			Error string `json:"error"`
-		}
+		var failure actionErrorResponse
 		if err := json.Unmarshal(actionData.Data.Statuses[0], &failure); err == nil && failure.Error != "" {
 			actionData.Data.Statuses = slices.Repeat(actionData.Data.Statuses, expected)
 		}
@@ -506,9 +505,7 @@ func parseCancelActionStatuses(response *exchangeActionResponse, identifiers []s
 			statuses[identifiers[i]] = success
 			continue
 		}
-		var failure struct {
-			Error string `json:"error"`
-		}
+		var failure actionErrorResponse
 		if err := json.Unmarshal(actionData.Data.Statuses[i], &failure); err != nil {
 			return nil, err
 		}
@@ -743,4 +740,64 @@ func (e *Exchange) convertOrderFromMapping(source *OpenOrder, status string, sta
 		LastUpdated:     lastUpdated,
 		Pair:            mapping.pair,
 	}, nil
+}
+
+// GetOpenOrdersForUser returns open spot and default-DEX perpetual orders for an address.
+func (e *Exchange) GetOpenOrdersForUser(ctx context.Context, user string) ([]OpenOrder, error) {
+	return e.GetOpenOrdersForUserForDEX(ctx, user, "")
+}
+
+// GetOpenOrdersForUserForDEX returns open orders for one perpetual DEX. The
+// default DEX response also includes spot orders.
+func (e *Exchange) GetOpenOrdersForUserForDEX(ctx context.Context, user, dex string) ([]OpenOrder, error) {
+	user, _, err := normaliseAddress(user)
+	if err != nil {
+		return nil, err
+	}
+	var resp []OpenOrder
+	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoStandardEPL, &infoRequest{Type: "frontendOpenOrders", User: user, DEX: dex}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetHistoricalOrdersForUser returns up to the latest 2000 orders for an address.
+func (e *Exchange) GetHistoricalOrdersForUser(ctx context.Context, user string) ([]HistoricalOrder, error) {
+	user, _, err := normaliseAddress(user)
+	if err != nil {
+		return nil, err
+	}
+	var resp []HistoricalOrder
+	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoHistoricalOrdersEPL, &infoRequest{Type: "historicalOrders", User: user}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetOrderStatusForUser returns order status by numeric order ID or client order ID.
+func (e *Exchange) GetOrderStatusForUser(ctx context.Context, user string, orderID any) (*OrderStatusResponse, error) {
+	user, _, err := normaliseAddress(user)
+	if err != nil {
+		return nil, err
+	}
+	switch id := orderID.(type) {
+	case uint64:
+		if id == 0 {
+			return nil, order.ErrOrderIDNotSet
+		}
+	case string:
+		if err := validateClientOrderID(id); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("%w: expected uint64 or client order ID string", order.ErrOrderIDNotSet)
+	}
+	var resp *OrderStatusResponse
+	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoLightEPL, &infoRequest{Type: "orderStatus", User: user, OrderID: orderID}, &resp); err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, common.ErrNilPointer
+	}
+	return resp, nil
 }

@@ -12,15 +12,15 @@ import (
 func TestGetRateLimits(t *testing.T) {
 	t.Parallel()
 	limits := GetRateLimits()
-	require.Contains(t, limits, infoStandardEPL, "Standard info endpoint limit must be configured")
-	require.Contains(t, limits, infoLightEPL, "Light info endpoint limit must be configured")
-	require.Contains(t, limits, infoRecentTradesEPL, "Recent trades endpoint limit must be configured")
-	require.Contains(t, limits, infoFundingHistoryEPL, "Funding history endpoint limit must be configured")
+	require.Contains(t, limits, infoStandardEPL, "GetRateLimits must configure the standard info endpoint limit")
+	require.Contains(t, limits, infoLightEPL, "GetRateLimits must configure the light info endpoint limit")
+	require.Contains(t, limits, infoRecentTradesEPL, "GetRateLimits must configure the recent trades endpoint limit")
+	require.Contains(t, limits, infoFundingHistoryEPL, "GetRateLimits must configure the funding history endpoint limit")
 	require.Contains(t, limits, infoUserLedgerEPL, "GetRateLimits must configure the user-ledger endpoint")
-	require.Contains(t, limits, candleEndpointLimit(maximumCandleCount), "Maximum candle endpoint limit must be configured")
-	assert.Equal(t, 21, recentTradesWeight, "Recent trades should reserve one response-size weight bucket")
-	assert.Equal(t, 45, fundingHistoryWeight, "Funding history should reserve all 500 response-size buckets")
-	assert.Equal(t, 45, userLedgerHistoryWeight, "User ledger history should reserve all 500 response-size buckets")
+	require.Contains(t, limits, candleEndpointLimit(maximumCandleCount), "GetRateLimits must configure the maximum candle endpoint limit")
+	assert.Equal(t, 21, recentTradesWeight, "recentTradesWeight should reserve one response-size weight bucket")
+	assert.Equal(t, 45, fundingHistoryWeight, "fundingHistoryWeight should reserve all 500 response-size buckets")
+	assert.Equal(t, 45, userLedgerHistoryWeight, "userLedgerHistoryWeight should reserve all 500 response-size buckets")
 }
 
 func TestCandleEndpointLimit(t *testing.T) {
@@ -39,7 +39,7 @@ func TestCandleEndpointLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, candleEPLBase+tc.want, candleEndpointLimit(tc.count), "Candle endpoint limit should match its weighted request bucket")
+			assert.Equal(t, candleEPLBase+tc.want, candleEndpointLimit(tc.count), "candleEndpointLimit should match its weighted request bucket")
 		})
 	}
 }
@@ -66,10 +66,10 @@ func TestFormatInterval(t *testing.T) {
 		{interval: kline.OneMonth, want: "1M"},
 	} {
 		got, err := formatInterval(tc.interval)
-		require.NoError(t, err, "Formatting a supported interval must not error")
-		assert.Equal(t, tc.want, got, "Formatted interval should match the Hyperliquid API value")
+		require.NoError(t, err, "formatInterval must not error for a supported interval")
+		assert.Equal(t, tc.want, got, "got should match the Hyperliquid API interval")
 	}
 
 	_, err := formatInterval(kline.Interval(42))
-	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "Formatting an unsupported interval must return the expected error")
+	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "formatInterval must return the expected error for an unsupported interval")
 }

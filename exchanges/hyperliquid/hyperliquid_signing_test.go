@@ -20,13 +20,13 @@ type dummySigningAction struct {
 
 func TestNormaliseAddress(t *testing.T) {
 	normalised, raw, err := normaliseAddress("  0x1719884EB866CB12B2287399B15F7DB5E7D775EA  ")
-	require.NoError(t, err, "Normalising a valid address must not error")
-	assert.Equal(t, "0x1719884eb866cb12b2287399b15f7db5e7d775ea", normalised, "Address should be lower-case")
-	assert.Equal(t, "1719884eb866cb12b2287399b15f7db5e7d775ea", hex.EncodeToString(raw[:]), "Raw address should be decoded")
+	require.NoError(t, err, "normaliseAddress must not error for a valid address")
+	assert.Equal(t, "0x1719884eb866cb12b2287399b15f7db5e7d775ea", normalised, "normalised should be lower-case")
+	assert.Equal(t, "1719884eb866cb12b2287399b15f7db5e7d775ea", hex.EncodeToString(raw[:]), "raw should contain the decoded address")
 
 	normalised, _, err = normaliseAddress("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed")
-	require.NoError(t, err, "Normalising a valid mixed-case EIP-55 address must not error")
-	assert.Equal(t, "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed", normalised, "Checksummed address should be normalised")
+	require.NoError(t, err, "normaliseAddress must not error for a valid mixed-case EIP-55 address")
+	assert.Equal(t, "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed", normalised, "normalised should contain the normalised checksummed address")
 
 	for _, tc := range []struct {
 		name    string
@@ -40,7 +40,7 @@ func TestNormaliseAddress(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, err := normaliseAddress(tc.address)
-			require.ErrorIs(t, err, errInvalidAddress, "Invalid address must return the expected error")
+			require.ErrorIs(t, err, errInvalidAddress, "normaliseAddress must return the expected error for an invalid address")
 		})
 	}
 }
@@ -48,8 +48,8 @@ func TestNormaliseAddress(t *testing.T) {
 func TestParsePrivateKey(t *testing.T) {
 	for _, secret := range []string{officialSigningTestKey, officialSigningTestKey[2:]} {
 		key, err := parsePrivateKey(secret)
-		require.NoError(t, err, "Parsing a valid private key must not error")
-		assert.Equal(t, officialSigningTestKey[2:], hex.EncodeToString(key.Serialize()), "Private key should round trip")
+		require.NoError(t, err, "parsePrivateKey must not error for a valid private key")
+		assert.Equal(t, officialSigningTestKey[2:], hex.EncodeToString(key.Serialize()), "key should round trip")
 		key.Zero()
 	}
 
@@ -64,16 +64,16 @@ func TestParsePrivateKey(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := parsePrivateKey(tc.secret)
-			require.ErrorIs(t, err, errInvalidPrivateKey, "Invalid private key must return the expected error")
+			require.ErrorIs(t, err, errInvalidPrivateKey, "parsePrivateKey must return the expected error for an invalid private key")
 		})
 	}
 }
 
 func TestPrivateKeyAddress(t *testing.T) {
 	key, err := parsePrivateKey(officialSigningTestKey)
-	require.NoError(t, err, "Parsing the official test key must not error")
+	require.NoError(t, err, "parsePrivateKey must not error for the official test key")
 	t.Cleanup(key.Zero)
-	assert.Equal(t, "0x14791697260e4c9a71f18484c9f997b308e59325", privateKeyAddress(key), "Derived Ethereum address should match the official key")
+	assert.Equal(t, "0x14791697260e4c9a71f18484c9f997b308e59325", privateKeyAddress(key), "privateKeyAddress should match the official key's Ethereum address")
 }
 
 func TestActionHash(t *testing.T) {
@@ -90,25 +90,25 @@ func TestActionHash(t *testing.T) {
 		Grouping: "na",
 	}
 	hash, err := actionHash(action, "", 1677777606040, nil)
-	require.NoError(t, err, "Hashing an official order vector must not error")
-	assert.Equal(t, "0fcbeda5ae3c4950a548021552a4fea2226858c4453571bf3f24ba017eac2908", hex.EncodeToString(hash[:]), "Action hash should match the official SDK")
+	require.NoError(t, err, "actionHash must not error for an official order vector")
+	assert.Equal(t, "0fcbeda5ae3c4950a548021552a4fea2226858c4453571bf3f24ba017eac2908", hex.EncodeToString(hash[:]), "hash should match the official SDK action hash")
 
 	_, err = actionHash(make(chan int), "", 0, nil)
-	require.Error(t, err, "Hashing an unsupported MessagePack value must error")
+	require.Error(t, err, "actionHash must error for an unsupported MessagePack value")
 	_, err = actionHash(action, "invalid", 0, nil)
-	require.ErrorIs(t, err, errInvalidAddress, "Hashing with an invalid vault must return the expected error")
+	require.ErrorIs(t, err, errInvalidAddress, "actionHash must return the expected error with an invalid vault")
 
 	expiry := uint64(123)
 	withExpiry, err := actionHash(action, "0x1719884eb866cb12b2287399b15f7db5e7d775ea", 1, &expiry)
-	require.NoError(t, err, "Hashing with a vault and expiry must not error")
-	assert.NotEqual(t, hash, withExpiry, "Vault and expiry should affect the action hash")
+	require.NoError(t, err, "actionHash must not error with a vault and expiry")
+	assert.NotEqual(t, hash, withExpiry, "withExpiry should reflect the vault and expiry in the action hash")
 }
 
 func TestKeccak256(t *testing.T) {
 	empty := keccak256(nil)
-	assert.Equal(t, "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", hex.EncodeToString(empty[:]), "Empty Keccak-256 digest should match the standard vector")
+	assert.Equal(t, "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", hex.EncodeToString(empty[:]), "keccak256 should match the standard empty-digest vector")
 	chunked := keccak256([]byte("a"), []byte("bc"))
-	assert.Equal(t, "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45", hex.EncodeToString(chunked[:]), "Chunked Keccak-256 digest should match the abc vector")
+	assert.Equal(t, "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45", hex.EncodeToString(chunked[:]), "keccak256 should match the abc vector for chunked input")
 }
 
 func TestEIP712AgentDigest(t *testing.T) {
@@ -116,9 +116,9 @@ func TestEIP712AgentDigest(t *testing.T) {
 	connectionID[0] = 1
 	mainnet := eip712AgentDigest(connectionID, true)
 	testnet := eip712AgentDigest(connectionID, false)
-	assert.NotEqual(t, mainnet, testnet, "Mainnet and testnet sources should produce different EIP-712 digests")
-	assert.Equal(t, mainnet, eip712AgentDigest(connectionID, true), "EIP-712 digest generation should be deterministic")
-	assert.NotEqual(t, [32]byte{}, mainnet, "EIP-712 digest should not be empty")
+	assert.NotEqual(t, mainnet, testnet, "eip712AgentDigest should produce different digests for mainnet and testnet sources")
+	assert.Equal(t, mainnet, eip712AgentDigest(connectionID, true), "eip712AgentDigest should be deterministic")
+	assert.NotEqual(t, [32]byte{}, mainnet, "mainnet should contain a non-empty EIP-712 digest")
 }
 
 func TestEIP712UserDigest(t *testing.T) {
@@ -128,17 +128,17 @@ func TestEIP712UserDigest(t *testing.T) {
 		{Name: "nonce", Type: "uint64", Value: uint64(1)},
 	}
 	digest, err := eip712UserDigest("TestAction", fields)
-	require.NoError(t, err, "Hashing supported EIP-712 fields must not error")
-	assert.NotEqual(t, [32]byte{}, digest, "User-signed EIP-712 digest should not be empty")
-	assert.Equal(t, digest, mustUserDigest(t, "TestAction", fields), "User-signed EIP-712 digest generation should be deterministic")
+	require.NoError(t, err, "eip712UserDigest must not error for supported EIP-712 fields")
+	assert.NotEqual(t, [32]byte{}, digest, "digest should contain a non-empty user-signed EIP-712 digest")
+	assert.Equal(t, digest, mustUserDigest(t, "TestAction", fields), "eip712UserDigest should be deterministic")
 
 	falseDigest, err := eip712UserDigest("TestAction", []eip712Field{
 		{Name: "hyperliquidChain", Type: "string", Value: "Testnet"},
 		{Name: "enabled", Type: "bool", Value: false},
 		{Name: "nonce", Type: "uint64", Value: uint64(1)},
 	})
-	require.NoError(t, err, "Hashing a false EIP-712 boolean must not error")
-	assert.NotEqual(t, digest, falseDigest, "Boolean field value should affect the EIP-712 digest")
+	require.NoError(t, err, "eip712UserDigest must not error for a false EIP-712 boolean")
+	assert.NotEqual(t, digest, falseDigest, "falseDigest should reflect the changed boolean field value")
 
 	for _, tc := range []struct {
 		name       string
@@ -156,7 +156,7 @@ func TestEIP712UserDigest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := eip712UserDigest(tc.primary, tc.fields)
-			require.ErrorIs(t, err, tc.expectedIs, "Invalid EIP-712 input must return the expected error")
+			require.ErrorIs(t, err, tc.expectedIs, "eip712UserDigest must return the expected error for invalid EIP-712 input")
 		})
 	}
 }
@@ -164,7 +164,7 @@ func TestEIP712UserDigest(t *testing.T) {
 func mustUserDigest(t *testing.T, primaryType string, fields []eip712Field) [32]byte {
 	t.Helper()
 	digest, err := eip712UserDigest(primaryType, fields)
-	require.NoError(t, err, "Generating the expected EIP-712 digest must not error")
+	require.NoError(t, err, "eip712UserDigest must not error for the expected EIP-712 digest")
 	return digest
 }
 
@@ -254,20 +254,20 @@ func TestSignL1ActionOfficialVectors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sig, err := signL1Action(officialSigningTestKey, tc.action, tc.vault, 0, nil, tc.mainnet)
-			require.NoError(t, err, "Signing an official vector must not error")
-			assert.Equal(t, tc.expectedR, sig.R, "Signature R should match the official SDK")
-			assert.Equal(t, tc.expectedS, sig.S, "Signature S should match the official SDK")
-			assert.Equal(t, tc.expectedV, sig.V, "Signature recovery ID should match the official SDK")
+			require.NoError(t, err, "signL1Action must not error for an official vector")
+			assert.Equal(t, tc.expectedR, sig.R, "sig.R should match the official SDK")
+			assert.Equal(t, tc.expectedS, sig.S, "sig.S should match the official SDK")
+			assert.Equal(t, tc.expectedV, sig.V, "sig.V should match the official SDK recovery ID")
 		})
 	}
 
 	_, err := signL1Action("invalid", dummy, "", 0, nil, true)
-	require.ErrorIs(t, err, errInvalidPrivateKey, "Signing with an invalid key must return the expected error")
+	require.ErrorIs(t, err, errInvalidPrivateKey, "signL1Action must return the expected error with an invalid key")
 	_, err = signL1Action(officialSigningTestKey, make(chan int), "", 0, nil, true)
-	require.Error(t, err, "Signing an unsupported MessagePack value must error")
+	require.Error(t, err, "signL1Action must error for an unsupported MessagePack value")
 	expiry := uint64(1)
 	_, err = signL1Action(officialSigningTestKey, dummy, "", 0, &expiry, true)
-	require.NoError(t, err, "Signing with an expiry must not error")
+	require.NoError(t, err, "signL1Action must not error with an expiry")
 }
 
 // Expected signatures were generated with hyperliquid-python-sdk commit
@@ -359,22 +359,22 @@ func TestSignUserSignedActionOfficialVectors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			signature, err := signUserSignedAction(officialSigningTestKey, tc.primaryType, tc.fields)
-			require.NoError(t, err, "Signing an official user-action vector must not error")
-			assert.Equal(t, tc.expectedR, signature.R, "Signature R should match the official SDK")
-			assert.Equal(t, tc.expectedS, signature.S, "Signature S should match the official SDK")
-			assert.Equal(t, tc.expectedV, signature.V, "Signature recovery ID should match the official SDK")
+			require.NoError(t, err, "signUserSignedAction must not error for an official user-action vector")
+			assert.Equal(t, tc.expectedR, signature.R, "signature.R should match the official SDK")
+			assert.Equal(t, tc.expectedS, signature.S, "signature.S should match the official SDK")
+			assert.Equal(t, tc.expectedV, signature.V, "signature.V should match the official SDK recovery ID")
 		})
 	}
 
 	_, err := signUserSignedAction("invalid", "Test", nil)
-	require.ErrorIs(t, err, errInvalidPrivateKey, "User signing with an invalid key must return the expected error")
+	require.ErrorIs(t, err, errInvalidPrivateKey, "signUserSignedAction must return the expected error with an invalid key")
 	_, err = signUserSignedAction(officialSigningTestKey, "", nil)
-	require.ErrorIs(t, err, errEIP712PrimaryType, "User signing with an invalid primary type must return the expected error")
+	require.ErrorIs(t, err, errEIP712PrimaryType, "signUserSignedAction must return the expected error with an invalid primary type")
 }
 
 func TestValidateCompactSignature(t *testing.T) {
 	key, err := parsePrivateKey(officialSigningTestKey)
-	require.NoError(t, err, "Parsing the expected signing key must not error")
+	require.NoError(t, err, "parsePrivateKey must not error for the expected signing key")
 	t.Cleanup(key.Zero)
 	digest := keccak256([]byte("compact-signature-test"))
 
@@ -384,31 +384,31 @@ func TestValidateCompactSignature(t *testing.T) {
 		append([]byte{ethereumSignatureVOffset + 2}, make([]byte, signatureComponentLength*2)...),
 	} {
 		_, err := validateCompactSignature(key, digest, compact)
-		require.ErrorIs(t, err, errInvalidRecoveryID, "Malformed compact signature must return the expected recovery-ID error")
+		require.ErrorIs(t, err, errInvalidRecoveryID, "validateCompactSignature must return the expected recovery-ID error for a malformed compact signature")
 	}
 
 	invalidSignature := append([]byte{ethereumSignatureVOffset}, make([]byte, signatureComponentLength*2)...)
 	_, err = validateCompactSignature(key, digest, invalidSignature)
-	require.Error(t, err, "Invalid signature scalars must fail recovery")
+	require.Error(t, err, "validateCompactSignature must fail recovery for invalid signature scalars")
 
 	otherKey, err := parsePrivateKey("0x1123456789012345678901234567890123456789012345678901234567890123")
-	require.NoError(t, err, "Parsing the alternate signing key must not error")
+	require.NoError(t, err, "parsePrivateKey must not error for the alternate signing key")
 	t.Cleanup(otherKey.Zero)
 	_, err = validateCompactSignature(key, digest, secpECDSA.SignCompact(otherKey, digest[:], false))
-	require.ErrorIs(t, err, errSigningRecoveryMismatch, "Signature from another key must return the recovery mismatch")
+	require.ErrorIs(t, err, errSigningRecoveryMismatch, "validateCompactSignature must return the recovery mismatch for a signature from another key")
 
 	result, err := validateCompactSignature(key, digest, secpECDSA.SignCompact(key, digest[:], false))
-	require.NoError(t, err, "Valid compact signature must not error")
-	assert.NotEmpty(t, result.R, "Valid compact signature should include R")
-	assert.NotEmpty(t, result.S, "Valid compact signature should include S")
-	assert.Contains(t, []uint8{27, 28}, result.V, "Valid compact signature should include an Ethereum recovery ID")
+	require.NoError(t, err, "validateCompactSignature must not error for a valid compact signature")
+	assert.NotEmpty(t, result.R, "result.R should be set for a valid compact signature")
+	assert.NotEmpty(t, result.S, "result.S should be set for a valid compact signature")
+	assert.Contains(t, []uint8{27, 28}, result.V, "result.V should contain an Ethereum recovery ID for a valid compact signature")
 }
 
 func TestFormatSignatureComponent(t *testing.T) {
-	assert.Equal(t, "0x0", formatSignatureComponent(nil), "Empty signature component should encode as zero")
-	assert.Equal(t, "0x0", formatSignatureComponent([]byte{0}), "Zero signature component should encode as zero")
-	assert.Equal(t, "0xa", formatSignatureComponent([]byte{0, 0x0a}), "Leading zeroes should be removed from a signature component")
-	assert.Equal(t, "0x10", formatSignatureComponent([]byte{0x10}), "Non-zero signature component should retain its hexadecimal value")
+	assert.Equal(t, "0x0", formatSignatureComponent(nil), "formatSignatureComponent should encode an empty component as zero")
+	assert.Equal(t, "0x0", formatSignatureComponent([]byte{0}), "formatSignatureComponent should encode a zero component as zero")
+	assert.Equal(t, "0xa", formatSignatureComponent([]byte{0, 0x0a}), "formatSignatureComponent should remove leading zeroes")
+	assert.Equal(t, "0x10", formatSignatureComponent([]byte{0x10}), "formatSignatureComponent should retain a non-zero component's hexadecimal value")
 }
 
 func TestFloatToWire(t *testing.T) {
@@ -428,8 +428,8 @@ func TestFloatToWire(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wire, err := floatToWire(tc.value)
-			require.ErrorIs(t, err, tc.errorIs, "Formatting a wire number must return the expected error")
-			assert.Equal(t, tc.expected, wire, "Wire number should match")
+			require.ErrorIs(t, err, tc.errorIs, "floatToWire must return the expected error for a wire number")
+			assert.Equal(t, tc.expected, wire, "wire should match the expected number")
 		})
 	}
 }
@@ -438,7 +438,7 @@ func TestNextNonce(t *testing.T) {
 	ex := new(Exchange)
 	first := ex.nextNonce()
 	second := ex.nextNonce()
-	assert.Greater(t, second, first, "Sequential nonces should be strictly increasing")
+	assert.Greater(t, second, first, "second should be greater than the preceding nonce")
 
 	const goroutines = 32
 	nonces := make(chan uint64, goroutines)
@@ -455,8 +455,8 @@ func TestNextNonce(t *testing.T) {
 	seen := make(map[uint64]struct{}, goroutines)
 	for nonce := range nonces {
 		_, exists := seen[nonce]
-		assert.False(t, exists, "Concurrent nonces should be unique")
+		assert.False(t, exists, "exists should be false for each unique concurrent nonce")
 		seen[nonce] = struct{}{}
 	}
-	assert.Len(t, seen, goroutines, "Every concurrent call should return one nonce")
+	assert.Len(t, seen, goroutines, "seen should contain one nonce per concurrent call")
 }

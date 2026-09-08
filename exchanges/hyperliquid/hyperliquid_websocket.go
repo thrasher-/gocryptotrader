@@ -25,7 +25,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
-	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 const (
@@ -68,65 +67,6 @@ var websocketSubscriptionNames = map[string]string{
 	subscription.CandlesChannel:   wsChannelCandle,
 	subscription.MyOrdersChannel:  wsChannelOrderUpdates,
 	subscription.MyTradesChannel:  wsChannelUserFills,
-}
-
-type websocketRequest struct {
-	Method       string                `json:"method"`
-	Subscription websocketSubscription `json:"subscription"`
-}
-
-type websocketSubscription struct {
-	Type            string `json:"type"`
-	Coin            string `json:"coin,omitempty"`
-	Interval        string `json:"interval,omitempty"`
-	User            string `json:"user,omitempty"`
-	AggregateByTime bool   `json:"aggregateByTime,omitempty"`
-}
-
-type websocketSubscriptionResponse struct {
-	Method       string                `json:"method"`
-	Subscription websocketSubscription `json:"subscription"`
-}
-
-type websocketPendingKey struct {
-	authenticated bool
-	subscription  websocketSubscription
-}
-
-type websocketPendingOperation struct {
-	method        string
-	connection    websocket.Connection
-	subscription  *subscription.Subscription
-	previousState subscription.State
-	done          chan error
-}
-
-type websocketEnvelope struct {
-	Channel string          `json:"channel"`
-	Data    json.RawMessage `json:"data"`
-}
-
-type websocketAssetContext struct {
-	Coin    string          `json:"coin"`
-	Context json.RawMessage `json:"ctx"`
-}
-
-type websocketUserFills struct {
-	IsSnapshot bool            `json:"isSnapshot"`
-	User       string          `json:"user"`
-	Fills      []websocketFill `json:"fills"`
-}
-
-type websocketFill struct {
-	Coin          string       `json:"coin"`
-	Price         types.Number `json:"px"`
-	Size          types.Number `json:"sz"`
-	Side          string       `json:"side"`
-	Time          types.Time   `json:"time"`
-	Hash          string       `json:"hash"`
-	OrderID       uint64       `json:"oid"`
-	TradeID       uint64       `json:"tid"`
-	ClientOrderID *string      `json:"cloid"`
 }
 
 // WsConnect connects the public stream and, when configured, an address-scoped account stream.
@@ -682,7 +622,8 @@ func (e *Exchange) manageWebsocketSubscription(ctx context.Context, method strin
 		e.websocketPendingMu.Unlock()
 		return common.AppendError(
 			fmt.Errorf("%w: operation already pending for %s", errWebsocketSubscription, sub),
-			e.rollbackWebsocketPending(pending))
+			e.rollbackWebsocketPending(pending),
+		)
 	}
 	e.websocketPending[key] = pending
 	e.websocketPendingMu.Unlock()
@@ -705,7 +646,8 @@ func (e *Exchange) manageWebsocketSubscription(ctx context.Context, method strin
 		return e.abortWebsocketPending(
 			&key,
 			pending,
-			fmt.Errorf("%w: %s", websocket.ErrSignatureTimeout, sub))
+			fmt.Errorf("%w: %s", websocket.ErrSignatureTimeout, sub),
+		)
 	}
 }
 

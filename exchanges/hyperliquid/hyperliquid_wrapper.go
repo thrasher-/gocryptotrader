@@ -35,16 +35,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
 )
 
-type pairMapping struct {
-	pair         currency.Pair
-	coin         string
-	dex          string
-	assetID      uint64
-	sizeDecimals uint64
-	maxLeverage  uint64
-	onlyIsolated bool
-}
-
 var errAmbiguousCoinMapping = errors.New("ambiguous coin mapping")
 
 func logDefaultError(err error) {
@@ -945,7 +935,8 @@ func (e *Exchange) getUserNonFundingLedgerUpdatesPaginated(
 				"%w: ledger page has %d entries, maximum %d",
 				errUnexpectedResponseLength,
 				len(page),
-				maximumUserLedgerHistoryCount)
+				maximumUserLedgerHistoryCount,
+			)
 		}
 		for i := range page {
 			recordTime := page[i].Time.Time().UTC()
@@ -1713,7 +1704,8 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, arg *fundingra
 				"%w: funding page has %d entries, maximum %d",
 				errUnexpectedResponseLength,
 				len(records),
-				maximumFundingHistoryCount)
+				maximumFundingHistoryCount,
+			)
 		}
 		for i := range records {
 			recordTime := records[i].Time.Time().UTC()

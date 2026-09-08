@@ -110,6 +110,39 @@ fees, so caller-supplied fees and address tags are rejected.
 API wallet approval and HIP-3 deployer or market-administration actions are not
 supported by this integration.
 
+### Testing
+
+The test setup follows the shared exchange test helpers and loads
+`testdata/configtest.json` without making API calls. Tests named `TestLive...`
+query Hyperliquid. Mock tests in `*_mock_test.go` use local HTTP/Websocket
+fixtures with explicit request and response assertions.
+Signing and transfer tests use deterministic offline fixtures.
+
+Run all Hyperliquid tests, including public live checks:
+
+```sh
+go test ./exchanges/hyperliquid -race -count=1
+```
+
+Run only offline tests:
+
+```sh
+go test ./exchanges/hyperliquid -race -count=1 -skip '^TestLive'
+```
+
+Run only live tests:
+
+```sh
+go test ./exchanges/hyperliquid -race -count=1 -run '^TestLive'
+```
+
+The shared `GCT_SKIP_LIVE_TESTS=true` setting also skips live checks.
+
+Address-scoped live tests require `apiCredentials.Key` in `hyperliquid_test.go`.
+They do not need a private key. Without an address these tests are skipped.
+Public live tests cover Spot, default perpetual markets, a registered HIP-3
+DEX, and Websocket subscription, data delivery, unsubscription and shutdown.
+
 ### Wrapper calls
 
 When enabled through configuration, Hyperliquid is available through the

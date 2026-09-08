@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 )
 
 var (
@@ -21,15 +23,6 @@ var (
 	errWithdrawalAddressTag          = errors.New("hyperliquid bridge withdrawals do not support an address tag")
 	errWithdrawalFeeInput            = errors.New("hyperliquid calculates the bridge withdrawal fee")
 )
-
-// SendAssetRequest contains one generalised Hyperliquid Core asset transfer.
-type SendAssetRequest struct {
-	Destination    string
-	SourceDEX      string
-	DestinationDEX string
-	Token          string
-	Amount         float64
-}
 
 func (e *Exchange) getBridgeChain() string {
 	if e.isMainnetEnvironment() {
@@ -162,7 +155,8 @@ func (e *Exchange) validateSendAssetRoute(
 				"%w: %s is not collateral for DEX %q",
 				errTransferTokenInvalid,
 				resolvedToken,
-				dex)
+				dex,
+			)
 		}
 	}
 	return sourceDEX, destinationDEX, resolvedToken, nil
@@ -196,7 +190,8 @@ func (e *Exchange) TransferUSDCBetweenSpotAndPerp(ctx context.Context, amount fl
 			{Name: "amount", Type: "string", Value: amountText},
 			{Name: "toPerp", Type: "bool", Value: toPerp},
 		},
-		&response)
+		&response,
+	)
 }
 
 // SendAsset transfers a validated spot or collateral token between Core DEX
@@ -239,7 +234,8 @@ func (e *Exchange) SendAsset(ctx context.Context, arg *SendAssetRequest) (uint64
 			{Name: "amount", Type: "string", Value: amountText},
 			{Name: "fromSubAccount", Type: "string", Value: subAccount},
 		},
-		&response)
+		&response,
+	)
 }
 
 // SendCoreUSDC sends default-perpetual USDC to another Hyperliquid address.
@@ -270,7 +266,8 @@ func (e *Exchange) SendCoreUSDC(ctx context.Context, destination string, amount 
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response)
+		&response,
+	)
 }
 
 // SendCoreSpot sends one spot token to another Hyperliquid address.
@@ -306,7 +303,8 @@ func (e *Exchange) SendCoreSpot(ctx context.Context, destination, token string, 
 			{Name: "token", Type: "string", Value: token},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response)
+		&response,
+	)
 }
 
 // WithdrawFromBridge requests a USDC withdrawal from HyperCore through the
@@ -338,5 +336,31 @@ func (e *Exchange) WithdrawFromBridge(ctx context.Context, destination string, a
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response)
+		&response,
+	)
+}
+
+// GetUserNonFundingLedgerUpdates returns up to 500 non-funding account ledger
+// updates over an inclusive time range.
+func (e *Exchange) GetUserNonFundingLedgerUpdates(
+	ctx context.Context,
+	user string,
+	start,
+	end time.Time,
+) ([]UserLedgerUpdate, error) {
+	user, _, err := normaliseAddress(user)
+	if err != nil {
+		return nil, err
+	}
+	if err := common.StartEndTimeCheck(start, end); err != nil {
+		return nil, err
+	}
+	var resp []UserLedgerUpdate
+	err = e.SendHTTPRequest(ctx, exchange.RestSpot, infoUserLedgerEPL, &infoRequest{
+		Type:      "userNonFundingLedgerUpdates",
+		User:      user,
+		StartTime: start.UnixMilli(),
+		EndTime:   end.UnixMilli(),
+	}, &resp)
+	return resp, err
 }
