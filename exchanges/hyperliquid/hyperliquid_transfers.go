@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 )
@@ -82,8 +82,8 @@ func (e *Exchange) resolveTransferToken(ctx context.Context, token string) (Spot
 	}
 	if token == perpetualQuoteCurrency {
 		for i := range metadata.Tokens {
-			if metadata.Tokens[i].Name == perpetualQuoteCurrency {
-				return metadata.Tokens[i], metadata.Tokens[i].Name + ":" + metadata.Tokens[i].TokenID, nil
+			if metadata.Tokens[i].Name.Equal(currency.USDC) && metadata.Tokens[i].TokenIdentifier != "" {
+				return metadata.Tokens[i], metadata.Tokens[i].TokenIdentifier, nil
 			}
 		}
 		return SpotTokenMetadata{}, "", fmt.Errorf("%w: %s metadata is missing", errTransferTokenInvalid, perpetualQuoteCurrency)
@@ -93,8 +93,9 @@ func (e *Exchange) resolveTransferToken(ctx context.Context, token string) (Spot
 		return SpotTokenMetadata{}, "", fmt.Errorf("%w: expected NAME:TOKEN_ID", errTransferTokenInvalid)
 	}
 	for i := range metadata.Tokens {
-		if metadata.Tokens[i].Name == name && strings.EqualFold(metadata.Tokens[i].TokenID, tokenID) {
-			return metadata.Tokens[i], metadata.Tokens[i].Name + ":" + metadata.Tokens[i].TokenID, nil
+		metadataName, _, _ := strings.Cut(metadata.Tokens[i].TokenIdentifier, ":")
+		if metadataName == name && strings.EqualFold(metadata.Tokens[i].TokenID, tokenID) {
+			return metadata.Tokens[i], metadata.Tokens[i].TokenIdentifier, nil
 		}
 	}
 	return SpotTokenMetadata{}, "", fmt.Errorf("%w: %s is not present in spot metadata", errTransferTokenInvalid, token)
@@ -120,22 +121,20 @@ func (e *Exchange) resolveTransferDEX(ctx context.Context, dex string) (string, 
 	return "", fmt.Errorf("%w: %q", errTransferDEXInvalid, dex)
 }
 
-func (e *Exchange) validateSendAssetRoute(
-	ctx context.Context,
-	source,
-	destination,
-	token string,
-) (sourceDEX, destinationDEX, resolvedToken string, err error) {
-	useUSDCCollateralIdentifier := strings.TrimSpace(token) == perpetualQuoteCurrency
-	sourceDEX, err = e.resolveTransferDEX(ctx, source)
+func (e *Exchange) validateSendAssetRoute(ctx context.Context, arg *SendAssetRequest) (sourceDEX, destinationDEX, resolvedToken string, err error) {
+	if arg == nil {
+		return "", "", "", common.ErrNilPointer
+	}
+	useUSDCCollateralIdentifier := strings.TrimSpace(arg.Token) == perpetualQuoteCurrency
+	sourceDEX, err = e.resolveTransferDEX(ctx, arg.SourceDEX)
 	if err != nil {
 		return "", "", "", err
 	}
-	destinationDEX, err = e.resolveTransferDEX(ctx, destination)
+	destinationDEX, err = e.resolveTransferDEX(ctx, arg.DestinationDEX)
 	if err != nil {
 		return "", "", "", err
 	}
-	tokenMetadata, resolvedToken, err := e.resolveTransferToken(ctx, token)
+	tokenMetadata, resolvedToken, err := e.resolveTransferToken(ctx, arg.Token)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -164,8 +163,11 @@ func (e *Exchange) validateSendAssetRoute(
 
 // TransferUSDCBetweenSpotAndPerp transfers USDC between spot and the default
 // perpetual DEX for the configured account or owned subaccount.
-func (e *Exchange) TransferUSDCBetweenSpotAndPerp(ctx context.Context, amount float64, toPerp bool) (uint64, error) {
-	amountText, err := formatTransferAmount(amount)
+func (e *Exchange) TransferUSDCBetweenSpotAndPerp(ctx context.Context, arg *ClassTransferRequest) (uint64, error) {
+	if arg == nil {
+		return 0, common.ErrNilPointer
+	}
+	amountText, err := formatTransferAmount(arg.Amount)
 	if err != nil {
 		return 0, err
 	}
@@ -179,19 +181,17 @@ func (e *Exchange) TransferUSDCBetweenSpotAndPerp(ctx context.Context, amount fl
 	if subAccount != "" {
 		amountText += " subaccount:" + subAccount
 	}
-	var response exchangeActionResponse
-	return e.sendUserSignedAction(
-		ctx,
-		credentials,
-		"usdClassTransfer",
-		"HyperliquidTransaction:UsdClassTransfer",
-		"nonce",
-		[]eip712Field{
+	response := new(exchangeActionResponse)
+	return e.sendUserSignedAction(ctx, &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "usdClassTransfer",
+		PrimaryType: "HyperliquidTransaction:UsdClassTransfer",
+		NonceField:  "nonce",
+		Fields: []eip712Field{
 			{Name: "amount", Type: "string", Value: amountText},
-			{Name: "toPerp", Type: "bool", Value: toPerp},
+			{Name: "toPerp", Type: "bool", Value: arg.ToPerpetual},
 		},
-		&response,
-	)
+	}, response)
 }
 
 // SendAsset transfers a validated spot or collateral token between Core DEX
@@ -215,18 +215,17 @@ func (e *Exchange) SendAsset(ctx context.Context, arg *SendAssetRequest) (uint64
 	if err := e.validateUserSignedSubAccount(ctx, credentials, subAccount); err != nil {
 		return 0, err
 	}
-	sourceDEX, destinationDEX, token, err := e.validateSendAssetRoute(ctx, arg.SourceDEX, arg.DestinationDEX, arg.Token)
+	sourceDEX, destinationDEX, token, err := e.validateSendAssetRoute(ctx, arg)
 	if err != nil {
 		return 0, err
 	}
-	var response exchangeActionResponse
-	return e.sendUserSignedAction(
-		ctx,
-		credentials,
-		"sendAsset",
-		"HyperliquidTransaction:SendAsset",
-		"nonce",
-		[]eip712Field{
+	response := new(exchangeActionResponse)
+	return e.sendUserSignedAction(ctx, &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "sendAsset",
+		PrimaryType: "HyperliquidTransaction:SendAsset",
+		NonceField:  "nonce",
+		Fields: []eip712Field{
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "sourceDex", Type: "string", Value: sourceDEX},
 			{Name: "destinationDex", Type: "string", Value: destinationDEX},
@@ -234,17 +233,19 @@ func (e *Exchange) SendAsset(ctx context.Context, arg *SendAssetRequest) (uint64
 			{Name: "amount", Type: "string", Value: amountText},
 			{Name: "fromSubAccount", Type: "string", Value: subAccount},
 		},
-		&response,
-	)
+	}, response)
 }
 
 // SendCoreUSDC sends default-perpetual USDC to another Hyperliquid address.
-func (e *Exchange) SendCoreUSDC(ctx context.Context, destination string, amount float64) (uint64, error) {
-	destination, _, err := normaliseAddress(destination)
+func (e *Exchange) SendCoreUSDC(ctx context.Context, arg *USDCTransferRequest) (uint64, error) {
+	if arg == nil {
+		return 0, common.ErrNilPointer
+	}
+	destination, _, err := normaliseAddress(arg.Destination)
 	if err != nil {
 		return 0, err
 	}
-	amountText, err := formatTransferAmount(amount)
+	amountText, err := formatTransferAmount(arg.Amount)
 	if err != nil {
 		return 0, err
 	}
@@ -255,28 +256,29 @@ func (e *Exchange) SendCoreUSDC(ctx context.Context, destination string, amount 
 	if subAccount != "" {
 		return 0, errTransferSubAccountUnsupported
 	}
-	var response exchangeActionResponse
-	return e.sendUserSignedAction(
-		ctx,
-		credentials,
-		"usdSend",
-		"HyperliquidTransaction:UsdSend",
-		"time",
-		[]eip712Field{
+	response := new(exchangeActionResponse)
+	return e.sendUserSignedAction(ctx, &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "usdSend",
+		PrimaryType: "HyperliquidTransaction:UsdSend",
+		NonceField:  "time",
+		Fields: []eip712Field{
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response,
-	)
+	}, response)
 }
 
 // SendCoreSpot sends one spot token to another Hyperliquid address.
-func (e *Exchange) SendCoreSpot(ctx context.Context, destination, token string, amount float64) (uint64, error) {
-	destination, _, err := normaliseAddress(destination)
+func (e *Exchange) SendCoreSpot(ctx context.Context, arg *SpotTransferRequest) (uint64, error) {
+	if arg == nil {
+		return 0, common.ErrNilPointer
+	}
+	destination, _, err := normaliseAddress(arg.Destination)
 	if err != nil {
 		return 0, err
 	}
-	amountText, err := formatTransferAmount(amount)
+	amountText, err := formatTransferAmount(arg.Amount)
 	if err != nil {
 		return 0, err
 	}
@@ -287,34 +289,35 @@ func (e *Exchange) SendCoreSpot(ctx context.Context, destination, token string, 
 	if subAccount != "" {
 		return 0, errTransferSubAccountUnsupported
 	}
-	_, token, err = e.resolveTransferToken(ctx, token)
+	_, token, err := e.resolveTransferToken(ctx, arg.Token)
 	if err != nil {
 		return 0, err
 	}
-	var response exchangeActionResponse
-	return e.sendUserSignedAction(
-		ctx,
-		credentials,
-		"spotSend",
-		"HyperliquidTransaction:SpotSend",
-		"time",
-		[]eip712Field{
+	response := new(exchangeActionResponse)
+	return e.sendUserSignedAction(ctx, &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "spotSend",
+		PrimaryType: "HyperliquidTransaction:SpotSend",
+		NonceField:  "time",
+		Fields: []eip712Field{
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "token", Type: "string", Value: token},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response,
-	)
+	}, response)
 }
 
 // WithdrawFromBridge requests a USDC withdrawal from HyperCore through the
 // configured environment's Arbitrum bridge.
-func (e *Exchange) WithdrawFromBridge(ctx context.Context, destination string, amount float64) (uint64, error) {
-	destination, _, err := normaliseAddress(destination)
+func (e *Exchange) WithdrawFromBridge(ctx context.Context, arg *USDCTransferRequest) (uint64, error) {
+	if arg == nil {
+		return 0, common.ErrNilPointer
+	}
+	destination, _, err := normaliseAddress(arg.Destination)
 	if err != nil {
 		return 0, err
 	}
-	amountText, err := formatTransferAmount(amount)
+	amountText, err := formatTransferAmount(arg.Amount)
 	if err != nil {
 		return 0, err
 	}
@@ -325,42 +328,38 @@ func (e *Exchange) WithdrawFromBridge(ctx context.Context, destination string, a
 	if subAccount != "" {
 		return 0, errTransferSubAccountUnsupported
 	}
-	var response exchangeActionResponse
-	return e.sendUserSignedAction(
-		ctx,
-		credentials,
-		"withdraw3",
-		"HyperliquidTransaction:Withdraw",
-		"time",
-		[]eip712Field{
+	response := new(exchangeActionResponse)
+	return e.sendUserSignedAction(ctx, &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "withdraw3",
+		PrimaryType: "HyperliquidTransaction:Withdraw",
+		NonceField:  "time",
+		Fields: []eip712Field{
 			{Name: "destination", Type: "string", Value: destination},
 			{Name: "amount", Type: "string", Value: amountText},
 		},
-		&response,
-	)
+	}, response)
 }
 
 // GetUserNonFundingLedgerUpdates returns up to 500 non-funding account ledger
 // updates over an inclusive time range.
-func (e *Exchange) GetUserNonFundingLedgerUpdates(
-	ctx context.Context,
-	user string,
-	start,
-	end time.Time,
-) ([]UserLedgerUpdate, error) {
-	user, _, err := normaliseAddress(user)
+func (e *Exchange) GetUserNonFundingLedgerUpdates(ctx context.Context, arg *UserLedgerRequest) ([]UserLedgerUpdate, error) {
+	if arg == nil {
+		return nil, common.ErrNilPointer
+	}
+	user, _, err := normaliseAddress(arg.User)
 	if err != nil {
 		return nil, err
 	}
-	if err := common.StartEndTimeCheck(start, end); err != nil {
+	if err := common.StartEndTimeCheck(arg.StartTime, arg.EndTime); err != nil {
 		return nil, err
 	}
 	var resp []UserLedgerUpdate
-	err = e.SendHTTPRequest(ctx, exchange.RestSpot, infoUserLedgerEPL, &infoRequest{
+	err = e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoUserLedgerEPL, Payload: &infoRequest{
 		Type:      "userNonFundingLedgerUpdates",
 		User:      user,
-		StartTime: start.UnixMilli(),
-		EndTime:   end.UnixMilli(),
-	}, &resp)
+		StartTime: arg.StartTime.UnixMilli(),
+		EndTime:   arg.EndTime.UnixMilli(),
+	}}, &resp)
 	return resp, err
 }

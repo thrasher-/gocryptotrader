@@ -14,6 +14,7 @@ import (
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	secpECDSA "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
+	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/vmihailenco/msgpack/v5"
 	"golang.org/x/crypto/sha3"
 )
@@ -115,32 +116,35 @@ func privateKeyAddress(key *secp256k1.PrivateKey) string {
 	return "0x" + hex.EncodeToString(digest[len(digest)-ethereumAddressByteLength:])
 }
 
-func actionHash(action any, vaultAddress string, nonce uint64, expiresAfter *uint64) ([32]byte, error) {
+func actionHash(params *l1ActionRequest) ([32]byte, error) {
+	if params == nil {
+		return [32]byte{}, common.ErrNilPointer
+	}
 	var actionBuffer bytes.Buffer
 	encoder := msgpack.NewEncoder(&actionBuffer)
 	encoder.UseCompactInts(true)
-	if err := encoder.Encode(action); err != nil {
+	if err := encoder.Encode(params.Action); err != nil {
 		return [32]byte{}, err
 	}
 	encodedAction := actionBuffer.Bytes()
 	var nonceBytes [8]byte
-	binary.BigEndian.PutUint64(nonceBytes[:], nonce)
+	binary.BigEndian.PutUint64(nonceBytes[:], params.Nonce)
 	preimage := make([]byte, 0, len(encodedAction)+8+1+ethereumAddressByteLength+1+8)
 	preimage = append(preimage, encodedAction...)
 	preimage = append(preimage, nonceBytes[:]...)
-	if vaultAddress == "" {
+	if params.VaultAddress == "" {
 		preimage = append(preimage, 0)
 	} else {
-		_, raw, err := normaliseAddress(vaultAddress)
+		_, raw, err := normaliseAddress(params.VaultAddress)
 		if err != nil {
 			return [32]byte{}, err
 		}
 		preimage = append(preimage, 1)
 		preimage = append(preimage, raw[:]...)
 	}
-	if expiresAfter != nil {
+	if params.ExpiresAfter != nil {
 		var expiryBytes [8]byte
-		binary.BigEndian.PutUint64(expiryBytes[:], *expiresAfter)
+		binary.BigEndian.PutUint64(expiryBytes[:], *params.ExpiresAfter)
 		preimage = append(preimage, 0)
 		preimage = append(preimage, expiryBytes[:]...)
 	}
@@ -235,13 +239,16 @@ func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error
 	return keccak256([]byte{0x19, 0x01}, domainHash[:], structHash[:]), nil
 }
 
-func signL1Action(secret string, action any, vaultAddress string, nonce uint64, expiresAfter *uint64, isMainnet bool) (l1Signature, error) {
+func signL1Action(secret string, params *l1ActionRequest, isMainnet bool) (l1Signature, error) {
+	if params == nil {
+		return l1Signature{}, common.ErrNilPointer
+	}
 	key, err := parsePrivateKey(secret)
 	if err != nil {
 		return l1Signature{}, err
 	}
 	defer key.Zero()
-	connectionID, err := actionHash(action, vaultAddress, nonce, expiresAfter)
+	connectionID, err := actionHash(params)
 	if err != nil {
 		return l1Signature{}, err
 	}

@@ -10,11 +10,52 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
+
+func TestSpotTokenMetadataUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+	var missing *SpotTokenMetadata
+	assert.ErrorIs(t, missing.UnmarshalJSON([]byte(`{}`)), common.ErrNilPointer, "UnmarshalJSON should reject a nil SpotTokenMetadata receiver")
+	for _, invalid := range []string{`{`, `false`, `{"name":1}`, `{"szDecimals":"invalid"}`} {
+		var metadata SpotTokenMetadata
+		assert.Error(t, metadata.UnmarshalJSON([]byte(invalid)), "UnmarshalJSON should reject invalid token metadata")
+	}
+	for _, tc := range []struct {
+		name       string
+		data       string
+		currency   currency.Code
+		identifier string
+	}{
+		{name: "null", data: `null`},
+		{name: "empty", data: `{}`},
+		{name: "missing token ID", data: `{"name":"USDC"}`, currency: currency.USDC},
+		{name: "missing name", data: `{"tokenId":"0x1"}`},
+		{name: "mixed case", data: `{"name":"kPEPE","tokenId":"0xAB"}`, currency: currency.NewCode("kPEPE"), identifier: "kPEPE:0xAB"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			metadata := SpotTokenMetadata{Name: currency.BTC, TokenIdentifier: "old:0x0", SizeDecimals: 42}
+			require.NoError(t, metadata.UnmarshalJSON([]byte(tc.data)), "UnmarshalJSON must decode token metadata")
+			assert.True(t, metadata.Name.Equal(tc.currency), "metadata.Name should contain the currency code")
+			assert.Equal(t, tc.identifier, metadata.TokenIdentifier, "metadata.TokenIdentifier should preserve the exact transfer identifier")
+			assert.Zero(t, metadata.SizeDecimals, "metadata.SizeDecimals should reset when the receiver is reused")
+		})
+	}
+	var metadata SpotTokenMetadata
+	require.NoError(t, metadata.UnmarshalJSON([]byte(`{"name":"HYPE","szDecimals":2,"weiDecimals":8,"index":150,"tokenId":"0x96","isCanonical":true,"evmContract":{"address":"0x1"},"fullName":"Hyperliquid","deployerTradingFeeShare":"0.1"}`)), "UnmarshalJSON must decode every token metadata field")
+	fullName := "Hyperliquid"
+	assert.Equal(t, SpotTokenMetadata{
+		Name: currency.HYPE, SizeDecimals: 2, WeiDecimals: 8, Index: 150, TokenID: "0x96",
+		IsCanonical: true, EVMContract: json.RawMessage(`{"address":"0x1"}`), FullName: &fullName,
+		DeployerTradingFeeShare: types.Number(0.1), TokenIdentifier: "HYPE:0x96",
+	}, metadata, "metadata should retain every decoded token field")
+}
 
 const (
 	testBuilderDEXName    = "xyz"
@@ -132,7 +173,7 @@ func TestSetup(t *testing.T) {
 	sandboxConfig.UseSandbox = true
 	require.NoError(t, sandbox.Setup(sandboxConfig), "Setup must not error for the official sandbox")
 	assert.False(t, sandbox.isMainnetEnvironment(), "isMainnetEnvironment: sandbox configuration should use the testnet signing environment")
-	for _, endpoint := range []struct {
+	for _, tc := range []struct {
 		kind     exchange.URL
 		expected string
 	}{
@@ -140,9 +181,9 @@ func TestSetup(t *testing.T) {
 		{kind: exchange.RestFutures, expected: hyperliquidTestnetAPIURL},
 		{kind: exchange.WebsocketSpot, expected: hyperliquidTestnetWebsocketURL},
 	} {
-		runningURL, err := sandbox.API.Endpoints.GetURL(endpoint.kind)
+		runningURL, err := sandbox.API.Endpoints.GetURL(tc.kind)
 		require.NoError(t, err, "GetURL must not error for an official sandbox endpoint")
-		assert.Equal(t, endpoint.expected, runningURL, "runningURL: sandbox should replace the matching production endpoint")
+		assert.Equal(t, tc.expected, runningURL, "runningURL: sandbox should replace the matching production endpoint")
 	}
 	require.NoError(t, sandbox.Shutdown(), "Shutdown must not error for the sandbox exchange")
 
@@ -157,7 +198,7 @@ func TestSetup(t *testing.T) {
 		exchange.WebsocketSpot.String(): hyperliquidWebsocketURL + "/",
 	}
 	require.NoError(t, trailingSlashSandbox.Setup(trailingSlashConfig), "Setup must not error for official production endpoints with trailing slashes")
-	for _, endpoint := range []struct {
+	for _, tc := range []struct {
 		kind     exchange.URL
 		expected string
 	}{
@@ -165,9 +206,9 @@ func TestSetup(t *testing.T) {
 		{kind: exchange.RestFutures, expected: hyperliquidTestnetAPIURL},
 		{kind: exchange.WebsocketSpot, expected: hyperliquidTestnetWebsocketURL},
 	} {
-		runningURL, err := trailingSlashSandbox.API.Endpoints.GetURL(endpoint.kind)
+		runningURL, err := trailingSlashSandbox.API.Endpoints.GetURL(tc.kind)
 		require.NoError(t, err, "GetURL must not error for a trailing-slash sandbox endpoint")
-		assert.Equal(t, endpoint.expected, runningURL, "runningURL: sandbox should normalise the production endpoint before selecting testnet")
+		assert.Equal(t, tc.expected, runningURL, "runningURL: sandbox should normalise the production endpoint before selecting testnet")
 	}
 	require.NoError(t, trailingSlashSandbox.Shutdown(), "Shutdown must not error for the trailing-slash sandbox exchange")
 
@@ -246,6 +287,10 @@ func TestSetup(t *testing.T) {
 }
 
 func TestSendHTTPRequest(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := newStaticInfoExchange(t, nil)
+		assert.ErrorIs(t, ex.SendHTTPRequest(t.Context(), nil, nil), common.ErrNilPointer, "SendHTTPRequest should reject a nil request")
+	})
 	var got infoRequest
 	ex := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method, "r.Method: request method should be POST")
@@ -258,32 +303,32 @@ func TestSendHTTPRequest(t *testing.T) {
 		assert.NoError(t, err, "Write should not error for the response")
 	}))
 	var result map[string]string
-	require.NoError(t, ex.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), "SendHTTPRequest must not error for a valid info request")
+	require.NoError(t, ex.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), "SendHTTPRequest must not error for a valid info request")
 	assert.Equal(t, "allMids", got.Type, "got.Type: request type should be serialised")
 	assert.Equal(t, "100", result["BTC"], "result[\"BTC\"]: response should be decoded")
 
 	uninitialised := new(Exchange)
-	require.ErrorIs(t, uninitialised.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error without endpoints")
+	require.ErrorIs(t, uninitialised.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error without endpoints")
 	var nilExchange *Exchange
-	require.ErrorIs(t, nilExchange.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error with a nil exchange")
+	require.ErrorIs(t, nilExchange.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error with a nil exchange")
 	nilEndpoints := new(Exchange)
 	nilEndpoints.SetDefaults()
 	nilEndpoints.API.Endpoints = nil
-	require.ErrorIs(t, nilEndpoints.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error without an endpoint store")
+	require.ErrorIs(t, nilEndpoints.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), common.ErrNilPointer, "SendHTTPRequest must return the expected error without an endpoint store")
 	require.NoError(t, nilEndpoints.Shutdown(), "Shutdown must not error for the nil-endpoints exchange")
 	missingEndpoint := new(Exchange)
 	missingEndpoint.SetDefaults()
 	missingEndpoint.API.Endpoints = missingEndpoint.NewEndpoints()
-	require.Error(t, missingEndpoint.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), "SendHTTPRequest must error without a configured spot endpoint")
+	require.Error(t, missingEndpoint.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), "SendHTTPRequest must error without a configured spot endpoint")
 	require.NoError(t, missingEndpoint.Shutdown(), "Shutdown must not error for the missing-endpoint exchange")
-	require.Error(t, ex.SendHTTPRequest(t.Context(), exchange.RestSpot, infoLightEPL, make(chan int), &result), "SendHTTPRequest must error for an unsupported JSON value")
+	require.Error(t, ex.SendHTTPRequest(t.Context(), &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: make(chan int)}, &result), "SendHTTPRequest must error for an unsupported JSON value")
 
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	require.ErrorIs(t, ex.SendHTTPRequest(cancelled, exchange.RestSpot, infoLightEPL, &infoRequest{Type: "allMids"}, &result), context.Canceled, "SendHTTPRequest must return its cancellation with a cancelled context")
+	require.ErrorIs(t, ex.SendHTTPRequest(cancelled, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids"}}, &result), context.Canceled, "SendHTTPRequest must return its cancellation with a cancelled context")
 }
 
-func TestGetMetadata(t *testing.T) {
+func TestGetPerpetualMetadata(t *testing.T) {
 	ex := newStaticInfoExchange(t, map[string]string{"spotMeta": spotMetadataJSON})
 	futuresServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte(perpetualMetadataJSON))
@@ -296,22 +341,37 @@ func TestGetMetadata(t *testing.T) {
 	require.Len(t, perpetual.Universe, 1, "perpetual.Universe: perpetual metadata must contain one market")
 	assert.Equal(t, "BTC", perpetual.Universe[0].Name, "perpetual.Universe[0].Name: perpetual market name should be decoded")
 
-	spot, err := ex.GetSpotMetadata(t.Context())
-	require.NoError(t, err, "GetSpotMetadata must not error for spot metadata")
-	require.Len(t, spot.Universe, 1, "spot.Universe: spot metadata must contain one market")
-	assert.Equal(t, "@107", spot.Universe[0].Name, "spot.Universe[0].Name: spot market identifier should be decoded")
-
-	nullExchange := newStaticInfoExchange(t, map[string]string{"meta": "null", "spotMeta": "null"})
+	nullExchange := newStaticInfoExchange(t, map[string]string{"meta": "null"})
 	_, err = nullExchange.GetPerpetualMetadata(t.Context())
 	require.ErrorIs(t, err, common.ErrNilPointer, "GetPerpetualMetadata must return the expected error for null perpetual metadata")
-	_, err = nullExchange.GetSpotMetadata(t.Context())
-	require.ErrorIs(t, err, common.ErrNilPointer, "GetSpotMetadata must return the expected error for null spot metadata")
 
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	_, err = errorExchange.GetPerpetualMetadata(t.Context())
 	require.Error(t, err, "GetPerpetualMetadata must error for perpetual metadata from a failing server")
+}
+
+func TestGetSpotMetadata(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{"spotMeta": spotMetadataJSON})
+	futuresServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write([]byte(perpetualMetadataJSON))
+		assert.NoError(t, err, "Write should not error for the perpetual metadata response")
+	}))
+	t.Cleanup(futuresServer.Close)
+	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestFutures.String(), futuresServer.URL), "SetRunningURL must not error for a distinct futures URL")
+	spot, err := ex.GetSpotMetadata(t.Context())
+	require.NoError(t, err, "GetSpotMetadata must not error for spot metadata")
+	require.Len(t, spot.Universe, 1, "spot.Universe must contain one market")
+	assert.Equal(t, "@107", spot.Universe[0].Name, "spot.Universe[0].Name should contain the spot market identifier")
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"spotMeta": "null"})
+	_, err = nullExchange.GetSpotMetadata(t.Context())
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetSpotMetadata must return the expected error for null spot metadata")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
 	_, err = errorExchange.GetSpotMetadata(t.Context())
 	require.Error(t, err, "GetSpotMetadata must error for spot metadata from a failing server")
 }
@@ -329,6 +389,15 @@ func TestGetPerpetualMetadataForDEX(t *testing.T) {
 	require.NoError(t, err, "GetPerpetualMetadataForDEX must not error for named DEX metadata")
 	require.Len(t, result.Universe, 1, "GetPerpetualMetadataForDEX must decode one market")
 	assert.Equal(t, "xyz", got.DEX, "got.DEX: named DEX should be included in the metadata request")
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"meta": "null"})
+	_, err = nullExchange.GetPerpetualMetadataForDEX(t.Context(), "xyz")
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetPerpetualMetadataForDEX must reject null metadata")
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failed.GetPerpetualMetadataForDEX(t.Context(), "xyz")
+	require.Error(t, err, "GetPerpetualMetadataForDEX must return an HTTP failure")
 }
 
 func TestGetPerpetualDEXs(t *testing.T) {
@@ -353,58 +422,82 @@ func TestGetPerpetualDEXs(t *testing.T) {
 	require.Error(t, err, "GetPerpetualDEXs must error for perpetual DEX registry from a failing server")
 }
 
-func TestGetMetadataAndAssetContexts(t *testing.T) {
+func TestGetPerpetualMetadataAndAssetContexts(t *testing.T) {
+	t.Run("null metadata", func(t *testing.T) {
+		ex := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": `[null,[]]`})
+		_, err := ex.GetPerpetualMetadataAndAssetContexts(t.Context())
+		assert.ErrorIs(t, err, common.ErrNilPointer, "GetPerpetualMetadataAndAssetContexts should reject null metadata")
+	})
 	ex := newStaticInfoExchange(t, map[string]string{
-		"metaAndAssetCtxs":     perpetualContextsJSON,
-		"spotMetaAndAssetCtxs": spotContextsJSON,
+		"metaAndAssetCtxs": perpetualContextsJSON,
 	})
 	perpetual, err := ex.GetPerpetualMetadataAndAssetContexts(t.Context())
 	require.NoError(t, err, "GetPerpetualMetadataAndAssetContexts must not error for perpetual metadata and contexts")
 	require.Len(t, perpetual.AssetContexts, 1, "perpetual.AssetContexts: perpetual response must contain one context")
 	assert.Equal(t, 101.0, perpetual.AssetContexts[0].MarkPrice.Float64(), "Float64: perpetual mark price should be decoded")
 
-	spot, err := ex.GetSpotMetadataAndAssetContexts(t.Context())
-	require.NoError(t, err, "GetSpotMetadataAndAssetContexts must not error for spot metadata and contexts")
-	require.Len(t, spot.AssetContexts, 1, "spot.AssetContexts: spot response must contain one context")
-	assert.Equal(t, "@107", spot.AssetContexts[0].Coin, "spot.AssetContexts[0].Coin: spot context identifier should be decoded")
-
 	lengthExchange := newStaticInfoExchange(t, map[string]string{
-		"metaAndAssetCtxs":     `[]`,
-		"spotMetaAndAssetCtxs": `[{}]`,
+		"metaAndAssetCtxs": `[]`,
 	})
 	_, err = lengthExchange.GetPerpetualMetadataAndAssetContexts(t.Context())
 	require.ErrorIs(t, err, errUnexpectedResponseLength, "GetPerpetualMetadataAndAssetContexts must return the expected error for unexpected perpetual response length")
-	_, err = lengthExchange.GetSpotMetadataAndAssetContexts(t.Context())
-	require.ErrorIs(t, err, errUnexpectedResponseLength, "GetSpotMetadataAndAssetContexts must return the expected error for unexpected spot response length")
 
 	decodeExchange := newStaticInfoExchange(t, map[string]string{
-		"metaAndAssetCtxs":     `[false,false]`,
-		"spotMetaAndAssetCtxs": `[false,false]`,
+		"metaAndAssetCtxs": `[false,false]`,
 	})
 	_, err = decodeExchange.GetPerpetualMetadataAndAssetContexts(t.Context())
 	require.ErrorContains(t, err, "perpetual metadata", "GetPerpetualMetadataAndAssetContexts must return a decoding error for invalid perpetual metadata")
-	_, err = decodeExchange.GetSpotMetadataAndAssetContexts(t.Context())
-	require.ErrorContains(t, err, "spot metadata", "GetSpotMetadataAndAssetContexts must return a decoding error for invalid spot metadata")
 
 	contextDecodeExchange := newStaticInfoExchange(t, map[string]string{
-		"metaAndAssetCtxs":     `[{},false]`,
-		"spotMetaAndAssetCtxs": `[{},false]`,
+		"metaAndAssetCtxs": `[{},false]`,
 	})
 	_, err = contextDecodeExchange.GetPerpetualMetadataAndAssetContexts(t.Context())
 	require.ErrorContains(t, err, "perpetual asset contexts", "GetPerpetualMetadataAndAssetContexts must return a decoding error for invalid perpetual contexts")
-	_, err = contextDecodeExchange.GetSpotMetadataAndAssetContexts(t.Context())
-	require.ErrorContains(t, err, "spot asset contexts", "GetSpotMetadataAndAssetContexts must return a decoding error for invalid spot contexts")
 
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	_, err = errorExchange.GetPerpetualMetadataAndAssetContexts(t.Context())
 	require.Error(t, err, "GetPerpetualMetadataAndAssetContexts must error for perpetual contexts from a failing server")
+}
+
+func TestGetSpotMetadataAndAssetContexts(t *testing.T) {
+	t.Run("null metadata", func(t *testing.T) {
+		ex := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": `[null,[]]`})
+		_, err := ex.GetSpotMetadataAndAssetContexts(t.Context())
+		assert.ErrorIs(t, err, common.ErrNilPointer, "GetSpotMetadataAndAssetContexts should reject null metadata")
+	})
+	ex := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": spotContextsJSON})
+	spot, err := ex.GetSpotMetadataAndAssetContexts(t.Context())
+	require.NoError(t, err, "GetSpotMetadataAndAssetContexts must not error for spot metadata and contexts")
+	require.Len(t, spot.AssetContexts, 1, "spot.AssetContexts must contain one context")
+	assert.Equal(t, "@107", spot.AssetContexts[0].Coin, "spot.AssetContexts[0].Coin should contain the spot context identifier")
+
+	lengthExchange := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": `[{}]`})
+	_, err = lengthExchange.GetSpotMetadataAndAssetContexts(t.Context())
+	require.ErrorIs(t, err, errUnexpectedResponseLength, "GetSpotMetadataAndAssetContexts must return the expected error for unexpected spot response length")
+
+	decodeExchange := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": `[false,false]`})
+	_, err = decodeExchange.GetSpotMetadataAndAssetContexts(t.Context())
+	require.ErrorContains(t, err, "spot metadata", "GetSpotMetadataAndAssetContexts must return a decoding error for invalid spot metadata")
+
+	contextDecodeExchange := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": `[{},false]`})
+	_, err = contextDecodeExchange.GetSpotMetadataAndAssetContexts(t.Context())
+	require.ErrorContains(t, err, "spot asset contexts", "GetSpotMetadataAndAssetContexts must return a decoding error for invalid spot contexts")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
 	_, err = errorExchange.GetSpotMetadataAndAssetContexts(t.Context())
 	require.Error(t, err, "GetSpotMetadataAndAssetContexts must error for spot contexts from a failing server")
 }
 
 func TestGetPerpetualMetadataAndAssetContextsForDEX(t *testing.T) {
+	t.Run("null metadata", func(t *testing.T) {
+		ex := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": `[null,[]]`})
+		_, err := ex.GetPerpetualMetadataAndAssetContextsForDEX(t.Context(), testBuilderDEXName)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "GetPerpetualMetadataAndAssetContextsForDEX should reject null metadata")
+	})
 	var got infoRequest
 	ex := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&got), "Decode should not error for DEX contexts request") {
@@ -417,9 +510,29 @@ func TestGetPerpetualMetadataAndAssetContextsForDEX(t *testing.T) {
 	require.NoError(t, err, "GetPerpetualMetadataAndAssetContextsForDEX must not error for named DEX contexts")
 	require.Len(t, result.AssetContexts, 1, "GetPerpetualMetadataAndAssetContextsForDEX must decode one context")
 	assert.Equal(t, "xyz", got.DEX, "got.DEX should be included in the request")
+
+	invalidLength := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": `[]`})
+	_, err = invalidLength.GetPerpetualMetadataAndAssetContextsForDEX(t.Context(), "xyz")
+	require.ErrorIs(t, err, errUnexpectedResponseLength, "GetPerpetualMetadataAndAssetContextsForDEX must reject an invalid response length")
+	invalidMetadata := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": `[false,false]`})
+	_, err = invalidMetadata.GetPerpetualMetadataAndAssetContextsForDEX(t.Context(), "xyz")
+	require.ErrorContains(t, err, "perpetual metadata", "GetPerpetualMetadataAndAssetContextsForDEX must identify malformed metadata")
+	invalidContexts := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": `[{},false]`})
+	_, err = invalidContexts.GetPerpetualMetadataAndAssetContextsForDEX(t.Context(), "xyz")
+	require.ErrorContains(t, err, "perpetual asset contexts", "GetPerpetualMetadataAndAssetContextsForDEX must identify malformed contexts")
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failed.GetPerpetualMetadataAndAssetContextsForDEX(t.Context(), "xyz")
+	require.Error(t, err, "GetPerpetualMetadataAndAssetContextsForDEX must return an HTTP failure")
 }
 
 func TestGetFundingHistory(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.GetFundingHistory(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "GetFundingHistory should reject a nil request")
+	})
 	start := time.UnixMilli(1700000000000).UTC()
 	end := start.Add(time.Hour)
 	var got infoRequest
@@ -430,12 +543,12 @@ func TestGetFundingHistory(t *testing.T) {
 		_, err := w.Write([]byte(`[{"coin":"BTC","fundingRate":"0.0001","premium":"0.0002","time":1700000000000}]`))
 		assert.NoError(t, err, "Write should not error for funding history response")
 	}))
-	_, err := ex.GetFundingHistory(t.Context(), " ", start, end)
+	_, err := ex.GetFundingHistory(t.Context(), &FundingHistoryRequest{Coin: " ", StartTime: start, EndTime: end})
 	require.ErrorIs(t, err, errCoinRequired, "GetFundingHistory must return the expected error for blank funding coin")
-	_, err = ex.GetFundingHistory(t.Context(), "BTC", end, start)
+	_, err = ex.GetFundingHistory(t.Context(), &FundingHistoryRequest{Coin: "BTC", StartTime: end, EndTime: start})
 	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetFundingHistory must return the expected error for invalid funding range")
 
-	result, err := ex.GetFundingHistory(t.Context(), " BTC ", start, end)
+	result, err := ex.GetFundingHistory(t.Context(), &FundingHistoryRequest{Coin: " BTC ", StartTime: start, EndTime: end})
 	require.NoError(t, err, "GetFundingHistory must not error for valid funding history")
 	require.Len(t, result, 1, "GetFundingHistory must decode one record")
 	assert.Equal(t, "BTC", got.Coin, "got.Coin: funding coin should be trimmed")
@@ -446,7 +559,7 @@ func TestGetFundingHistory(t *testing.T) {
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
-	_, err = errorExchange.GetFundingHistory(t.Context(), "BTC", start, end)
+	_, err = errorExchange.GetFundingHistory(t.Context(), &FundingHistoryRequest{Coin: "BTC", StartTime: start, EndTime: end})
 	require.Error(t, err, "GetFundingHistory must error for funding history from a failing server")
 }
 

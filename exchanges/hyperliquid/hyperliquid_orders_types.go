@@ -1,7 +1,10 @@
 package hyperliquid
 
 import (
+	"time"
+
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
@@ -73,6 +76,21 @@ type updateLeverageAction struct {
 	Leverage uint64 `json:"leverage" msgpack:"leverage"`
 }
 
+type orderConversionRequest struct {
+	Source          *OpenOrder
+	Status          string
+	StatusTimestamp time.Time
+	Mapping         *pairMapping
+	AssetType       asset.Item
+}
+
+// OpenOrdersRequest selects an address and its perpetual DEX. An empty DEX
+// includes spot orders and orders on the default perpetual DEX.
+type OpenOrdersRequest struct {
+	User string
+	DEX  string
+}
+
 // OpenOrder contains the common order fields returned by account info and websocket endpoints.
 type OpenOrder struct {
 	Coin             string       `json:"coin"`
@@ -97,6 +115,14 @@ type HistoricalOrder struct {
 	Order           OpenOrder  `json:"order"`
 	Status          string     `json:"status"`
 	StatusTimestamp types.Time `json:"statusTimestamp"`
+}
+
+// OrderStatusRequest selects an order for an address using exactly one of
+// OrderID or ClientOrderID.
+type OrderStatusRequest struct {
+	User          string
+	OrderID       uint64
+	ClientOrderID string
 }
 
 // OrderStatusResponse contains either an order result or an unknown-order status.

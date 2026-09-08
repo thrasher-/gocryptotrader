@@ -1,5 +1,12 @@
 package hyperliquid
 
+type l1ActionRequest struct {
+	Action       any
+	VaultAddress string
+	Nonce        uint64
+	ExpiresAfter *uint64
+}
+
 type l1Signature struct {
 	R string `json:"r"`
 	S string `json:"s"`

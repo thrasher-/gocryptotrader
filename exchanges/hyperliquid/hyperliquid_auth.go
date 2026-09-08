@@ -172,7 +172,7 @@ func (e *Exchange) sendSignedAction(ctx context.Context, action any, batchLength
 		return fmt.Errorf("%w: %w", request.ErrAuthRequestFailed, err)
 	}
 	nonce := e.nextNonce()
-	signature, err := signL1Action(credentials.Secret, action, vaultAddress, nonce, nil, e.isMainnetEnvironment())
+	signature, err := signL1Action(credentials.Secret, &l1ActionRequest{Action: action, VaultAddress: vaultAddress, Nonce: nonce}, e.isMainnetEnvironment())
 	if err != nil {
 		return err
 	}
@@ -225,21 +225,13 @@ func (e *Exchange) sendSignedAction(ctx context.Context, action any, batchLength
 	return nil
 }
 
-func (e *Exchange) sendUserSignedAction(
-	ctx context.Context,
-	credentials *accounts.Credentials,
-	actionType,
-	primaryType,
-	nonceField string,
-	fields []eip712Field,
-	result *exchangeActionResponse,
-) (uint64, error) {
-	if e == nil || e.Requester == nil || e.API.Endpoints == nil || credentials == nil || result == nil {
+func (e *Exchange) sendUserSignedAction(ctx context.Context, params *userSignedActionRequest, result *exchangeActionResponse) (uint64, error) {
+	if e == nil || e.Requester == nil || e.API.Endpoints == nil || params == nil || params.Credentials == nil || result == nil {
 		return 0, common.ErrNilPointer
 	}
-	actionType = strings.TrimSpace(actionType)
-	primaryType = strings.TrimSpace(primaryType)
-	nonceField = strings.TrimSpace(nonceField)
+	actionType := strings.TrimSpace(params.ActionType)
+	primaryType := strings.TrimSpace(params.PrimaryType)
+	nonceField := strings.TrimSpace(params.NonceField)
 	if actionType == "" || primaryType == "" || (nonceField != "nonce" && nonceField != "time") {
 		return 0, errUserSignedActionInvalid
 	}
@@ -251,10 +243,11 @@ func (e *Exchange) sendUserSignedAction(
 	if err != nil {
 		return 0, err
 	}
-	if *currentCredentials != *credentials {
+	if *currentCredentials != *params.Credentials {
 		return 0, fmt.Errorf("%w: %w", request.ErrAuthRequestFailed, errCredentialsChanged)
 	}
-	if _, err := e.validateCachedAuthority(ctx, currentCredentials, false); err != nil {
+	validationKey, err := e.validateCachedAuthority(ctx, currentCredentials, false)
+	if err != nil {
 		return 0, fmt.Errorf("%w: %w", request.ErrAuthRequestFailed, err)
 	}
 	nonce := e.nextNonce()
@@ -268,7 +261,7 @@ func (e *Exchange) sendUserSignedAction(
 		"hyperliquidChain": chain,
 		nonceField:         nonce,
 	}
-	signingFields := make([]eip712Field, 0, len(fields)+2)
+	signingFields := make([]eip712Field, 0, len(params.Fields)+2)
 	signingFields = append(signingFields, eip712Field{Name: "hyperliquidChain", Type: "string", Value: chain})
 	seen := map[string]struct{}{
 		"type":             {},
@@ -276,16 +269,16 @@ func (e *Exchange) sendUserSignedAction(
 		"hyperliquidChain": {},
 		nonceField:         {},
 	}
-	for i := range fields {
-		if _, ok := seen[fields[i].Name]; ok || strings.TrimSpace(fields[i].Name) == "" {
-			return 0, fmt.Errorf("%w: duplicate or reserved field %q", errUserSignedActionInvalid, fields[i].Name)
+	for i := range params.Fields {
+		if _, ok := seen[params.Fields[i].Name]; ok || strings.TrimSpace(params.Fields[i].Name) == "" {
+			return 0, fmt.Errorf("%w: duplicate or reserved field %q", errUserSignedActionInvalid, params.Fields[i].Name)
 		}
-		seen[fields[i].Name] = struct{}{}
-		action[fields[i].Name] = fields[i].Value
-		signingFields = append(signingFields, fields[i])
+		seen[params.Fields[i].Name] = struct{}{}
+		action[params.Fields[i].Name] = params.Fields[i].Value
+		signingFields = append(signingFields, params.Fields[i])
 	}
 	signingFields = append(signingFields, eip712Field{Name: nonceField, Type: "uint64", Value: nonce})
-	signature, err := signUserSignedAction(credentials.Secret, primaryType, signingFields)
+	signature, err := signUserSignedAction(params.Credentials.Secret, primaryType, signingFields)
 	if err != nil {
 		return 0, err
 	}
@@ -310,13 +303,17 @@ func (e *Exchange) sendUserSignedAction(
 	}, request.AuthenticatedRequest)
 	if err != nil {
 		e.authorityValidationMu.Lock()
-		e.authorityValidated = false
+		if e.authorityValidationKey == validationKey {
+			e.authorityValidated = false
+		}
 		e.authorityValidationMu.Unlock()
 		return 0, err
 	}
 	if result.Status != "ok" {
 		e.authorityValidationMu.Lock()
-		e.authorityValidated = false
+		if e.authorityValidationKey == validationKey {
+			e.authorityValidated = false
+		}
 		e.authorityValidationMu.Unlock()
 		var message string
 		if err := json.Unmarshal(result.Response, &message); err != nil {

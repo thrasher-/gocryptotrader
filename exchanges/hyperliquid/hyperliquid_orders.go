@@ -44,6 +44,7 @@ var (
 	errInvalidMarketPrice        = errors.New("invalid market price")
 	errInvalidLeverage           = errors.New("leverage must be a positive whole number within the market maximum")
 	errMarketMidPriceNotFound    = errors.New("market mid price not found")
+	errOrderIdentifierConflict   = errors.New("order ID and client order ID are mutually exclusive")
 	errOrderNotModifiable        = errors.New("order is not open for modification")
 	errPricePrecision            = errors.New("price exceeds market precision")
 	errRiskManagementUnsupported = errors.New("unsupported risk management configuration")
@@ -166,40 +167,45 @@ func formatOrderTimeInForce(timeInForce order.TimeInForce) (string, error) {
 	}
 }
 
-func (e *Exchange) buildOrderWire(ctx context.Context, p currency.Pair, a asset.Item, orderType order.Type, side order.Side, timeInForce order.TimeInForce, amount, price, triggerPrice, slippage float64, reduceOnly bool, clientOrderID string) (orderWire, pairMapping, error) {
-	mapping, err := e.getPairMapping(ctx, p, a)
+func (e *Exchange) buildOrderWire(ctx context.Context, submit *order.Submit) (orderWire, pairMapping, error) {
+	if submit == nil {
+		return orderWire{}, pairMapping{}, common.ErrNilPointer
+	}
+	mapping, err := e.getPairMapping(ctx, submit.Pair, submit.AssetType)
 	if err != nil {
 		return orderWire{}, pairMapping{}, err
 	}
-	size, err := formatOrderSize(amount, mapping.sizeDecimals)
+	size, err := formatOrderSize(submit.Amount, mapping.sizeDecimals)
 	if err != nil {
 		return orderWire{}, mapping, err
 	}
+	clientOrderID := submit.ClientOrderID
 	if clientOrderID != "" {
 		if err := validateClientOrderID(clientOrderID); err != nil {
 			return orderWire{}, mapping, err
 		}
 		clientOrderID = strings.ToLower(clientOrderID)
 	}
+	price := submit.Price
 	var wireType orderTypeWire
-	switch orderType {
+	switch submit.Type {
 	case order.Limit:
-		if triggerPrice != 0 {
+		if submit.TriggerPrice != 0 {
 			return orderWire{}, mapping, fmt.Errorf("%w: trigger price requires a trigger order type", errRiskManagementUnsupported)
 		}
-		if err := validateLimitPrice(price, a, mapping.sizeDecimals); err != nil {
+		if err := validateLimitPrice(price, submit.AssetType, mapping.sizeDecimals); err != nil {
 			return orderWire{}, mapping, err
 		}
-		tif, err := formatOrderTimeInForce(timeInForce)
+		tif, err := formatOrderTimeInForce(submit.TimeInForce)
 		if err != nil {
 			return orderWire{}, mapping, err
 		}
 		wireType.Limit = &limitOrderTypeWire{TimeInForce: tif}
 	case order.Market:
-		if triggerPrice != 0 {
+		if submit.TriggerPrice != 0 {
 			return orderWire{}, mapping, fmt.Errorf("%w: trigger price requires a trigger order type", errRiskManagementUnsupported)
 		}
-		if slippage <= 0 || slippage >= 1 {
+		if submit.SlippageTolerance <= 0 || submit.SlippageTolerance >= 1 {
 			return orderWire{}, mapping, errSlippageTolerance
 		}
 		mids, err := e.GetAllMids(ctx, mapping.dex)
@@ -211,47 +217,47 @@ func (e *Exchange) buildOrderWire(ctx context.Context, p currency.Pair, a asset.
 			return orderWire{}, mapping, fmt.Errorf("%w: %s", errMarketMidPriceNotFound, mapping.coin)
 		}
 		price = mid.Float64()
-		if side.IsLong() {
-			price *= 1 + slippage
+		if submit.Side.IsLong() {
+			price *= 1 + submit.SlippageTolerance
 		} else {
-			price *= 1 - slippage
+			price *= 1 - submit.SlippageTolerance
 		}
-		price, err = roundMarketPrice(price, a, mapping.sizeDecimals)
+		price, err = roundMarketPrice(price, submit.AssetType, mapping.sizeDecimals)
 		if err != nil {
 			return orderWire{}, mapping, err
 		}
 		wireType.Limit = &limitOrderTypeWire{TimeInForce: wireTimeInForceIOC}
 	case order.Stop, order.StopLimit, order.StopMarket, order.TakeProfit, order.TakeProfitMarket:
-		if a != asset.PerpetualContract || !reduceOnly {
+		if submit.AssetType != asset.PerpetualContract || !submit.ReduceOnly {
 			return orderWire{}, mapping, errTriggerOrderReduceOnly
 		}
-		if triggerPrice <= 0 {
+		if submit.TriggerPrice <= 0 {
 			return orderWire{}, mapping, errTriggerPriceRequired
 		}
-		if err := validateLimitPrice(triggerPrice, a, mapping.sizeDecimals); err != nil {
+		if err := validateLimitPrice(submit.TriggerPrice, submit.AssetType, mapping.sizeDecimals); err != nil {
 			return orderWire{}, mapping, fmt.Errorf("invalid trigger price: %w", err)
 		}
-		isMarket := orderType == order.Stop || orderType == order.StopMarket || orderType == order.TakeProfitMarket
+		isMarket := submit.Type == order.Stop || submit.Type == order.StopMarket || submit.Type == order.TakeProfitMarket
 		if isMarket && price == 0 {
-			if slippage <= 0 || slippage >= 1 {
+			if submit.SlippageTolerance <= 0 || submit.SlippageTolerance >= 1 {
 				return orderWire{}, mapping, errSlippageTolerance
 			}
-			price = triggerPrice
-			if side.IsLong() {
-				price *= 1 + slippage
+			price = submit.TriggerPrice
+			if submit.Side.IsLong() {
+				price *= 1 + submit.SlippageTolerance
 			} else {
-				price *= 1 - slippage
+				price *= 1 - submit.SlippageTolerance
 			}
-			price, err = roundMarketPrice(price, a, mapping.sizeDecimals)
+			price, err = roundMarketPrice(price, submit.AssetType, mapping.sizeDecimals)
 			if err != nil {
 				return orderWire{}, mapping, err
 			}
-		} else if err := validateLimitPrice(price, a, mapping.sizeDecimals); err != nil {
+		} else if err := validateLimitPrice(price, submit.AssetType, mapping.sizeDecimals); err != nil {
 			return orderWire{}, mapping, err
 		}
-		triggerPriceWire, _ := floatToWire(triggerPrice) // Trigger validation guarantees a wire-safe number.
+		triggerPriceWire, _ := floatToWire(submit.TriggerPrice) // Trigger validation guarantees a wire-safe number.
 		tpsl := "sl"
-		if orderType == order.TakeProfit || orderType == order.TakeProfitMarket {
+		if submit.Type == order.TakeProfit || submit.Type == order.TakeProfitMarket {
 			tpsl = "tp"
 		}
 		wireType.Trigger = &triggerOrderTypeWire{
@@ -260,39 +266,31 @@ func (e *Exchange) buildOrderWire(ctx context.Context, p currency.Pair, a asset.
 			TakeProfitStopLoss: tpsl,
 		}
 	default:
-		return orderWire{}, mapping, fmt.Errorf("%w: %s", order.ErrTypeIsInvalid, orderType)
+		return orderWire{}, mapping, fmt.Errorf("%w: %s", order.ErrTypeIsInvalid, submit.Type)
 	}
 	priceWire, _ := floatToWire(price) // Limit/trigger validation and market rounding guarantee wire-safe precision.
 	return orderWire{
 		AssetID:       mapping.assetID,
-		IsBuy:         side.IsLong(),
+		IsBuy:         submit.Side.IsLong(),
 		Price:         priceWire,
 		Size:          size,
-		ReduceOnly:    reduceOnly,
+		ReduceOnly:    submit.ReduceOnly,
 		Type:          wireType,
 		ClientOrderID: clientOrderID,
 	}, mapping, nil
 }
 
 func (e *Exchange) buildOrderWires(ctx context.Context, submit *order.Submit) ([]orderWire, pairMapping, string, error) {
+	if submit == nil {
+		return nil, pairMapping{}, "", common.ErrNilPointer
+	}
 	switch submit.Type {
 	case order.Stop, order.StopLimit, order.StopMarket, order.TakeProfit, order.TakeProfitMarket:
 		if submit.TriggerPriceType != order.MarkPrice {
 			return nil, pairMapping{}, "", fmt.Errorf("%w: Hyperliquid triggers use mark price", errRiskManagementUnsupported)
 		}
 	}
-	parent, mapping, err := e.buildOrderWire(ctx,
-		submit.Pair,
-		submit.AssetType,
-		submit.Type,
-		submit.Side,
-		submit.TimeInForce,
-		submit.Amount,
-		submit.Price,
-		submit.TriggerPrice,
-		submit.SlippageTolerance,
-		submit.ReduceOnly,
-		submit.ClientOrderID)
+	parent, mapping, err := e.buildOrderWire(ctx, submit)
 	if err != nil {
 		return nil, mapping, "", err
 	}
@@ -343,18 +341,17 @@ func (e *Exchange) buildOrderWires(ctx context.Context, submit *order.Submit) ([
 		if submit.Side.IsLong() {
 			childSide = order.Sell
 		}
-		childWire, _, err := e.buildOrderWire(ctx,
-			submit.Pair,
-			submit.AssetType,
-			childType,
-			childSide,
-			order.UnknownTIF,
-			submit.Amount,
-			child.riskManagement.LimitPrice,
-			child.riskManagement.Price,
-			slippage,
-			true,
-			"")
+		childWire, _, err := e.buildOrderWire(ctx, &order.Submit{
+			Pair:              submit.Pair,
+			AssetType:         submit.AssetType,
+			Type:              childType,
+			Side:              childSide,
+			Amount:            submit.Amount,
+			Price:             child.riskManagement.LimitPrice,
+			TriggerPrice:      child.riskManagement.Price,
+			SlippageTolerance: slippage,
+			ReduceOnly:        true,
+		})
 		if err != nil {
 			return nil, mapping, "", err
 		}
@@ -372,8 +369,8 @@ func parseOrderActionStatuses(response *exchangeActionResponse, expected int) ([
 		return nil, err
 	}
 	if len(actionData.Data.Statuses) == 1 && expected > 1 {
-		var failure actionErrorResponse
-		if err := json.Unmarshal(actionData.Data.Statuses[0], &failure); err == nil && failure.Error != "" {
+		failure := new(actionErrorResponse)
+		if err := json.Unmarshal(actionData.Data.Statuses[0], failure); err == nil && failure.Error != "" {
 			actionData.Data.Statuses = slices.Repeat(actionData.Data.Statuses, expected)
 		}
 	}
@@ -430,11 +427,11 @@ func (e *Exchange) submitOrder(ctx context.Context, submit *order.Submit) (*orde
 		return nil, err
 	}
 	action := orderAction{Type: "order", Orders: wires, Grouping: grouping}
-	var response exchangeActionResponse
-	if err := e.sendSignedAction(ctx, action, len(wires), &response); err != nil {
+	response := new(exchangeActionResponse)
+	if err := e.sendSignedAction(ctx, action, len(wires), response); err != nil {
 		return nil, err
 	}
-	statuses, err := parseOrderActionStatuses(&response, len(wires))
+	statuses, err := parseOrderActionStatuses(response, len(wires))
 	if err != nil {
 		return nil, err
 	}
@@ -505,8 +502,8 @@ func parseCancelActionStatuses(response *exchangeActionResponse, identifiers []s
 			statuses[identifiers[i]] = success
 			continue
 		}
-		var failure actionErrorResponse
-		if err := json.Unmarshal(actionData.Data.Statuses[i], &failure); err != nil {
+		failure := new(actionErrorResponse)
+		if err := json.Unmarshal(actionData.Data.Statuses[i], failure); err != nil {
 			return nil, err
 		}
 		if failure.Error == "" {
@@ -559,21 +556,21 @@ func (e *Exchange) cancelOrders(ctx context.Context, cancels []order.Cancel) (ma
 	statuses := make(map[string]string, len(cancels))
 	var errs error
 	if len(numericWires) != 0 {
-		var response exchangeActionResponse
-		err := e.sendSignedAction(ctx, cancelAction{Type: "cancel", Cancels: numericWires}, len(numericWires), &response)
+		response := new(exchangeActionResponse)
+		err := e.sendSignedAction(ctx, cancelAction{Type: "cancel", Cancels: numericWires}, len(numericWires), response)
 		if err == nil {
 			var parsed map[string]string
-			parsed, err = parseCancelActionStatuses(&response, numericIDs)
+			parsed, err = parseCancelActionStatuses(response, numericIDs)
 			maps.Copy(statuses, parsed)
 		}
 		errs = common.AppendError(errs, err)
 	}
 	if len(clientWires) != 0 {
-		var response exchangeActionResponse
-		err := e.sendSignedAction(ctx, cancelByClientOrderIDAction{Type: "cancelByCloid", Cancels: clientWires}, len(clientWires), &response)
+		response := new(exchangeActionResponse)
+		err := e.sendSignedAction(ctx, cancelByClientOrderIDAction{Type: "cancelByCloid", Cancels: clientWires}, len(clientWires), response)
 		if err == nil {
 			var parsed map[string]string
-			parsed, err = parseCancelActionStatuses(&response, clientIDs)
+			parsed, err = parseCancelActionStatuses(response, clientIDs)
 			maps.Copy(statuses, parsed)
 		}
 		errs = common.AppendError(errs, err)
@@ -664,13 +661,13 @@ func (e *Exchange) SetLeverage(ctx context.Context, a asset.Item, p currency.Pai
 	default:
 		return fmt.Errorf("%w: %s", margin.ErrMarginTypeUnsupported, marginType)
 	}
-	var result exchangeActionResponse
+	result := new(exchangeActionResponse)
 	return e.sendSignedAction(ctx, updateLeverageAction{
 		Type:     "updateLeverage",
 		AssetID:  mapping.assetID,
 		IsCross:  isCross,
 		Leverage: uint64(amount),
-	}, 1, &result)
+	}, 1, result)
 }
 
 func (e *Exchange) convertOrder(ctx context.Context, source *OpenOrder, status string, statusTimestamp time.Time) (order.Detail, error) {
@@ -681,13 +678,20 @@ func (e *Exchange) convertOrder(ctx context.Context, source *OpenOrder, status s
 	if err != nil {
 		return order.Detail{}, err
 	}
-	return e.convertOrderFromMapping(source, status, statusTimestamp, &mapping, a)
+	return e.convertOrderFromMapping(&orderConversionRequest{
+		Source:          source,
+		Status:          status,
+		StatusTimestamp: statusTimestamp,
+		Mapping:         &mapping,
+		AssetType:       a,
+	})
 }
 
-func (e *Exchange) convertOrderFromMapping(source *OpenOrder, status string, statusTimestamp time.Time, mapping *pairMapping, a asset.Item) (order.Detail, error) {
-	if source == nil || mapping == nil {
+func (e *Exchange) convertOrderFromMapping(req *orderConversionRequest) (order.Detail, error) {
+	if req == nil || req.Source == nil || req.Mapping == nil {
 		return order.Detail{}, common.ErrNilPointer
 	}
+	source := req.Source
 	var side order.Side
 	switch source.Side {
 	case "A":
@@ -705,7 +709,7 @@ func (e *Exchange) convertOrderFromMapping(source *OpenOrder, status string, sta
 	if err != nil {
 		return order.Detail{}, err
 	}
-	orderStatus, err := classifyHyperliquidOrderStatus(status)
+	orderStatus, err := classifyHyperliquidOrderStatus(req.Status)
 	if err != nil {
 		return order.Detail{}, err
 	}
@@ -717,7 +721,7 @@ func (e *Exchange) convertOrderFromMapping(source *OpenOrder, status string, sta
 	if source.ClientOrderID != nil {
 		clientOrderID = *source.ClientOrderID
 	}
-	lastUpdated := statusTimestamp.UTC()
+	lastUpdated := req.StatusTimestamp.UTC()
 	if lastUpdated.IsZero() {
 		lastUpdated = source.Timestamp.Time().UTC()
 	}
@@ -735,27 +739,30 @@ func (e *Exchange) convertOrderFromMapping(source *OpenOrder, status string, sta
 		Type:            orderType,
 		Side:            side,
 		Status:          orderStatus,
-		AssetType:       a,
+		AssetType:       req.AssetType,
 		Date:            source.Timestamp.Time().UTC(),
 		LastUpdated:     lastUpdated,
-		Pair:            mapping.pair,
+		Pair:            req.Mapping.pair,
 	}, nil
 }
 
 // GetOpenOrdersForUser returns open spot and default-DEX perpetual orders for an address.
 func (e *Exchange) GetOpenOrdersForUser(ctx context.Context, user string) ([]OpenOrder, error) {
-	return e.GetOpenOrdersForUserForDEX(ctx, user, "")
+	return e.GetOpenOrdersForUserForDEX(ctx, &OpenOrdersRequest{User: user})
 }
 
 // GetOpenOrdersForUserForDEX returns open orders for one perpetual DEX. The
 // default DEX response also includes spot orders.
-func (e *Exchange) GetOpenOrdersForUserForDEX(ctx context.Context, user, dex string) ([]OpenOrder, error) {
-	user, _, err := normaliseAddress(user)
+func (e *Exchange) GetOpenOrdersForUserForDEX(ctx context.Context, req *OpenOrdersRequest) ([]OpenOrder, error) {
+	if req == nil {
+		return nil, common.ErrNilPointer
+	}
+	user, _, err := normaliseAddress(req.User)
 	if err != nil {
 		return nil, err
 	}
 	var resp []OpenOrder
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoStandardEPL, &infoRequest{Type: "frontendOpenOrders", User: user, DEX: dex}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: "frontendOpenOrders", User: user, DEX: req.DEX}}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -768,32 +775,37 @@ func (e *Exchange) GetHistoricalOrdersForUser(ctx context.Context, user string) 
 		return nil, err
 	}
 	var resp []HistoricalOrder
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoHistoricalOrdersEPL, &infoRequest{Type: "historicalOrders", User: user}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoHistoricalOrdersEPL, Payload: &infoRequest{Type: "historicalOrders", User: user}}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
 // GetOrderStatusForUser returns order status by numeric order ID or client order ID.
-func (e *Exchange) GetOrderStatusForUser(ctx context.Context, user string, orderID any) (*OrderStatusResponse, error) {
-	user, _, err := normaliseAddress(user)
+func (e *Exchange) GetOrderStatusForUser(ctx context.Context, req *OrderStatusRequest) (*OrderStatusResponse, error) {
+	if req == nil {
+		return nil, common.ErrNilPointer
+	}
+	user, _, err := normaliseAddress(req.User)
 	if err != nil {
 		return nil, err
 	}
-	switch id := orderID.(type) {
-	case uint64:
-		if id == 0 {
-			return nil, order.ErrOrderIDNotSet
-		}
-	case string:
-		if err := validateClientOrderID(id); err != nil {
+	var orderID any
+	switch {
+	case req.OrderID != 0 && req.ClientOrderID != "":
+		return nil, errOrderIdentifierConflict
+	case req.OrderID != 0:
+		orderID = req.OrderID
+	case req.ClientOrderID != "":
+		if err := validateClientOrderID(req.ClientOrderID); err != nil {
 			return nil, err
 		}
+		orderID = req.ClientOrderID
 	default:
-		return nil, fmt.Errorf("%w: expected uint64 or client order ID string", order.ErrOrderIDNotSet)
+		return nil, order.ErrOrderIDNotSet
 	}
 	var resp *OrderStatusResponse
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoLightEPL, &infoRequest{Type: "orderStatus", User: user, OrderID: orderID}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "orderStatus", User: user, OrderID: orderID}}, &resp); err != nil {
 		return nil, err
 	}
 	if resp == nil {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thrasher-corp/gocryptotrader/common"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
@@ -53,6 +54,27 @@ var (
 	errUnexpectedResponseLength  = errors.New("unexpected response length")
 )
 
+// UnmarshalJSON preserves the signed transfer identifier alongside the currency code.
+func (m *SpotTokenMetadata) UnmarshalJSON(data []byte) error {
+	if m == nil {
+		return common.ErrNilPointer
+	}
+	var response *spotTokenMetadataResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("unmarshalling spot token metadata: %w", err)
+	}
+	if response == nil {
+		*m = SpotTokenMetadata{}
+		return nil
+	}
+	*m = SpotTokenMetadata(response.spotTokenMetadataFields)
+	m.Name = currency.NewCode(response.Name)
+	if response.Name != "" && m.TokenID != "" {
+		m.TokenIdentifier = response.Name + ":" + m.TokenID
+	}
+	return nil
+}
+
 func getRESTEndpoint(a asset.Item) (exchange.URL, error) {
 	switch a {
 	case asset.Spot:
@@ -65,16 +87,16 @@ func getRESTEndpoint(a asset.Item) (exchange.URL, error) {
 }
 
 // SendHTTPRequest sends an unauthenticated request to Hyperliquid's info endpoint.
-func (e *Exchange) SendHTTPRequest(ctx context.Context, endpointType exchange.URL, f request.EndpointLimit, payload, result any) error {
-	if e == nil || e.Requester == nil || e.API.Endpoints == nil {
+func (e *Exchange) SendHTTPRequest(ctx context.Context, arg *HTTPRequest, result any) error {
+	if e == nil || e.Requester == nil || e.API.Endpoints == nil || arg == nil {
 		return common.ErrNilPointer
 	}
-	endpoint, err := e.API.Endpoints.GetURL(endpointType)
+	endpoint, err := e.API.Endpoints.GetURL(arg.Endpoint)
 	if err != nil {
 		return err
 	}
-	return e.SendPayload(ctx, f, func() (*request.Item, error) {
-		body, err := json.Marshal(payload)
+	return e.SendPayload(ctx, arg.RateLimit, func() (*request.Item, error) {
+		body, err := json.Marshal(arg.Payload)
 		if err != nil {
 			return nil, err
 		}
@@ -93,14 +115,14 @@ func (e *Exchange) SendHTTPRequest(ctx context.Context, endpointType exchange.UR
 }
 
 // GetPerpetualMetadata returns metadata for the default Hyperliquid perpetual DEX.
-func (e *Exchange) GetPerpetualMetadata(ctx context.Context) (*PerpetualMetadata, error) {
+func (e *Exchange) GetPerpetualMetadata(ctx context.Context) (*PerpetualMetadataResponse, error) {
 	return e.GetPerpetualMetadataForDEX(ctx, "")
 }
 
 // GetPerpetualMetadataForDEX returns metadata for one perpetual DEX.
-func (e *Exchange) GetPerpetualMetadataForDEX(ctx context.Context, dex string) (*PerpetualMetadata, error) {
-	var resp *PerpetualMetadata
-	if err := e.SendHTTPRequest(ctx, exchange.RestFutures, infoStandardEPL, &infoRequest{Type: infoTypeMetadata, DEX: dex}, &resp); err != nil {
+func (e *Exchange) GetPerpetualMetadataForDEX(ctx context.Context, dex string) (*PerpetualMetadataResponse, error) {
+	var resp *PerpetualMetadataResponse
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestFutures, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: infoTypeMetadata, DEX: dex}}, &resp); err != nil {
 		return nil, err
 	}
 	if resp == nil {
@@ -113,7 +135,7 @@ func (e *Exchange) GetPerpetualMetadataForDEX(ctx context.Context, dex string) (
 // the default DEX and is represented by null.
 func (e *Exchange) GetPerpetualDEXs(ctx context.Context) ([]*PerpetualDEX, error) {
 	var resp []*PerpetualDEX
-	if err := e.SendHTTPRequest(ctx, exchange.RestFutures, infoStandardEPL, &infoRequest{Type: infoTypePerpetualDEXs}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestFutures, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: infoTypePerpetualDEXs}}, &resp); err != nil {
 		return nil, err
 	}
 	if len(resp) == 0 || resp[0] != nil {
@@ -123,9 +145,9 @@ func (e *Exchange) GetPerpetualDEXs(ctx context.Context) ([]*PerpetualDEX, error
 }
 
 // GetSpotMetadata returns metadata for all Hyperliquid spot markets.
-func (e *Exchange) GetSpotMetadata(ctx context.Context) (*SpotMetadata, error) {
-	var resp *SpotMetadata
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoStandardEPL, &infoRequest{Type: "spotMeta"}, &resp); err != nil {
+func (e *Exchange) GetSpotMetadata(ctx context.Context) (*SpotMetadataResponse, error) {
+	var resp *SpotMetadataResponse
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: "spotMeta"}}, &resp); err != nil {
 		return nil, err
 	}
 	if resp == nil {
@@ -135,73 +157,82 @@ func (e *Exchange) GetSpotMetadata(ctx context.Context) (*SpotMetadata, error) {
 }
 
 // GetPerpetualMetadataAndAssetContexts returns perpetual metadata and aligned current market contexts.
-func (e *Exchange) GetPerpetualMetadataAndAssetContexts(ctx context.Context) (*PerpetualMetadataAndAssetContexts, error) {
+func (e *Exchange) GetPerpetualMetadataAndAssetContexts(ctx context.Context) (*PerpetualMetadataAndAssetContextsResponse, error) {
 	return e.GetPerpetualMetadataAndAssetContextsForDEX(ctx, "")
 }
 
 // GetPerpetualMetadataAndAssetContextsForDEX returns aligned metadata and
 // current market contexts for one perpetual DEX.
-func (e *Exchange) GetPerpetualMetadataAndAssetContextsForDEX(ctx context.Context, dex string) (*PerpetualMetadataAndAssetContexts, error) {
+func (e *Exchange) GetPerpetualMetadataAndAssetContextsForDEX(ctx context.Context, dex string) (*PerpetualMetadataAndAssetContextsResponse, error) {
 	var raw []json.RawMessage
-	if err := e.SendHTTPRequest(ctx, exchange.RestFutures, infoStandardEPL, &infoRequest{Type: "metaAndAssetCtxs", DEX: dex}, &raw); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestFutures, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: "metaAndAssetCtxs", DEX: dex}}, &raw); err != nil {
 		return nil, err
 	}
 	if len(raw) != 2 {
 		return nil, fmt.Errorf("%w: expected 2 entries, got %d", errUnexpectedResponseLength, len(raw))
 	}
-	var resp PerpetualMetadataAndAssetContexts
+	resp := new(PerpetualMetadataAndAssetContextsResponse)
 	if err := json.Unmarshal(raw[0], &resp.Metadata); err != nil {
 		return nil, fmt.Errorf("error decoding perpetual metadata: %w", err)
+	}
+	if resp.Metadata == nil {
+		return nil, common.ErrNilPointer
 	}
 	if err := json.Unmarshal(raw[1], &resp.AssetContexts); err != nil {
 		return nil, fmt.Errorf("error decoding perpetual asset contexts: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
 // GetFundingHistory returns up to 500 hourly funding records for one perpetual
 // market over an inclusive time range.
-func (e *Exchange) GetFundingHistory(ctx context.Context, coin string, start, end time.Time) ([]FundingRateRecord, error) {
-	coin = strings.TrimSpace(coin)
+func (e *Exchange) GetFundingHistory(ctx context.Context, arg *FundingHistoryRequest) ([]FundingRateRecord, error) {
+	if arg == nil {
+		return nil, common.ErrNilPointer
+	}
+	coin := strings.TrimSpace(arg.Coin)
 	if coin == "" {
 		return nil, errCoinRequired
 	}
-	if err := common.StartEndTimeCheck(start, end); err != nil {
+	if err := common.StartEndTimeCheck(arg.StartTime, arg.EndTime); err != nil {
 		return nil, err
 	}
 	var resp []FundingRateRecord
-	err := e.SendHTTPRequest(ctx, exchange.RestFutures, infoFundingHistoryEPL, &infoRequest{
+	err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestFutures, RateLimit: infoFundingHistoryEPL, Payload: &infoRequest{
 		Type:      "fundingHistory",
 		Coin:      coin,
-		StartTime: start.UnixMilli(),
-		EndTime:   end.UnixMilli(),
-	}, &resp)
+		StartTime: arg.StartTime.UnixMilli(),
+		EndTime:   arg.EndTime.UnixMilli(),
+	}}, &resp)
 	return resp, err
 }
 
 // GetSpotMetadataAndAssetContexts returns spot metadata and current market contexts.
-func (e *Exchange) GetSpotMetadataAndAssetContexts(ctx context.Context) (*SpotMetadataAndAssetContexts, error) {
+func (e *Exchange) GetSpotMetadataAndAssetContexts(ctx context.Context) (*SpotMetadataAndAssetContextsResponse, error) {
 	var raw []json.RawMessage
-	if err := e.SendHTTPRequest(ctx, exchange.RestSpot, infoStandardEPL, &infoRequest{Type: "spotMetaAndAssetCtxs"}, &raw); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestSpot, RateLimit: infoStandardEPL, Payload: &infoRequest{Type: "spotMetaAndAssetCtxs"}}, &raw); err != nil {
 		return nil, err
 	}
 	if len(raw) != 2 {
 		return nil, fmt.Errorf("%w: expected 2 entries, got %d", errUnexpectedResponseLength, len(raw))
 	}
-	var resp SpotMetadataAndAssetContexts
+	resp := new(SpotMetadataAndAssetContextsResponse)
 	if err := json.Unmarshal(raw[0], &resp.Metadata); err != nil {
 		return nil, fmt.Errorf("error decoding spot metadata: %w", err)
+	}
+	if resp.Metadata == nil {
+		return nil, common.ErrNilPointer
 	}
 	if err := json.Unmarshal(raw[1], &resp.AssetContexts); err != nil {
 		return nil, fmt.Errorf("error decoding spot asset contexts: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
 // GetAllMids returns mid prices for all actively traded markets on a perpetual DEX.
 func (e *Exchange) GetAllMids(ctx context.Context, dex string) (map[string]types.Number, error) {
 	resp := make(map[string]types.Number)
-	if err := e.SendHTTPRequest(ctx, exchange.RestFutures, infoLightEPL, &infoRequest{Type: "allMids", DEX: dex}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: exchange.RestFutures, RateLimit: infoLightEPL, Payload: &infoRequest{Type: "allMids", DEX: dex}}, &resp); err != nil {
 		return nil, err
 	}
 	if resp == nil {
@@ -211,7 +242,7 @@ func (e *Exchange) GetAllMids(ctx context.Context, dex string) (map[string]types
 }
 
 // GetL2Book returns a complete L2 orderbook snapshot with optional price aggregation.
-func (e *Exchange) GetL2Book(ctx context.Context, a asset.Item, arg *L2BookRequest) (*L2Book, error) {
+func (e *Exchange) GetL2Book(ctx context.Context, a asset.Item, arg *L2BookRequest) (*L2BookResponse, error) {
 	if arg == nil {
 		return nil, common.ErrNilPointer
 	}
@@ -239,13 +270,13 @@ func (e *Exchange) GetL2Book(ctx context.Context, a asset.Item, arg *L2BookReque
 			return nil, errInvalidMantissa
 		}
 	}
-	var resp *L2Book
-	err = e.SendHTTPRequest(ctx, endpoint, infoLightEPL, &infoRequest{
+	var resp *L2BookResponse
+	err = e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: endpoint, RateLimit: infoLightEPL, Payload: &infoRequest{
 		Type:     "l2Book",
 		Coin:     arg.Coin,
 		NSigFigs: arg.SignificantFigures,
 		Mantissa: arg.Mantissa,
-	}, &resp)
+	}}, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +299,7 @@ func (e *Exchange) GetRecentTradesForCoin(ctx context.Context, coin string, a as
 		return nil, err
 	}
 	var resp []RecentTrade
-	if err := e.SendHTTPRequest(ctx, endpoint, infoRecentTradesEPL, &infoRequest{Type: "recentTrades", Coin: coin}, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: endpoint, RateLimit: infoRecentTradesEPL, Payload: &infoRequest{Type: "recentTrades", Coin: coin}}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -305,7 +336,7 @@ func (e *Exchange) GetCandles(ctx context.Context, a asset.Item, arg *CandleRequ
 	}
 	count := kline.TotalCandlesPerInterval(arg.StartTime, arg.EndTime, arg.Interval)
 	var resp []Candle
-	if err := e.SendHTTPRequest(ctx, endpoint, candleEndpointLimit(count), payload, &resp); err != nil {
+	if err := e.SendHTTPRequest(ctx, &HTTPRequest{Endpoint: endpoint, RateLimit: candleEndpointLimit(count), Payload: payload}, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

@@ -19,6 +19,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/margin"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 func newTradingTestExchange(t *testing.T, infoResponses map[string]string, actionResponse func(string, map[string]any) string) *Exchange {
@@ -222,8 +223,26 @@ func TestFormatOrderTimeInForce(t *testing.T) {
 func TestBuildOrderWire(t *testing.T) {
 	ex := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"100","@107":"10"}`}, nil)
 
-	wire, mapping, err := ex.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Limit, order.Buy, order.GoodTillCancel, 0.12345, 100.5, 0, 0, true, strings.ToUpper(validClientOrderID))
+	wire, mapping, err := ex.buildOrderWire(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "buildOrderWire must return the expected error for a nil submission")
+	assert.Equal(t, orderWire{}, wire, "buildOrderWire should not return a wire for a nil submission")
+	assert.Equal(t, pairMapping{}, mapping, "buildOrderWire should not return a mapping for a nil submission")
+
+	submit := &order.Submit{
+		Pair:          testPerpetualPair,
+		AssetType:     asset.PerpetualContract,
+		Type:          order.Limit,
+		Side:          order.Buy,
+		TimeInForce:   order.GoodTillCancel,
+		Amount:        0.12345,
+		Price:         100.5,
+		ReduceOnly:    true,
+		ClientOrderID: strings.ToUpper(validClientOrderID),
+	}
+	original := *submit
+	wire, mapping, err = ex.buildOrderWire(t.Context(), submit)
 	require.NoError(t, err, "buildOrderWire must not error for a valid limit order")
+	assert.Equal(t, original, *submit, "buildOrderWire should leave submit unchanged when normalising the client order ID")
 	assert.Equal(t, uint64(5), mapping.sizeDecimals, "mapping.sizeDecimals: built order should retain its market precision")
 	assert.Equal(t, uint64(0), wire.AssetID, "wire.AssetID: perpetual order should use its universe index")
 	assert.True(t, wire.IsBuy, "wire.IsBuy: buy order should set the buy flag")
@@ -233,17 +252,43 @@ func TestBuildOrderWire(t *testing.T) {
 	assert.Equal(t, "Gtc", wire.Type.Limit.TimeInForce, "wire.Type.Limit.TimeInForce: limit time in force should be formatted")
 	assert.Equal(t, validClientOrderID, wire.ClientOrderID, "wire.ClientOrderID should be normalised")
 
-	wire, _, err = ex.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 0.1, 0, 0, 0.01, false, "")
+	submit = &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            0.1,
+		SlippageTolerance: 0.01,
+	}
+	original = *submit
+	wire, _, err = ex.buildOrderWire(t.Context(), submit)
 	require.NoError(t, err, "buildOrderWire must not error for a slippage-bounded market buy")
+	assert.Equal(t, original, *submit, "buildOrderWire should leave submit unchanged when deriving the market price")
 	assert.Equal(t, "101", wire.Price, "wire.Price: market buy should apply positive slippage to the midpoint")
 	assert.Equal(t, "Ioc", wire.Type.Limit.TimeInForce, "wire.Type.Limit.TimeInForce: market order should use IOC")
 
-	wire, _, err = ex.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Sell, order.UnknownTIF, 0.1, 0, 0, 0.01, false, "")
+	wire, _, err = ex.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Sell,
+		Amount:            0.1,
+		SlippageTolerance: 0.01,
+	})
 	require.NoError(t, err, "buildOrderWire must not error for a slippage-bounded market sell")
 	assert.Equal(t, "99", wire.Price, "wire.Price: market sell should apply negative slippage to the midpoint")
 	assert.False(t, wire.IsBuy, "wire.IsBuy: sell order should clear the buy flag")
 
-	wire, _, err = ex.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.StopMarket, order.Sell, order.UnknownTIF, 0.1, 0, 90, 0.1, true, "")
+	wire, _, err = ex.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.StopMarket,
+		Side:              order.Sell,
+		Amount:            0.1,
+		TriggerPrice:      90,
+		SlippageTolerance: 0.1,
+		ReduceOnly:        true,
+	})
 	require.NoError(t, err, "buildOrderWire must not error for a stop-market order")
 	require.NotNil(t, wire.Type.Trigger, "wire.Type.Trigger: stop-market order must use the trigger wire variant")
 	assert.True(t, wire.Type.Trigger.IsMarket, "wire.Type.Trigger.IsMarket: stop-market order should set the market flag")
@@ -251,7 +296,16 @@ func TestBuildOrderWire(t *testing.T) {
 	assert.Equal(t, "sl", wire.Type.Trigger.TakeProfitStopLoss, "wire.Type.Trigger.TakeProfitStopLoss: stop-market order should use stop-loss semantics")
 	assert.Equal(t, "81", wire.Price, "wire.Price: stop-market sell should derive a slippage-bounded execution price")
 
-	wire, _, err = ex.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.TakeProfit, order.Buy, order.UnknownTIF, 0.1, 111, 110, 0, true, "")
+	wire, _, err = ex.buildOrderWire(t.Context(), &order.Submit{
+		Pair:         testPerpetualPair,
+		AssetType:    asset.PerpetualContract,
+		Type:         order.TakeProfit,
+		Side:         order.Buy,
+		Amount:       0.1,
+		Price:        111,
+		TriggerPrice: 110,
+		ReduceOnly:   true,
+	})
 	require.NoError(t, err, "buildOrderWire must not error for a take-profit limit order")
 	require.NotNil(t, wire.Type.Trigger, "wire.Type.Trigger: take-profit order must use the trigger wire variant")
 	assert.False(t, wire.Type.Trigger.IsMarket, "wire.Type.Trigger.IsMarket: take-profit limit order should clear the market flag")
@@ -292,29 +346,69 @@ func TestBuildOrderWire(t *testing.T) {
 		{name: "trigger limit missing price", pair: testPerpetualPair, asset: asset.PerpetualContract, orderType: order.StopLimit, amount: 1, triggerPrice: 100, reduceOnly: true, expectedIs: errInvalidMarketPrice},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ex.buildOrderWire(t.Context(), tc.pair, tc.asset, tc.orderType, order.Buy, tc.timeInForce, tc.amount, tc.price, tc.triggerPrice, tc.slippage, tc.reduceOnly, tc.clientID)
+			_, _, err := ex.buildOrderWire(t.Context(), &order.Submit{
+				Pair:              tc.pair,
+				AssetType:         tc.asset,
+				Type:              tc.orderType,
+				Side:              order.Buy,
+				TimeInForce:       tc.timeInForce,
+				Amount:            tc.amount,
+				Price:             tc.price,
+				TriggerPrice:      tc.triggerPrice,
+				SlippageTolerance: tc.slippage,
+				ReduceOnly:        tc.reduceOnly,
+				ClientOrderID:     tc.clientID,
+			})
 			require.ErrorIs(t, err, tc.expectedIs, "buildOrderWire must return the expected error for invalid order")
 		})
 	}
 
 	missingMid := newTradingTestExchange(t, map[string]string{"allMids": `{}`}, nil)
-	_, _, err = missingMid.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 1, 0, 0, 0.01, false, "")
+	_, _, err = missingMid.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            1,
+		SlippageTolerance: 0.01,
+	})
 	require.ErrorIs(t, err, errMarketMidPriceNotFound, "buildOrderWire must return the expected error for missing market midpoint")
 
 	zeroMid := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"0"}`}, nil)
-	_, _, err = zeroMid.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 1, 0, 0, 0.01, false, "")
+	_, _, err = zeroMid.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            1,
+		SlippageTolerance: 0.01,
+	})
 	require.ErrorIs(t, err, errMarketMidPriceNotFound, "buildOrderWire must return the expected error for zero market midpoint")
 
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	errorExchange.setPairMappings(asset.PerpetualContract, []pairMapping{{pair: testPerpetualPair, coin: "BTC", sizeDecimals: 5}})
-	_, _, err = errorExchange.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 1, 0, 0, 0.01, false, "")
+	_, _, err = errorExchange.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            1,
+		SlippageTolerance: 0.01,
+	})
 	require.Error(t, err, "buildOrderWire must return market midpoint HTTP failure")
 
 	invalidPricePrecision := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"100"}`}, nil)
 	invalidPricePrecision.setPairMappings(asset.PerpetualContract, []pairMapping{{pair: testPerpetualPair, coin: "BTC", sizeDecimals: 7}})
-	_, _, err = invalidPricePrecision.buildOrderWire(t.Context(), testPerpetualPair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 1, 0, 0, 0.01, false, "")
+	_, _, err = invalidPricePrecision.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              testPerpetualPair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            1,
+		SlippageTolerance: 0.01,
+	})
 	require.ErrorIs(t, err, errSizePrecision, "buildOrderWire must return the expected error for market price precision incompatible with metadata")
 
 	hip3Pair := currency.NewPair(currency.NewCode("xyz:XYZ100"), currency.USDC)
@@ -329,7 +423,14 @@ func TestBuildOrderWire(t *testing.T) {
 	hip3.setPairMappings(asset.PerpetualContract, []pairMapping{{
 		pair: hip3Pair, coin: "xyz:XYZ100", dex: testBuilderDEXName, assetID: 110000, sizeDecimals: 2,
 	}})
-	wire, _, err = hip3.buildOrderWire(t.Context(), hip3Pair, asset.PerpetualContract, order.Market, order.Buy, order.UnknownTIF, 1, 0, 0, 0.01, false, "")
+	wire, _, err = hip3.buildOrderWire(t.Context(), &order.Submit{
+		Pair:              hip3Pair,
+		AssetType:         asset.PerpetualContract,
+		Type:              order.Market,
+		Side:              order.Buy,
+		Amount:            1,
+		SlippageTolerance: 0.01,
+	})
 	require.NoError(t, err, "buildOrderWire must not error for a HIP-3 market order")
 	assert.Equal(t, testBuilderDEXName, hip3Request.DEX, "hip3Request.DEX: HIP-3 market midpoint request should use its DEX")
 	assert.Equal(t, uint64(110000), wire.AssetID, "wire.AssetID: HIP-3 order should use its builder asset ID")
@@ -337,6 +438,12 @@ func TestBuildOrderWire(t *testing.T) {
 
 func TestBuildOrderWires(t *testing.T) {
 	ex := newTradingTestExchange(t, nil, nil)
+	wires, mapping, grouping, err := ex.buildOrderWires(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "buildOrderWires must return the expected error for a nil submission")
+	assert.Nil(t, wires, "buildOrderWires should not return wires for a nil submission")
+	assert.Equal(t, pairMapping{}, mapping, "buildOrderWires should not return a mapping for a nil submission")
+	assert.Empty(t, grouping, "buildOrderWires should not return a grouping for a nil submission")
+
 	submit := &order.Submit{
 		Exchange:      "Hyperliquid",
 		Type:          order.Limit,
@@ -349,7 +456,7 @@ func TestBuildOrderWires(t *testing.T) {
 		ClientOrderID: validClientOrderID,
 	}
 
-	wires, mapping, grouping, err := ex.buildOrderWires(t.Context(), submit)
+	wires, mapping, grouping, err = ex.buildOrderWires(t.Context(), submit)
 	require.NoError(t, err, "buildOrderWires must not error for one ungrouped order")
 	require.Len(t, wires, 1, "wires: ungrouped submission must contain one wire")
 	assert.Equal(t, uint64(0), mapping.assetID, "mapping.assetID: ungrouped submission should return the parent mapping")
@@ -691,14 +798,22 @@ func TestConvertOrderFromMapping(t *testing.T) {
 	ex := newTradingTestExchange(t, nil, nil)
 	mapping, a, err := ex.lookupPairMappingByCoin("BTC")
 	require.NoError(t, err, "lookupPairMappingByCoin must not error for the mapped-order fixture")
-	_, err = ex.convertOrderFromMapping(nil, "open", time.Time{}, &mapping, a)
+	_, err = ex.convertOrderFromMapping(nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "convertOrderFromMapping must return the expected error for a nil conversion request")
+	_, err = ex.convertOrderFromMapping(&orderConversionRequest{Status: "open", Mapping: &mapping, AssetType: a})
 	require.ErrorIs(t, err, common.ErrNilPointer, "convertOrderFromMapping must return the expected error for nil mapped source order")
-	_, err = ex.convertOrderFromMapping(&OpenOrder{}, "open", time.Time{}, nil, a)
+	_, err = ex.convertOrderFromMapping(&orderConversionRequest{Source: &OpenOrder{}, Status: "open", AssetType: a})
 	require.ErrorIs(t, err, common.ErrNilPointer, "convertOrderFromMapping must return the expected error for nil pair mapping")
 
 	source := mustOpenOrder(t, `{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"triggerPx":"0","isTrigger":false,"reduceOnly":true,"orderType":"Limit","tif":"Gtc","cloid":"`+validClientOrderID+`"}`)
 	statusTime := time.UnixMilli(1700000001000)
-	detail, err := ex.convertOrderFromMapping(&source, "open", statusTime, &mapping, a)
+	detail, err := ex.convertOrderFromMapping(&orderConversionRequest{
+		Source:          &source,
+		Status:          "open",
+		StatusTimestamp: statusTime,
+		Mapping:         &mapping,
+		AssetType:       a,
+	})
 	require.NoError(t, err, "convertOrderFromMapping must not error for a valid mapped order")
 	assert.Equal(t, order.Buy, detail.Side, "detail.Side: mapped order side should be converted")
 	assert.Equal(t, testPerpetualPair, detail.Pair, "detail.Pair: mapped order pair should be retained")
@@ -707,7 +822,7 @@ func TestConvertOrderFromMapping(t *testing.T) {
 	source.Side = "A"
 	source.OriginalSize = 0
 	source.ClientOrderID = nil
-	detail, err = ex.convertOrderFromMapping(&source, "filled", time.Time{}, &mapping, a)
+	detail, err = ex.convertOrderFromMapping(&orderConversionRequest{Source: &source, Status: "filled", Mapping: &mapping, AssetType: a})
 	require.NoError(t, err, "convertOrderFromMapping must not error for a mapped order with fallback fields")
 	assert.Equal(t, order.Sell, detail.Side, "detail.Side: mapped sell side should be converted")
 	assert.Equal(t, 1.0, detail.Amount, "detail.Amount: mapped order should use remaining size when original size is absent")
@@ -731,7 +846,7 @@ func TestConvertOrderFromMapping(t *testing.T) {
 			invalid.OrderType = "Limit"
 			invalid.TimeInForce = "Gtc"
 			tc.mutate(&invalid)
-			_, err := ex.convertOrderFromMapping(&invalid, tc.status, time.Time{}, &mapping, a)
+			_, err := ex.convertOrderFromMapping(&orderConversionRequest{Source: &invalid, Status: tc.status, Mapping: &mapping, AssetType: a})
 			require.ErrorIs(t, err, tc.expectedIs, "convertOrderFromMapping must return the expected error for an invalid mapped order")
 		})
 	}
@@ -757,7 +872,50 @@ func TestExchangeActionEndpointLimit(t *testing.T) {
 
 func TestSubmitOrder(t *testing.T) {
 	_, err := new(Exchange).SubmitOrder(t.Context(), nil)
-	require.ErrorIs(t, err, order.ErrSubmissionIsNil, "SubmitOrder must return the expected error for nil order submission")
+	require.ErrorIs(t, err, order.ErrSubmissionIsNil, "SubmitOrder must return the submission validation error")
+
+	ex := newTradingTestExchange(t, nil, func(actionType string, _ map[string]any) string {
+		assert.Equal(t, "order", actionType, "SubmitOrder should send an order action")
+		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":7}}]}}}`
+	})
+	submit := &order.Submit{
+		Exchange:      "Hyperliquid",
+		Type:          order.Limit,
+		Side:          order.Buy,
+		Pair:          testPerpetualPair,
+		AssetType:     asset.PerpetualContract,
+		TimeInForce:   order.GoodTillCancel,
+		Amount:        0.1,
+		Price:         100,
+		ClientOrderID: validClientOrderID,
+	}
+	result, err := ex.SubmitOrder(t.Context(), submit)
+	require.NoError(t, err, "SubmitOrder must not error for a resting limit order")
+	require.NotNil(t, result, "SubmitOrder must return the accepted submission")
+	assert.False(t, result.Date.IsZero(), "result.Date should record the submission time")
+	assert.False(t, result.LastUpdated.IsZero(), "result.LastUpdated should record the submission time")
+	expected := &order.SubmitResponse{
+		Exchange:        "Hyperliquid",
+		Type:            order.Limit,
+		Side:            order.Buy,
+		Pair:            testPerpetualPair,
+		AssetType:       asset.PerpetualContract,
+		TimeInForce:     order.GoodTillCancel,
+		Price:           100,
+		Amount:          0.1,
+		RemainingAmount: 0.1,
+		ClientOrderID:   validClientOrderID,
+		LastUpdated:     result.LastUpdated,
+		Date:            result.Date,
+		Status:          order.New,
+		OrderID:         "7",
+	}
+	assert.Equal(t, expected, result, "SubmitOrder should return the complete submission response")
+}
+
+func TestSubmitOrderInternal(t *testing.T) {
+	_, err := new(Exchange).submitOrder(t.Context(), nil)
+	require.ErrorIs(t, err, order.ErrSubmissionIsNil, "submitOrder must return the expected error for nil order submission")
 
 	submit := &order.Submit{
 		Exchange:      "Hyperliquid",
@@ -772,18 +930,18 @@ func TestSubmitOrder(t *testing.T) {
 	}
 	missingSigner := newTradingTestExchange(t, nil, nil)
 	setTestCredentials(missingSigner, &accounts.Credentials{Key: officialSigningAddress})
-	_, err = missingSigner.SubmitOrder(t.Context(), submit)
-	require.ErrorIs(t, err, request.ErrAuthRequestFailed, "SubmitOrder must fail before constructing an action for missing signing key")
+	_, err = missingSigner.submitOrder(t.Context(), submit)
+	require.ErrorIs(t, err, request.ErrAuthRequestFailed, "submitOrder must fail before constructing an action for missing signing key")
 
 	invalidBuild := newTradingTestExchange(t, nil, nil)
 	invalid := *submit
 	invalid.Amount = 0.000001
-	_, err = invalidBuild.SubmitOrder(t.Context(), &invalid)
-	require.ErrorIs(t, err, errSizePrecision, "SubmitOrder must return order wire construction failure")
+	_, err = invalidBuild.submitOrder(t.Context(), &invalid)
+	require.ErrorIs(t, err, errSizePrecision, "submitOrder must return order wire construction failure")
 	trigger := *submit
 	trigger.TriggerPrice = 90
-	_, err = invalidBuild.SubmitOrder(t.Context(), &trigger)
-	require.ErrorIs(t, err, errRiskManagementUnsupported, "SubmitOrder must fail closed for trigger price on a non-trigger order")
+	_, err = invalidBuild.submitOrder(t.Context(), &trigger)
+	require.ErrorIs(t, err, errRiskManagementUnsupported, "submitOrder must fail closed for trigger price on a non-trigger order")
 
 	resting := newTradingTestExchange(t, nil, func(actionType string, _ map[string]any) string {
 		assert.Equal(t, "order", actionType, "actionType: submit should send an order action")
@@ -799,8 +957,8 @@ func TestSubmitOrder(t *testing.T) {
 	partiallyFilledGTC := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":7,"totalSz":"0.04","avgPx":"100"}}]}}}`
 	})
-	result, err = partiallyFilledGTC.SubmitOrder(t.Context(), submit)
-	require.NoError(t, err, "SubmitOrder must not error for a partially filled GTC order")
+	result, err = partiallyFilledGTC.submitOrder(t.Context(), submit)
+	require.NoError(t, err, "submitOrder must not error for a partially filled GTC order")
 	assert.Equal(t, order.PartiallyFilled, result.Status, "result.Status: partial GTC submission should remain active")
 	assert.InDelta(t, 0.06, result.RemainingAmount, 1e-12, "result.RemainingAmount: partial GTC submission should return the open remainder")
 
@@ -809,8 +967,8 @@ func TestSubmitOrder(t *testing.T) {
 	partiallyFilledPostOnly := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":7,"totalSz":"0.04","avgPx":"100"}}]}}}`
 	})
-	_, err = partiallyFilledPostOnly.SubmitOrder(t.Context(), &postOnly)
-	require.ErrorIs(t, err, errActionStatusMalformed, "SubmitOrder must fail closed for a partial post-only fill")
+	_, err = partiallyFilledPostOnly.submitOrder(t.Context(), &postOnly)
+	require.ErrorIs(t, err, errActionStatusMalformed, "submitOrder must fail closed for a partial post-only fill")
 
 	stopMarket := *submit
 	stopMarket.Type = order.StopMarket
@@ -827,8 +985,8 @@ func TestSubmitOrder(t *testing.T) {
 		require.Len(t, orders, 1, "orders: standalone trigger action must contain one order")
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":9}}]}}}`
 	})
-	result, err = triggerResting.SubmitOrder(t.Context(), &stopMarket)
-	require.NoError(t, err, "SubmitOrder must not error for a resting stop-market order")
+	result, err = triggerResting.submitOrder(t.Context(), &stopMarket)
+	require.NoError(t, err, "submitOrder must not error for a resting stop-market order")
 	assert.Equal(t, "9", result.OrderID, "result.OrderID: submitted trigger order ID should be returned")
 	assert.Equal(t, order.StopMarket, result.Type, "result.Type: submitted trigger type should be retained")
 	assert.Equal(t, 90.0, result.TriggerPrice, "result.TriggerPrice: submitted trigger price should be retained")
@@ -837,8 +995,8 @@ func TestSubmitOrder(t *testing.T) {
 	partiallyFilledTrigger := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":9,"totalSz":"0.04","avgPx":"90"}}]}}}`
 	})
-	_, err = partiallyFilledTrigger.SubmitOrder(t.Context(), &stopMarket)
-	require.ErrorIs(t, err, errActionStatusMalformed, "SubmitOrder must fail closed for a partial trigger fill")
+	_, err = partiallyFilledTrigger.submitOrder(t.Context(), &stopMarket)
+	require.ErrorIs(t, err, errActionStatusMalformed, "submitOrder must fail closed for a partial trigger fill")
 
 	bracket := *submit
 	bracket.RiskManagementModes = order.RiskManagementModes{
@@ -852,30 +1010,30 @@ func TestSubmitOrder(t *testing.T) {
 		require.Len(t, orders, 3, "orders: bracket action must contain parent, take-profit, and stop-loss orders")
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":10}},"waitingForFill","waitingForFill"]}}}`
 	})
-	result, err = grouped.SubmitOrder(t.Context(), &bracket)
-	require.NoError(t, err, "SubmitOrder must not error for a bracket order with deferred children")
+	result, err = grouped.submitOrder(t.Context(), &bracket)
+	require.NoError(t, err, "submitOrder must not error for a bracket order with deferred children")
 	assert.Equal(t, "10", result.OrderID, "result.OrderID: bracket submission should return the parent order ID")
 	assert.NoError(t, result.SubmissionError, "result.SubmissionError: accepted bracket children should not set a submission error")
 
 	groupedChildFailure := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"resting":{"oid":11}},{"error":"bad TP"},"waitingForFill"]}}}`
 	})
-	result, err = groupedChildFailure.SubmitOrder(t.Context(), &bracket)
-	require.NoError(t, err, "SubmitOrder must return the parent without encouraging a duplicate retry for a placed parent with a rejected child")
+	result, err = groupedChildFailure.submitOrder(t.Context(), &bracket)
+	require.NoError(t, err, "submitOrder must return the parent without encouraging a duplicate retry for a placed parent with a rejected child")
 	require.ErrorIs(t, result.SubmissionError, errGroupedOrderChildFailure, "result.SubmissionError: rejected grouped child must be retained on the parent response")
 	assert.Equal(t, "11", result.OrderID, "result.OrderID: partial grouped response should retain the placed parent order ID")
 
 	groupedParentFailure := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"error":"batch rejected"}]}}}`
 	})
-	_, err = groupedParentFailure.SubmitOrder(t.Context(), &bracket)
-	require.ErrorIs(t, err, order.ErrUnableToPlaceOrder, "SubmitOrder must fail the parent submission for deterministic grouped action rejection")
+	_, err = groupedParentFailure.submitOrder(t.Context(), &bracket)
+	require.ErrorIs(t, err, order.ErrUnableToPlaceOrder, "submitOrder must fail the parent submission for deterministic grouped action rejection")
 
 	deferredParent := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":["waitingForFill","waitingForFill","waitingForFill"]}}}`
 	})
-	_, err = deferredParent.SubmitOrder(t.Context(), &bracket)
-	require.ErrorIs(t, err, errActionStatusMalformed, "SubmitOrder must fail closed for deferred grouped parent status")
+	_, err = deferredParent.submitOrder(t.Context(), &bracket)
+	require.ErrorIs(t, err, errActionStatusMalformed, "submitOrder must fail closed for deferred grouped parent status")
 
 	market := *submit
 	market.Type = order.Market
@@ -884,8 +1042,8 @@ func TestSubmitOrder(t *testing.T) {
 	filled := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"100"}`}, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":8,"totalSz":"0.04","avgPx":"101"}}]}}}`
 	})
-	result, err = filled.SubmitOrder(t.Context(), &market)
-	require.NoError(t, err, "SubmitOrder must not error for a filled market order")
+	result, err = filled.submitOrder(t.Context(), &market)
+	require.NoError(t, err, "submitOrder must not error for a filled market order")
 	assert.Equal(t, order.PartiallyFilledCancelled, result.Status, "result.Status: partial IOC execution should be marked partially filled and cancelled")
 	assert.Equal(t, 101.0, result.AverageExecutedPrice, "result.AverageExecutedPrice: average execution price should be returned")
 	assert.InDelta(t, 0.06, result.RemainingAmount, 1e-12, "result.RemainingAmount should be derived")
@@ -894,38 +1052,39 @@ func TestSubmitOrder(t *testing.T) {
 	overfilled := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"100"}`}, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":8,"totalSz":"2","avgPx":"101"}}]}}}`
 	})
-	_, err = overfilled.SubmitOrder(t.Context(), &market)
-	require.ErrorIs(t, err, errInvalidFilledSize, "SubmitOrder must fail closed for over-reported fill")
+	_, err = overfilled.submitOrder(t.Context(), &market)
+	require.ErrorIs(t, err, errInvalidFilledSize, "submitOrder must fail closed for over-reported fill")
 
 	invalidFill := newTradingTestExchange(t, map[string]string{"allMids": `{"BTC":"100"}`}, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"filled":{"oid":8,"totalSz":"0.0400001","avgPx":"101"}}]}}}`
 	})
-	_, err = invalidFill.SubmitOrder(t.Context(), &market)
-	require.ErrorIs(t, err, errInvalidFilledSize, "SubmitOrder must return the expected error for invalid reported fill precision")
+	_, err = invalidFill.submitOrder(t.Context(), &market)
+	require.ErrorIs(t, err, errInvalidFilledSize, "submitOrder must return the expected error for invalid reported fill precision")
 
 	rejected := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[{"error":"bad order"}]}}}`
 	})
-	_, err = rejected.SubmitOrder(t.Context(), submit)
-	require.ErrorIs(t, err, order.ErrUnableToPlaceOrder, "SubmitOrder must return the expected error for rejected order")
+	_, err = rejected.submitOrder(t.Context(), submit)
+	require.ErrorIs(t, err, order.ErrUnableToPlaceOrder, "submitOrder must return the expected error for rejected order")
 
 	malformed := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"ok","response":{"type":"order","data":{"statuses":[]}}}`
 	})
-	_, err = malformed.SubmitOrder(t.Context(), submit)
-	require.ErrorIs(t, err, errActionStatusCount, "SubmitOrder must return the expected error for malformed order action response")
+	_, err = malformed.submitOrder(t.Context(), submit)
+	require.ErrorIs(t, err, errActionStatusCount, "submitOrder must return the expected error for malformed order action response")
 
 	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	setTestCredentials(failed, &accounts.Credentials{Key: officialSigningAddress, Secret: officialSigningTestKey})
 	failed.setPairMappings(asset.PerpetualContract, []pairMapping{{pair: testPerpetualPair, coin: "BTC", sizeDecimals: 5}})
-	_, err = failed.SubmitOrder(t.Context(), submit)
-	require.Error(t, err, "SubmitOrder must return signed order HTTP failure")
+	_, err = failed.submitOrder(t.Context(), submit)
+	require.Error(t, err, "submitOrder must return signed order HTTP failure")
 }
 
-func TestCancelOrders(t *testing.T) {
-	ex := newTradingTestExchange(t, nil, func(actionType string, action map[string]any) string {
+func newCancelTestExchange(t *testing.T) *Exchange {
+	t.Helper()
+	return newTradingTestExchange(t, nil, func(actionType string, action map[string]any) string {
 		cancels, _ := action["cancels"].([]any)
 		statuses := make([]string, len(cancels))
 		for i := range statuses {
@@ -933,6 +1092,10 @@ func TestCancelOrders(t *testing.T) {
 		}
 		return `{"status":"ok","response":{"type":"` + actionType + `","data":{"statuses":[` + strings.Join(statuses, ",") + `]}}}`
 	})
+}
+
+func TestCancelOrders(t *testing.T) {
+	ex := newCancelTestExchange(t)
 
 	statuses, err := ex.cancelOrders(t.Context(), nil)
 	require.NoError(t, err, "cancelOrders must not error for empty cancellation batch")
@@ -970,13 +1133,6 @@ func TestCancelOrders(t *testing.T) {
 	assert.Equal(t, "success", statuses[uppercaseClientOrderID], "statuses[uppercaseClientOrderID]: Client-ID cancellation status should retain the caller's identifier")
 	assert.NotContains(t, statuses, validClientOrderID, "statuses: Client-ID cancellation status should not silently normalise the caller's key")
 
-	require.ErrorIs(t, ex.CancelOrder(t.Context(), nil), order.ErrCancelOrderIsNil, "CancelOrder must return the expected error for nil single cancellation")
-	require.NoError(t, ex.CancelOrder(t.Context(), &order.Cancel{OrderID: "7", Pair: testPerpetualPair, AssetType: asset.PerpetualContract}), "CancelOrder must not error for valid single cancellation")
-
-	batch, err := ex.CancelBatchOrders(t.Context(), []order.Cancel{{OrderID: "7", Pair: testPerpetualPair, AssetType: asset.PerpetualContract}})
-	require.NoError(t, err, "CancelBatchOrders must not error for valid batch cancellation")
-	assert.Equal(t, "success", batch.Status["7"], "batch.Status[\"7\"]: batch cancellation status should be returned")
-
 	failed := newTradingTestExchange(t, nil, func(string, map[string]any) string {
 		return `{"status":"err","response":"cancel failed"}`
 	})
@@ -992,6 +1148,19 @@ func TestCancelOrders(t *testing.T) {
 	})
 	_, err = malformed.cancelOrders(t.Context(), []order.Cancel{{OrderID: "7", Pair: testPerpetualPair, AssetType: asset.PerpetualContract}})
 	require.ErrorIs(t, err, errActionStatusCount, "cancelOrders must return the expected error for malformed cancellation response")
+}
+
+func TestCancelOrder(t *testing.T) {
+	ex := newCancelTestExchange(t)
+	require.ErrorIs(t, ex.CancelOrder(t.Context(), nil), order.ErrCancelOrderIsNil, "CancelOrder must return the expected error for nil single cancellation")
+	require.NoError(t, ex.CancelOrder(t.Context(), &order.Cancel{OrderID: "7", Pair: testPerpetualPair, AssetType: asset.PerpetualContract}), "CancelOrder must not error for valid single cancellation")
+}
+
+func TestCancelBatchOrders(t *testing.T) {
+	ex := newCancelTestExchange(t)
+	batch, err := ex.CancelBatchOrders(t.Context(), []order.Cancel{{OrderID: "7", Pair: testPerpetualPair, AssetType: asset.PerpetualContract}})
+	require.NoError(t, err, "CancelBatchOrders must not error for valid batch cancellation")
+	assert.Equal(t, "success", batch.Status["7"], "batch.Status[\"7\"]: batch cancellation status should be returned")
 }
 
 func TestSetLeverage(t *testing.T) {
@@ -1553,36 +1722,74 @@ func TestGetOpenOrdersForAsset(t *testing.T) {
 	}))
 	_, err = failed.getOpenOrdersForAsset(t.Context(), officialSigningAddress, asset.PerpetualContract)
 	require.Error(t, err, "getOpenOrdersForAsset must return scoped open-order HTTP failure")
+
+	failedRegistry := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failedRegistry.getOpenOrdersForAsset(t.Context(), officialSigningAddress, asset.PerpetualContract)
+	require.Error(t, err, "getOpenOrdersForAsset must return the DEX registry HTTP failure")
 }
 
-func TestGetOrders(t *testing.T) {
+func TestGetActiveOrders(t *testing.T) {
 	openOrders := `[{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},{"coin":"@107","side":"A","limitPx":"10","sz":"2","origSz":"2","oid":8,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"}]`
-	history := `[{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000},{"order":{"coin":"@107","side":"A","limitPx":"10","sz":"0","origSz":"2","oid":8,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`
-	ex := newTradingTestExchange(t, map[string]string{"frontendOpenOrders": openOrders, "historicalOrders": history}, nil)
+	ex := newTradingTestExchange(t, map[string]string{"frontendOpenOrders": openOrders}, nil)
 
 	_, err := ex.GetActiveOrders(t.Context(), nil)
 	require.ErrorIs(t, err, order.ErrGetOrdersRequestIsNil, "GetActiveOrders must return the expected error for nil active-order request")
-	_, err = ex.GetOrderHistory(t.Context(), nil)
-	require.ErrorIs(t, err, order.ErrGetOrdersRequestIsNil, "GetOrderHistory must return the expected error for nil order-history request")
 
 	unsupported := &order.MultiOrderRequest{AssetType: asset.Options, Side: order.AnySide, Type: order.AnyType}
 	_, err = ex.GetActiveOrders(t.Context(), unsupported)
 	require.ErrorIs(t, err, asset.ErrNotSupported, "GetActiveOrders must return the expected error for unsupported active-order asset")
-	_, err = ex.GetOrderHistory(t.Context(), unsupported)
-	require.ErrorIs(t, err, asset.ErrNotSupported, "GetOrderHistory must return the expected error for unsupported history asset")
 
 	orderRequest := &order.MultiOrderRequest{AssetType: asset.PerpetualContract, Side: order.AnySide, Type: order.AnyType}
 	missingCredentials := new(Exchange)
 	missingCredentials.SetDefaults()
 	_, err = missingCredentials.GetActiveOrders(t.Context(), orderRequest)
 	require.Error(t, err, "GetActiveOrders must error for active orders without credentials")
-	_, err = missingCredentials.GetOrderHistory(t.Context(), orderRequest)
-	require.Error(t, err, "GetOrderHistory must error for order history without credentials")
 
 	active, err := ex.GetActiveOrders(t.Context(), orderRequest)
 	require.NoError(t, err, "GetActiveOrders must not error for active perpetual orders")
 	require.Len(t, active, 1, "active: active orders must filter out other assets")
 	assert.Equal(t, "7", active[0].OrderID, "active[0].OrderID: active perpetual order should be returned")
+
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	setTestCredentials(failed, &accounts.Credentials{Key: officialSigningAddress})
+	_, err = failed.GetActiveOrders(t.Context(), orderRequest)
+	require.Error(t, err, "GetActiveOrders must return active-order HTTP failure")
+
+	badOrders := newTradingTestExchange(t, map[string]string{
+		"frontendOpenOrders": `[{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"}]`,
+	}, nil)
+	_, err = badOrders.GetActiveOrders(t.Context(), orderRequest)
+	require.ErrorIs(t, err, errPairMappingNotFound, "GetActiveOrders must return active-order conversion failure")
+
+	mixedOrders := newTradingTestExchange(t, map[string]string{
+		"frontendOpenOrders": `[{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":8,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"}]`,
+	}, nil)
+	active, err = mixedOrders.GetActiveOrders(t.Context(), orderRequest)
+	require.ErrorIs(t, err, errPairMappingNotFound, "GetActiveOrders must report the skipped conversion for mixed active orders")
+	require.Len(t, active, 1, "active: mixed active orders must retain convertible orders")
+	assert.Equal(t, "8", active[0].OrderID, "active[0].OrderID: convertible active order should be returned")
+}
+
+func TestGetOrderHistory(t *testing.T) {
+	history := `[{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000},{"order":{"coin":"@107","side":"A","limitPx":"10","sz":"0","origSz":"2","oid":8,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`
+	ex := newTradingTestExchange(t, map[string]string{"historicalOrders": history}, nil)
+
+	_, err := ex.GetOrderHistory(t.Context(), nil)
+	require.ErrorIs(t, err, order.ErrGetOrdersRequestIsNil, "GetOrderHistory must return the expected error for nil order-history request")
+
+	unsupported := &order.MultiOrderRequest{AssetType: asset.Options, Side: order.AnySide, Type: order.AnyType}
+	_, err = ex.GetOrderHistory(t.Context(), unsupported)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "GetOrderHistory must return the expected error for unsupported history asset")
+
+	orderRequest := &order.MultiOrderRequest{AssetType: asset.PerpetualContract, Side: order.AnySide, Type: order.AnyType}
+	missingCredentials := new(Exchange)
+	missingCredentials.SetDefaults()
+	_, err = missingCredentials.GetOrderHistory(t.Context(), orderRequest)
+	require.Error(t, err, "GetOrderHistory must error for order history without credentials")
 
 	historical, err := ex.GetOrderHistory(t.Context(), orderRequest)
 	require.NoError(t, err, "GetOrderHistory must not error for perpetual order history")
@@ -1593,28 +1800,18 @@ func TestGetOrders(t *testing.T) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	setTestCredentials(failed, &accounts.Credentials{Key: officialSigningAddress})
-	_, err = failed.GetActiveOrders(t.Context(), orderRequest)
-	require.Error(t, err, "GetActiveOrders must return active-order HTTP failure")
 	_, err = failed.GetOrderHistory(t.Context(), orderRequest)
 	require.Error(t, err, "GetOrderHistory must return order-history HTTP failure")
 
 	badOrders := newTradingTestExchange(t, map[string]string{
-		"frontendOpenOrders": `[{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"}]`,
-		"historicalOrders":   `[{"order":{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000}]`,
+		"historicalOrders": `[{"order":{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000}]`,
 	}, nil)
-	_, err = badOrders.GetActiveOrders(t.Context(), orderRequest)
-	require.ErrorIs(t, err, errPairMappingNotFound, "GetActiveOrders must return active-order conversion failure")
 	_, err = badOrders.GetOrderHistory(t.Context(), orderRequest)
 	require.ErrorIs(t, err, errPairMappingNotFound, "GetOrderHistory must return order-history conversion failure")
 
 	mixedOrders := newTradingTestExchange(t, map[string]string{
-		"frontendOpenOrders": `[{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":8,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"}]`,
-		"historicalOrders":   `[{"order":{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000},{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":8,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`,
+		"historicalOrders": `[{"order":{"coin":"MISSING","side":"B","limitPx":"1","sz":"1","origSz":"1","oid":7,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000},{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":8,"timestamp":1700000000000,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`,
 	}, nil)
-	active, err = mixedOrders.GetActiveOrders(t.Context(), orderRequest)
-	require.ErrorIs(t, err, errPairMappingNotFound, "GetActiveOrders must report the skipped conversion for mixed active orders")
-	require.Len(t, active, 1, "active: mixed active orders must retain convertible orders")
-	assert.Equal(t, "8", active[0].OrderID, "active[0].OrderID: convertible active order should be returned")
 	historical, err = mixedOrders.GetOrderHistory(t.Context(), orderRequest)
 	require.ErrorIs(t, err, errPairMappingNotFound, "GetOrderHistory must report the skipped conversion for mixed order history")
 	require.Len(t, historical, 1, "historical: mixed order history must retain convertible orders")
@@ -1691,4 +1888,167 @@ func TestCancelAllOrders(t *testing.T) {
 	result, err = partial.CancelAllOrders(t.Context(), &order.Cancel{AssetType: asset.PerpetualContract})
 	require.Error(t, err, "CancelAllOrders must return cancel-all per-order failure")
 	assert.Equal(t, "already closed", result.Status["7"], "result.Status[\"7\"]: cancel-all failure status should be retained")
+}
+
+func TestGetOpenOrdersForUser(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"frontendOpenOrders": `[{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"}]`,
+	})
+	openOrders, err := ex.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetOpenOrdersForUser must not error for valid open orders")
+	require.Len(t, openOrders, 1, "openOrders must contain one order")
+	assert.Equal(t, uint64(7), openOrders[0].OrderID, "openOrders[0].OrderID should contain the open order ID")
+
+	_, err = ex.GetOpenOrdersForUser(t.Context(), "invalid")
+	require.ErrorIs(t, err, errInvalidAddress, "GetOpenOrdersForUser must return the expected error for an invalid address")
+
+	emptyExchange := newStaticInfoExchange(t, map[string]string{"frontendOpenOrders": `[]`})
+	openOrders, err = emptyExchange.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetOpenOrdersForUser must not error for empty open-order response")
+	assert.Empty(t, openOrders, "openOrders should retain the empty response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
+	require.Error(t, err, "GetOpenOrdersForUser must return an HTTP failure")
+}
+
+func TestGetOpenOrdersForUserForDEX(t *testing.T) {
+	_, err := new(Exchange).GetOpenOrdersForUserForDEX(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetOpenOrdersForUserForDEX must return the expected error for a nil request")
+
+	ex := newStaticInfoExchange(t, map[string]string{
+		"frontendOpenOrders": `[{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"}]`,
+	})
+	openOrders, err := ex.GetOpenOrdersForUserForDEX(t.Context(), &OpenOrdersRequest{User: officialSigningAddress, DEX: "xyz"})
+	require.NoError(t, err, "GetOpenOrdersForUserForDEX must not error for named DEX open orders")
+	require.Len(t, openOrders, 1, "openOrders must contain one order")
+	assert.Equal(t, uint64(7), openOrders[0].OrderID, "openOrders[0].OrderID should contain the open order ID")
+
+	var requests []infoRequest
+	scoped := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request infoRequest
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request), "Decode should not error for the DEX open-order request") {
+			return
+		}
+		requests = append(requests, request)
+		_, err := w.Write([]byte(`[]`))
+		assert.NoError(t, err, "Write should not error for the DEX open-order response")
+	}))
+	req := &OpenOrdersRequest{User: strings.ToUpper(officialSigningAddress), DEX: "xyz"}
+	original := *req
+	openOrders, err = scoped.GetOpenOrdersForUserForDEX(t.Context(), req)
+	require.NoError(t, err, "GetOpenOrdersForUserForDEX must not error for DEX-scoped open orders")
+	assert.Empty(t, openOrders, "openOrders should retain the empty response")
+	require.Len(t, requests, 1, "requests must contain one DEX open-order request")
+	assert.Equal(t, "xyz", requests[0].DEX, "requests[0].DEX should contain the open-order DEX")
+	assert.Equal(t, officialSigningAddress, requests[0].User, "GetOpenOrdersForUserForDEX should normalise the requested address")
+	assert.Equal(t, original, *req, "GetOpenOrdersForUserForDEX should leave req unchanged")
+
+	_, err = ex.GetOpenOrdersForUserForDEX(t.Context(), &OpenOrdersRequest{User: "invalid", DEX: "xyz"})
+	require.ErrorIs(t, err, errInvalidAddress, "GetOpenOrdersForUserForDEX must return the expected error for an invalid address")
+
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failed.GetOpenOrdersForUserForDEX(t.Context(), &OpenOrdersRequest{User: officialSigningAddress, DEX: "xyz"})
+	require.Error(t, err, "GetOpenOrdersForUserForDEX must return the open-order HTTP failure")
+}
+
+func TestGetHistoricalOrdersForUser(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"historicalOrders": `[{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`,
+	})
+	history, err := ex.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetHistoricalOrdersForUser must not error for valid order history")
+	require.Len(t, history, 1, "history must contain one order")
+	assert.Equal(t, "filled", history[0].Status, "history[0].Status should contain the historical order status")
+
+	_, err = ex.GetHistoricalOrdersForUser(t.Context(), "invalid")
+	require.ErrorIs(t, err, errInvalidAddress, "GetHistoricalOrdersForUser must return the expected error for an invalid address")
+
+	emptyExchange := newStaticInfoExchange(t, map[string]string{"historicalOrders": `[]`})
+	history, err = emptyExchange.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetHistoricalOrdersForUser must not error for empty historical-order response")
+	assert.Empty(t, history, "history should retain the empty response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
+	require.Error(t, err, "GetHistoricalOrdersForUser must return an HTTP failure")
+}
+
+func TestGetOrderStatusForUser(t *testing.T) {
+	_, err := new(Exchange).GetOrderStatusForUser(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetOrderStatusForUser must return the expected error for a nil request")
+
+	var requests []infoRequest
+	ex := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request infoRequest
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request), "Decode should not error for the order-status request") {
+			return
+		}
+		requests = append(requests, request)
+		_, err := w.Write([]byte(`{"status":"order","order":{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000}}`))
+		assert.NoError(t, err, "Write should not error for the order-status response")
+	}))
+	status, err := ex.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, OrderID: 7})
+	require.NoError(t, err, "GetOrderStatusForUser must not error for order status by numeric ID")
+	assert.Equal(t, "order", status.Status, "status.Status should contain the order status")
+	expected := &OrderStatusResponse{
+		Status: "order",
+		Order: &HistoricalOrder{
+			Order: OpenOrder{
+				Coin:         "BTC",
+				Side:         "B",
+				LimitPrice:   100,
+				Size:         1,
+				OriginalSize: 2,
+				OrderID:      7,
+				Timestamp:    types.Time(time.UnixMilli(1700000000000)),
+				OrderType:    "Limit",
+				TimeInForce:  "Gtc",
+			},
+			Status:          "open",
+			StatusTimestamp: types.Time(time.UnixMilli(1700000001000)),
+		},
+	}
+	assert.Equal(t, expected, status, "GetOrderStatusForUser should return the complete order status")
+	req := &OrderStatusRequest{User: strings.ToUpper(officialSigningAddress), ClientOrderID: validClientOrderID}
+	original := *req
+	clientStatus, err := ex.GetOrderStatusForUser(t.Context(), req)
+	require.NoError(t, err, "GetOrderStatusForUser must not error for order status by client ID")
+	assert.Equal(t, status, clientStatus, "GetOrderStatusForUser should return the same order for its numeric and client identifiers")
+	assert.Equal(t, original, *req, "GetOrderStatusForUser should leave req unchanged")
+	assert.Equal(t, []infoRequest{
+		{Type: "orderStatus", User: officialSigningAddress, OrderID: float64(7)},
+		{Type: "orderStatus", User: officialSigningAddress, OrderID: validClientOrderID},
+	}, requests, "GetOrderStatusForUser should send a numeric order ID or a client ID string with the normalised address")
+
+	_, err = ex.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: "invalid", OrderID: 7})
+	require.ErrorIs(t, err, errInvalidAddress, "GetOrderStatusForUser must return the expected error for an invalid address")
+	_, err = ex.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress})
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "GetOrderStatusForUser must return the expected error for zero order ID")
+	_, err = ex.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, ClientOrderID: "invalid"})
+	require.ErrorIs(t, err, errClientOrderIDInvalid, "GetOrderStatusForUser must return the expected error for invalid client order ID")
+	_, err = ex.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, OrderID: 7, ClientOrderID: validClientOrderID})
+	require.ErrorIs(t, err, errOrderIdentifierConflict, "GetOrderStatusForUser must return the expected error for conflicting order identifiers")
+	assert.Len(t, requests, 2, "GetOrderStatusForUser should reject invalid parameters before sending an HTTP request")
+
+	unknownExchange := newStaticInfoExchange(t, map[string]string{"orderStatus": `{"status":"unknownOid"}`})
+	status, err = unknownExchange.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, OrderID: 7})
+	require.NoError(t, err, "GetOrderStatusForUser must not error for an unknown order response")
+	assert.Equal(t, &OrderStatusResponse{Status: "unknownOid"}, status, "GetOrderStatusForUser should return an unknown order status without an order")
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"orderStatus": `null`})
+	_, err = nullExchange.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, OrderID: 7})
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetOrderStatusForUser must return the expected error for a null response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetOrderStatusForUser(t.Context(), &OrderStatusRequest{User: officialSigningAddress, OrderID: 7})
+	require.Error(t, err, "GetOrderStatusForUser must return an HTTP failure")
 }

@@ -84,14 +84,17 @@ Trigger orders are perpetual-only and reduce-only. A parent order with
 take-profit or stop-loss children is submitted with Hyperliquid's grouped TP/SL
 semantics. Hyperliquid evaluates every trigger against mark price, so standalone
 triggers, modifications and each grouped child must explicitly use
-`TriggerPriceType: order.MarkPrice`.
+`TriggerPriceType: order.MarkPrice`. If the parent succeeds and a grouped child
+is rejected, `SubmitOrder` returns the accepted parent with `SubmissionError`
+set. Callers must inspect that field before assuming the position is protected.
 
-Online fee estimates use the configured account's effective rates. Offline or
-credentialless estimates use Hyperliquid's published base-tier maker/taker
-rates and do not include account tiers or HIP-3 deployer-specific adjustments.
-When the same display pair exists on Spot and Perpetuals, the enabled asset
-configuration selects the applicable fee schedule; enabling both remains
-ambiguous and fails closed.
+Online fee estimates use the configured account's tier rates from `userFees`.
+Offline or credentialless estimates use Hyperliquid's published base-tier
+maker/taker rates. These estimates do not apply market-specific HIP-3 deployer
+or growth-mode adjustments, quote-to-quote spot discounts, aligned-quote
+adjustments, or order builder fees. When the same display pair exists on Spot
+and Perpetuals, the enabled asset configuration selects the applicable fee
+schedule; enabling both remains ambiguous and fails closed.
 
 Subscribe and unsubscribe calls complete only after the server acknowledges the
 exact operation. Rejected, timed-out and disconnected operations roll back
@@ -107,6 +110,10 @@ bridge (`Arbitrum` on mainnet and `Arbitrum Sepolia` on testnet). Setting
 `InternalTransfer` uses a Core USDC send instead. Hyperliquid calculates bridge
 fees, so caller-supplied fees and address tags are rejected.
 
+Account funding and withdrawal history read the complete ledger. Large accounts
+may need several minutes of paginated requests within the exchange rate limit.
+Use `GetUserNonFundingLedgerUpdates` with `*UserLedgerRequest` for a bounded range.
+
 API wallet approval and HIP-3 deployer or market-administration actions are not
 supported by this integration.
 
@@ -117,6 +124,8 @@ The test setup follows the shared exchange test helpers and loads
 query Hyperliquid. Mock tests in `*_mock_test.go` use local HTTP/Websocket
 fixtures with explicit request and response assertions.
 Signing and transfer tests use deterministic offline fixtures.
+Each method has a separate test function; subtests cover inputs or assets for
+that method.
 
 Run all Hyperliquid tests, including public live checks:
 
@@ -134,6 +143,12 @@ Run only live tests:
 
 ```sh
 go test ./exchanges/hyperliquid -race -count=1 -run '^TestLive'
+```
+
+Run a single method's live test:
+
+```sh
+go test ./exchanges/hyperliquid -race -count=1 -run '^TestLiveGetAllMids$'
 ```
 
 The shared `GCT_SKIP_LIVE_TESTS=true` setting also skips live checks.

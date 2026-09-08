@@ -133,10 +133,6 @@ func (e *Exchange) websocketReadLoop(ctx context.Context, connection websocket.C
 	}
 }
 
-func (e *Exchange) websocketHandleData(ctx context.Context, raw []byte) error {
-	return e.websocketHandleDataForConnection(ctx, raw, false)
-}
-
 func (e *Exchange) websocketHandleDataForConnection(ctx context.Context, raw []byte, authenticated bool) error {
 	if string(raw) == websocketConnectionEstablished {
 		return nil
@@ -147,8 +143,8 @@ func (e *Exchange) websocketHandleDataForConnection(ctx context.Context, raw []b
 	}
 	switch envelope.Channel {
 	case wsChannelSubscriptionResponse:
-		var response websocketSubscriptionResponse
-		if err := json.Unmarshal(envelope.Data, &response); err != nil {
+		response := new(websocketSubscriptionResponse)
+		if err := json.Unmarshal(envelope.Data, response); err != nil {
 			return fmt.Errorf("%w: %w", errWebsocketSubscription, err)
 		}
 		if (response.Method != wsMethodSubscribe && response.Method != wsMethodUnsubscribe) ||
@@ -323,8 +319,8 @@ func (e *Exchange) websocketHandleTicker(ctx context.Context, raw []byte, expect
 }
 
 func (e *Exchange) websocketHandleOrderbook(_ context.Context, raw []byte) error {
-	var update L2Book
-	if err := json.Unmarshal(raw, &update); err != nil {
+	update := new(L2BookResponse)
+	if err := json.Unmarshal(raw, update); err != nil {
 		return err
 	}
 	if len(update.Levels) != 2 {
@@ -428,7 +424,13 @@ func (e *Exchange) websocketHandleOrderUpdates(ctx context.Context, raw []byte) 
 			errs = common.AppendError(errs, fmt.Errorf("order update %d: %w", i, err))
 			continue
 		}
-		converted, err := e.convertOrderFromMapping(&updates[i].Order, updates[i].Status, updates[i].StatusTimestamp.Time(), &mapping, a)
+		converted, err := e.convertOrderFromMapping(&orderConversionRequest{
+			Source:          &updates[i].Order,
+			Status:          updates[i].Status,
+			StatusTimestamp: updates[i].StatusTimestamp.Time(),
+			Mapping:         &mapping,
+			AssetType:       a,
+		})
 		if err != nil {
 			errs = common.AppendError(errs, fmt.Errorf("order update %d: %w", i, err))
 			continue
@@ -534,10 +536,7 @@ func websocketChannelName(sub *subscription.Subscription) (string, error) {
 func (e *Exchange) GetSubscriptionTemplate(_ *subscription.Subscription) (*template.Template, error) {
 	return template.New("master.tmpl").Funcs(template.FuncMap{
 		"channelName": websocketChannelName,
-		"interval": func(value kline.Interval) string {
-			formatted, _ := formatInterval(value)
-			return formatted
-		},
+		"interval":    formatInterval,
 	}).Parse(websocketSubscriptionTemplate)
 }
 

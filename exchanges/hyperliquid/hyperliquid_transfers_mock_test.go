@@ -67,6 +67,22 @@ func newTransferTestExchange(
 	return ex
 }
 
+func newAgentTransferTestExchange(t *testing.T, captured *signedActionRequest) *Exchange {
+	t.Helper()
+	agentSecret := "0x1123456789012345678901234567890123456789012345678901234567890123"
+	agentKey, err := parsePrivateKey(agentSecret)
+	require.NoError(t, err, "parsePrivateKey must not error for the agent test key")
+	agentAddress := privateKeyAddress(agentKey)
+	agentKey.Zero()
+	return newTransferTestExchange(t, &accounts.Credentials{
+		Key:    agentAddress,
+		Secret: agentSecret,
+	}, map[string]string{
+		testUserRoleInfoType: `{"role":"agent","data":{"user":"` + officialSigningAddress + `"}}`,
+		"spotMeta":           spotMetadataJSON,
+	}, captured)
+}
+
 func getCapturedAction(t *testing.T, captured *signedActionRequest) map[string]any {
 	t.Helper()
 	action, ok := captured.Action.(map[string]any)
@@ -140,77 +156,6 @@ func TestValidateUserSignedSubAccount(t *testing.T) {
 	}
 }
 
-func TestUserSignedTransfersRejectAgentAccount(t *testing.T) {
-	agentSecret := "0x1123456789012345678901234567890123456789012345678901234567890123"
-	agentKey, err := parsePrivateKey(agentSecret)
-	require.NoError(t, err, "parsePrivateKey must not error for the agent test key")
-	agentAddress := privateKeyAddress(agentKey)
-	agentKey.Zero()
-
-	for _, tc := range []struct {
-		name string
-		run  func(*Exchange) error
-	}{
-		{
-			name: "class transfer",
-			run: func(ex *Exchange) error {
-				_, err := ex.TransferUSDCBetweenSpotAndPerp(t.Context(), 1, true)
-				return err
-			},
-		},
-		{
-			name: "asset transfer",
-			run: func(ex *Exchange) error {
-				_, err := ex.SendAsset(t.Context(), &SendAssetRequest{
-					Destination:    testOtherAddress,
-					SourceDEX:      "spot",
-					DestinationDEX: "spot",
-					Token:          "USDC",
-					Amount:         1,
-				})
-				return err
-			},
-		},
-		{
-			name: "Core USDC send",
-			run: func(ex *Exchange) error {
-				_, err := ex.SendCoreUSDC(t.Context(), testOtherAddress, 1)
-				return err
-			},
-		},
-		{
-			name: "Core spot send",
-			run: func(ex *Exchange) error {
-				_, err := ex.SendCoreSpot(t.Context(), testOtherAddress, "USDC", 1)
-				return err
-			},
-		},
-		{
-			name: "bridge withdrawal",
-			run: func(ex *Exchange) error {
-				_, err := ex.WithdrawFromBridge(t.Context(), testOtherAddress, 1)
-				return err
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var captured signedActionRequest
-			ex := newTransferTestExchange(t, &accounts.Credentials{
-				Key:    agentAddress,
-				Secret: agentSecret,
-			}, map[string]string{
-				testUserRoleInfoType: `{"role":"agent","data":{"user":"` + officialSigningAddress + `"}}`,
-				"spotMeta":           spotMetadataJSON,
-			}, &captured)
-			err := tc.run(ex)
-			require.ErrorIs(t, err, errConfiguredAccountMissing, "tc.run must reject an API-wallet account")
-			require.ErrorIs(t, err, request.ErrAuthRequestFailed, "tc.run must classify an API-wallet account as an authentication failure")
-			assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce: a rejected API-wallet account should not consume a nonce")
-			assert.Nil(t, captured.Action, "captured.Action: a rejected API-wallet account should not reach the exchange endpoint")
-		})
-	}
-}
-
 func TestResolveTransferToken(t *testing.T) {
 	ex := new(Exchange)
 	_, _, err := ex.resolveTransferToken(t.Context(), "")
@@ -241,6 +186,16 @@ func TestResolveTransferToken(t *testing.T) {
 	missingUSDC := newStaticInfoExchange(t, map[string]string{"spotMeta": `{"tokens":[{"name":"HYPE","index":150}]}`})
 	_, _, err = missingUSDC.resolveTransferToken(t.Context(), "USDC")
 	require.ErrorIs(t, err, errTransferTokenInvalid, "resolveTransferToken must return the expected error for missing USDC metadata")
+	missingTokenID := newStaticInfoExchange(t, map[string]string{"spotMeta": `{"tokens":[{"name":"USDC","index":0}]}`})
+	_, _, err = missingTokenID.resolveTransferToken(t.Context(), "USDC")
+	assert.ErrorIs(t, err, errTransferTokenInvalid, "resolveTransferToken should reject USDC metadata without a token ID")
+	mixedCase := newStaticInfoExchange(t, map[string]string{"spotMeta": `{"tokens":[{"name":"kPEPE","index":1,"tokenId":"0xAB"}]}`})
+	token, canonical, err = mixedCase.resolveTransferToken(t.Context(), "kPEPE:0xab")
+	require.NoError(t, err, "resolveTransferToken must accept the exact mixed-case token name")
+	assert.Equal(t, "kPEPE:0xAB", canonical, "canonical should preserve the signed token identifier's original spelling")
+	assert.Equal(t, canonical, token.TokenIdentifier, "token.TokenIdentifier should expose the canonical transfer identifier")
+	_, _, err = mixedCase.resolveTransferToken(t.Context(), "KPEPE:0xab")
+	assert.ErrorIs(t, err, errTransferTokenInvalid, "resolveTransferToken should reject a changed token-name case")
 }
 
 func TestResolveTransferDEX(t *testing.T) {
@@ -267,21 +222,26 @@ func TestResolveTransferDEX(t *testing.T) {
 }
 
 func TestValidateSendAssetRoute(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, _, _, err := ex.validateSendAssetRoute(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "validateSendAssetRoute should reject a nil request")
+	})
 	badRegistry := newStaticInfoExchange(t, map[string]string{infoTypePerpetualDEXs: `[null]`})
-	sourceDEX, destinationDEX, token, err := badRegistry.validateSendAssetRoute(t.Context(), "missing", "spot", "USDC")
+	sourceDEX, destinationDEX, token, err := badRegistry.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "missing", DestinationDEX: "spot", Token: "USDC"})
 	require.ErrorIs(t, err, errTransferDEXInvalid, "validateSendAssetRoute must return the expected error for invalid source DEX")
 	assert.Empty(t, sourceDEX, "sourceDEX: invalid source route should not return a source DEX")
 	assert.Empty(t, destinationDEX, "destinationDEX: invalid source route should not return a destination DEX")
 	assert.Empty(t, token, "token: invalid source route should not return a token")
 
-	sourceDEX, destinationDEX, token, err = badRegistry.validateSendAssetRoute(t.Context(), "", "missing", "USDC")
+	sourceDEX, destinationDEX, token, err = badRegistry.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "", DestinationDEX: "missing", Token: "USDC"})
 	require.ErrorIs(t, err, errTransferDEXInvalid, "validateSendAssetRoute must return the expected error for invalid destination DEX")
 	assert.Empty(t, sourceDEX, "sourceDEX: invalid destination route should not return a source DEX")
 	assert.Empty(t, destinationDEX, "destinationDEX: invalid destination route should not return a destination DEX")
 	assert.Empty(t, token, "token: invalid destination route should not return a token")
 
 	missingToken := newStaticInfoExchange(t, map[string]string{"spotMeta": `{"tokens":[]}`})
-	sourceDEX, destinationDEX, token, err = missingToken.validateSendAssetRoute(t.Context(), "spot", "spot", "USDC")
+	sourceDEX, destinationDEX, token, err = missingToken.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "spot", DestinationDEX: "spot", Token: "USDC"})
 	require.ErrorIs(t, err, errTransferTokenInvalid, "validateSendAssetRoute must return the expected error for invalid transfer token")
 	assert.Empty(t, sourceDEX, "sourceDEX: invalid-token route should not return a source DEX")
 	assert.Empty(t, destinationDEX, "destinationDEX: invalid-token route should not return a destination DEX")
@@ -291,7 +251,7 @@ func TestValidateSendAssetRoute(t *testing.T) {
 		"spotMeta": spotMetadataJSON,
 		"meta":     `null`,
 	}, nil)
-	sourceDEX, destinationDEX, token, err = metadataFailure.validateSendAssetRoute(t.Context(), "", "spot", "USDC")
+	sourceDEX, destinationDEX, token, err = metadataFailure.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "", DestinationDEX: "spot", Token: "USDC"})
 	require.ErrorIs(t, err, common.ErrNilPointer, "validateSendAssetRoute must return perpetual metadata failure")
 	assert.Empty(t, sourceDEX, "sourceDEX: metadata-failure route should not return a source DEX")
 	assert.Empty(t, destinationDEX, "destinationDEX: metadata-failure route should not return a destination DEX")
@@ -301,7 +261,7 @@ func TestValidateSendAssetRoute(t *testing.T) {
 		"spotMeta": spotMetadataJSON,
 		"meta":     `{"collateralToken":150}`,
 	}, nil)
-	sourceDEX, destinationDEX, token, err = wrongCollateral.validateSendAssetRoute(t.Context(), "spot", "", "USDC")
+	sourceDEX, destinationDEX, token, err = wrongCollateral.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "spot", DestinationDEX: "", Token: "USDC"})
 	require.ErrorIs(t, err, errTransferTokenInvalid, "validateSendAssetRoute must return the expected error for non-collateral token")
 	assert.Empty(t, sourceDEX, "sourceDEX: wrong-collateral route should not return a source DEX")
 	assert.Empty(t, destinationDEX, "destinationDEX: wrong-collateral route should not return a destination DEX")
@@ -313,13 +273,13 @@ func TestValidateSendAssetRoute(t *testing.T) {
 		"meta":                `{"collateralToken":0}`,
 		"meta:xyz":            `{"collateralToken":0}`,
 	}, nil)
-	sourceDEX, destinationDEX, token, err = valid.validateSendAssetRoute(t.Context(), "", "xyz", "USDC")
+	sourceDEX, destinationDEX, token, err = valid.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "", DestinationDEX: "xyz", Token: "USDC"})
 	require.NoError(t, err, "validateSendAssetRoute must not error for valid default-to-builder collateral route")
 	assert.Empty(t, sourceDEX, "sourceDEX: default DEX should remain empty")
 	assert.Equal(t, "xyz", destinationDEX, "destinationDEX: destination builder DEX should be retained")
 	assert.Equal(t, "USDC", token, "token: validated collateral token should be retained")
 
-	sourceDEX, destinationDEX, token, err = valid.validateSendAssetRoute(t.Context(), "spot", "spot", "HYPE:0x96")
+	sourceDEX, destinationDEX, token, err = valid.validateSendAssetRoute(t.Context(), &SendAssetRequest{SourceDEX: "spot", DestinationDEX: "spot", Token: "HYPE:0x96"})
 	require.NoError(t, err, "validateSendAssetRoute must not error for valid spot-to-spot route")
 	assert.Equal(t, "spot", sourceDEX, "sourceDEX: spot source should be retained")
 	assert.Equal(t, "spot", destinationDEX, "destinationDEX: spot destination should be retained")
@@ -327,17 +287,22 @@ func TestValidateSendAssetRoute(t *testing.T) {
 }
 
 func TestTransferUSDCBetweenSpotAndPerp(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.TransferUSDCBetweenSpotAndPerp(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "TransferUSDCBetweenSpotAndPerp should reject a nil request")
+	})
 	ex := new(Exchange)
 	ex.SetDefaults()
-	_, err := ex.TransferUSDCBetweenSpotAndPerp(t.Context(), 0, true)
+	_, err := ex.TransferUSDCBetweenSpotAndPerp(t.Context(), &ClassTransferRequest{Amount: 0, ToPerpetual: true})
 	require.ErrorIs(t, err, errTransferAmountInvalid, "TransferUSDCBetweenSpotAndPerp must return the expected error for invalid class-transfer amount")
-	_, err = ex.TransferUSDCBetweenSpotAndPerp(t.Context(), 1, true)
+	_, err = ex.TransferUSDCBetweenSpotAndPerp(t.Context(), &ClassTransferRequest{Amount: 1, ToPerpetual: true})
 	require.Error(t, err, "TransferUSDCBetweenSpotAndPerp must error for class transfer without credentials")
 
 	invalidSubAccount := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey, SubAccount: testVaultAddress,
 	}, map[string]string{"userRole:" + testVaultAddress: `{"role":"vault"}`}, nil)
-	_, err = invalidSubAccount.TransferUSDCBetweenSpotAndPerp(t.Context(), 1, true)
+	_, err = invalidSubAccount.TransferUSDCBetweenSpotAndPerp(t.Context(), &ClassTransferRequest{Amount: 1, ToPerpetual: true})
 	require.ErrorIs(t, err, errTransferSubAccountInvalid, "TransferUSDCBetweenSpotAndPerp must reject class transfer from a vault")
 
 	var captured signedActionRequest
@@ -346,13 +311,23 @@ func TestTransferUSDCBetweenSpotAndPerp(t *testing.T) {
 	}, map[string]string{
 		"userRole:" + testVaultAddress: `{"role":"subAccount","data":{"master":"` + officialSigningAddress + `"}}`,
 	}, &captured)
-	nonce, err := success.TransferUSDCBetweenSpotAndPerp(t.Context(), 1.23, true)
+	nonce, err := success.TransferUSDCBetweenSpotAndPerp(t.Context(), &ClassTransferRequest{Amount: 1.23, ToPerpetual: true})
 	require.NoError(t, err, "TransferUSDCBetweenSpotAndPerp must not error for owned-subaccount class transfer")
 	action := getCapturedAction(t, &captured)
 	assert.Equal(t, "usdClassTransfer", action["type"], "action[\"type\"]: class-transfer action type should match")
 	assert.Equal(t, "1.23 subaccount:"+testVaultAddress, action["amount"], "action[\"amount\"]: class-transfer amount should identify the subaccount")
 	assert.Equal(t, true, action["toPerp"], "action[\"toPerp\"]: class-transfer direction should be retained")
 	assert.Equal(t, float64(nonce), action["nonce"], "action[\"nonce\"]: class-transfer action nonce should match the outer nonce")
+
+	t.Run("API wallet", func(t *testing.T) {
+		var captured signedActionRequest
+		ex := newAgentTransferTestExchange(t, &captured)
+		_, err := ex.TransferUSDCBetweenSpotAndPerp(t.Context(), &ClassTransferRequest{Amount: 1, ToPerpetual: true})
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "TransferUSDCBetweenSpotAndPerp must reject an API-wallet account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "TransferUSDCBetweenSpotAndPerp must classify an API-wallet account as an authentication failure")
+		assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce should not change for a rejected API-wallet account")
+		assert.Nil(t, captured.Action, "captured.Action should remain empty for a rejected API-wallet account")
+	})
 }
 
 func TestSendAsset(t *testing.T) {
@@ -405,64 +380,100 @@ func TestSendAsset(t *testing.T) {
 	assert.Equal(t, "1.25", action["amount"], "action[\"amount\"]: asset-transfer amount should use wire formatting")
 	assert.Equal(t, testVaultAddress, action["fromSubAccount"], "action[\"fromSubAccount\"]: asset transfer should identify its owned subaccount source")
 	assert.Equal(t, float64(nonce), action["nonce"], "action[\"nonce\"]: asset-transfer action nonce should match the outer nonce")
+
+	t.Run("API wallet", func(t *testing.T) {
+		var captured signedActionRequest
+		ex := newAgentTransferTestExchange(t, &captured)
+		_, err := ex.SendAsset(t.Context(), &SendAssetRequest{
+			Destination:    testOtherAddress,
+			SourceDEX:      "spot",
+			DestinationDEX: "spot",
+			Token:          "USDC",
+			Amount:         1,
+		})
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "SendAsset must reject an API-wallet account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "SendAsset must classify an API-wallet account as an authentication failure")
+		assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce should not change for a rejected API-wallet account")
+		assert.Nil(t, captured.Action, "captured.Action should remain empty for a rejected API-wallet account")
+	})
 }
 
 func TestSendCoreUSDC(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.SendCoreUSDC(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "SendCoreUSDC should reject a nil request")
+	})
 	ex := new(Exchange)
 	ex.SetDefaults()
-	_, err := ex.SendCoreUSDC(t.Context(), "invalid", 1)
+	_, err := ex.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: "invalid", Amount: 1})
 	require.ErrorIs(t, err, errInvalidAddress, "SendCoreUSDC must return the expected error for invalid USDC-send destination")
-	_, err = ex.SendCoreUSDC(t.Context(), testOtherAddress, 0)
+	_, err = ex.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 0})
 	require.ErrorIs(t, err, errTransferAmountInvalid, "SendCoreUSDC must return the expected error for invalid USDC-send amount")
-	_, err = ex.SendCoreUSDC(t.Context(), testOtherAddress, 1)
+	_, err = ex.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
 	require.Error(t, err, "SendCoreUSDC must error for USDC send without credentials")
 
 	subAccount := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey, SubAccount: testVaultAddress,
 	}, nil, nil)
-	_, err = subAccount.SendCoreUSDC(t.Context(), testOtherAddress, 1)
+	_, err = subAccount.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
 	require.ErrorIs(t, err, errTransferSubAccountUnsupported, "SendCoreUSDC must reject USDC send with a configured subaccount")
 
 	var captured signedActionRequest
 	success := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey,
 	}, nil, &captured)
-	nonce, err := success.SendCoreUSDC(t.Context(), strings.ToUpper(testOtherAddress), 1.5)
+	nonce, err := success.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: strings.ToUpper(testOtherAddress), Amount: 1.5})
 	require.NoError(t, err, "SendCoreUSDC must not error for valid Core USDC send")
 	action := getCapturedAction(t, &captured)
 	assert.Equal(t, "usdSend", action["type"], "action[\"type\"]: USDC-send action type should match")
 	assert.Equal(t, testOtherAddress, action["destination"], "action[\"destination\"]: USDC-send destination should be normalised")
 	assert.Equal(t, "1.5", action["amount"], "action[\"amount\"]: USDC-send amount should use wire formatting")
 	assert.Equal(t, float64(nonce), action["time"], "action[\"time\"]: USDC-send time should match the outer nonce")
+
+	t.Run("API wallet", func(t *testing.T) {
+		var captured signedActionRequest
+		ex := newAgentTransferTestExchange(t, &captured)
+		_, err := ex.SendCoreUSDC(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "SendCoreUSDC must reject an API-wallet account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "SendCoreUSDC must classify an API-wallet account as an authentication failure")
+		assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce should not change for a rejected API-wallet account")
+		assert.Nil(t, captured.Action, "captured.Action should remain empty for a rejected API-wallet account")
+	})
 }
 
 func TestSendCoreSpot(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.SendCoreSpot(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "SendCoreSpot should reject a nil request")
+	})
 	ex := new(Exchange)
 	ex.SetDefaults()
-	_, err := ex.SendCoreSpot(t.Context(), "invalid", "HYPE:0x96", 1)
+	_, err := ex.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: "invalid", Token: "HYPE:0x96", Amount: 1})
 	require.ErrorIs(t, err, errInvalidAddress, "SendCoreSpot must return the expected error for invalid spot-send destination")
-	_, err = ex.SendCoreSpot(t.Context(), testOtherAddress, "HYPE:0x96", 0)
+	_, err = ex.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "HYPE:0x96", Amount: 0})
 	require.ErrorIs(t, err, errTransferAmountInvalid, "SendCoreSpot must return the expected error for invalid spot-send amount")
-	_, err = ex.SendCoreSpot(t.Context(), testOtherAddress, "HYPE:0x96", 1)
+	_, err = ex.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "HYPE:0x96", Amount: 1})
 	require.Error(t, err, "SendCoreSpot must error for spot send without credentials")
 
 	subAccount := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey, SubAccount: testVaultAddress,
 	}, nil, nil)
-	_, err = subAccount.SendCoreSpot(t.Context(), testOtherAddress, "HYPE:0x96", 1)
+	_, err = subAccount.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "HYPE:0x96", Amount: 1})
 	require.ErrorIs(t, err, errTransferSubAccountUnsupported, "SendCoreSpot must reject spot send with a configured subaccount")
 
 	missingToken := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey,
 	}, map[string]string{"spotMeta": `{"tokens":[]}`}, nil)
-	_, err = missingToken.SendCoreSpot(t.Context(), testOtherAddress, "HYPE:0x96", 1)
+	_, err = missingToken.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "HYPE:0x96", Amount: 1})
 	require.ErrorIs(t, err, errTransferTokenInvalid, "SendCoreSpot must return the expected error for unknown spot-send token")
 
 	var captured signedActionRequest
 	success := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey,
 	}, map[string]string{"spotMeta": spotMetadataJSON}, &captured)
-	nonce, err := success.SendCoreSpot(t.Context(), testOtherAddress, "HYPE:0X96", 2)
+	nonce, err := success.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "HYPE:0X96", Amount: 2})
 	require.NoError(t, err, "SendCoreSpot must not error for valid Core spot send")
 	action := getCapturedAction(t, &captured)
 	assert.Equal(t, "spotSend", action["type"], "action[\"type\"]: spot-send action type should match")
@@ -470,41 +481,71 @@ func TestSendCoreSpot(t *testing.T) {
 	assert.Equal(t, "2", action["amount"], "action[\"amount\"]: spot-send amount should use wire formatting")
 	assert.Equal(t, float64(nonce), action["time"], "action[\"time\"]: spot-send time should match the outer nonce")
 
-	_, err = success.SendCoreSpot(t.Context(), testOtherAddress, "USDC", 1)
+	_, err = success.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "USDC", Amount: 1})
 	require.NoError(t, err, "SendCoreSpot must not error for valid Core spot USDC send")
 	assert.Equal(t, "USDC:0x0", getCapturedAction(t, &captured)["token"], "captured: core spot USDC should use its full token identifier")
+
+	t.Run("API wallet", func(t *testing.T) {
+		var captured signedActionRequest
+		ex := newAgentTransferTestExchange(t, &captured)
+		_, err := ex.SendCoreSpot(t.Context(), &SpotTransferRequest{Destination: testOtherAddress, Token: "USDC", Amount: 1})
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "SendCoreSpot must reject an API-wallet account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "SendCoreSpot must classify an API-wallet account as an authentication failure")
+		assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce should not change for a rejected API-wallet account")
+		assert.Nil(t, captured.Action, "captured.Action should remain empty for a rejected API-wallet account")
+	})
 }
 
 func TestWithdrawFromBridge(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.WithdrawFromBridge(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "WithdrawFromBridge should reject a nil request")
+	})
 	ex := new(Exchange)
 	ex.SetDefaults()
-	_, err := ex.WithdrawFromBridge(t.Context(), "invalid", 1)
+	_, err := ex.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: "invalid", Amount: 1})
 	require.ErrorIs(t, err, errInvalidAddress, "WithdrawFromBridge must return the expected error for invalid bridge-withdrawal destination")
-	_, err = ex.WithdrawFromBridge(t.Context(), testOtherAddress, 0)
+	_, err = ex.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 0})
 	require.ErrorIs(t, err, errTransferAmountInvalid, "WithdrawFromBridge must return the expected error for invalid bridge-withdrawal amount")
-	_, err = ex.WithdrawFromBridge(t.Context(), testOtherAddress, 1)
+	_, err = ex.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
 	require.Error(t, err, "WithdrawFromBridge must error for bridge withdrawal without credentials")
 
 	subAccount := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey, SubAccount: testVaultAddress,
 	}, nil, nil)
-	_, err = subAccount.WithdrawFromBridge(t.Context(), testOtherAddress, 1)
+	_, err = subAccount.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
 	require.ErrorIs(t, err, errTransferSubAccountUnsupported, "WithdrawFromBridge must reject bridge withdrawal with a configured subaccount")
 
 	var captured signedActionRequest
 	success := newTransferTestExchange(t, &accounts.Credentials{
 		Key: officialSigningAddress, Secret: officialSigningTestKey,
 	}, nil, &captured)
-	nonce, err := success.WithdrawFromBridge(t.Context(), strings.ToUpper(testOtherAddress), 2)
+	nonce, err := success.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: strings.ToUpper(testOtherAddress), Amount: 2})
 	require.NoError(t, err, "WithdrawFromBridge must not error for valid bridge withdrawal")
 	action := getCapturedAction(t, &captured)
 	assert.Equal(t, "withdraw3", action["type"], "action[\"type\"]: bridge-withdrawal action type should match")
 	assert.Equal(t, testOtherAddress, action["destination"], "action[\"destination\"]: bridge-withdrawal destination should be normalised")
 	assert.Equal(t, "2", action["amount"], "action[\"amount\"]: bridge-withdrawal amount should use wire formatting")
 	assert.Equal(t, float64(nonce), action["time"], "action[\"time\"]: bridge-withdrawal time should match the outer nonce")
+
+	t.Run("API wallet", func(t *testing.T) {
+		var captured signedActionRequest
+		ex := newAgentTransferTestExchange(t, &captured)
+		_, err := ex.WithdrawFromBridge(t.Context(), &USDCTransferRequest{Destination: testOtherAddress, Amount: 1})
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "WithdrawFromBridge must reject an API-wallet account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "WithdrawFromBridge must classify an API-wallet account as an authentication failure")
+		assert.Zero(t, ex.lastNonce.Load(), "ex.lastNonce should not change for a rejected API-wallet account")
+		assert.Nil(t, captured.Action, "captured.Action should remain empty for a rejected API-wallet account")
+	})
 }
 
 func TestGetUserNonFundingLedgerUpdates(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.GetUserNonFundingLedgerUpdates(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "GetUserNonFundingLedgerUpdates should reject a nil request")
+	})
 	start := time.UnixMilli(1700000000000).UTC()
 	end := start.Add(time.Hour)
 	var got infoRequest
@@ -515,12 +556,12 @@ func TestGetUserNonFundingLedgerUpdates(t *testing.T) {
 		_, err := w.Write([]byte(`[{"time":1700000000000,"hash":"0x1","delta":{"type":"withdraw","usdc":"2","fee":"1","nonce":7}}]`))
 		assert.NoError(t, err, "Write should not error for ledger-history response")
 	}))
-	_, err := ex.GetUserNonFundingLedgerUpdates(t.Context(), "invalid", start, end)
+	_, err := ex.GetUserNonFundingLedgerUpdates(t.Context(), &UserLedgerRequest{User: "invalid", StartTime: start, EndTime: end})
 	require.ErrorIs(t, err, errInvalidAddress, "GetUserNonFundingLedgerUpdates must return the expected error for invalid ledger address")
-	_, err = ex.GetUserNonFundingLedgerUpdates(t.Context(), officialSigningAddress, end, start)
+	_, err = ex.GetUserNonFundingLedgerUpdates(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: end, EndTime: start})
 	require.ErrorIs(t, err, common.ErrStartAfterEnd, "GetUserNonFundingLedgerUpdates must return the expected error for invalid ledger range")
 
-	result, err := ex.GetUserNonFundingLedgerUpdates(t.Context(), strings.ToUpper(officialSigningAddress), start, end)
+	result, err := ex.GetUserNonFundingLedgerUpdates(t.Context(), &UserLedgerRequest{User: strings.ToUpper(officialSigningAddress), StartTime: start, EndTime: end})
 	require.NoError(t, err, "GetUserNonFundingLedgerUpdates must not error for valid ledger history")
 	require.Len(t, result, 1, "GetUserNonFundingLedgerUpdates must decode one record")
 	assert.Equal(t, "userNonFundingLedgerUpdates", got.Type, "got.Type: ledger request type should match")
@@ -534,6 +575,6 @@ func TestGetUserNonFundingLedgerUpdates(t *testing.T) {
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
-	_, err = errorExchange.GetUserNonFundingLedgerUpdates(t.Context(), officialSigningAddress, start, end)
+	_, err = errorExchange.GetUserNonFundingLedgerUpdates(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: start, EndTime: end})
 	require.Error(t, err, "GetUserNonFundingLedgerUpdates must error for ledger history from a failing server")
 }

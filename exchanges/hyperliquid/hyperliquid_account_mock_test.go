@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 )
 
 func TestGetUserFees(t *testing.T) {
@@ -66,139 +65,139 @@ func TestGetActiveAssetData(t *testing.T) {
 	require.Error(t, err, "GetActiveAssetData must error for active-asset data from a failing server")
 }
 
-func TestGetAccountInfoEndpoints(t *testing.T) {
-	ex := newStaticInfoExchange(t, map[string]string{
-		testUserRoleInfoType:     testUserRoleResponse,
-		"vaultDetails":           `{"vaultAddress":"` + testVaultAddress + `","leader":"` + officialSigningAddress + `"}`,
-		"spotClearinghouseState": `{"balances":[{"coin":"USDC","token":0,"total":"10","hold":"2","entryNtl":"1"}]}`,
-		"clearinghouseState":     `{"marginSummary":{"accountValue":"12","totalMarginUsed":"3"},"withdrawable":"8","assetPositions":[]}`,
-		"frontendOpenOrders":     `[{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"}]`,
-		"historicalOrders":       `[{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"0","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"filled","statusTimestamp":1700000001000}]`,
-		"orderStatus":            `{"status":"order","order":{"order":{"coin":"BTC","side":"B","limitPx":"100","sz":"1","origSz":"2","oid":7,"timestamp":1700000000000,"isTrigger":false,"reduceOnly":false,"orderType":"Limit","tif":"Gtc"},"status":"open","statusTimestamp":1700000001000}}`,
-	})
-
+func TestGetUserRole(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{testUserRoleInfoType: testUserRoleResponse})
 	role, err := ex.GetUserRole(t.Context(), strings.ToUpper(officialSigningAddress))
 	require.NoError(t, err, "GetUserRole must not error for a valid user role")
-	assert.Equal(t, "user", role.Role, "role.Role: user role should be decoded")
+	assert.Equal(t, "user", role.Role, "role.Role should contain the user role")
 
-	vault, err := ex.GetVaultDetails(t.Context(), testVaultAddress, officialSigningAddress)
-	require.NoError(t, err, "GetVaultDetails must not error for valid vault details")
-	assert.Equal(t, officialSigningAddress, vault.Leader, "vault.Leader: vault leader should be decoded")
-	_, err = ex.GetVaultDetails(t.Context(), testVaultAddress, "")
-	require.NoError(t, err, "GetVaultDetails must not error for vault details without optional user")
+	_, err = ex.GetUserRole(t.Context(), "invalid")
+	require.ErrorIs(t, err, errInvalidAddress, "GetUserRole must return the expected error for an invalid address")
 
-	spotState, err := ex.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetSpotClearinghouseState must not error for valid spot state")
-	require.Len(t, spotState.Balances, 1, "spotState.Balances: spot state must contain one balance")
-	assert.Equal(t, 10.0, spotState.Balances[0].Total.Float64(), "Float64: spot balance should be decoded")
-
-	perpetualState, err := ex.GetClearinghouseState(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetClearinghouseState must not error for valid perpetual state")
-	assert.Equal(t, 12.0, perpetualState.MarginSummary.AccountValue.Float64(), "Float64: perpetual account value should be decoded")
-	_, err = ex.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
-	require.NoError(t, err, "GetClearinghouseStateForDEX must not error for named DEX perpetual state")
-
-	openOrders, err := ex.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetOpenOrdersForUser must not error for valid open orders")
-	require.Len(t, openOrders, 1, "openOrders: open order response must be decoded")
-	assert.Equal(t, uint64(7), openOrders[0].OrderID, "openOrders[0].OrderID: open order ID should be decoded")
-	openOrders, err = ex.GetOpenOrdersForUserForDEX(t.Context(), officialSigningAddress, "xyz")
-	require.NoError(t, err, "GetOpenOrdersForUserForDEX must not error for named DEX open orders")
-	require.Len(t, openOrders, 1, "GetOpenOrdersForUserForDEX must decode one order")
-
-	history, err := ex.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetHistoricalOrdersForUser must not error for valid order history")
-	require.Len(t, history, 1, "history: order history response must be decoded")
-	assert.Equal(t, "filled", history[0].Status, "history[0].Status: historical order status should be decoded")
-
-	status, err := ex.GetOrderStatusForUser(t.Context(), officialSigningAddress, uint64(7))
-	require.NoError(t, err, "GetOrderStatusForUser must not error for order status by numeric ID")
-	assert.Equal(t, "order", status.Status, "status.Status: order status response should be decoded")
-	_, err = ex.GetOrderStatusForUser(t.Context(), officialSigningAddress, validClientOrderID)
-	require.NoError(t, err, "GetOrderStatusForUser must not error for order status by client ID")
-
-	for _, call := range []func() error{
-		func() error { _, err := ex.GetUserRole(t.Context(), "invalid"); return err },
-		func() error { _, err := ex.GetVaultDetails(t.Context(), "invalid", ""); return err },
-		func() error { _, err := ex.GetVaultDetails(t.Context(), testVaultAddress, "invalid"); return err },
-		func() error { _, err := ex.GetSpotClearinghouseState(t.Context(), "invalid"); return err },
-		func() error { _, err := ex.GetClearinghouseState(t.Context(), "invalid"); return err },
-		func() error { _, err := ex.GetOpenOrdersForUser(t.Context(), "invalid"); return err },
-		func() error { _, err := ex.GetHistoricalOrdersForUser(t.Context(), "invalid"); return err },
-		func() error { _, err := ex.GetOrderStatusForUser(t.Context(), "invalid", uint64(7)); return err },
-	} {
-		require.ErrorIs(t, call(), errInvalidAddress, "call must return the expected error for invalid address")
-	}
-	_, err = ex.GetOrderStatusForUser(t.Context(), officialSigningAddress, uint64(0))
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "GetOrderStatusForUser must return the expected error for zero order ID")
-	_, err = ex.GetOrderStatusForUser(t.Context(), officialSigningAddress, "invalid")
-	require.ErrorIs(t, err, errClientOrderIDInvalid, "GetOrderStatusForUser must return the expected error for invalid client order ID")
-	_, err = ex.GetOrderStatusForUser(t.Context(), officialSigningAddress, int64(7))
-	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "GetOrderStatusForUser must return the expected error for unsupported order ID type")
-
-	nullExchange := newStaticInfoExchange(t, map[string]string{
-		testUserRoleInfoType:     `null`,
-		"vaultDetails":           `null`,
-		"spotClearinghouseState": `null`,
-		"clearinghouseState":     `null`,
-		"frontendOpenOrders":     `[]`,
-		"historicalOrders":       `[]`,
-		"orderStatus":            `null`,
-	})
-	for _, call := range []func() error{
-		func() error { _, err := nullExchange.GetUserRole(t.Context(), officialSigningAddress); return err },
-		func() error { _, err := nullExchange.GetVaultDetails(t.Context(), testVaultAddress, ""); return err },
-		func() error {
-			_, err := nullExchange.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := nullExchange.GetClearinghouseState(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := nullExchange.GetOrderStatusForUser(t.Context(), officialSigningAddress, uint64(7))
-			return err
-		},
-	} {
-		require.ErrorIs(t, call(), common.ErrNilPointer, "call must return the expected error for null account response")
-	}
-	openOrders, err = nullExchange.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetOpenOrdersForUser must not error for empty open-order response")
-	assert.Empty(t, openOrders, "openOrders: empty open-order response should be retained")
-	history, err = nullExchange.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
-	require.NoError(t, err, "GetHistoricalOrdersForUser must not error for empty historical-order response")
-	assert.Empty(t, history, "history: empty historical-order response should be retained")
+	nullExchange := newStaticInfoExchange(t, map[string]string{testUserRoleInfoType: `null`})
+	_, err = nullExchange.GetUserRole(t.Context(), officialSigningAddress)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetUserRole must return the expected error for a null response")
 
 	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
-	for _, call := range []func() error{
-		func() error { _, err := errorExchange.GetUserRole(t.Context(), officialSigningAddress); return err },
-		func() error { _, err := errorExchange.GetVaultDetails(t.Context(), testVaultAddress, ""); return err },
-		func() error {
-			_, err := errorExchange.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := errorExchange.GetClearinghouseState(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := errorExchange.GetOpenOrdersForUser(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := errorExchange.GetHistoricalOrdersForUser(t.Context(), officialSigningAddress)
-			return err
-		},
-		func() error {
-			_, err := errorExchange.GetOrderStatusForUser(t.Context(), officialSigningAddress, uint64(7))
-			return err
-		},
+	_, err = errorExchange.GetUserRole(t.Context(), officialSigningAddress)
+	require.Error(t, err, "GetUserRole must return an HTTP failure")
+}
+
+func TestGetVaultDetails(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"vaultDetails": `{"vaultAddress":"` + testVaultAddress + `","leader":"` + officialSigningAddress + `"}`,
+	})
+	vault, err := ex.GetVaultDetails(t.Context(), testVaultAddress, officialSigningAddress)
+	require.NoError(t, err, "GetVaultDetails must not error for valid vault details")
+	assert.Equal(t, officialSigningAddress, vault.Leader, "vault.Leader should contain the vault leader")
+	_, err = ex.GetVaultDetails(t.Context(), testVaultAddress, "")
+	require.NoError(t, err, "GetVaultDetails must not error for vault details without optional user")
+
+	for _, tc := range []struct {
+		name  string
+		vault string
+		user  string
+	}{
+		{name: "invalid vault", vault: "invalid"},
+		{name: "invalid user", vault: testVaultAddress, user: "invalid"},
 	} {
-		require.Error(t, call(), "call must return account endpoint HTTP failure")
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ex.GetVaultDetails(t.Context(), tc.vault, tc.user)
+			require.ErrorIs(t, err, errInvalidAddress, "GetVaultDetails must return the expected error for an invalid address")
+		})
 	}
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"vaultDetails": `null`})
+	_, err = nullExchange.GetVaultDetails(t.Context(), testVaultAddress, "")
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetVaultDetails must return the expected error for a null response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetVaultDetails(t.Context(), testVaultAddress, "")
+	require.Error(t, err, "GetVaultDetails must return an HTTP failure")
+}
+
+func TestGetSpotClearinghouseState(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"spotClearinghouseState": `{"balances":[{"coin":"USDC","token":0,"total":"10","hold":"2","entryNtl":"1"}]}`,
+	})
+	spotState, err := ex.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetSpotClearinghouseState must not error for valid spot state")
+	require.Len(t, spotState.Balances, 1, "spotState.Balances must contain one balance")
+	assert.Equal(t, 10.0, spotState.Balances[0].Total.Float64(), "spotState.Balances[0].Total should contain the spot balance")
+
+	_, err = ex.GetSpotClearinghouseState(t.Context(), "invalid")
+	require.ErrorIs(t, err, errInvalidAddress, "GetSpotClearinghouseState must return the expected error for an invalid address")
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"spotClearinghouseState": `null`})
+	_, err = nullExchange.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetSpotClearinghouseState must return the expected error for a null response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetSpotClearinghouseState(t.Context(), officialSigningAddress)
+	require.Error(t, err, "GetSpotClearinghouseState must return an HTTP failure")
+}
+
+func TestGetClearinghouseState(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"clearinghouseState": `{"marginSummary":{"accountValue":"12","totalMarginUsed":"3"},"withdrawable":"8","assetPositions":[]}`,
+	})
+	perpetualState, err := ex.GetClearinghouseState(t.Context(), officialSigningAddress)
+	require.NoError(t, err, "GetClearinghouseState must not error for valid perpetual state")
+	assert.Equal(t, 12.0, perpetualState.MarginSummary.AccountValue.Float64(), "perpetualState.MarginSummary.AccountValue should contain the perpetual account value")
+
+	_, err = ex.GetClearinghouseState(t.Context(), "invalid")
+	require.ErrorIs(t, err, errInvalidAddress, "GetClearinghouseState must return the expected error for an invalid address")
+
+	nullExchange := newStaticInfoExchange(t, map[string]string{"clearinghouseState": `null`})
+	_, err = nullExchange.GetClearinghouseState(t.Context(), officialSigningAddress)
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetClearinghouseState must return the expected error for a null response")
+
+	errorExchange := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = errorExchange.GetClearinghouseState(t.Context(), officialSigningAddress)
+	require.Error(t, err, "GetClearinghouseState must return an HTTP failure")
+}
+
+func TestGetClearinghouseStateForDEX(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{
+		"clearinghouseState": `{"marginSummary":{"accountValue":"12","totalMarginUsed":"3"},"withdrawable":"8","assetPositions":[]}`,
+	})
+	perpetualState, err := ex.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
+	require.NoError(t, err, "GetClearinghouseStateForDEX must not error for named DEX perpetual state")
+	assert.Equal(t, 12.0, perpetualState.MarginSummary.AccountValue.Float64(), "perpetualState.MarginSummary.AccountValue should contain the perpetual account value")
+
+	var requests []infoRequest
+	scoped := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request infoRequest
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request), "Decode should not error for the DEX clearinghouse request") {
+			return
+		}
+		requests = append(requests, request)
+		_, err := w.Write([]byte(`{"assetPositions":[]}`))
+		assert.NoError(t, err, "Write should not error for the DEX clearinghouse response")
+	}))
+	_, err = scoped.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
+	require.NoError(t, err, "GetClearinghouseStateForDEX must not error for DEX-scoped clearinghouse state")
+	require.Len(t, requests, 1, "requests must contain one DEX clearinghouse request")
+	assert.Equal(t, "xyz", requests[0].DEX, "requests[0].DEX should contain the clearinghouse DEX")
+
+	_, err = ex.GetClearinghouseStateForDEX(t.Context(), "invalid", "xyz")
+	require.ErrorIs(t, err, errInvalidAddress, "GetClearinghouseStateForDEX must reject an invalid account address")
+	nullExchange := newStaticInfoExchange(t, map[string]string{"clearinghouseState": `null`})
+	_, err = nullExchange.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
+	require.ErrorIs(t, err, common.ErrNilPointer, "GetClearinghouseStateForDEX must reject a null response")
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failed.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
+	require.Error(t, err, "GetClearinghouseStateForDEX must return an HTTP failure")
 }
 
 func TestGetUserAbstraction(t *testing.T) {
@@ -231,28 +230,4 @@ func TestGetUserAbstraction(t *testing.T) {
 	}))
 	_, err = errorExchange.GetUserAbstraction(t.Context(), officialSigningAddress)
 	require.Error(t, err, "GetUserAbstraction must return account abstraction HTTP failure")
-}
-
-func TestDEXScopedAccountInfoRequests(t *testing.T) {
-	var requests []infoRequest
-	ex := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var request infoRequest
-		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&request), "Decode should not error for DEX-scoped account request") {
-			return
-		}
-		requests = append(requests, request)
-		response := `[]`
-		if request.Type == "clearinghouseState" {
-			response = `{"assetPositions":[]}`
-		}
-		_, err := w.Write([]byte(response))
-		assert.NoError(t, err, "Write should not error for DEX-scoped account response")
-	}))
-	_, err := ex.GetClearinghouseStateForDEX(t.Context(), officialSigningAddress, "xyz")
-	require.NoError(t, err, "GetClearinghouseStateForDEX must not error for DEX-scoped clearinghouse state")
-	_, err = ex.GetOpenOrdersForUserForDEX(t.Context(), officialSigningAddress, "xyz")
-	require.NoError(t, err, "GetOpenOrdersForUserForDEX must not error for DEX-scoped open orders")
-	require.Len(t, requests, 2, "requests: DEX-scoped account requests must contain two entries")
-	assert.Equal(t, "xyz", requests[0].DEX, "requests[0].DEX: clearinghouse state should include its DEX")
-	assert.Equal(t, "xyz", requests[1].DEX, "requests[1].DEX: open orders should include their DEX")
 }

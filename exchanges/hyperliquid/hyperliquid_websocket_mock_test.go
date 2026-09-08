@@ -283,21 +283,21 @@ func TestWebsocketReadLoop(t *testing.T) {
 	assert.Equal(t, int32(2), fullConnection.readCalls.Load(), "fullConnection.readCalls: read loop should continue after a full data relay")
 }
 
-func TestWebsocketHandleDataRouting(t *testing.T) {
+func TestWebsocketHandleDataForConnectionRouting(t *testing.T) {
 	ex := newWebsocketHandlerTestExchange(t)
-	require.Error(t, ex.websocketHandleData(t.Context(), []byte(`invalid`)), "websocketHandleData must error for invalid websocket envelope")
-	require.NoError(t, ex.websocketHandleData(t.Context(), []byte(websocketConnectionEstablished)), "websocketHandleData must be ignored for connection acknowledgement")
-	require.ErrorIs(t, ex.websocketHandleData(t.Context(), []byte(`{"channel":"subscriptionResponse","data":{}}`)), errWebsocketSubscription, "websocketHandleData must error for malformed subscription response")
-	require.NoError(t, ex.websocketHandleData(t.Context(), []byte(`{"channel":"pong","data":{}}`)), "websocketHandleData must be ignored for pong")
-	err := ex.websocketHandleData(t.Context(), []byte(`{"channel":"error","data":"bad subscription"}`))
-	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleData must return the expected error for websocket error channel")
-	assert.ErrorContains(t, err, "bad subscription", "websocketHandleData should retain the server message for websocket error")
-	err = ex.websocketHandleData(t.Context(), []byte(`{"channel":"error","data":{"message":"bad request"}}`))
-	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleData must return the expected error for structured websocket error")
-	assert.ErrorContains(t, err, `"message":"bad request"`, "websocketHandleData should retain the server payload for structured websocket error")
-	err = ex.websocketHandleData(t.Context(), []byte(`{"channel":"error","data":null}`))
-	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleData must return the expected error for empty websocket error")
-	assert.ErrorContains(t, err, "unspecified error", "websocketHandleData should use a safe fallback for empty websocket error")
+	require.Error(t, ex.websocketHandleDataForConnection(t.Context(), []byte(`invalid`), false), "websocketHandleDataForConnection must error for invalid websocket envelope")
+	require.NoError(t, ex.websocketHandleDataForConnection(t.Context(), []byte(websocketConnectionEstablished), false), "websocketHandleDataForConnection must ignore the connection acknowledgement")
+	require.ErrorIs(t, ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"subscriptionResponse","data":{}}`), false), errWebsocketSubscription, "websocketHandleDataForConnection must error for malformed subscription response")
+	require.NoError(t, ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"pong","data":{}}`), false), "websocketHandleDataForConnection must ignore pong")
+	err := ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"error","data":"bad subscription"}`), false)
+	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleDataForConnection must return the expected error for websocket error channel")
+	assert.ErrorContains(t, err, "bad subscription", "websocketHandleDataForConnection should retain the server message for websocket error")
+	err = ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"error","data":{"message":"bad request"}}`), false)
+	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleDataForConnection must return the expected error for structured websocket error")
+	assert.ErrorContains(t, err, `"message":"bad request"`, "websocketHandleDataForConnection should retain the server payload for structured websocket error")
+	err = ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"error","data":null}`), false)
+	require.ErrorIs(t, err, errWebsocketServer, "websocketHandleDataForConnection must return the expected error for empty websocket error")
+	assert.ErrorContains(t, err, "unspecified error", "websocketHandleDataForConnection should use a safe fallback for empty websocket error")
 
 	for _, channel := range []string{
 		wsChannelActiveAssetContext,
@@ -308,26 +308,21 @@ func TestWebsocketHandleDataRouting(t *testing.T) {
 		wsChannelOrderUpdates,
 		wsChannelUserFills,
 	} {
-		err := ex.websocketHandleData(t.Context(), []byte(`{"channel":"`+channel+`","data":"invalid"}`))
-		require.Error(t, err, "websocketHandleData must error for invalid routed channel data")
+		err := ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"`+channel+`","data":"invalid"}`), false)
+		require.Error(t, err, "websocketHandleDataForConnection must error for invalid routed channel data")
 	}
 
-	require.NoError(t, ex.websocketHandleData(t.Context(), []byte(`{"channel":"futureChannel","data":{}}`)), "websocketHandleData must be relayed as a warning for unhandled websocket message")
+	require.NoError(t, ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"futureChannel","data":{}}`), false), "websocketHandleDataForConnection must relay an unhandled websocket message as a warning")
 	_, ok := receiveWebsocketData(t, ex).(ws.UnhandledMessageWarning)
-	assert.True(t, ok, "ok: unhandled channel should relay the expected warning type")
+	assert.True(t, ok, "websocketHandleDataForConnection should relay the expected warning type for an unhandled channel")
 }
 
-func TestWebsocketHandleSubscriptionAcknowledgement(t *testing.T) {
+func TestWebsocketHandleDataForConnectionSubscriptionAcknowledgements(t *testing.T) {
 	ex := newWebsocketHandlerTestExchange(t)
 	connection := new(websocketConnectionFixture)
 	ex.Websocket.Conn = connection
 
-	require.ErrorIs(
-		t,
-		ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"subscriptionResponse","data":"invalid"}`), false),
-		errWebsocketSubscription,
-		"websocketHandleDataForConnection must return the expected error for invalid acknowledgement payload",
-	)
+	require.ErrorIs(t, ex.websocketHandleDataForConnection(t.Context(), []byte(`{"channel":"subscriptionResponse","data":"invalid"}`), false), errWebsocketSubscription, "websocketHandleDataForConnection must return the expected error for invalid acknowledgement payload")
 	require.ErrorIs(
 		t,
 		ex.websocketHandleDataForConnection(t.Context(), websocketAcknowledgement(t, &websocketRequest{
@@ -337,12 +332,7 @@ func TestWebsocketHandleSubscriptionAcknowledgement(t *testing.T) {
 		errWebsocketSubscription,
 		"websocketHandleDataForConnection must return the expected error for invalid acknowledgement method",
 	)
-	require.ErrorIs(
-		t,
-		ex.websocketHandleDataForConnection(t.Context(), websocketAcknowledgement(t, &websocketRequest{Method: wsMethodSubscribe}), false),
-		errWebsocketSubscription,
-		"websocketHandleDataForConnection must return the expected error for acknowledgement without a subscription type",
-	)
+	require.ErrorIs(t, ex.websocketHandleDataForConnection(t.Context(), websocketAcknowledgement(t, &websocketRequest{Method: wsMethodSubscribe}), false), errWebsocketSubscription, "websocketHandleDataForConnection must return the expected error for acknowledgement without a subscription type")
 
 	unknown := websocketRequest{
 		Method:       wsMethodSubscribe,
@@ -391,7 +381,7 @@ func TestWebsocketHandleSubscriptionAcknowledgement(t *testing.T) {
 		Subscription: stateConflictPayload,
 	}), false)
 	require.ErrorIs(t, err, subscription.ErrInStateAlready, "websocketHandleDataForConnection must return conflicting subscribe acknowledgement state")
-	require.ErrorIs(t, <-stateConflictPending.done, subscription.ErrInStateAlready, "Subscribe waiter must receive the state conflict")
+	require.ErrorIs(t, <-stateConflictPending.done, subscription.ErrInStateAlready, "stateConflictPending.done must receive the state conflict")
 	assert.Nil(t, ex.Websocket.GetSubscription(stateConflictSub), "GetSubscription: conflicting subscribe acknowledgement should roll back the stored subscription")
 
 	missingUnsubscribeSub := &subscription.Subscription{Channel: subscription.CandlesChannel}
@@ -411,7 +401,7 @@ func TestWebsocketHandleSubscriptionAcknowledgement(t *testing.T) {
 		Subscription: missingUnsubscribePayload,
 	}), false)
 	require.ErrorIs(t, err, subscription.ErrNotFound, "websocketHandleDataForConnection must return the store error for acknowledged unknown unsubscribe")
-	require.ErrorIs(t, <-missingUnsubscribePending.done, subscription.ErrNotFound, "Unsubscribe waiter must receive the store error")
+	require.ErrorIs(t, <-missingUnsubscribePending.done, subscription.ErrNotFound, "missingUnsubscribePending.done must receive the store error")
 	assert.Equal(t, subscription.SubscribedState, missingUnsubscribeSub.State(), "State: failed unsubscribe acknowledgement should restore the prior state")
 
 	authSub := &subscription.Subscription{Channel: subscription.MyOrdersChannel, Authenticated: true}
@@ -448,7 +438,7 @@ func TestRollbackWebsocketPending(t *testing.T) {
 		connection:   connection,
 		subscription: subscribeSub,
 	}), "rollbackWebsocketPending must not error for rolling back a subscribe")
-	assert.Nil(t, ex.Websocket.GetSubscription(subscribeSub), "Subscribe rollback should remove the subscription")
+	assert.Nil(t, ex.Websocket.GetSubscription(subscribeSub), "rollbackWebsocketPending should remove the subscription")
 
 	unsubscribeSub := &subscription.Subscription{Channel: subscription.AllTradesChannel}
 	require.NoError(t, unsubscribeSub.SetState(subscription.SubscribedState), "SetState: preparing unsubscribe rollback state must not error")
@@ -465,7 +455,7 @@ func TestRollbackWebsocketPending(t *testing.T) {
 		subscription:  unsubscribeSub,
 		previousState: subscription.SubscribedState,
 	}), "rollbackWebsocketPending must restore its previous state for rolling back an unsubscribe")
-	assert.Equal(t, subscription.SubscribedState, unsubscribeSub.State(), "Unsubscribe rollback should restore the previous state")
+	assert.Equal(t, subscription.SubscribedState, unsubscribeSub.State(), "rollbackWebsocketPending should restore the previous state")
 
 	require.ErrorIs(t, ex.rollbackWebsocketPending(&websocketPendingOperation{
 		method:       "invalid",
@@ -716,8 +706,7 @@ func TestParseWebsocketInterval(t *testing.T) {
 	require.ErrorIs(t, err, kline.ErrUnsupportedInterval, "parseWebsocketInterval must return the expected error for unsupported websocket interval")
 }
 
-func TestWebsocketSubscriptionTemplates(t *testing.T) {
-	ex := newWebsocketHandlerTestExchange(t)
+func TestWebsocketChannelName(t *testing.T) {
 	name, err := websocketChannelName(&subscription.Subscription{Channel: subscription.OrderbookChannel})
 	require.NoError(t, err, "websocketChannelName must not error for a supported channel name")
 	assert.Equal(t, wsChannelOrderbook, name, "name: channel name should map to Hyperliquid")
@@ -725,11 +714,69 @@ func TestWebsocketSubscriptionTemplates(t *testing.T) {
 	require.ErrorIs(t, err, common.ErrNilPointer, "websocketChannelName must return the expected error for a nil channel")
 	_, err = websocketChannelName(&subscription.Subscription{Channel: "unsupported"})
 	require.ErrorIs(t, err, subscription.ErrNotSupported, "websocketChannelName must return the expected error for an unsupported channel")
+}
 
+func TestGetSubscriptionTemplate(t *testing.T) {
+	ex := new(Exchange)
 	template, err := ex.GetSubscriptionTemplate(nil)
 	require.NoError(t, err, "GetSubscriptionTemplate must not error for subscription template")
-	assert.NotNil(t, template, "template: subscription template should be returned")
+	require.NotNil(t, template, "GetSubscriptionTemplate must return a subscription template")
 
+	for _, tc := range []struct {
+		name          string
+		sub           *subscription.Subscription
+		channel       string
+		expectedError error
+	}{
+		{
+			name:    "PublicChannel",
+			sub:     &subscription.Subscription{Channel: subscription.OrderbookChannel, Asset: asset.PerpetualContract},
+			channel: "l2Book:perpetualcontract:BTC-USDC",
+		},
+		{
+			name:    "CandleInterval",
+			sub:     &subscription.Subscription{Channel: subscription.CandlesChannel, Asset: asset.PerpetualContract, Interval: kline.OneMin},
+			channel: "candle:perpetualcontract:BTC-USDC:1m",
+		},
+		{
+			name:          "UnsupportedInterval",
+			sub:           &subscription.Subscription{Channel: subscription.CandlesChannel, Asset: asset.PerpetualContract, Interval: kline.Interval(42)},
+			expectedError: kline.ErrUnsupportedInterval,
+		},
+		{
+			name:    "AccountChannel",
+			sub:     &subscription.Subscription{Channel: subscription.MyOrdersChannel, Authenticated: true},
+			channel: wsChannelOrderUpdates,
+		},
+		{
+			name:          "UnsupportedChannel",
+			sub:           &subscription.Subscription{Channel: "unsupported"},
+			expectedError: subscription.ErrNotSupported,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var qualifiedChannel strings.Builder
+			err := template.Execute(&qualifiedChannel, &struct {
+				S              *subscription.Subscription
+				AssetPairs     map[asset.Item]currency.Pairs
+				PairSeparator  string
+				AssetSeparator string
+			}{
+				S:          tc.sub,
+				AssetPairs: map[asset.Item]currency.Pairs{asset.PerpetualContract: {testPerpetualPair}},
+			})
+			if tc.expectedError != nil {
+				require.ErrorIs(t, err, tc.expectedError, "GetSubscriptionTemplate must propagate the channel qualification error")
+				return
+			}
+			require.NoError(t, err, "GetSubscriptionTemplate must provide an executable subscription template")
+			assert.Equal(t, tc.channel, strings.TrimSpace(qualifiedChannel.String()), "GetSubscriptionTemplate should qualify the channel correctly")
+		})
+	}
+}
+
+func TestGenerateSubscriptions(t *testing.T) {
+	ex := newWebsocketHandlerTestExchange(t)
 	subscriptions, err := ex.generateSubscriptions()
 	require.NoError(t, err, "generateSubscriptions must not error for default subscriptions")
 	assert.NotEmpty(t, subscriptions, "subscriptions: default subscriptions should expand")
@@ -811,12 +858,12 @@ func TestManageWebsocketSubscription(t *testing.T) {
 	assert.Equal(t, subscription.SubscribedState, sub.State(), "State: successful subscription should be marked subscribed")
 	assert.NotNil(t, ex.Websocket.GetSubscription(sub.Clone()), "GetSubscription: equivalent subscription should match the stored exact key")
 	require.Len(t, connection.sentRequests(), 1, "sentRequests: one subscribe request must be sent")
-	assert.Equal(t, wsMethodSubscribe, connection.sentRequests()[0].Method, "Subscribe request should use the subscribe method")
+	assert.Equal(t, wsMethodSubscribe, connection.sentRequests()[0].Method, "manageWebsocketSubscription should send the subscribe method")
 	require.ErrorIs(t, ex.manageWebsocketSubscription(t.Context(), wsMethodSubscribe, sub), subscription.ErrDuplicate, "manageWebsocketSubscription must return the expected error for duplicate subscription")
 
 	require.NoError(t, ex.manageWebsocketSubscription(t.Context(), wsMethodUnsubscribe, sub), "manageWebsocketSubscription must not error for unsubscribing one public channel")
 	assert.Nil(t, ex.Websocket.GetSubscription(sub), "GetSubscription: unsubscribed channel should be removed")
-	assert.Equal(t, wsMethodUnsubscribe, connection.sentRequests()[1].Method, "Unsubscribe request should use the unsubscribe method")
+	assert.Equal(t, wsMethodUnsubscribe, connection.sentRequests()[1].Method, "manageWebsocketSubscription should send the unsubscribe method")
 
 	acknowledgedThenSendFailed := &subscription.Subscription{
 		Channel:          subscription.AllTradesChannel,
@@ -937,7 +984,7 @@ func TestManageWebsocketSubscription(t *testing.T) {
 	assert.Nil(t, ex.Websocket.GetSubscription(cancelledSub), "GetSubscription: cancelled subscription should be rolled back")
 }
 
-func TestSubscribeAndUnsubscribe(t *testing.T) {
+func TestSubscribe(t *testing.T) {
 	ex := newWebsocketHandlerTestExchange(t)
 	connection := new(websocketConnectionFixture)
 	ex.Websocket.Conn = connection
@@ -950,7 +997,25 @@ func TestSubscribeAndUnsubscribe(t *testing.T) {
 	}
 	require.NoError(t, ex.Subscribe(subscription.List{sub}), "Subscribe must not error for subscribing through wrapper")
 	require.NotEmpty(t, connection.sentRequests(), "sentRequests: wrapper subscribe must send a request")
+	require.Error(t, ex.Subscribe(subscription.List{nil}), "Subscribe must error for nil subscription expansion")
+}
+
+func TestUnsubscribe(t *testing.T) {
+	ex := newWebsocketHandlerTestExchange(t)
+	connection := new(websocketConnectionFixture)
+	ex.Websocket.Conn = connection
+	installWebsocketAcknowledgements(t, ex, connection, false)
+	sub := &subscription.Subscription{
+		Channel:          subscription.OrderbookChannel,
+		Asset:            asset.PerpetualContract,
+		Pairs:            currency.Pairs{testPerpetualPair},
+		QualifiedChannel: "l2Book:perpetualcontract:BTC-USDC",
+	}
+	require.NoError(t, ex.Websocket.AddSuccessfulSubscriptions(connection, sub), "AddSuccessfulSubscriptions must prepare the active subscription")
 	require.NoError(t, ex.Unsubscribe(subscription.List{sub}), "Unsubscribe must not error for unsubscribing through wrapper")
+	require.Len(t, connection.sentRequests(), 1, "sentRequests must contain one unsubscribe request")
+	assert.Equal(t, wsMethodUnsubscribe, connection.sentRequests()[0].Method, "sentRequests should contain the unsubscribe method")
+	assert.Nil(t, ex.Websocket.GetSubscription(sub), "Unsubscribe should remove the active subscription")
 
 	missing := &subscription.Subscription{
 		Channel:          subscription.CandlesChannel,
@@ -960,6 +1025,5 @@ func TestSubscribeAndUnsubscribe(t *testing.T) {
 		QualifiedChannel: "candle:perpetualcontract:BTC-USDC:1m",
 	}
 	require.ErrorIs(t, ex.Unsubscribe(subscription.List{missing}), subscription.ErrNotFound, "Unsubscribe must return the expected error for unsubscribing an unknown channel")
-	require.Error(t, ex.Subscribe(subscription.List{nil}), "Subscribe must error for nil subscription expansion")
 	require.ErrorIs(t, ex.Unsubscribe(subscription.List{nil}), common.ErrNilPointer, "Unsubscribe must return the expected error for nil unsubscription")
 }

@@ -9,6 +9,7 @@ import (
 	secpECDSA "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thrasher-corp/gocryptotrader/common"
 )
 
 const officialSigningTestKey = "0x0123456789012345678901234567890123456789012345678901234567890123"
@@ -77,6 +78,9 @@ func TestPrivateKeyAddress(t *testing.T) {
 }
 
 func TestActionHash(t *testing.T) {
+	_, err := actionHash(nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "actionHash must return the expected error for a nil request")
+
 	action := orderAction{
 		Type: "order",
 		Orders: []orderWire{{
@@ -89,17 +93,17 @@ func TestActionHash(t *testing.T) {
 		}},
 		Grouping: "na",
 	}
-	hash, err := actionHash(action, "", 1677777606040, nil)
+	hash, err := actionHash(&l1ActionRequest{Action: action, Nonce: 1677777606040})
 	require.NoError(t, err, "actionHash must not error for an official order vector")
 	assert.Equal(t, "0fcbeda5ae3c4950a548021552a4fea2226858c4453571bf3f24ba017eac2908", hex.EncodeToString(hash[:]), "hash should match the official SDK action hash")
 
-	_, err = actionHash(make(chan int), "", 0, nil)
+	_, err = actionHash(&l1ActionRequest{Action: make(chan int)})
 	require.Error(t, err, "actionHash must error for an unsupported MessagePack value")
-	_, err = actionHash(action, "invalid", 0, nil)
+	_, err = actionHash(&l1ActionRequest{Action: action, VaultAddress: "invalid"})
 	require.ErrorIs(t, err, errInvalidAddress, "actionHash must return the expected error with an invalid vault")
 
 	expiry := uint64(123)
-	withExpiry, err := actionHash(action, "0x1719884eb866cb12b2287399b15f7db5e7d775ea", 1, &expiry)
+	withExpiry, err := actionHash(&l1ActionRequest{Action: action, VaultAddress: "0x1719884eb866cb12b2287399b15f7db5e7d775ea", Nonce: 1, ExpiresAfter: &expiry})
 	require.NoError(t, err, "actionHash must not error with a vault and expiry")
 	assert.NotEqual(t, hash, withExpiry, "withExpiry should reflect the vault and expiry in the action hash")
 }
@@ -253,7 +257,7 @@ func TestSignL1ActionOfficialVectors(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			sig, err := signL1Action(officialSigningTestKey, tc.action, tc.vault, 0, nil, tc.mainnet)
+			sig, err := signL1Action(officialSigningTestKey, &l1ActionRequest{Action: tc.action, VaultAddress: tc.vault}, tc.mainnet)
 			require.NoError(t, err, "signL1Action must not error for an official vector")
 			assert.Equal(t, tc.expectedR, sig.R, "sig.R should match the official SDK")
 			assert.Equal(t, tc.expectedS, sig.S, "sig.S should match the official SDK")
@@ -261,12 +265,14 @@ func TestSignL1ActionOfficialVectors(t *testing.T) {
 		})
 	}
 
-	_, err := signL1Action("invalid", dummy, "", 0, nil, true)
+	_, err := signL1Action(officialSigningTestKey, nil, true)
+	require.ErrorIs(t, err, common.ErrNilPointer, "signL1Action must return the expected error for a nil request")
+	_, err = signL1Action("invalid", &l1ActionRequest{Action: dummy}, true)
 	require.ErrorIs(t, err, errInvalidPrivateKey, "signL1Action must return the expected error with an invalid key")
-	_, err = signL1Action(officialSigningTestKey, make(chan int), "", 0, nil, true)
+	_, err = signL1Action(officialSigningTestKey, &l1ActionRequest{Action: make(chan int)}, true)
 	require.Error(t, err, "signL1Action must error for an unsupported MessagePack value")
 	expiry := uint64(1)
-	_, err = signL1Action(officialSigningTestKey, dummy, "", 0, &expiry, true)
+	_, err = signL1Action(officialSigningTestKey, &l1ActionRequest{Action: dummy, ExpiresAfter: &expiry}, true)
 	require.NoError(t, err, "signL1Action must not error with an expiry")
 }
 

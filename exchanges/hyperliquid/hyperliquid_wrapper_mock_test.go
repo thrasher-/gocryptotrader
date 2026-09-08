@@ -62,12 +62,12 @@ func TestSetDefaults(t *testing.T) {
 	assert.True(t, ex.Features.Supports.RESTCapabilities.CryptoWithdrawal, "ex.Features.Supports.RESTCapabilities.CryptoWithdrawal: USDC bridge withdrawals should be supported")
 	assert.True(t, ex.Features.Supports.RESTCapabilities.DepositHistory, "ex.Features.Supports.RESTCapabilities.DepositHistory: account deposit history should be supported")
 	assert.True(t, ex.Features.Supports.RESTCapabilities.WithdrawalHistory, "ex.Features.Supports.RESTCapabilities.WithdrawalHistory: bridge withdrawal history should be supported")
-	assert.True(t, ex.HasAssetTypeAccountSegregation(), "HasAssetTypeAccountSegregation: separate spot and perpetual balance pools should report asset type account segregation")
 	assert.Equal(t, exchange.AutoWithdrawCryptoWithSetup, ex.Features.Supports.WithdrawPermissions, "ex.Features.Supports.WithdrawPermissions: withdrawal permissions should require master-wallet setup")
 	assert.True(t, ex.Features.Supports.WebsocketCapabilities.AuthenticatedEndpoints, "ex.Features.Supports.WebsocketCapabilities.AuthenticatedEndpoints: address-scoped websocket feeds should be supported")
 	assert.True(t, ex.Features.Supports.RESTCapabilities.TickerBatching, "ex.Features.Supports.RESTCapabilities.TickerBatching should be supported")
 	assert.True(t, ex.Features.Supports.RESTCapabilities.AutoPairUpdates, "ex.Features.Supports.RESTCapabilities.AutoPairUpdates: automatic pair updates should be supported")
 	assert.True(t, ex.Features.Supports.FuturesCapabilities.FundingRates, "ex.Features.Supports.FuturesCapabilities.FundingRates: perpetual funding rates should be supported")
+	assert.True(t, ex.Features.Supports.RESTCapabilities.FundingRateFetching, "SetDefaults should advertise REST funding-rate support")
 	assert.True(t, ex.Features.Supports.FuturesCapabilities.Leverage, "ex.Features.Supports.FuturesCapabilities.Leverage: perpetual leverage readback should be supported")
 	assert.True(t, ex.Features.Supports.FuturesCapabilities.OpenInterest.Supported, "ex.Features.Supports.FuturesCapabilities.OpenInterest.Supported: perpetual open interest should be supported")
 	assert.Equal(t, uint64(maximumCandleCount), ex.Features.Enabled.Kline.GlobalResultLimit, "ex.Features.Enabled.Kline.GlobalResultLimit: candle result limit should match Hyperliquid retention")
@@ -119,6 +119,35 @@ func TestSetPairMappings(t *testing.T) {
 	require.NoError(t, err, "getCoin must not error for a cloned pair mapping from a newly initialised map")
 	assert.Equal(t, "@108", coin, "coin: stored pair mapping in a newly initialised map should not alias the source slice")
 	require.NoError(t, ex.Shutdown(), "Shutdown must not error for the exchange")
+}
+
+func TestGetPairMapping(t *testing.T) {
+	ex := newStaticInfoExchange(t, map[string]string{"spotMeta": spotMetadataJSON})
+	_, err := ex.getPairMapping(t.Context(), testSpotPair, asset.Options)
+	require.ErrorIs(t, err, asset.ErrNotSupported, "getPairMapping must reject an unsupported asset")
+	_, err = ex.getPairMapping(t.Context(), currency.EMPTYPAIR, asset.Spot)
+	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "getPairMapping must reject an empty pair")
+
+	expected := pairMapping{pair: testSpotPair, coin: "@cached"}
+	ex.setPairMappings(asset.Spot, []pairMapping{expected})
+	mapping, err := ex.getPairMapping(t.Context(), testSpotPair, asset.Spot)
+	require.NoError(t, err, "getPairMapping must not error for a cached mapping")
+	assert.Equal(t, expected, mapping, "mapping should contain the cached pair metadata")
+
+	ex.setPairMappings(asset.Spot, nil)
+	mapping, err = ex.getPairMapping(t.Context(), testSpotPair, asset.Spot)
+	require.NoError(t, err, "getPairMapping must not error for refreshed metadata")
+	assert.True(t, testSpotPair.Equal(mapping.pair), "mapping.pair should identify the requested pair")
+	assert.Equal(t, "@107", mapping.coin, "mapping.coin should contain the refreshed API identifier")
+
+	_, err = ex.getPairMapping(t.Context(), currency.NewPair(currency.ETH, currency.USDC), asset.Spot)
+	require.ErrorIs(t, err, errPairMappingNotFound, "getPairMapping must reject a pair absent from metadata")
+
+	failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	_, err = failed.getPairMapping(t.Context(), testSpotPair, asset.Spot)
+	require.Error(t, err, "getPairMapping must return the metadata request failure")
 }
 
 func TestLookupPairMapping(t *testing.T) {
@@ -319,6 +348,32 @@ func TestGetCoin(t *testing.T) {
 	}))
 	_, err = errorExchange.getCoin(t.Context(), testSpotPair, asset.Spot)
 	require.Error(t, err, "getCoin must error for a mapping from a failing server")
+}
+
+func TestFetchTradablePairsMarginModes(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		marginFields string
+		onlyIsolated bool
+	}{
+		{name: "legacy cross", marginFields: `"onlyIsolated":false`},
+		{name: "unrestricted", marginFields: `"marginMode":""`},
+		{name: "no cross", marginFields: `"marginMode":"noCross"`, onlyIsolated: true},
+		{name: "strict isolated", marginFields: `"marginMode":"strictIsolated"`, onlyIsolated: true},
+		{name: "current mode with false legacy flag", marginFields: `"marginMode":"noCross","onlyIsolated":false`, onlyIsolated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ex := newStaticInfoExchange(t, map[string]string{
+				"meta": `{"universe":[{"name":"BTC","szDecimals":5,"maxLeverage":40,` + tc.marginFields + `}]}`,
+			})
+			pairs, err := ex.FetchTradablePairs(t.Context(), asset.PerpetualContract)
+			require.NoError(t, err, "FetchTradablePairs must not error for documented margin modes")
+			require.Len(t, pairs, 1, "pairs must contain the perpetual market")
+			mapping, ok := ex.lookupPairMapping(pairs[0], asset.PerpetualContract)
+			require.True(t, ok, "lookupPairMapping must find the perpetual market")
+			assert.Equal(t, tc.onlyIsolated, mapping.onlyIsolated, "mapping.onlyIsolated should reflect the metadata margin restriction")
+		})
+	}
 }
 
 func TestFetchTradablePairs(t *testing.T) {
@@ -730,7 +785,7 @@ func TestUpdateTradablePairs(t *testing.T) {
 	require.Error(t, noAssetExchange.UpdateTradablePairs(t.Context()), "UpdateTradablePairs must error for tradable pairs without configured assets")
 }
 
-func TestUpdatePerpetualTickers(t *testing.T) {
+func TestUpdateTickersPerpetual(t *testing.T) {
 	ex := newStaticInfoExchange(t, map[string]string{"metaAndAssetCtxs": perpetualContextsJSON})
 	setTestPair(t, ex, asset.PerpetualContract, testPerpetualPair, "BTC")
 	require.NoError(t, ex.UpdateTickers(t.Context(), asset.PerpetualContract), "UpdateTickers must not error for perpetual tickers")
@@ -818,7 +873,7 @@ func TestUpdatePerpetualTickers(t *testing.T) {
 	assert.Equal(t, 100.5, price.Last, "price.Last: partial batch should retain valid ticker updates")
 }
 
-func TestUpdateSpotTickers(t *testing.T) {
+func TestUpdateTickersSpot(t *testing.T) {
 	ex := newStaticInfoExchange(t, map[string]string{"spotMetaAndAssetCtxs": spotContextsJSON})
 	setTestPair(t, ex, asset.Spot, testSpotPair, "@107")
 	require.NoError(t, ex.UpdateTickers(t.Context(), asset.Spot), "UpdateTickers must not error for spot tickers")
@@ -1528,6 +1583,11 @@ func TestGetOpenInterest(t *testing.T) {
 }
 
 func TestGetUserNonFundingLedgerUpdatesPaginated(t *testing.T) {
+	t.Run("nil request", func(t *testing.T) {
+		ex := new(Exchange)
+		_, err := ex.getUserNonFundingLedgerUpdatesPaginated(t.Context(), nil)
+		assert.ErrorIs(t, err, common.ErrNilPointer, "getUserNonFundingLedgerUpdatesPaginated should reject a nil request")
+	})
 	start := time.UnixMilli(1700000000000).UTC()
 	end := start.Add(time.Minute)
 	var calls atomic.Int32
@@ -1561,7 +1621,7 @@ func TestGetUserNonFundingLedgerUpdatesPaginated(t *testing.T) {
 		_, err = w.Write(body)
 		assert.NoError(t, err, "Write should not error for paginated ledger response")
 	}))
-	result, err := success.getUserNonFundingLedgerUpdatesPaginated(t.Context(), officialSigningAddress, start, end)
+	result, err := success.getUserNonFundingLedgerUpdatesPaginated(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: start, EndTime: end})
 	require.NoError(t, err, "getUserNonFundingLedgerUpdatesPaginated must not error for multiple ledger pages")
 	assert.Len(t, result, maximumUserLedgerHistoryCount+1, "result: every ledger page should be retained")
 	assert.Equal(t, int32(2), calls.Load(), "calls: a full ledger page should advance the cursor")
@@ -1600,7 +1660,7 @@ func TestGetUserNonFundingLedgerUpdatesPaginated(t *testing.T) {
 		_, err = w.Write(body)
 		assert.NoError(t, err, "Write should not error for duplicate ledger response")
 	}))
-	result, err = exactDuplicate.getUserNonFundingLedgerUpdatesPaginated(t.Context(), officialSigningAddress, start, end)
+	result, err = exactDuplicate.getUserNonFundingLedgerUpdatesPaginated(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: start, EndTime: end})
 	require.NoError(t, err, "getUserNonFundingLedgerUpdatesPaginated must not error for overlapping exact terminal ledger record")
 	assert.Len(t, result, maximumUserLedgerHistoryCount, "result: overlapping exact terminal ledger record should be deduplicated")
 	assert.Equal(t, int32(2), duplicateCalls.Load(), "duplicateCalls: exact-terminal deduplication should still request the next inclusive page")
@@ -1608,7 +1668,7 @@ func TestGetUserNonFundingLedgerUpdatesPaginated(t *testing.T) {
 	failing := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
-	_, err = failing.getUserNonFundingLedgerUpdatesPaginated(t.Context(), officialSigningAddress, start, end)
+	_, err = failing.getUserNonFundingLedgerUpdatesPaginated(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: start, EndTime: end})
 	require.Error(t, err, "getUserNonFundingLedgerUpdatesPaginated must return ledger page request failure")
 
 	for _, tc := range []struct {
@@ -1649,7 +1709,7 @@ func TestGetUserNonFundingLedgerUpdatesPaginated(t *testing.T) {
 				_, err = w.Write(body)
 				assert.NoError(t, err, "Write should not error for invalid ledger fixture")
 			}))
-			_, err := invalid.getUserNonFundingLedgerUpdatesPaginated(t.Context(), officialSigningAddress, start, end)
+			_, err := invalid.getUserNonFundingLedgerUpdatesPaginated(t.Context(), &UserLedgerRequest{User: officialSigningAddress, StartTime: start, EndTime: end})
 			require.ErrorIs(t, err, errUnexpectedResponseLength, "getUserNonFundingLedgerUpdatesPaginated must return the expected error for malformed ledger page")
 		})
 	}
@@ -1898,31 +1958,62 @@ func TestWithdrawCryptocurrencyFunds(t *testing.T) {
 	require.Error(t, err, "WithdrawCryptocurrencyFunds must return signed withdrawal action failure")
 }
 
-func TestUnsupportedMethods(t *testing.T) {
+func TestGetHistoricTrades(t *testing.T) {
 	ex := new(Exchange)
-	ctx := t.Context()
-	assertUnsupported := func(err error) {
-		t.Helper()
-		require.ErrorIs(t, err, common.ErrFunctionNotSupported, "err: public-only method must return the expected unsupported error")
-	}
+	_, err := ex.GetHistoricTrades(t.Context(), testSpotPair, asset.Spot, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetHistoricTrades must return the expected unsupported error")
+}
 
-	_, err := ex.GetHistoricTrades(ctx, testSpotPair, asset.Spot, time.Time{}, time.Time{})
-	assertUnsupported(err)
-	_, err = ex.GetServerTime(ctx, asset.Spot)
-	assertUnsupported(err)
-	_, err = ex.GetDepositAddress(ctx, currency.USDC, "", "")
-	assertUnsupported(err)
-	_, err = ex.WithdrawFiatFunds(ctx, nil)
-	assertUnsupported(err)
-	_, err = ex.WithdrawFiatFundsToInternationalBank(ctx, nil)
-	assertUnsupported(err)
-	_, err = ex.GetHistoricCandlesExtended(ctx, testSpotPair, asset.Spot, kline.OneMin, time.Time{}, time.Time{})
-	assertUnsupported(err)
-	_, err = ex.GetFuturesContractDetails(ctx, asset.PerpetualContract)
-	assertUnsupported(err)
-	_, err = ex.GetCurrencyTradeURL(ctx, asset.Spot, testSpotPair)
-	assertUnsupported(err)
-	require.ErrorIs(t, ex.UpdateOrderExecutionLimits(ctx, asset.Spot), common.ErrNotYetImplemented, "UpdateOrderExecutionLimits must return the expected not-implemented error for execution-limit bootstrap method")
+func TestGetServerTime(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.GetServerTime(t.Context(), asset.Spot)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetServerTime must return the expected unsupported error")
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = ex.GetServerTime(cancelled, asset.Spot)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetServerTime must remain deterministic for a cancelled context")
+}
+
+func TestGetDepositAddress(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.GetDepositAddress(t.Context(), currency.USDC, "", "")
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetDepositAddress must return the expected unsupported error")
+}
+
+func TestWithdrawFiatFunds(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.WithdrawFiatFunds(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "WithdrawFiatFunds must return the expected unsupported error")
+}
+
+func TestWithdrawFiatFundsToInternationalBank(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.WithdrawFiatFundsToInternationalBank(t.Context(), nil)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "WithdrawFiatFundsToInternationalBank must return the expected unsupported error")
+}
+
+func TestGetHistoricCandlesExtended(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.GetHistoricCandlesExtended(t.Context(), testSpotPair, asset.Spot, kline.OneMin, time.Time{}, time.Time{})
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetHistoricCandlesExtended must return the expected unsupported error")
+}
+
+func TestGetFuturesContractDetails(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.GetFuturesContractDetails(t.Context(), asset.PerpetualContract)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetFuturesContractDetails must return the expected unsupported error")
+}
+
+func TestGetCurrencyTradeURL(t *testing.T) {
+	ex := new(Exchange)
+	_, err := ex.GetCurrencyTradeURL(t.Context(), asset.Spot, testSpotPair)
+	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetCurrencyTradeURL must return the expected unsupported error")
+}
+
+func TestUpdateOrderExecutionLimits(t *testing.T) {
+	ex := new(Exchange)
+	require.ErrorIs(t, ex.UpdateOrderExecutionLimits(t.Context(), asset.Spot), common.ErrNotYetImplemented, "UpdateOrderExecutionLimits must return the expected not-implemented error")
 }
 
 func TestUpdateOrderbookUsesValidationSetting(t *testing.T) {
@@ -1939,10 +2030,9 @@ func TestUpdateOrderbookUsesValidationSetting(t *testing.T) {
 	assert.False(t, cached.ValidateOrderbook, "cached.ValidateOrderbook: cached orderbook should retain the exchange validation setting")
 }
 
-func TestUnsupportedMethodsIgnoreContext(t *testing.T) {
-	cancelled, cancel := context.WithCancel(t.Context())
-	cancel()
+func TestHasAssetTypeAccountSegregation(t *testing.T) {
 	ex := new(Exchange)
-	_, err := ex.GetServerTime(cancelled, asset.Spot)
-	require.ErrorIs(t, err, common.ErrFunctionNotSupported, "GetServerTime must remain deterministic for a cancelled context for unsupported method")
+	ex.SetDefaults()
+	assert.True(t, ex.HasAssetTypeAccountSegregation(), "HasAssetTypeAccountSegregation should report separate spot and perpetual balance pools")
+	require.NoError(t, ex.Shutdown(), "Shutdown must not error for the exchange")
 }

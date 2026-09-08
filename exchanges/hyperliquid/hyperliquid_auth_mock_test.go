@@ -13,6 +13,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/config"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 )
@@ -207,6 +208,56 @@ func TestValidateCachedAuthority(t *testing.T) {
 	_, err = valid.validateCachedAuthority(t.Context(), credentials, true)
 	require.NoError(t, err, "validateCachedAuthority must not error when forcing authority revalidation")
 	assert.Equal(t, int32(2), roleCalls.Load(), "roleCalls: forced authority validation should repeat the role lookup")
+
+	t.Run("authority revalidation fails", func(t *testing.T) {
+		failed := newRoleTestExchange(t, credentials, nil, "")
+		setCachedTestAuthority(t, failed, credentials)
+		validationKey, err := failed.validateCachedAuthority(t.Context(), credentials, true)
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "validateCachedAuthority must return the expected error when the configured account is missing")
+		assert.Equal(t, authorityValidationKey{}, validationKey, "validateCachedAuthority should return an empty validation key when authority revalidation fails")
+		assert.False(t, failed.authorityValidated, "failed.authorityValidated should be cleared when authority revalidation fails")
+	})
+
+	for _, tc := range []struct {
+		name        string
+		replacement *accounts.Credentials
+		expectedIs  error
+	}{
+		{name: "credentials removed", expectedIs: exchange.ErrCredentialsAreEmpty},
+		{
+			name:        "credentials changed",
+			replacement: &accounts.Credentials{Key: testOtherAddress},
+			expectedIs:  errCredentialsChanged,
+		},
+	} {
+		t.Run(tc.name+" during authority validation", func(t *testing.T) {
+			var mutatingExchange *Exchange
+			mutatingExchange = newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				mutatingExchange.SetCredentials(tc.replacement)
+				_, writeErr := w.Write([]byte(testUserRoleResponse))
+				assert.NoError(t, writeErr, "Write should not error for a mutating authority-validation response")
+			}))
+			setCachedTestAuthority(t, mutatingExchange, credentials)
+			validationKey, err := mutatingExchange.validateCachedAuthority(t.Context(), credentials, true)
+			require.ErrorIs(t, err, tc.expectedIs, "validateCachedAuthority must return the expected error when credentials change during authority validation")
+			assert.Equal(t, authorityValidationKey{}, validationKey, "validateCachedAuthority should return an empty validation key when credentials change during authority validation")
+			assert.False(t, mutatingExchange.authorityValidated, "mutatingExchange.authorityValidated should be cleared when credentials change during authority validation")
+		})
+	}
+
+	t.Run("watch-only vault authority", func(t *testing.T) {
+		vaultCredentials := &accounts.Credentials{Key: strings.ToUpper(officialSigningAddress), SubAccount: strings.ToUpper(testVaultAddress)}
+		vault := newRoleTestExchange(t, vaultCredentials, map[string]string{
+			officialSigningAddress: testUserRoleResponse,
+			testVaultAddress:       `{"role":"vault"}`,
+		}, `{"vaultAddress":"`+testVaultAddress+`","leader":"`+officialSigningAddress+`"}`)
+		vault.Config.UseSandbox = true
+		validationKey, err := vault.validateCachedAuthority(t.Context(), vaultCredentials, false)
+		require.NoError(t, err, "validateCachedAuthority must not error for watch-only vault authority")
+		assert.Equal(t, authorityValidationKey{accountAddress: officialSigningAddress, vaultAddress: testVaultAddress}, validationKey, "validateCachedAuthority should return the normalised watch-only vault authority for the sandbox")
+		assert.Equal(t, validationKey, vault.authorityValidationKey, "vault.authorityValidationKey should cache the validated watch-only vault authority")
+		assert.True(t, vault.authorityValidated, "vault.authorityValidated should be set after validating watch-only vault authority")
+	})
 }
 
 func TestSendSignedAction(t *testing.T) {
@@ -234,7 +285,7 @@ func TestSendSignedAction(t *testing.T) {
 	err = ex.sendSignedAction(t.Context(), action, 1, &response)
 	require.ErrorIs(t, err, errInvalidPrivateKey, "sendSignedAction must return the expected error for action with an invalid private key")
 
-	setTestCredentials(ex, &accounts.Credentials{Key: officialSigningAddress, Secret: officialSigningTestKey})
+	setCachedTestAuthority(t, ex, &accounts.Credentials{Key: officialSigningAddress, Secret: officialSigningTestKey})
 	err = ex.sendSignedAction(t.Context(), make(chan int), 1, &response)
 	require.Error(t, err, "sendSignedAction must error for action with an unsupported signing payload")
 
@@ -532,35 +583,35 @@ func TestSendUserSignedAction(t *testing.T) {
 		{Name: "destination", Type: "string", Value: testOtherAddress},
 		{Name: "amount", Type: "string", Value: "1"},
 	}
+	params := &userSignedActionRequest{
+		Credentials: credentials,
+		ActionType:  "usdSend",
+		PrimaryType: "HyperliquidTransaction:UsdSend",
+		NonceField:  "time",
+		Fields:      fields,
+	}
 	var response exchangeActionResponse
 
-	_, err := (*Exchange)(nil).sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
-	require.ErrorIs(t, err,
-		common.ErrNilPointer,
-		"sendUserSignedAction must return the expected error for nil exchange")
+	_, err := (*Exchange)(nil).sendUserSignedAction(t.Context(), params, &response)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil exchange")
 	ex := new(Exchange)
 	ex.SetDefaults()
-	_, err = ex.sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, nil,
-	)
-	require.ErrorIs(t, err,
-		common.ErrNilPointer,
-		"sendUserSignedAction must return the expected error for nil response")
-	_, err = ex.sendUserSignedAction(
-		t.Context(), nil, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
-	require.ErrorIs(t, err,
-		common.ErrNilPointer,
-		"sendUserSignedAction must return the expected error for nil credentials")
+	_, err = ex.sendUserSignedAction(t.Context(), nil, &response)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil request")
+	_, err = ex.sendUserSignedAction(t.Context(), params, nil)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil response")
+	withoutCredentials := *params
+	withoutCredentials.Credentials = nil
+	_, err = ex.sendUserSignedAction(t.Context(), &withoutCredentials, &response)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil credentials")
 	ex.Requester = nil
-	_, err = ex.sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
-	require.ErrorIs(t, err,
-		common.ErrNilPointer,
-		"sendUserSignedAction must return the expected error for nil requester")
+	_, err = ex.sendUserSignedAction(t.Context(), params, &response)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil requester")
+
+	ex.SetDefaults()
+	ex.API.Endpoints = nil
+	_, err = ex.sendUserSignedAction(t.Context(), params, &response)
+	require.ErrorIs(t, err, common.ErrNilPointer, "sendUserSignedAction must return the expected error for nil endpoints")
 
 	ex.SetDefaults()
 	for _, tc := range []struct {
@@ -574,27 +625,29 @@ func TestSendUserSignedAction(t *testing.T) {
 		{name: "invalid nonce field", actionType: "usdSend", primaryType: "HyperliquidTransaction:UsdSend", nonceField: "id"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := ex.sendUserSignedAction(
-				t.Context(), credentials, tc.actionType, tc.primaryType, tc.nonceField, fields, &response,
-			)
+			_, err := ex.sendUserSignedAction(t.Context(), &userSignedActionRequest{
+				Credentials: credentials,
+				ActionType:  tc.actionType,
+				PrimaryType: tc.primaryType,
+				NonceField:  tc.nonceField,
+				Fields:      fields,
+			}, &response)
 			require.ErrorIs(t, err, errUserSignedActionInvalid, "sendUserSignedAction must return the expected error for malformed action metadata")
 		})
 	}
 
 	ex.API.Endpoints = ex.NewEndpoints()
-	_, err = ex.sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
+	_, err = ex.sendUserSignedAction(t.Context(), params, &response)
 	require.Error(t, err, "sendUserSignedAction must error for user-signed action without a configured endpoint")
 
 	ex.SetDefaults()
 	setCachedTestAuthority(t, ex, credentials)
 	staleCredentials := *credentials
 	staleCredentials.ClientID = "changed"
+	staleRequest := *params
+	staleRequest.Credentials = &staleCredentials
 	nonceBeforeStaleCredentials := ex.lastNonce.Load()
-	_, err = ex.sendUserSignedAction(
-		t.Context(), &staleCredentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
+	_, err = ex.sendUserSignedAction(t.Context(), &staleRequest, &response)
 	require.ErrorIs(t, err, errCredentialsChanged, "sendUserSignedAction must return the expected error for stale user-signing credentials")
 	assert.Equal(t, nonceBeforeStaleCredentials, ex.lastNonce.Load(), "ex.lastNonce: stale user-signing credentials should not consume a nonce")
 
@@ -603,36 +656,52 @@ func TestSendUserSignedAction(t *testing.T) {
 		{{Name: "type", Type: "string", Value: "value"}},
 		{{Name: "amount", Type: "string", Value: "1"}, {Name: "amount", Type: "string", Value: "2"}},
 	} {
-		_, err := ex.sendUserSignedAction(
-			t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", invalidFields, &response,
-		)
+		invalidRequest := *params
+		invalidRequest.Fields = invalidFields
+		_, err := ex.sendUserSignedAction(t.Context(), &invalidRequest, &response)
 		require.ErrorIs(t, err, errUserSignedActionInvalid, "sendUserSignedAction must return the expected error for reserved or duplicate action fields")
 	}
-	_, err = ex.sendUserSignedAction(
-		t.Context(),
-		credentials,
-		"usdSend",
-		"HyperliquidTransaction:UsdSend",
-		"time",
-		[]eip712Field{{Name: "destination", Type: "address", Value: testOtherAddress}},
-		&response,
-	)
+	unsupportedRequest := *params
+	unsupportedRequest.Fields = []eip712Field{{Name: "destination", Type: "address", Value: testOtherAddress}}
+	_, err = ex.sendUserSignedAction(t.Context(), &unsupportedRequest, &response)
 	require.ErrorIs(t, err, errEIP712Field, "sendUserSignedAction must return the expected error for unsupported EIP-712 field type")
 	invalidCredentials := &accounts.Credentials{Key: officialSigningAddress, Secret: "invalid"}
 	setTestCredentials(ex, invalidCredentials)
 	ex.authorityValidationMu.Lock()
 	ex.authorityValidated = false
 	ex.authorityValidationMu.Unlock()
-	_, err = ex.sendUserSignedAction(
-		t.Context(),
-		invalidCredentials,
-		"usdSend",
-		"HyperliquidTransaction:UsdSend",
-		"time",
-		fields,
-		&response,
-	)
+	invalidRequest := *params
+	invalidRequest.Credentials = invalidCredentials
+	_, err = ex.sendUserSignedAction(t.Context(), &invalidRequest, &response)
 	require.ErrorIs(t, err, errInvalidPrivateKey, "sendUserSignedAction must return the expected error for invalid user-signing key")
+
+	t.Run("authority validation fails", func(t *testing.T) {
+		var exchangeCalls atomic.Int32
+		failed := newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == testExchangeEndpoint {
+				exchangeCalls.Add(1)
+				http.Error(w, "unexpected signed action", http.StatusBadRequest)
+				return
+			}
+			assert.Equal(t, testInfoEndpoint, r.URL.Path, "r.URL.Path should identify the authority lookup endpoint")
+			var payload infoRequest
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&payload), "Decode should not error for a rejected user-signing authority request") {
+				return
+			}
+			assert.Equal(t, testUserRoleInfoType, payload.Type, "payload.Type should request the configured account role")
+			assert.Equal(t, officialSigningAddress, payload.User, "payload.User should identify the configured account")
+			_, writeErr := w.Write([]byte(`{"role":"missing"}`))
+			assert.NoError(t, writeErr, "Write should not error for a missing configured account response")
+		}))
+		setTestCredentials(failed, credentials)
+		nonce, err := failed.sendUserSignedAction(t.Context(), params, &response)
+		require.ErrorIs(t, err, errConfiguredAccountMissing, "sendUserSignedAction must retain the authority validation error for a missing configured account")
+		require.ErrorIs(t, err, request.ErrAuthRequestFailed, "sendUserSignedAction must classify rejected authority as an authentication failure")
+		assert.Zero(t, nonce, "sendUserSignedAction should return no nonce when authority validation fails")
+		assert.Zero(t, failed.lastNonce.Load(), "failed.lastNonce should not consume a nonce when authority validation fails")
+		assert.Zero(t, exchangeCalls.Load(), "exchangeCalls should remain zero when authority validation fails")
+		assert.False(t, failed.authorityValidated, "failed.authorityValidated should remain unset when authority validation fails")
+	})
 
 	var captured struct {
 		Action struct {
@@ -657,9 +726,7 @@ func TestSendUserSignedAction(t *testing.T) {
 	}))
 	successExchange.Config.UseSandbox = true
 	setCachedTestAuthority(t, successExchange, credentials)
-	nonce, err := successExchange.sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
+	nonce, err := successExchange.sendUserSignedAction(t.Context(), params, &response)
 	require.NoError(t, err, "sendUserSignedAction must not error for a successful user-signed action")
 	assert.True(t, successExchange.authorityValidated, "successExchange.authorityValidated: successful user-signed action should retain cached authority")
 	assert.Equal(t, nonce, captured.Nonce, "captured.Nonce should match the returned nonce")
@@ -676,9 +743,7 @@ func TestSendUserSignedAction(t *testing.T) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	setCachedTestAuthority(t, errorExchange, credentials)
-	_, err = errorExchange.sendUserSignedAction(
-		t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-	)
+	_, err = errorExchange.sendUserSignedAction(t.Context(), params, &response)
 	require.Error(t, err, "sendUserSignedAction must return user-signed action HTTP failure")
 	assert.False(t, errorExchange.authorityValidated, "errorExchange.authorityValidated: user-signed HTTP failure should invalidate cached authority")
 
@@ -697,12 +762,42 @@ func TestSendUserSignedAction(t *testing.T) {
 				assert.NoError(t, writeErr, "Write should not error for a user action error response")
 			}))
 			setCachedTestAuthority(t, actionExchange, credentials)
-			_, err := actionExchange.sendUserSignedAction(
-				t.Context(), credentials, "usdSend", "HyperliquidTransaction:UsdSend", "time", fields, &response,
-			)
+			_, err := actionExchange.sendUserSignedAction(t.Context(), params, &response)
 			require.ErrorIs(t, err, errActionResponse, "sendUserSignedAction must return the expected error for failed user action")
 			assert.ErrorContains(t, err, tc.contains, "sendUserSignedAction should include the server message for user action error")
 			assert.False(t, actionExchange.authorityValidated, "actionExchange.authorityValidated: rejected user action should invalidate cached authority")
+		})
+	}
+
+	for _, tc := range []struct {
+		name       string
+		statusCode int
+		response   string
+		expectedIs error
+	}{
+		{name: "HTTP failure", statusCode: http.StatusBadRequest, response: "invalid action", expectedIs: request.ErrBadStatus},
+		{name: "exchange rejection", statusCode: http.StatusOK, response: `{"status":"err","response":"invalid action"}`, expectedIs: errActionResponse},
+	} {
+		t.Run(tc.name+" after authority cache replacement", func(t *testing.T) {
+			replacementKey := authorityValidationKey{accountAddress: testOtherAddress, mainnet: true}
+			var actionExchange *Exchange
+			actionExchange = newHTTPTestExchange(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, testExchangeEndpoint, r.URL.Path, "r.URL.Path should identify the signed action endpoint")
+				actionExchange.authorityValidationMu.Lock()
+				actionExchange.authorityValidationKey = replacementKey
+				actionExchange.authorityValidated = true
+				actionExchange.authorityValidationMu.Unlock()
+				w.WriteHeader(tc.statusCode)
+				_, writeErr := w.Write([]byte(tc.response))
+				assert.NoError(t, writeErr, "Write should not error for an action failure after authority cache replacement")
+			}))
+			setCachedTestAuthority(t, actionExchange, credentials)
+			var response exchangeActionResponse
+			nonce, err := actionExchange.sendUserSignedAction(t.Context(), params, &response)
+			require.ErrorIs(t, err, tc.expectedIs, "sendUserSignedAction must retain the action error after authority cache replacement")
+			assert.Zero(t, nonce, "sendUserSignedAction should return no nonce for a failed action after authority cache replacement")
+			assert.True(t, actionExchange.authorityValidated, "actionExchange.authorityValidated should retain the replacement authority after an earlier action fails")
+			assert.Equal(t, replacementKey, actionExchange.authorityValidationKey, "actionExchange.authorityValidationKey should retain the replacement authority after an earlier action fails")
 		})
 	}
 }

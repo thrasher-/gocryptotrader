@@ -5,12 +5,21 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
+
+// HTTPRequest configures routing, rate limiting and the payload for an info request.
+type HTTPRequest struct {
+	Endpoint  exchange.URL
+	RateLimit request.EndpointLimit
+	Payload   any
+}
 
 // Exchange implements exchange.IBotExchange and provides Hyperliquid API access.
 type Exchange struct {
@@ -27,8 +36,8 @@ type Exchange struct {
 	lastNonce              atomic.Uint64
 }
 
-// PerpetualMetadata contains metadata for Hyperliquid perpetual markets.
-type PerpetualMetadata struct {
+// PerpetualMetadataResponse contains metadata for Hyperliquid perpetual markets.
+type PerpetualMetadataResponse struct {
 	Universe        []PerpetualAssetMetadata `json:"universe"`
 	CollateralToken uint64                   `json:"collateralToken"`
 	MarginTables    []json.RawMessage        `json:"marginTables"`
@@ -48,12 +57,14 @@ type PerpetualAssetMetadata struct {
 	SizeDecimals  uint64 `json:"szDecimals"`
 	MaxLeverage   uint64 `json:"maxLeverage"`
 	MarginTableID uint64 `json:"marginTableId"`
-	OnlyIsolated  bool   `json:"onlyIsolated"`
-	IsDelisted    bool   `json:"isDelisted"`
+	MarginMode    string `json:"marginMode"`
+	// OnlyIsolated is retained for responses using the deprecated restriction flag.
+	OnlyIsolated bool `json:"onlyIsolated"`
+	IsDelisted   bool `json:"isDelisted"`
 }
 
-// SpotMetadata contains metadata for Hyperliquid spot markets and tokens.
-type SpotMetadata struct {
+// SpotMetadataResponse contains metadata for Hyperliquid spot markets and tokens.
+type SpotMetadataResponse struct {
 	Universe []SpotAssetMetadata `json:"universe"`
 	Tokens   []SpotTokenMetadata `json:"tokens"`
 }
@@ -68,7 +79,7 @@ type SpotAssetMetadata struct {
 
 // SpotTokenMetadata contains metadata for one spot token.
 type SpotTokenMetadata struct {
-	Name                    string          `json:"name"`
+	Name                    currency.Code   `json:"name"`
 	SizeDecimals            uint64          `json:"szDecimals"`
 	WeiDecimals             uint64          `json:"weiDecimals"`
 	Index                   uint64          `json:"index"`
@@ -77,6 +88,15 @@ type SpotTokenMetadata struct {
 	EVMContract             json.RawMessage `json:"evmContract"`
 	FullName                *string         `json:"fullName"`
 	DeployerTradingFeeShare types.Number    `json:"deployerTradingFeeShare"`
+	// TokenIdentifier preserves the exact name:tokenId spelling required by signed transfers.
+	TokenIdentifier string `json:"-"`
+}
+
+type spotTokenMetadataFields SpotTokenMetadata
+
+type spotTokenMetadataResponse struct {
+	spotTokenMetadataFields
+	Name string `json:"name"`
 }
 
 // PerpetualAssetContext contains current market data for one perpetual market.
@@ -105,10 +125,17 @@ type SpotAssetContext struct {
 	DayBaseVolume     types.Number `json:"dayBaseVlm"`
 }
 
-// PerpetualMetadataAndAssetContexts contains perpetual metadata and aligned market contexts.
-type PerpetualMetadataAndAssetContexts struct {
-	Metadata      PerpetualMetadata
+// PerpetualMetadataAndAssetContextsResponse contains perpetual metadata and aligned market contexts.
+type PerpetualMetadataAndAssetContextsResponse struct {
+	Metadata      *PerpetualMetadataResponse
 	AssetContexts []PerpetualAssetContext
+}
+
+// FundingHistoryRequest selects a market and an inclusive funding-history range.
+type FundingHistoryRequest struct {
+	Coin      string
+	StartTime time.Time
+	EndTime   time.Time
 }
 
 // FundingRateRecord contains one hourly perpetual funding rate.
@@ -119,9 +146,9 @@ type FundingRateRecord struct {
 	Time        types.Time   `json:"time"`
 }
 
-// SpotMetadataAndAssetContexts contains spot metadata and current market contexts.
-type SpotMetadataAndAssetContexts struct {
-	Metadata      SpotMetadata
+// SpotMetadataAndAssetContextsResponse contains spot metadata and current market contexts.
+type SpotMetadataAndAssetContextsResponse struct {
+	Metadata      *SpotMetadataResponse
 	AssetContexts []SpotAssetContext
 }
 
@@ -132,8 +159,8 @@ type L2BookRequest struct {
 	Mantissa           *uint64
 }
 
-// L2Book contains a complete Hyperliquid L2 book snapshot.
-type L2Book struct {
+// L2BookResponse contains a complete Hyperliquid L2 book snapshot.
+type L2BookResponse struct {
 	Coin   string      `json:"coin"`
 	Levels [][]L2Level `json:"levels"`
 	Time   types.Time  `json:"time"`

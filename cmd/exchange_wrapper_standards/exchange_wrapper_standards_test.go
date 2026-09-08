@@ -3,6 +3,7 @@ package exchangewrapperstandards
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -150,11 +151,8 @@ assets:
 }
 
 // isUnacceptableError sentences errs to 10 years dungeon if unacceptable
-func isUnacceptableError(t *testing.T, exchangeName, methodName string, err error) error {
+func isUnacceptableError(t *testing.T, err error) error {
 	t.Helper()
-	if strings.EqualFold(exchangeName, "hyperliquid") && methodName == "GetOrderInfo" && errors.Is(err, order.ErrOrderNotFound) {
-		return nil
-	}
 	for i := range acceptableErrors {
 		if errors.Is(err, acceptableErrors[i]) {
 			return nil
@@ -245,7 +243,7 @@ func CallExchangeMethod(t *testing.T, methodToCall reflect.Value, methodValues [
 		if !ok {
 			continue
 		}
-		if isUnacceptableError(t, exch.GetName(), methodName, err) != nil {
+		if isUnacceptableError(t, err) != nil {
 			literalInputs := make([]any, len(methodValues))
 			for j := range methodValues {
 				switch {
@@ -667,6 +665,7 @@ var acceptableErrors = []error{
 // that the implementation is in error
 var warningErrors = []error{
 	kline.ErrNoTimeSeriesDataToConvert, // No data returned for a candle isn't worth failing the test suite over necessarily
+	order.ErrOrderNotFound,             // Generated order IDs are not expected to identify an existing order.
 }
 
 // getPairFromPairs prioritises more normal pairs for an increased
@@ -788,22 +787,45 @@ Rsd80LrBCVI8ctzrvYRFSugC`
 
 func TestGetExchangeCredentials(t *testing.T) {
 	hyperliquid := getExchangeCredentials("hyperliquid")
-	require.Equal(t, "0x1111111111111111111111111111111111111111", hyperliquid.Key, "Hyperliquid wrapper credentials must use a valid watch-only address")
-	require.Empty(t, hyperliquid.Secret, "Hyperliquid wrapper credentials must not permit signed actions")
+	require.Equal(t, "0x1111111111111111111111111111111111111111", hyperliquid.Key, "hyperliquid.Key must use a valid watch-only address")
+	require.Empty(t, hyperliquid.Secret, "hyperliquid.Secret must be empty to prevent signed actions")
 
 	lbank := getExchangeCredentials("lbank")
-	require.NotEmpty(t, lbank.Key, "Lbank wrapper credentials must include its public key fixture")
-	require.NotEmpty(t, lbank.Secret, "Lbank wrapper credentials must include its private key fixture")
+	require.NotEmpty(t, lbank.Key, "lbank.Key must include its public key fixture")
+	require.NotEmpty(t, lbank.Secret, "lbank.Secret must include its private key fixture")
 
 	standard := getExchangeCredentials("standard")
-	require.Equal(t, "realKey", standard.Key, "Standard wrapper credentials must use the generic key fixture")
-	require.NotEmpty(t, standard.Secret, "Standard wrapper credentials must include the generic secret fixture")
+	require.Equal(t, "realKey", standard.Key, "standard.Key must use the generic key fixture")
+	require.NotEmpty(t, standard.Secret, "standard.Secret must include the generic secret fixture")
 }
 
 func TestIsUnacceptableError(t *testing.T) {
-	require.NoError(t, isUnacceptableError(t, "Hyperliquid", "GetOrderInfo", order.ErrOrderNotFound), "Hyperliquid order lookup must accept a not-found result for a random wrapper fixture")
-	require.ErrorIs(t, isUnacceptableError(t, "Hyperliquid", "GetTicker", order.ErrOrderNotFound), order.ErrOrderNotFound, "Hyperliquid not-found exemption must remain scoped to order lookup")
-	require.ErrorIs(t, isUnacceptableError(t, "Other", "GetOrderInfo", order.ErrOrderNotFound), order.ErrOrderNotFound, "Order not-found exemption must remain scoped to Hyperliquid")
+	notFoundMessage := errors.New(order.ErrOrderNotFound.Error())
+	for _, tc := range []struct {
+		name          string
+		err           error
+		expectedError error
+	}{
+		{name: "Nil"},
+		{name: "Acceptable", err: common.ErrFunctionNotSupported},
+		{name: "WrappedAcceptable", err: fmt.Errorf("fixture: %w", common.ErrFunctionNotSupported)},
+		{name: "Warning", err: kline.ErrNoTimeSeriesDataToConvert},
+		{name: "WrappedWarning", err: fmt.Errorf("fixture: %w", kline.ErrNoTimeSeriesDataToConvert)},
+		{name: "OrderNotFound", err: order.ErrOrderNotFound},
+		{name: "WrappedOrderNotFound", err: fmt.Errorf("fixture: %w", order.ErrOrderNotFound)},
+		{name: "Unacceptable", err: common.ErrNilPointer, expectedError: common.ErrNilPointer},
+		{name: "WrappedUnacceptable", err: fmt.Errorf("fixture: %w", common.ErrNilPointer), expectedError: common.ErrNilPointer},
+		{name: "MatchingMessage", err: notFoundMessage, expectedError: notFoundMessage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := isUnacceptableError(t, tc.err)
+			if tc.expectedError != nil {
+				require.ErrorIs(t, err, tc.expectedError, "isUnacceptableError must preserve unexpected errors")
+				return
+			}
+			require.NoError(t, err, "isUnacceptableError must accept expected wrapper outcomes")
+		})
+	}
 }
 
 func isCITest() bool {

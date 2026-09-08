@@ -1,6 +1,7 @@
 package hyperliquid
 
 import (
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
@@ -17,16 +18,16 @@ const (
 	AccountAbstractionPortfolio AccountAbstraction = "portfolioMargin"
 )
 
-// UserFees contains effective account-specific trade fee rates.
-type UserFees struct {
+// UserFeesResponse contains effective account-specific trade fee rates.
+type UserFeesResponse struct {
 	UserCrossRate     types.Number `json:"userCrossRate"`
 	UserAddRate       types.Number `json:"userAddRate"`
 	UserSpotCrossRate types.Number `json:"userSpotCrossRate"`
 	UserSpotAddRate   types.Number `json:"userSpotAddRate"`
 }
 
-// ActiveAssetData contains account-specific settings for one perpetual market.
-type ActiveAssetData struct {
+// ActiveAssetDataResponse contains account-specific settings for one perpetual market.
+type ActiveAssetDataResponse struct {
 	User     string          `json:"user"`
 	Coin     string          `json:"coin"`
 	Leverage AccountLeverage `json:"leverage"`
@@ -39,8 +40,8 @@ type AccountLeverage struct {
 	RawUSD types.Number `json:"rawUsd"`
 }
 
-// UserRole contains the account role for an on-chain address.
-type UserRole struct {
+// UserRoleResponse contains the account role for an on-chain address.
+type UserRoleResponse struct {
 	Role string       `json:"role"`
 	Data UserRoleData `json:"data"`
 }
@@ -51,28 +52,28 @@ type UserRoleData struct {
 	Master string `json:"master"`
 }
 
-// VaultDetails contains the ownership fields needed to validate vault trading authority.
-type VaultDetails struct {
+// VaultDetailsResponse contains the ownership fields needed to validate vault trading authority.
+type VaultDetailsResponse struct {
 	VaultAddress string `json:"vaultAddress"`
 	Leader       string `json:"leader"`
 }
 
-// SpotClearinghouseState contains spot balances for one account.
-type SpotClearinghouseState struct {
+// SpotClearinghouseStateResponse contains spot balances for one account.
+type SpotClearinghouseStateResponse struct {
 	Balances []SpotBalance `json:"balances"`
 }
 
 // SpotBalance contains one spot token balance.
 type SpotBalance struct {
-	Coin       string       `json:"coin"`
-	TokenIndex uint64       `json:"token"`
-	Total      types.Number `json:"total"`
-	Hold       types.Number `json:"hold"`
-	EntryValue types.Number `json:"entryNtl"`
+	Coin       currency.Code `json:"coin"`
+	TokenIndex uint64        `json:"token"`
+	Total      types.Number  `json:"total"`
+	Hold       types.Number  `json:"hold"`
+	EntryValue types.Number  `json:"entryNtl"`
 }
 
-// ClearinghouseState contains perpetual account balances and positions.
-type ClearinghouseState struct {
+// ClearinghouseStateResponse contains perpetual account balances and positions.
+type ClearinghouseStateResponse struct {
 	MarginSummary      MarginSummary   `json:"marginSummary"`
 	CrossMarginSummary MarginSummary   `json:"crossMarginSummary"`
 	Withdrawable       types.Number    `json:"withdrawable"`

@@ -64,6 +64,7 @@ func (e *Exchange) SetDefaults() {
 				TickerBatching:                 true,
 				TickerFetching:                 true,
 				KlineFetching:                  true,
+				FundingRateFetching:            true,
 				TradeFetching:                  true,
 				OrderbookFetching:              true,
 				AutoPairUpdates:                true,
@@ -413,7 +414,7 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 		if err != nil {
 			return nil, err
 		}
-		collateralNames := map[uint64]string{0: perpetualQuoteCurrency}
+		collateralNames := map[uint64]currency.Code{0: currency.USDC}
 		spotTokensLoaded := false
 		for dexIndex, dex := range dexes {
 			metadata, err := e.GetPerpetualMetadataForDEX(ctx, dex)
@@ -434,11 +435,11 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 							return nil, fmt.Errorf("%w: duplicate spot token index %d", errUnexpectedResponseLength, index)
 						}
 						seenSpotTokenIndices[index] = struct{}{}
-						name := strings.TrimSpace(spotMetadata.Tokens[i].Name)
-						if name == "" {
+						name := currency.NewCode(strings.TrimSpace(spotMetadata.Tokens[i].Name.String()))
+						if name.IsEmpty() {
 							return nil, fmt.Errorf("%w: collateral token index %d has no name", errSpotTokenNotFound, index)
 						}
-						if index == 0 && !strings.EqualFold(name, perpetualQuoteCurrency) {
+						if index == 0 && !name.Equal(currency.USDC) {
 							return nil, fmt.Errorf("%w: collateral token index 0 is %q", errSpotTokenNotFound, name)
 						}
 						collateralNames[index] = name
@@ -464,7 +465,7 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 				if dex != "" && !strings.HasPrefix(market.Name, dex+":") {
 					return nil, fmt.Errorf("%w: market %q is not scoped to DEX %q", errInvalidPerpetualDEX, market.Name, dex)
 				}
-				pair, err := currency.NewPairFromStrings(market.Name, collateralName)
+				pair, err := currency.NewPairFromStrings(market.Name, collateralName.String())
 				if err != nil {
 					log.Warnf(log.ExchangeSys, "%s skipping perpetual market %q: %s", e.Name, market.Name, err)
 					continue
@@ -476,7 +477,7 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 					assetID:      offset + uint64(marketIndex), //nolint:gosec // A validated universe slice index fits Hyperliquid's asset identifier.
 					sizeDecimals: market.SizeDecimals,
 					maxLeverage:  market.MaxLeverage,
-					onlyIsolated: market.OnlyIsolated,
+					onlyIsolated: market.OnlyIsolated || market.MarginMode == "noCross" || market.MarginMode == "strictIsolated",
 				})
 			}
 		}
@@ -518,11 +519,11 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 				log.Warnf(log.ExchangeSys, "%s skipping spot market %q: %s for quote index %d", e.Name, market.Name, errSpotTokenNotFound, market.Tokens[1])
 				continue
 			}
-			if strings.TrimSpace(baseToken.Name) == "" || strings.TrimSpace(quoteToken.Name) == "" {
+			if strings.TrimSpace(baseToken.Name.String()) == "" || strings.TrimSpace(quoteToken.Name.String()) == "" {
 				log.Warnf(log.ExchangeSys, "%s skipping spot market %q with an empty token name", e.Name, market.Name)
 				continue
 			}
-			pair, err := currency.NewPairFromStrings(baseToken.Name, quoteToken.Name)
+			pair, err := currency.NewPairFromStrings(baseToken.Name.String(), quoteToken.Name.String())
 			if err != nil {
 				log.Warnf(log.ExchangeSys, "%s skipping spot market %q: %s", e.Name, market.Name, err)
 				continue
@@ -805,10 +806,9 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, a asset.Item) (acc
 	if err != nil {
 		return nil, err
 	}
-	setSpotBalances := func(subAccount *accounts.SubAccount, state *SpotClearinghouseState) {
+	setSpotBalances := func(subAccount *accounts.SubAccount, state *SpotClearinghouseStateResponse) {
 		for i := range state.Balances {
-			code := currency.NewCode(state.Balances[i].Coin)
-			subAccount.Balances.Set(code, accounts.Balance{
+			subAccount.Balances.Set(state.Balances[i].Coin, accounts.Balance{
 				Total: state.Balances[i].Total.Float64(),
 				Hold:  state.Balances[i].Hold.Float64(),
 				Free:  state.Balances[i].Total.Float64() - state.Balances[i].Hold.Float64(),
@@ -868,7 +868,7 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, a asset.Item) (acc
 				return nil, err
 			}
 			token, ok := tokens[metadata.CollateralToken]
-			if !ok || strings.TrimSpace(token.Name) == "" {
+			if !ok || strings.TrimSpace(token.Name.String()) == "" {
 				return nil, fmt.Errorf("%w: collateral token index %d", errSpotTokenNotFound, metadata.CollateralToken)
 			}
 			state, err := e.GetClearinghouseStateForDEX(ctx, address, dexes[i])
@@ -880,7 +880,7 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, a asset.Item) (acc
 				subAccountID += ":" + dexes[i]
 			}
 			subAccount := accounts.NewSubAccount(a, subAccountID)
-			subAccount.Balances.Set(currency.NewCode(token.Name), accounts.Balance{
+			subAccount.Balances.Set(token.Name, accounts.Balance{
 				Total: state.MarginSummary.AccountValue.Float64(),
 				Hold:  state.MarginSummary.TotalMarginUsed.Float64(),
 				Free:  state.Withdrawable.Float64(),
@@ -896,7 +896,7 @@ func (e *Exchange) UpdateAccountBalances(ctx context.Context, a asset.Item) (acc
 func (e *Exchange) getOpenOrdersForAsset(ctx context.Context, user string, a asset.Item) ([]OpenOrder, error) {
 	switch a {
 	case asset.Spot:
-		return e.GetOpenOrdersForUserForDEX(ctx, user, "")
+		return e.GetOpenOrdersForUserForDEX(ctx, &OpenOrdersRequest{User: user, DEX: ""})
 	case asset.PerpetualContract:
 	default:
 		return nil, fmt.Errorf("%w: %s", asset.ErrNotSupported, a)
@@ -907,7 +907,7 @@ func (e *Exchange) getOpenOrdersForAsset(ctx context.Context, user string, a ass
 	}
 	var result []OpenOrder
 	for i := range dexes {
-		orders, err := e.GetOpenOrdersForUserForDEX(ctx, user, dexes[i])
+		orders, err := e.GetOpenOrdersForUserForDEX(ctx, &OpenOrdersRequest{User: user, DEX: dexes[i]})
 		if err != nil {
 			return nil, err
 		}
@@ -916,17 +916,16 @@ func (e *Exchange) getOpenOrdersForAsset(ctx context.Context, user string, a ass
 	return result, nil
 }
 
-func (e *Exchange) getUserNonFundingLedgerUpdatesPaginated(
-	ctx context.Context,
-	user string,
-	start,
-	end time.Time,
-) ([]UserLedgerUpdate, error) {
-	cursor := start
+func (e *Exchange) getUserNonFundingLedgerUpdatesPaginated(ctx context.Context, arg *UserLedgerRequest) ([]UserLedgerUpdate, error) {
+	if arg == nil {
+		return nil, common.ErrNilPointer
+	}
+	cursor := arg.StartTime.UTC()
+	end := arg.EndTime.UTC()
 	var result []UserLedgerUpdate
 	seen := make(map[UserLedgerUpdate]struct{})
 	for !cursor.After(end) {
-		page, err := e.GetUserNonFundingLedgerUpdates(ctx, user, cursor, end)
+		page, err := e.GetUserNonFundingLedgerUpdates(ctx, &UserLedgerRequest{User: arg.User, StartTime: cursor, EndTime: end})
 		if err != nil {
 			return nil, err
 		}
@@ -1016,7 +1015,7 @@ func (e *Exchange) GetAccountFundingHistory(ctx context.Context) ([]exchange.Fun
 		return nil, err
 	}
 	end := time.Now().UTC()
-	updates, err := e.getUserNonFundingLedgerUpdatesPaginated(ctx, user, time.UnixMilli(1).UTC(), end)
+	updates, err := e.getUserNonFundingLedgerUpdatesPaginated(ctx, &UserLedgerRequest{User: user, StartTime: time.UnixMilli(1).UTC(), EndTime: end})
 	if err != nil {
 		return nil, err
 	}
@@ -1043,7 +1042,7 @@ func (e *Exchange) GetWithdrawalsHistory(ctx context.Context, c currency.Code, _
 		return nil, err
 	}
 	end := time.Now().UTC()
-	updates, err := e.getUserNonFundingLedgerUpdatesPaginated(ctx, user, time.UnixMilli(1).UTC(), end)
+	updates, err := e.getUserNonFundingLedgerUpdatesPaginated(ctx, &UserLedgerRequest{User: user, StartTime: time.UnixMilli(1).UTC(), EndTime: end})
 	if err != nil {
 		return nil, err
 	}
@@ -1149,27 +1148,28 @@ func (e *Exchange) ModifyOrder(ctx context.Context, modify *order.Modify) (*orde
 	if modify.NewClientOrderID != "" {
 		clientOrderID = modify.NewClientOrderID
 	}
-	wire, mapping, err := e.buildOrderWire(ctx,
-		modify.Pair,
-		modify.AssetType,
-		orderType,
-		side,
-		timeInForce,
-		amount,
-		price,
-		triggerPrice,
-		modify.SlippageTolerance,
-		existing.ReduceOnly,
-		clientOrderID)
+	wire, mapping, err := e.buildOrderWire(ctx, &order.Submit{
+		Pair:              modify.Pair,
+		AssetType:         modify.AssetType,
+		Type:              orderType,
+		Side:              side,
+		TimeInForce:       timeInForce,
+		Amount:            amount,
+		Price:             price,
+		TriggerPrice:      triggerPrice,
+		SlippageTolerance: modify.SlippageTolerance,
+		ReduceOnly:        existing.ReduceOnly,
+		ClientOrderID:     clientOrderID,
+	})
 	if err != nil {
 		return nil, err
 	}
 	action := batchModifyAction{Type: "batchModify", Modifies: []modifyWire{{OrderID: wireOrderID, Order: wire}}}
-	var response exchangeActionResponse
-	if err := e.sendSignedAction(ctx, action, 1, &response); err != nil {
+	response := new(exchangeActionResponse)
+	if err := e.sendSignedAction(ctx, action, 1, response); err != nil {
 		return nil, err
 	}
-	statuses, err := parseOrderActionStatuses(&response, 1)
+	statuses, err := parseOrderActionStatuses(response, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -1283,21 +1283,22 @@ func (e *Exchange) GetOrderInfo(ctx context.Context, orderID string, pair curren
 	if a != asset.Empty && !e.SupportsAsset(a) {
 		return nil, fmt.Errorf("%w: %s", asset.ErrNotSupported, a)
 	}
-	var identifier any
+	arg := new(OrderStatusRequest)
 	numericID, err := strconv.ParseUint(orderID, 10, 64)
 	if err == nil {
-		identifier = numericID
+		arg.OrderID = numericID
 	} else {
 		if err := validateClientOrderID(orderID); err != nil {
 			return nil, err
 		}
-		identifier = strings.ToLower(orderID)
+		arg.ClientOrderID = strings.ToLower(orderID)
 	}
 	address, err := e.getWatchAddress(ctx)
 	if err != nil {
 		return nil, err
 	}
-	response, err := e.GetOrderStatusForUser(ctx, address, identifier)
+	arg.User = address
+	response, err := e.GetOrderStatusForUser(ctx, arg)
 	if err != nil {
 		return nil, err
 	}
@@ -1358,9 +1359,9 @@ func (e *Exchange) WithdrawCryptocurrencyFunds(
 		err   error
 	)
 	if withdrawRequest.InternalTransfer {
-		nonce, err = e.SendCoreUSDC(ctx, withdrawRequest.Crypto.Address, withdrawRequest.Amount)
+		nonce, err = e.SendCoreUSDC(ctx, &USDCTransferRequest{Destination: withdrawRequest.Crypto.Address, Amount: withdrawRequest.Amount})
 	} else {
-		nonce, err = e.WithdrawFromBridge(ctx, withdrawRequest.Crypto.Address, withdrawRequest.Amount)
+		nonce, err = e.WithdrawFromBridge(ctx, &USDCTransferRequest{Destination: withdrawRequest.Crypto.Address, Amount: withdrawRequest.Amount})
 	}
 	if err != nil {
 		return nil, err
@@ -1619,7 +1620,7 @@ func (e *Exchange) GetLatestFundingRates(ctx context.Context, arg *fundingrate.L
 	}
 	checked := time.Now().UTC()
 	responses := make([]fundingrate.LatestRateResponse, 0, len(mappings))
-	contextsByDEX := make(map[string]*PerpetualMetadataAndAssetContexts)
+	contextsByDEX := make(map[string]*PerpetualMetadataAndAssetContextsResponse)
 	for i := range mappings {
 		contexts := contextsByDEX[mappings[i].dex]
 		if contexts == nil {
@@ -1695,7 +1696,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, arg *fundingra
 	}
 	cursor := arg.StartDate
 	for !cursor.After(arg.EndDate) {
-		records, err := e.GetFundingHistory(ctx, mapping.coin, cursor, arg.EndDate)
+		records, err := e.GetFundingHistory(ctx, &FundingHistoryRequest{Coin: mapping.coin, StartTime: cursor, EndTime: arg.EndDate})
 		if err != nil {
 			return nil, err
 		}
@@ -1761,7 +1762,7 @@ func (e *Exchange) GetOpenInterest(ctx context.Context, requested ...key.PairAss
 		}
 	}
 	result := make([]futures.OpenInterest, 0, len(mappings))
-	contextsByDEX := make(map[string]*PerpetualMetadataAndAssetContexts)
+	contextsByDEX := make(map[string]*PerpetualMetadataAndAssetContextsResponse)
 	for i := range mappings {
 		contexts := contextsByDEX[mappings[i].dex]
 		if contexts == nil {

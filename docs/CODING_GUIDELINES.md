@@ -162,14 +162,27 @@ Use `require` and `assert` appropriately:
 - Full test coverage is preferable; mock external calls as needed.
 - All unit tests must pass before finalising changes.
 
+### Test organisation
+
+- Give each function or method its own top-level test named after it, such as
+  `TestGetUserFees` or `TestLiveGetUserFees`. This applies to live and offline tests.
+- Keep different operations in separate tests. For example, `GetUserFees` and
+  `GetOpenOrdersForUser` must not be grouped inside `TestLiveAccountInfo` or a
+  table of method calls.
+- Use table cases and subtests for multiple inputs or asset types of the same
+  function or method.
+- Share setup where useful, but keep the method under test and its assertions
+  in its own test. Each test must run independently when selected with `go test -run`.
+
 ### Test deduplication
 
-- Test deduplication should be the default approach for exchanges and across the codebase, an example can be seen below:
+- Deduplicate cases for the same function or method without combining tests for
+  different operations. The following example covers multiple assets for one method:
 
 ```diff
 --- a/gateio_test.go
 +++ b/gateio_test.go
-@@ -89,19 +89,11 @@ func TestGetAccountInfo(t *testing.T) {
+@@ -89,19 +89,11 @@ func TestUpdateAccountInfo(t *testing.T) {
      t.Parallel()
      sharedtestvalues.SkipTestIfCredentialsUnset(t, g)
 -    _, err := g.UpdateAccountInfo(t.Context(), asset.Spot)

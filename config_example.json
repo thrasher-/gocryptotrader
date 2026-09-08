@@ -2533,7 +2533,7 @@
      "restCapabilities": {
       "tickerBatching": true,
       "autoPairUpdates": true,
-      "fundingRateFetching": false
+      "fundingRateFetching": true
      },
      "websocketAPI": true
     },
