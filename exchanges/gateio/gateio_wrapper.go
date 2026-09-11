@@ -384,6 +384,8 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			Last:         tickers[0].Last.Float64(),
 			BaseVolume:   futuresBaseVolume(&tickers[0]),
 			QuoteVolume:  tickers[0].Volume24HourQuote.Float64(),
+			MarkPrice:    tickers[0].MarkPrice.Float64(),
+			IndexPrice:   tickers[0].IndexPrice.Float64(),
 			ExchangeName: e.Name,
 			AssetType:    a,
 		}
@@ -407,6 +409,8 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			tickerData = &ticker.Price{
 				Pair:         tickers[x].Name,
 				Last:         tickers[x].LastPrice.Float64(),
+				MarkPrice:    tickers[x].MarkPrice.Float64(),
+				IndexPrice:   tickers[x].IndexPrice.Float64(),
 				Bid:          tickers[x].Bid1Price.Float64(),
 				Ask:          tickers[x].Ask1Price.Float64(),
 				AskSize:      tickers[x].Ask1Size.Float64(),
@@ -631,6 +635,8 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Low:          tickers[i].Low24Hour.Float64(),
 				BaseVolume:   futuresBaseVolume(&tickers[i]),
 				QuoteVolume:  tickers[i].Volume24HourQuote.Float64(),
+				MarkPrice:    tickers[i].MarkPrice.Float64(),
+				IndexPrice:   tickers[i].IndexPrice.Float64(),
 				ExchangeName: e.Name,
 				Pair:         currencyPair,
 				AssetType:    a,
@@ -656,6 +662,8 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 			for x := range tickers {
 				err = ticker.ProcessTicker(&ticker.Price{
 					Last:         tickers[x].LastPrice.Float64(),
+					MarkPrice:    tickers[x].MarkPrice.Float64(),
+					IndexPrice:   tickers[x].IndexPrice.Float64(),
 					Ask:          tickers[x].Ask1Price.Float64(),
 					AskSize:      tickers[x].Ask1Size.Float64(),
 					Bid:          tickers[x].Bid1Price.Float64(),
