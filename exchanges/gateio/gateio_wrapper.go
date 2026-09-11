@@ -371,6 +371,8 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			Last:         tickers[0].Last.Float64(),
 			Volume:       tickers[0].Volume24HBase.Float64(),
 			QuoteVolume:  tickers[0].Volume24HQuote.Float64(),
+			MarkPrice:    tickers[0].MarkPrice.Float64(),
+			IndexPrice:   tickers[0].IndexPrice.Float64(),
 			ExchangeName: e.Name,
 			AssetType:    a,
 		}
@@ -394,6 +396,8 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			tickerData = &ticker.Price{
 				Pair:         tickers[x].Name,
 				Last:         tickers[x].LastPrice.Float64(),
+				MarkPrice:    tickers[x].MarkPrice.Float64(),
+				IndexPrice:   tickers[x].IndexPrice.Float64(),
 				Bid:          tickers[x].Bid1Price.Float64(),
 				Ask:          tickers[x].Ask1Price.Float64(),
 				AskSize:      tickers[x].Ask1Size.Float64(),
@@ -617,6 +621,8 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Low:          tickers[i].Low24H.Float64(),
 				Volume:       tickers[i].Volume24H.Float64(),
 				QuoteVolume:  tickers[i].Volume24HQuote.Float64(),
+				MarkPrice:    tickers[i].MarkPrice.Float64(),
+				IndexPrice:   tickers[i].IndexPrice.Float64(),
 				ExchangeName: e.Name,
 				Pair:         currencyPair,
 				AssetType:    a,
@@ -642,6 +648,8 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 			for x := range tickers {
 				err = ticker.ProcessTicker(&ticker.Price{
 					Last:         tickers[x].LastPrice.Float64(),
+					MarkPrice:    tickers[x].MarkPrice.Float64(),
+					IndexPrice:   tickers[x].IndexPrice.Float64(),
 					Ask:          tickers[x].Ask1Price.Float64(),
 					AskSize:      tickers[x].Ask1Size.Float64(),
 					Bid:          tickers[x].Bid1Price.Float64(),
@@ -2559,7 +2567,7 @@ func openInterestFromStats(stats []ContractStat) (float64, error) {
 			latest = stats[i]
 		}
 	}
-	return latest.OpenInterest.Float64(), nil
+	return latest.OpenInterestUSD.Float64(), nil
 }
 
 func useOpenInterestStats(keys []key.PairAsset, a asset.Item) bool {

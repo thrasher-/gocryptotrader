@@ -771,7 +771,7 @@ type ContractStat struct {
 	ShortLiquidationAmount types.Number `json:"short_liq_amount"`
 	LongLiquidationAmount  types.Number `json:"long_liq_amount"`
 	LastFundingRate        types.Number `json:"last_funding_rate"`
-	OpenInterestUsd        types.Number `json:"open_interest_usd"`
+	OpenInterestUSD        types.Number `json:"open_interest_usd"`
 	TopLongShortAccount    types.Number `json:"top_lsr_account"`
 	LongLiquidationUSD     types.Number `json:"long_liq_usd"`
 	TopLongSize            types.Number `json:"top_long_size"`
@@ -931,6 +931,7 @@ type OptionsTicker struct {
 	Name                  currency.Pair `json:"name"`
 	LastPrice             types.Number  `json:"last_price"`
 	MarkPrice             types.Number  `json:"mark_price"`
+	IndexPrice            types.Number  `json:"index_price"`
 	PositionSize          types.Number  `json:"position_size"`
 	Ask1Size              types.Number  `json:"ask1_size"`
 	Ask1Price             types.Number  `json:"ask1_price"`
@@ -945,9 +946,6 @@ type OptionsTicker struct {
 	BidImpliedVolatility  types.Number  `json:"bid_iv"`
 	AskImpliedVolatility  types.Number  `json:"ask_iv"`
 	Leverage              types.Number  `json:"leverage"`
-
-	// Added fields for the websocket
-	IndexPrice types.Number `json:"index_price"`
 }
 
 // OptionsUnderlyingTicker represents underlying ticker

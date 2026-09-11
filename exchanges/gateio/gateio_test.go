@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"slices"
@@ -24,6 +26,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchange/accounts"
 	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
+	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/fundingrate"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/futures"
@@ -33,6 +36,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/sharedtestvalues"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
+	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	testexch "github.com/thrasher-corp/gocryptotrader/internal/testing/exchange"
 	testsubs "github.com/thrasher-corp/gocryptotrader/internal/testing/subscriptions"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
@@ -336,11 +340,101 @@ func TestGetOrderInfo(t *testing.T) {
 	}
 }
 
+var mockedTickerTestCases = []struct {
+	name         string
+	asset        asset.Item
+	pair         currency.Pair
+	expectedPath string
+}{
+	{
+		name:         "mocked USDT margined futures mark and index prices",
+		asset:        asset.USDTMarginedFutures,
+		pair:         currency.NewPairWithDelimiter("BTC", "USDT", currency.UnderscoreDelimiter),
+		expectedPath: "/api/v4/futures/usdt/tickers",
+	},
+	{
+		name:         "mocked coin margined futures mark and index prices",
+		asset:        asset.CoinMarginedFutures,
+		pair:         currency.NewPairWithDelimiter("BTC", "USD", currency.UnderscoreDelimiter),
+		expectedPath: "/api/v4/futures/btc/tickers",
+	},
+	{
+		name:         "mocked delivery futures mark and index prices",
+		asset:        asset.DeliveryFutures,
+		pair:         currency.NewPairWithDelimiter("BTC", "USDT_20261225", currency.UnderscoreDelimiter),
+		expectedPath: "/api/v4/delivery/usdt/tickers",
+	},
+	{
+		name:         "mocked options mark and index prices",
+		asset:        asset.Options,
+		pair:         currency.NewPairWithDelimiter("BTC", "USDT-20261225-100000-C", currency.UnderscoreDelimiter),
+		expectedPath: "/api/v4/options/tickers",
+	},
+}
+
 func TestUpdateTicker(t *testing.T) {
 	t.Parallel()
-	for _, a := range e.GetAssetTypes(false) {
-		_, err := e.UpdateTicker(t.Context(), getPair(t, a), a)
-		assert.NoErrorf(t, err, "UpdateTicker should not error for %s", a)
+
+	t.Run("all supported assets", func(t *testing.T) {
+		t.Parallel()
+		for _, a := range e.GetAssetTypes(false) {
+			t.Run(a.String(), func(t *testing.T) {
+				t.Parallel()
+				got, err := e.UpdateTicker(t.Context(), getPair(t, a), a)
+				require.NoError(t, err, "UpdateTicker must not error")
+				switch a {
+				case asset.USDTMarginedFutures, asset.CoinMarginedFutures, asset.DeliveryFutures, asset.Options:
+					require.NotNil(t, got, "live ticker must not be nil")
+					if a == asset.Options {
+						// Out-of-the-money options can have a zero mark price near expiry.
+						assert.GreaterOrEqual(t, got.MarkPrice, 0.0, "live options mark price should be non-negative")
+					} else {
+						assert.Positive(t, got.MarkPrice, "live ticker mark price should be positive")
+					}
+					assert.Positive(t, got.IndexPrice, "live ticker index price should be positive")
+				}
+			})
+		}
+	})
+
+	for _, tc := range mockedTickerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ex := new(Exchange)
+			require.NoError(t, testexch.Setup(ex), "Setup must not error")
+			ex.Name = t.Name()
+			if tc.asset == asset.Options {
+				require.NoError(t, ex.UpdatePairs(currency.Pairs{tc.pair}, tc.asset, true), "mocked options pair must be enabled")
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method, "ticker request method should be GET")
+				assert.Equal(t, tc.expectedPath, r.URL.Path, "ticker request path should match the asset endpoint")
+				if tc.asset == asset.Options {
+					assert.Equal(t, "BTC_USDT", r.URL.Query().Get("underlying"), "options underlying should match")
+					_, err := fmt.Fprintf(w, `[{"name":%q,"last_price":"118.4","mark_price":"118.35","index_price":"100000.25"}]`, tc.pair.String())
+					assert.NoError(t, err, "mocked response should be written")
+					return
+				}
+				assert.Equal(t, tc.pair.String(), r.URL.Query().Get("contract"), "ticker request contract should match the pair")
+				_, err := fmt.Fprintf(w, `[{"contract":%q,"last":"118.4","low_24h":"99.2","high_24h":"132.5","volume_24h_base":"5526","volume_24h_quote":"1665006","mark_price":"118.35","index_price":"118.36"}]`, tc.pair.String())
+				assert.NoError(t, err, "mocked ticker response should be written")
+			}))
+			t.Cleanup(server.Close)
+
+			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL+"/api/v4/"), "SetRunningURL must not error")
+
+			got, err := ex.UpdateTicker(t.Context(), tc.pair, tc.asset)
+			require.NoError(t, err, "mocked ticker retrieval must succeed")
+			assert.Equal(t, 118.35, got.MarkPrice, "ticker mark price should match the mocked response")
+			if tc.asset == asset.Options {
+				assert.Equal(t, 100000.25, got.IndexPrice, "options index price should match")
+			} else {
+				assert.Equal(t, 118.36, got.IndexPrice, "ticker index price should match the mocked response")
+			}
+		})
 	}
 }
 
@@ -2100,9 +2194,79 @@ func TestFetchTradablePairs(t *testing.T) {
 
 func TestUpdateTickers(t *testing.T) {
 	t.Parallel()
-	for _, a := range e.GetAssetTypes(false) {
-		err := e.UpdateTickers(t.Context(), a)
-		assert.NoErrorf(t, err, "UpdateTickers should not error for %s", a)
+
+	t.Run("all supported assets", func(t *testing.T) {
+		t.Parallel()
+		for _, a := range e.GetAssetTypes(false) {
+			t.Run(a.String(), func(t *testing.T) {
+				t.Parallel()
+				switch a {
+				case asset.USDTMarginedFutures, asset.CoinMarginedFutures, asset.DeliveryFutures, asset.Options:
+					pair := getPair(t, a)
+					ex := new(Exchange)
+					require.NoError(t, testexch.Setup(ex), "Setup must not error")
+					if a == asset.Options {
+						testexch.UpdatePairsOnce(t, ex)
+					}
+					// Isolate the cache so another test cannot supply the ticker being checked.
+					ex.Name = t.Name()
+					require.NoError(t, ex.UpdateTickers(t.Context(), a), "live UpdateTickers must not error")
+					got, err := ticker.GetTicker(ex.Name, pair, a)
+					require.NoError(t, err, "live UpdateTickers must cache the requested ticker")
+					require.NotNil(t, got, "live ticker must not be nil")
+					if a == asset.Options {
+						// Out-of-the-money options can have a zero mark price near expiry.
+						assert.GreaterOrEqual(t, got.MarkPrice, 0.0, "live options mark price should be non-negative")
+					} else {
+						assert.Positive(t, got.MarkPrice, "live ticker mark price should be positive")
+					}
+					assert.Positive(t, got.IndexPrice, "live ticker index price should be positive")
+				default:
+					assert.NoError(t, e.UpdateTickers(t.Context(), a), "UpdateTickers should not error")
+				}
+			})
+		}
+	})
+
+	for _, tc := range mockedTickerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ex := new(Exchange)
+			require.NoError(t, testexch.Setup(ex), "Setup must not error")
+			ex.Name = t.Name()
+			if tc.asset == asset.Options {
+				require.NoError(t, ex.UpdatePairs(currency.Pairs{tc.pair}, tc.asset, true), "mocked options pair must be enabled")
+			}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodGet, r.Method, "ticker request method should be GET")
+				assert.Equal(t, tc.expectedPath, r.URL.Path, "ticker request path should match the asset endpoint")
+				if tc.asset == asset.Options {
+					assert.Equal(t, "BTC_USDT", r.URL.Query().Get("underlying"), "options underlying should match")
+					_, err := fmt.Fprintf(w, `[{"name":%q,"last_price":"118.4","mark_price":"118.35","index_price":"100000.25"}]`, tc.pair.String())
+					assert.NoError(t, err, "mocked response should be written")
+					return
+				}
+				assert.Empty(t, r.URL.Query().Get("contract"), "bulk ticker request should not filter by contract")
+				_, err := fmt.Fprintf(w, `[{"contract":%q,"last":"118.4","low_24h":"99.2","high_24h":"132.5","volume_24h":"745487577","volume_24h_quote":"1665006","mark_price":"118.35","index_price":"118.36"}]`, tc.pair.String())
+				assert.NoError(t, err, "mocked ticker response should be written")
+			}))
+			t.Cleanup(server.Close)
+
+			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL+"/api/v4/"), "SetRunningURL must not error")
+
+			require.NoError(t, ex.UpdateTickers(t.Context(), tc.asset), "mocked bulk ticker update must succeed")
+			got, err := ticker.GetTicker(ex.Name, tc.pair, tc.asset)
+			require.NoError(t, err, "mocked ticker retrieval must succeed")
+			assert.Equal(t, 118.35, got.MarkPrice, "ticker mark price should match the mocked response")
+			if tc.asset == asset.Options {
+				assert.Equal(t, 100000.25, got.IndexPrice, "options index price should match")
+			} else {
+				assert.Equal(t, 118.36, got.IndexPrice, "ticker index price should match the mocked response")
+			}
+		})
 	}
 }
 
