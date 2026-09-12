@@ -25,8 +25,14 @@
 // outlier elsewhere: it ties U+2028 and U+2029 escaping to SetEscapeHTML where v1 escaped them
 // either way, re-attempts a failed write rather than latching it, and with indentation disabled
 // writes each value's trailing newline separately while discarding that write's error, so two
-// values can run together in the stream. Its Decoder is wrapped so that More reports a failed read
-// rather than the end of the stream, sonic reporting the two alike; every other method is its own
+// values can run together in the stream. Its Decoder parts from v1 where a read ends, in two ways.
+// It ends a top level number there, where v1 reads on to see whether more digits follow, so a
+// number split across reads decodes as two values, even one straddling sonic's own 4096 byte
+// buffer from a reader holding the whole input. And it reads on past bytes it cannot parse rather
+// than reporting them, so malformed input surfaces as the read's failure, or as io.EOF where the
+// stream ends, which is also why it reports io.EOF for a truncated "{". The Decoder is wrapped so
+// that More reports a failed read rather than the end of the stream, sonic reporting the two
+// alike; every other method is its own
 package json
 
 import (

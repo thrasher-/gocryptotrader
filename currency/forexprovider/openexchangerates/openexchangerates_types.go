@@ -3,6 +3,7 @@ package openexchangerates
 import (
 	"github.com/thrasher-corp/gocryptotrader/currency/forexprovider/base"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
+	"github.com/thrasher-corp/gocryptotrader/types"
 )
 
 // These consts contain endpoint information
@@ -45,11 +46,11 @@ type OXR struct {
 type Latest struct {
 	Disclaimer  string             `json:"disclaimer"`
 	License     string             `json:"license"`
-	Timestamp   int64              `json:"timestamp"`
+	Timestamp   types.Time         `json:"timestamp"`
 	Base        string             `json:"base"`
 	Rates       map[string]float64 `json:"rates"`
 	Error       bool               `json:"error"`
-	Status      int                `json:"status"`
+	Status      uint64             `json:"status"`
 	Message     string             `json:"message"`
 	Description string             `json:"description"`
 }
@@ -62,7 +63,7 @@ type Historical struct {
 	Base        string             `json:"base"`
 	Rates       map[string]float64 `json:"rates"`
 	Error       bool               `json:"error"`
-	Status      int                `json:"status"`
+	Status      uint64             `json:"status"`
 	Message     string             `json:"message"`
 	Description string             `json:"description"`
 }
@@ -76,7 +77,7 @@ type TimeSeries struct {
 	Base        string         `json:"base"`
 	Rates       map[string]any `json:"rates"`
 	Error       bool           `json:"error"`
-	Status      int            `json:"status"`
+	Status      uint64         `json:"status"`
 	Message     string         `json:"message"`
 	Description string         `json:"description"`
 }
@@ -92,12 +93,12 @@ type Convert struct {
 		To     string  `json:"to"`
 	} `json:"request"`
 	Meta struct {
-		Timestamp int64   `json:"timestamp"`
-		Rate      float64 `json:"rate"`
+		Timestamp types.Time `json:"timestamp"`
+		Rate      float64    `json:"rate"`
 	} `json:"meta"`
 	Response    float64 `json:"response"`
 	Error       bool    `json:"error"`
-	Status      int     `json:"status"`
+	Status      uint64  `json:"status"`
 	Message     string  `json:"message"`
 	Description string  `json:"description"`
 }
@@ -111,14 +112,14 @@ type OHLC struct {
 	Base        string         `json:"base"`
 	Rates       map[string]any `json:"rates"`
 	Error       bool           `json:"error"`
-	Status      int            `json:"status"`
+	Status      uint64         `json:"status"`
 	Message     string         `json:"message"`
 	Description string         `json:"description"`
 }
 
 // Usage holds usage statistical data
 type Usage struct {
-	Status      int       `json:"status"`
+	Status      uint64    `json:"status"`
 	Data        UsageData `json:"data"`
 	Error       bool      `json:"error"`
 	Message     string    `json:"message"`
@@ -152,10 +153,10 @@ type UsagePlanFeature struct {
 
 // UsageStatistics holds an account's request consumption for the current period
 type UsageStatistics struct {
-	Requests          int64 `json:"requests"`
-	RequestQuota      int   `json:"requests_quota"`
-	RequestsRemaining int   `json:"requests_remaining"`
-	DaysElapsed       int   `json:"days_elapsed"`
-	DaysRemaining     int   `json:"days_remaining"`
-	DailyAverage      int   `json:"daily_average"`
+	Requests          uint64 `json:"requests"`
+	RequestQuota      int64  `json:"requests_quota"`     // Signed because unlimited plans report -1
+	RequestsRemaining int64  `json:"requests_remaining"` // Signed because unlimited plans report -1
+	DaysElapsed       uint64 `json:"days_elapsed"`
+	DaysRemaining     uint64 `json:"days_remaining"`
+	DailyAverage      uint64 `json:"daily_average"`
 }

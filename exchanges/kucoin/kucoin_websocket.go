@@ -963,7 +963,7 @@ func (e *Exchange) manageSubscriptions(ctx context.Context, conn websocket.Conne
 
 		intermediary := struct {
 			Type string `json:"type"`
-			Code int    `json:"code"`
+			Code uint64 `json:"code"`
 			Data any    `json:"data"`
 		}{}
 		if err := json.Unmarshal(respRaw, &intermediary); err != nil {

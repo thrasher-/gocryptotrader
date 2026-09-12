@@ -409,7 +409,7 @@ func TestUpdateTicker(t *testing.T) {
 				require.NoError(t, ex.UpdatePairs(currency.Pairs{tc.pair}, tc.asset, true), "mocked options pair must be enabled")
 			}
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method, "ticker request method should be GET")
 				assert.Equal(t, tc.expectedPath, r.URL.Path, "ticker request path should match the asset endpoint")
 				if tc.asset == asset.Options {
@@ -422,7 +422,6 @@ func TestUpdateTicker(t *testing.T) {
 				_, err := fmt.Fprintf(w, `[{"contract":%q,"last":"118.4","low_24h":"99.2","high_24h":"132.5","volume_24h_base":"5526","volume_24h_quote":"1665006","mark_price":"118.35","index_price":"118.36"}]`, tc.pair.String())
 				assert.NoError(t, err, "mocked ticker response should be written")
 			}))
-			t.Cleanup(server.Close)
 
 			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL+"/api/v4/"), "SetRunningURL must not error")
@@ -2316,7 +2315,7 @@ func TestUpdateTickers(t *testing.T) {
 				require.NoError(t, ex.UpdatePairs(currency.Pairs{tc.pair}, tc.asset, true), "mocked options pair must be enabled")
 			}
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, http.MethodGet, r.Method, "ticker request method should be GET")
 				assert.Equal(t, tc.expectedPath, r.URL.Path, "ticker request path should match the asset endpoint")
 				if tc.asset == asset.Options {
@@ -2329,7 +2328,6 @@ func TestUpdateTickers(t *testing.T) {
 				_, err := fmt.Fprintf(w, `[{"contract":%q,"last":"118.4","low_24h":"99.2","high_24h":"132.5","volume_24h":"745487577","volume_24h_quote":"1665006","mark_price":"118.35","index_price":"118.36"}]`, tc.pair.String())
 				assert.NoError(t, err, "mocked ticker response should be written")
 			}))
-			t.Cleanup(server.Close)
 
 			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL+"/api/v4/"), "SetRunningURL must not error")

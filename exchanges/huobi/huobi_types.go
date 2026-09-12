@@ -122,15 +122,15 @@ type KlineItem struct {
 	High        float64    `json:"high"`
 	Amount      float64    `json:"amount"`
 	Volume      float64    `json:"vol"`
-	Count       int        `json:"count"`
+	Count       uint64     `json:"count"`
 }
 
 // CancelOpenOrdersBatch stores open order batch response data
 type CancelOpenOrdersBatch struct {
 	Data struct {
-		FailedCount  int `json:"failed-count"`
-		NextID       int `json:"next-id"`
-		SuccessCount int `json:"success-count"`
+		FailedCount  uint64 `json:"failed-count"`
+		NextID       int64  `json:"next-id"` // Signed because the API sends -1 when no open orders remain
+		SuccessCount uint64 `json:"success-count"`
 	} `json:"data"`
 	Status       string `json:"status"`
 	ErrorMessage string `json:"err-msg"`
@@ -237,7 +237,7 @@ type Detail struct {
 	High      float64    `json:"high"`
 	Timestamp types.Time `json:"timestamp"`
 	ID        int64      `json:"id"`
-	Count     int        `json:"count"`
+	Count     uint64     `json:"count"`
 	Low       float64    `json:"low"`
 	Volume    float64    `json:"vol"`
 }
@@ -329,9 +329,9 @@ type OrderInfo struct {
 
 // OrderMatchInfo stores the order match info
 type OrderMatchInfo struct {
-	ID           int        `json:"id"`
-	OrderID      int        `json:"order-id"`
-	MatchID      int        `json:"match-id"`
+	ID           uint64     `json:"id"`
+	OrderID      uint64     `json:"order-id"`
+	MatchID      uint64     `json:"match-id"`
 	Symbol       string     `json:"symbol"`
 	Type         string     `json:"type"`
 	Source       string     `json:"source"`
@@ -352,16 +352,16 @@ type MarginOrder struct {
 	CreatedAt       int64  `json:"created-at"`
 	InterestAmount  string `json:"interest-amount"`
 	InterestRate    string `json:"interest-rate"`
-	AccountID       int    `json:"account-id"`
-	UserID          int    `json:"user-id"`
+	AccountID       uint64 `json:"account-id"`
+	UserID          uint64 `json:"user-id"`
 	UpdatedAt       int64  `json:"updated-at"`
-	ID              int    `json:"id"`
+	ID              uint64 `json:"id"`
 	State           string `json:"state"`
 }
 
 // MarginAccountBalance stores the margin account balance info
 type MarginAccountBalance struct {
-	ID       int              `json:"id"`
+	ID       uint64           `json:"id"`
 	Type     string           `json:"type"`
 	State    string           `json:"state"`
 	Symbol   string           `json:"symbol"`
@@ -373,7 +373,7 @@ type MarginAccountBalance struct {
 
 // SpotNewOrderRequestParams holds the params required to place an order
 type SpotNewOrderRequestParams struct {
-	AccountID int                           `json:"account-id,string"` // Account ID, obtained using the accounts method. Currency trades use the accountid of the ‘spot’ account; for loan asset transactions, please use the accountid of the ‘margin’ account.
+	AccountID uint64                        `json:"account-id,string"` // Account ID, obtained using the accounts method. Currency trades use the accountid of the ‘spot’ account; for loan asset transactions, please use the accountid of the ‘margin’ account.
 	Amount    float64                       `json:"amount"`            // The limit price indicates the quantity of the order, the market price indicates how much to buy when the order is paid, and the market price indicates how much the coin is sold when the order is sold.
 	Price     float64                       `json:"price"`             // Order price, market price does not use  this parameter
 	Source    string                        `json:"source"`            // Order source, api: API call, margin-api: loan asset transaction

@@ -164,12 +164,11 @@ func TestGetTickerResponseHandling(t *testing.T) {
 			t.Parallel()
 			ex := new(Exchange)
 			require.NoError(t, testexch.Setup(ex), "Setup must not error")
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				assert.Equal(t, "1", req.URL.Query().Get("ignore_invalid"), "ticker requests should ignore invalid pairs")
 				_, err := w.Write([]byte(test.body))
 				assert.NoError(t, err, "writing ticker response should not error")
 			}))
-			t.Cleanup(server.Close)
 			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL), "SetRunningURL must not error")
 			result, err := ex.GetTicker(t.Context(), "btc_usd")
@@ -224,13 +223,12 @@ func TestUpdateTickersResponseHandling(t *testing.T) {
 			var response atomic.Pointer[string]
 			initialResponse := `{"btc_usd":{"last":80001},"eth_btc":{"last":0.031}}`
 			response.Store(&initialResponse)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				assert.Equal(t, "/3/ticker/btc_usd-eth_btc", req.URL.Path, "ticker request should include both enabled pairs")
 				assert.Equal(t, "1", req.URL.Query().Get("ignore_invalid"), "ticker request should allow partial results")
 				_, err := w.Write([]byte(*response.Load()))
 				assert.NoError(t, err, "writing ticker response should not error")
 			}))
-			t.Cleanup(server.Close)
 			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL), "SetRunningURL must not error")
 			require.NoError(t, ex.UpdateTickers(t.Context(), asset.Spot), "initial poll must populate both tickers")

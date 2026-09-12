@@ -443,10 +443,12 @@ func TestMarshalIndentReturnsNilOnMarshalError(t *testing.T) {
 	}
 }
 
-// The compatibility options are load-bearing: dropping one changes exchange parsing or an outbound
-// body without erroring. Each case below fails if its option is removed
+// The compatibility options are load-bearing: dropping one either silently changes exchange
+// parsing or an outbound body, or fails a payload v1 accepted. Each case below fails if its
+// option is removed
 
-// v2 matches field names exactly; Binance sends "e" alongside "E"
+// v2 matches field names exactly, so a tag differing from the wire only in case would leave the
+// field at zero
 func TestCaseInsensitiveNameMatch(t *testing.T) {
 	t.Parallel()
 	var v struct {
@@ -637,6 +639,60 @@ func TestDecoderMatchesV1OnReadFailures(t *testing.T) {
 				assert.Equal(t, want, got, "the wrapper should report what the v1 Decoder reports")
 			})
 		}
+	}
+}
+
+// TestDecoderAtAReadBoundary covers values that meet the end of a read, which every script above
+// avoids by ending its values with a space. The default build reads on as v1 does. Native sonic
+// ends a top level number where a read ends, and reads on past bytes it cannot parse rather than
+// reporting them, so what it reports instead is pinned rather than left latent
+func TestDecoderAtAReadBoundary(t *testing.T) {
+	t.Parallel()
+	scripted := func(steps ...readStep) func() io.Reader {
+		return func() io.Reader { return &scriptedReader{steps: steps} }
+	}
+	for name, tc := range map[string]struct {
+		newReader func() io.Reader
+		// sonic is what its native backend reports; where it falls back to encoding/json it reports
+		// what v1 does
+		sonic []string
+	}{
+		"number split across reads": {
+			newReader: scripted(readStep{data: "1"}, readStep{data: "2 "}),
+			sonic:     []string{"val=1", "val=2", "err=EOF", "err=EOF"},
+		},
+		"number needing one more read": {
+			newReader: scripted(readStep{data: "1"}, readStep{err: errStreamFailed}),
+			sonic:     []string{"val=1", "err=stream failed", "err=stream failed", "err=stream failed"},
+		},
+		"trailing number needing one more read": {
+			newReader: scripted(readStep{data: `{"a":1} 5`}, readStep{err: errStreamFailed}),
+			sonic:     []string{"val=map[a:1]", "val=5", "err=stream failed", "err=stream failed"},
+		},
+		"number straddling sonic's buffer": {
+			// sonic's first read fills 4096 bytes, so it splits this even from a reader serving it whole
+			newReader: func() io.Reader { return strings.NewReader(strings.Repeat(" ", 4092) + "12345") },
+			sonic:     []string{"val=1234", "val=5", "err=EOF", "err=EOF"},
+		},
+		"malformed then a failed read": {
+			newReader: scripted(readStep{data: "xyz"}, readStep{err: errStreamFailed}),
+			sonic:     []string{"err=stream failed", "err=stream failed", "err=stream failed", "err=stream failed"},
+		},
+		"malformed then the end": {
+			newReader: scripted(readStep{data: "xyz"}),
+			sonic:     []string{"err=EOF", "err=EOF", "err=EOF", "err=EOF"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			want := decodeScript(jsonv1.NewDecoder(tc.newReader()), false)
+			got := decodeScript(NewDecoder(tc.newReader()), false)
+			if Implementation == sonicImpl {
+				assert.Contains(t, [][]string{want, tc.sonic}, got, "sonic should report what its native backend is pinned to, or what v1 reports where it falls back")
+				return
+			}
+			assert.Equal(t, want, got, "the default build should report what the v1 Decoder reports")
+		})
 	}
 }
 

@@ -212,7 +212,7 @@ func (t *Trade) UnmarshalJSON(data []byte) error {
 type FundingBookItem struct {
 	Rate            float64    `json:"rate,string"`
 	Amount          float64    `json:"amount,string"`
-	Period          int        `json:"period"`
+	Period          uint64     `json:"period"`
 	Timestamp       types.Time `json:"timestamp"`
 	FlashReturnRate string     `json:"frr"`
 }
@@ -493,7 +493,7 @@ type MarginFunds struct {
 	PositionID int64      `json:"position_id"`
 	Currency   string     `json:"currency"`
 	Rate       float64    `json:"rate,string"`
-	Period     int        `json:"period"`
+	Period     uint64     `json:"period"`
 	Amount     float64    `json:"amount,string"`
 	Timestamp  types.Time `json:"timestamp"`
 	AutoClose  bool       `json:"auto_close"`
@@ -541,7 +541,7 @@ const (
 type LeaderboardEntry struct {
 	Timestamp     time.Time
 	Username      string
-	Ranking       int
+	Ranking       uint64
 	Value         float64
 	TwitterHandle string
 }

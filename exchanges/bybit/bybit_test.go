@@ -4165,7 +4165,7 @@ func TestUpdateTickersInverseVolumesReachTheStore(t *testing.T) {
 
 	ex := new(Exchange)
 	require.NoError(t, testexch.Setup(ex), "Setup must not error")
-	ex.Name = "bybit-inverse-volumes"
+	ex.Name = t.Name()
 
 	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// trimmed from GET /v5/market/tickers?category=inverse

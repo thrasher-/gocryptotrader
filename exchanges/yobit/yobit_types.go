@@ -8,7 +8,7 @@ import (
 // Response is a generic struct used for exchange API request result
 type Response struct {
 	Return  any    `json:"return"`
-	Success int    `json:"success"`
+	Success int64  `json:"success"` // Signed because Yobit documents it only by example
 	Error   string `json:"error"`
 }
 
@@ -53,16 +53,16 @@ type ActiveOrders struct {
 	Amount           float64    `json:"amount"`
 	Rate             float64    `json:"rate"`
 	TimestampCreated types.Time `json:"timestamp_created"`
-	Status           int        `json:"status"`
+	Status           int64      `json:"status"` // Signed because Yobit documents it only by example
 }
 
 // Pair holds pair information
 type Pair struct {
-	DecimalPlaces int     `json:"decimal_places"` // Quantity of permitted numbers after decimal point
+	DecimalPlaces uint64  `json:"decimal_places"` // Quantity of permitted numbers after decimal point
 	MinPrice      float64 `json:"min_price"`      // Minimal permitted price
 	MaxPrice      float64 `json:"max_price"`      // Maximal permitted price
 	MinAmount     float64 `json:"min_amount"`     // Minimal permitted buy or sell amount
-	Hidden        int     `json:"hidden"`         // Pair is hidden (0 or 1)
+	Hidden        uint64  `json:"hidden"`         // Pair is hidden (0 or 1)
 	Fee           float64 `json:"fee"`            // Pair commission
 }
 
@@ -71,12 +71,12 @@ type AccountInfo struct {
 	Funds           map[string]float64 `json:"funds"`
 	FundsInclOrders map[string]float64 `json:"funds_incl_orders"`
 	Rights          struct {
-		Info     int `json:"info"`
-		Trade    int `json:"trade"`
-		Withdraw int `json:"withdraw"`
+		Info     uint64 `json:"info"`
+		Trade    uint64 `json:"trade"`
+		Withdraw uint64 `json:"withdraw"`
 	} `json:"rights"`
-	TransactionCount int        `json:"transaction_count"`
-	OpenOrders       int        `json:"open_orders"`
+	TransactionCount uint64     `json:"transaction_count"`
+	OpenOrders       uint64     `json:"open_orders"`
 	ServerTime       types.Time `json:"server_time"`
 	Error            string     `json:"error"`
 }
@@ -89,7 +89,7 @@ type OrderInfo struct {
 	Amount           float64    `json:"amount"`
 	Rate             float64    `json:"rate"`
 	TimestampCreated types.Time `json:"timestamp_created"`
-	Status           int        `json:"status"`
+	Status           int64      `json:"status"` // Signed because Yobit documents it only by example
 }
 
 // CancelOrder is used for the CancelOrder API request response
@@ -122,13 +122,13 @@ type TradeHistory struct {
 	Amount    float64    `json:"amount"`
 	Rate      float64    `json:"rate"`
 	OrderID   float64    `json:"order_id"`
-	MyOrder   int        `json:"is_your_order"`
+	MyOrder   uint64     `json:"is_your_order"`
 	Timestamp types.Time `json:"timestamp"`
 }
 
 // DepositAddress stores a currency deposit address
 type DepositAddress struct {
-	Success int `json:"success"`
+	Success int64 `json:"success"` // Signed because Yobit documents it only by example
 	Return  struct {
 		Address         string     `json:"address"`
 		ProcessedAmount float64    `json:"processed_amount"`

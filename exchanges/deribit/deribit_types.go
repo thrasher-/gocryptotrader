@@ -74,6 +74,7 @@ var (
 	errMissingSignature                    = errors.New("missing signature")
 	errStartingHeartbeat                   = errors.New("error starting heartbeat")
 	errSendingHeartbeat                    = errors.New("error sending heartbeat")
+	errNoTickerSnapshot                    = errors.New("incremental ticker change received before its snapshot")
 
 	websocketRequestTimeout = time.Second * 30
 
@@ -1529,45 +1530,65 @@ type wsTicker struct {
 	BestAskAmount          float64     `json:"best_ask_amount"`
 }
 
-// WsIncrementalTicker represents a ticker information for incremental ticker subscriptions.
+// WsIncrementalTicker holds an incremental_ticker message. The first message for an instrument is a
+// snapshot carrying the whole ticker, and each change after it carries only the fields that moved.
+// A change clears the day's range by sending it as null, which would leave a plain float64 as it
+// was, so every field a change can leave out is a pointer, nil where a message leaves it out or
+// sends null
 type WsIncrementalTicker struct {
-	Type                   string      `json:"type"`
-	Timestamp              types.Time  `json:"timestamp"`
-	Stats                  TickerStats `json:"stats"`
-	MinPrice               float64     `json:"min_price"`
-	MaxPrice               float64     `json:"max_price"`
-	MarkPrice              float64     `json:"mark_price"`
-	InstrumentName         string      `json:"instrument_name"`
-	IndexPrice             float64     `json:"index_price"`
-	EstimatedDeliveryPrice float64     `json:"estimated_delivery_price"`
-	BestBidAmount          float64     `json:"best_bid_amount"`
-	BestAskAmount          float64     `json:"best_ask_amount"`
+	Type                   string                    `json:"type"`
+	Timestamp              types.Time                `json:"timestamp"`
+	InstrumentName         string                    `json:"instrument_name"`
+	Stats                  WsIncrementalTickerStats  `json:"stats"`
+	Greeks                 WsIncrementalTickerGreeks `json:"greeks"`
+	State                  *string                   `json:"state"`
+	ComboState             *string                   `json:"combo_state"`
+	UnderlyingIndex        *string                   `json:"underlying_index"`
+	BestBidPrice           *float64                  `json:"best_bid_price"`
+	BestBidAmount          *float64                  `json:"best_bid_amount"`
+	BestAskPrice           *float64                  `json:"best_ask_price"`
+	BestAskAmount          *float64                  `json:"best_ask_amount"`
+	LastPrice              *float64                  `json:"last_price"`
+	MarkPrice              *float64                  `json:"mark_price"`
+	IndexPrice             *float64                  `json:"index_price"`
+	MinPrice               *float64                  `json:"min_price"`
+	MaxPrice               *float64                  `json:"max_price"`
+	EstimatedDeliveryPrice *float64                  `json:"estimated_delivery_price"`
+	DeliveryPrice          *float64                  `json:"delivery_price"`
+	SettlementPrice        *float64                  `json:"settlement_price"`
+	UnderlyingPrice        *float64                  `json:"underlying_price"`
+	OpenInterest           *float64                  `json:"open_interest"`
+	// ImpliedBid and ImpliedAsk are served only for combos, priced off the legs
+	ImpliedBid     *float64 `json:"implied_bid"`
+	ImpliedAsk     *float64 `json:"implied_ask"`
+	BidIV          *float64 `json:"bid_iv"`
+	AskIV          *float64 `json:"ask_iv"`
+	MarkIV         *float64 `json:"mark_iv"`
+	InterestRate   *float64 `json:"interest_rate"`
+	InterestValue  *float64 `json:"interest_value"`
+	CurrentFunding *float64 `json:"current_funding"`
+	Funding8Hour   *float64 `json:"funding_8h"`
+}
 
-	// For future_combo instruments
-	ImpliedAsk float64 `json:"implied_ask"`
-	ImpliedBid float64 `json:"implied_bid"`
+// WsIncrementalTickerStats holds the 24 hour aggregates an incremental_ticker message carries, each
+// nil where the message leaves it out or sends null
+type WsIncrementalTickerStats struct {
+	High           *float64 `json:"high"`
+	Low            *float64 `json:"low"`
+	PriceChange    *float64 `json:"price_change"`
+	Volume         *float64 `json:"volume"`
+	VolumeUSD      *float64 `json:"volume_usd"`
+	VolumeNotional *float64 `json:"volume_notional"`
+}
 
-	UnderlyingPrice float64 `json:"underlying_price"`
-	UnderlyingIndex string  `json:"underlying_index"`
-	State           string  `json:"state"`
-	SettlementPrice float64 `json:"settlement_price"`
-	OpenInterest    float64 `json:"open_interest"`
-
-	MarkIv       float64 `json:"mark_iv"`
-	LastPrice    float64 `json:"last_price"`
-	InterestRate float64 `json:"interest_rate"`
-	Greeks       struct {
-		Vega  float64 `json:"vega"`
-		Theta float64 `json:"theta"`
-		Rho   float64 `json:"rho"`
-		Gamma float64 `json:"gamma"`
-		Delta float64 `json:"delta"`
-	} `json:"greeks"`
-	ComboState   string  `json:"combo_state"`
-	BidIv        float64 `json:"bid_iv"`
-	BestBidPrice float64 `json:"best_bid_price"`
-	BestAskPrice float64 `json:"best_ask_price"`
-	AskIv        float64 `json:"ask_iv"`
+// WsIncrementalTickerGreeks holds the option greeks an incremental_ticker message carries, each nil
+// where the message leaves it out or sends null
+type WsIncrementalTickerGreeks struct {
+	Delta *float64 `json:"delta"`
+	Gamma *float64 `json:"gamma"`
+	Rho   *float64 `json:"rho"`
+	Theta *float64 `json:"theta"`
+	Vega  *float64 `json:"vega"`
 }
 
 // wsInstrumentState represents notifications about new or terminated instruments of given kind in given currency.

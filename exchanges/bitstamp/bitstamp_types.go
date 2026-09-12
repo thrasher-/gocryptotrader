@@ -49,8 +49,8 @@ type Orderbook struct {
 type TradingPair struct {
 	Name            string  `json:"name"`
 	URLSymbol       string  `json:"url_symbol"`
-	BaseDecimals    int     `json:"base_decimals"`
-	CounterDecimals int     `json:"counter_decimals"`
+	BaseDecimals    int     `json:"base_decimals"`    // int because math.Pow10 takes one
+	CounterDecimals int     `json:"counter_decimals"` // int because math.Pow10 takes one
 	MinimumOrder    float64 `json:"-"`
 	Trading         string  `json:"trading"`
 	Description     string  `json:"description"`
@@ -61,7 +61,7 @@ type Transactions struct {
 	Date    types.Time `json:"date"`
 	TradeID int64      `json:"tid,string"`
 	Price   float64    `json:"price,string"`
-	Type    int        `json:"type,string"`
+	Type    uint64     `json:"type,string"`
 	Amount  float64    `json:"amount,string"`
 }
 
@@ -146,7 +146,7 @@ type OrderStatus struct {
 type CancelOrder struct {
 	Price  float64 `json:"price"`
 	Amount float64 `json:"amount"`
-	Type   int     `json:"type"`
+	Type   uint64  `json:"type"`
 	ID     int64   `json:"id"`
 }
 
@@ -207,7 +207,7 @@ type FIATWithdrawalResponse struct {
 // transactions
 type UnconfirmedBTCTransactions struct {
 	Address        string `json:"address"`
-	DestinationTag int    `json:"destination_tag"`
+	DestinationTag uint64 `json:"destination_tag"`
 	MemoID         string `json:"memo_id"`
 }
 
@@ -246,7 +246,7 @@ type websocketTradeData struct {
 	PriceStr       string     `json:"price_str"`
 	Timestamp      types.Time `json:"timestamp"`
 	Price          float64    `json:"price"`
-	Type           int        `json:"type"`
+	Type           uint64     `json:"type"`
 	ID             int64      `json:"id"`
 }
 

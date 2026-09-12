@@ -9,7 +9,7 @@ import (
 
 // Response holds basic binance api response data
 type Response struct {
-	Code int    `json:"code"`
+	Code int64  `json:"code"` // Signed because Binance error codes are negative
 	Msg  string `json:"msg"`
 }
 
@@ -366,7 +366,7 @@ type GenericAuthResponse struct {
 // FuturesMarginUpdatedResponse stores margin update response data
 type FuturesMarginUpdatedResponse struct {
 	Amount float64 `json:"amount"`
-	Type   int     `json:"type"`
+	Type   uint64  `json:"type"`
 	GenericAuthResponse
 }
 

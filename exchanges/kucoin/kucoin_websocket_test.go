@@ -334,6 +334,7 @@ func TestProcessOrderbook(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		ku := testInstance(t)
+		ku.Name = t.Name()
 		pair, err := currency.NewPairFromString("ETH-BTC")
 		require.NoError(t, err, "NewPairFromString must not error")
 		assets, err := ku.CalculateAssets(marketOrderbookDepth50Channel, pair)
@@ -377,6 +378,7 @@ func TestProcessOrderbook(t *testing.T) {
 		t.Parallel()
 
 		ku := testInstance(t)
+		ku.Name = t.Name()
 		pair, err := currency.NewPairFromString("ETH-BTC")
 		require.NoError(t, err, "NewPairFromString must not error")
 		assets, err := ku.CalculateAssets(marketOrderbookDepth50Channel, pair)

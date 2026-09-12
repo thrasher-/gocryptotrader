@@ -523,7 +523,7 @@ func (e *Exchange) CancelAllOrders(ctx context.Context, orderCancellation *order
 	return resp, nil
 }
 
-func orderIntToType(i int) order.Type {
+func orderIntToType(i uint64) order.Type {
 	switch i {
 	case 77:
 		return order.Market
@@ -778,7 +778,7 @@ func (e *Exchange) GetActiveOrders(ctx context.Context, req *order.MultiOrderReq
 	return req.Filter(e.Name, orders), nil
 }
 
-func matchType(input int, required order.Type) bool {
+func matchType(input uint64, required order.Type) bool {
 	if (required == order.AnyType) || (input == 76 && required == order.Limit) || input == 77 && required == order.Market {
 		return true
 	}
@@ -880,7 +880,7 @@ func (e *Exchange) GetHistoricCandles(ctx context.Context, pair currency.Pair, a
 		return nil, err
 	}
 
-	intervalInt, err := strconv.Atoi(e.FormatExchangeKlineInterval(req.ExchangeInterval))
+	intervalInt, err := strconv.ParseUint(e.FormatExchangeKlineInterval(req.ExchangeInterval), 10, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -921,7 +921,7 @@ func (e *Exchange) GetHistoricCandlesExtended(ctx context.Context, pair currency
 		return nil, err
 	}
 
-	intervalInt, err := strconv.Atoi(e.FormatExchangeKlineInterval(req.ExchangeInterval))
+	intervalInt, err := strconv.ParseUint(e.FormatExchangeKlineInterval(req.ExchangeInterval), 10, 64)
 	if err != nil {
 		return nil, err
 	}

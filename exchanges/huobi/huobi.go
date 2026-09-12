@@ -423,7 +423,7 @@ func (e *Exchange) SpotNewOrder(ctx context.Context, arg *SpotNewOrderRequestPar
 	}
 
 	data := struct {
-		AccountID int    `json:"account-id,string"`
+		AccountID uint64 `json:"account-id,string"`
 		Amount    string `json:"amount"`
 		Price     string `json:"price"`
 		Source    string `json:"source"`

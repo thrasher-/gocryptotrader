@@ -420,7 +420,7 @@ func TestGetUnconfirmedBitcoinDeposits(t *testing.T) {
 		assert.NotEmpty(t, d, "Deposits should not be empty")
 		for _, res := range d {
 			assert.Equal(t, "0x6a56f5b80f04b4fd70d64d72e1396698635e5436", res.Address, "Address should match")
-			assert.Equal(t, 89473951, res.DestinationTag, "DestinationTag should match")
+			assert.Equal(t, uint64(89473951), res.DestinationTag, "DestinationTag should match")
 			assert.Equal(t, "299576079", res.MemoID, "MemoID should match")
 		}
 	}

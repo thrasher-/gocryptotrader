@@ -3587,7 +3587,7 @@ func TestUpdateAccountBalancesMocked(t *testing.T) {
 					Key:    "test-key",
 					Secret: "test-secret",
 				})
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, http.MethodGet, r.Method, "balances should use GET")
 					assert.Equal(t, tc.path, r.URL.Path, "balances should use the asset endpoint")
 					body := tc.input
@@ -3606,7 +3606,6 @@ func TestUpdateAccountBalancesMocked(t *testing.T) {
 					_, err := w.Write([]byte(body))
 					assert.NoError(t, err, "the mock response should be written")
 				}))
-				t.Cleanup(server.Close)
 				require.NoError(t, e.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 				for endpoint := range e.API.Endpoints.GetURLMap() {
 					require.NoError(t, e.API.Endpoints.SetRunningURL(endpoint, server.URL), "SetRunningURL must not error")
@@ -3650,11 +3649,10 @@ func TestUpdateAccountBalancesMocked(t *testing.T) {
 		t.Parallel()
 		e := new(Exchange)
 		require.NoError(t, testexch.Setup(e), "Setup must not error")
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			assert.Fail(t, "validation should not make HTTP requests")
 			w.WriteHeader(http.StatusBadRequest)
 		}))
-		t.Cleanup(server.Close)
 		require.NoError(t, e.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 		for endpoint := range e.API.Endpoints.GetURLMap() {
 			require.NoError(t, e.API.Endpoints.SetRunningURL(endpoint, server.URL), "SetRunningURL must not error")

@@ -3638,6 +3638,7 @@ func TestUpdateTickersReachesTheStore(t *testing.T) {
 
 	ex := new(Exchange)
 	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+	ex.Name = t.Name()
 	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL), "SetRunningURL must not error")
 
@@ -3655,6 +3656,32 @@ func TestUpdateTickersReachesTheStore(t *testing.T) {
 	assert.Equal(t, 78850.77, perp.Last, "the closing price should reach the store as the last price")
 	assert.Zero(t, perp.BaseVolume, "a contract count is not a base volume, so none should reach the store")
 	assert.Equal(t, 6100138.7169, perp.QuoteVolume, "amt should reach the store as the quote volume")
+}
+
+// TestUpdateTickerStoresTheRequestedPair covers a pair split differently from the response's symbol.
+// The store keys base and quote separately, so storing under the response's split made a
+// successful fetch report no ticker found
+func TestUpdateTickerStoresTheRequestedPair(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Trimmed from GET /v3/market/tickers?symbol=BTC_USDT_PERP
+		assert.Equal(t, "BTC_USDT_PERP", r.URL.Query().Get("symbol"), "the requested pair should reach the exchange formatted")
+		_, err := fmt.Fprint(w, `{"code":200,"data":[{"s":"BTC_USDT_PERP","c":"78850.77","qty":"77706","amt":"6100138.7169","mPx":"78849.1","ts":1788926190000}]}`)
+		assert.NoError(t, err, "writing the ticker response should not error")
+	}))
+
+	ex := new(Exchange)
+	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+	ex.Name = t.Name()
+	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
+	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL), "SetRunningURL must not error")
+
+	pair := currency.NewPairWithDelimiter("BTC_USDT", "PERP", "_")
+	got, err := ex.UpdateTicker(t.Context(), pair, asset.Futures)
+	require.NoError(t, err, "UpdateTicker must not error")
+	assert.True(t, got.Pair.Equal(pair), "the ticker should be stored under the requested pair")
+	assert.Equal(t, 78850.77, got.Last, "the closing price should be recorded as the last price")
 }
 
 // TestSpotTicker pins the single pair and bulk spot paths sharing one field set, the store

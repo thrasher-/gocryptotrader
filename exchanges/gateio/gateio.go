@@ -3358,10 +3358,10 @@ func (e *Exchange) CreateFlashSwapOrder(ctx context.Context, arg FlashSwapOrderP
 }
 
 // GetAllFlashSwapOrders retrieves list of flash swap orders filtered by the params
-func (e *Exchange) GetAllFlashSwapOrders(ctx context.Context, status int, sellCurrency, buyCurrency currency.Code, reverse bool, limit, page uint64) ([]FlashSwapOrderResponse, error) {
+func (e *Exchange) GetAllFlashSwapOrders(ctx context.Context, status uint64, sellCurrency, buyCurrency currency.Code, reverse bool, limit, page uint64) ([]FlashSwapOrderResponse, error) {
 	params := url.Values{}
 	if status == 1 || status == 2 {
-		params.Set("status", strconv.Itoa(status))
+		params.Set("status", strconv.FormatUint(status, 10))
 	}
 	if !sellCurrency.IsEmpty() {
 		params.Set("sell_currency", sellCurrency.String())

@@ -169,8 +169,8 @@ func TestRegisterHandlerAndMatching(t *testing.T) {
 				},
 			}, mux)
 
-			srv := httptest.NewServer(mux)
-			t.Cleanup(srv.Close)
+			srv := httptest.NewTestServer(t, mux)
+			client := srv.Client()
 
 			req, err := http.NewRequestWithContext(t.Context(),
 				tc.method,
@@ -185,7 +185,7 @@ func TestRegisterHandlerAndMatching(t *testing.T) {
 				req.Header.Set(contentType, tc.contentType)
 			}
 
-			resp, err := srv.Client().Do(req)
+			resp, err := client.Do(req)
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				require.NoError(t, resp.Body.Close())

@@ -13,11 +13,11 @@ import (
 // Implementation is a constant string that represents the current JSON implementation package
 const Implementation = "encoding/json/v2"
 
-// v1Compat retains the v1 behaviours the codebase relies on. Removing any one of these
-// silently changes exchange parsing or outbound requests rather than erroring.
+// v1Compat retains the v1 behaviours the codebase relies on. Removing one either silently changes
+// exchange parsing or outbound requests, or fails payloads v1 accepted.
 var v1Compat = jsonv2.JoinOptions(
 	jsonv2.MatchCaseInsensitiveNames(true),       // v2 matches field names exactly; see below
-	jsontext.AllowDuplicateNames(true),           // required alongside the above: Binance sends "e" and "E" in one object
+	jsontext.AllowDuplicateNames(true),           // required alongside the above: XRPScan sends "sequence" and "Sequence" in one object
 	jsonv1.MatchCaseSensitiveDelimiter(true),     // and this: without it "_" is insignificant, so available_exchanges matches availableExchanges
 	jsonv1.FormatDurationAsNano(true),            // v2 has no default time.Duration representation
 	jsonv1.UnmarshalArrayFromAnyLength(true),     // payload length need not match a fixed-size array
@@ -35,10 +35,11 @@ var v1Compat = jsonv2.JoinOptions(
 	jsonv1.ParseTimeWithLooseRFC3339(true),       // a rejected timestamp fails the whole payload, not the field
 )
 
-// The three name-matching options are interdependent: matching case-insensitively makes "e" and "E"
-// the same member, which trips v2's duplicate name check on Binance payloads carrying both, and
-// makes "_" insignificant, which matches availableExchanges against a protobuf available_exchanges.
-// Dropping any of them makes a tag that mismatches the wire decode to zero without erroring.
+// The three name-matching options are interdependent. Matching case-insensitively, as v1 did, keeps
+// a tag that differs from the wire only in case from decoding to zero without erroring. But it makes
+// "sequence" and "Sequence" the same member where only one is tagged, which trips v2's duplicate name
+// check on XRPScan's account payload carrying both, and it makes "_" insignificant, which matches
+// availableExchanges against a protobuf available_exchanges.
 
 // Marshal returns the JSON encoding of v. See the "encoding/json/v2" documentation for Marshal
 func Marshal(v any) ([]byte, error) { return jsonv2.Marshal(v, v1Compat) }

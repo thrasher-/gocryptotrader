@@ -32,7 +32,7 @@ type CurrencyConverter struct {
 
 // Error stores the error message
 type Error struct {
-	Status int    `json:"status"`
+	Status int64  `json:"status"` // Signed because the error format is undocumented
 	Error  string `json:"error"`
 }
 

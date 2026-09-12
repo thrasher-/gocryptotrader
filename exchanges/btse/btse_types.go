@@ -57,8 +57,8 @@ type MarketPair struct {
 	FundingRate         float64             `json:"fundingRate"`
 	ContractSize        float64             `json:"contractSize"`
 	MaxPosition         int64               `json:"maxPosition"`
-	MinRiskLimit        int                 `json:"minRiskLimit"`
-	MaxRiskLimit        int                 `json:"maxRiskLimit"`
+	MinRiskLimit        uint64              `json:"minRiskLimit"`
+	MaxRiskLimit        uint64              `json:"maxRiskLimit"`
 	AvailableSettlement currency.Currencies `json:"availableSettlement"`
 	Futures             bool                `json:"futures"`
 	IsMarketOpenToSpot  bool                `json:"isMarketOpenToSpot"`
@@ -130,10 +130,10 @@ type TradeHistory []struct {
 	FilledPrice  float64    `json:"filledPrice"`
 	FilledSize   float64    `json:"filledSize"`
 	OrderID      string     `json:"orderId"`
-	OrderType    int        `json:"orderType"`
+	OrderType    uint64     `json:"orderType"`
 	Price        float64    `json:"price"`
 	Quote        string     `json:"quote"`
-	RealizedPnl  float64    `json:"realizedPnl"`
+	RealizedPNL  float64    `json:"realizedPnl"`
 	SerialID     int64      `json:"serialId"`
 	Side         string     `json:"side"`
 	Size         float64    `json:"size"`
@@ -142,7 +142,7 @@ type TradeHistory []struct {
 	Total        float64    `json:"total"`
 	TradeID      string     `json:"tradeId"`
 	TriggerPrice float64    `json:"triggerPrice"`
-	TriggerType  int        `json:"triggerType"`
+	TriggerType  uint64     `json:"triggerType"`
 	Username     string     `json:"username"`
 	Wallet       string     `json:"wallet"`
 }
@@ -164,7 +164,7 @@ type WalletHistory []struct {
 // WalletAddress stores address for crypto deposit's
 type WalletAddress []struct {
 	Address string `json:"address"`
-	Created int    `json:"created"`
+	Created int    `json:"created"` // Unix seconds, left as int so it changes type once, to types.Time
 }
 
 // WithdrawalResponse response received when submitting a crypto withdrawal request
@@ -181,7 +181,7 @@ type OpenOrder struct {
 	FilledSize                   float64    `json:"filledSize"`
 	OrderID                      string     `json:"orderID"`
 	OrderState                   string     `json:"orderState"`
-	OrderType                    int        `json:"orderType"`
+	OrderType                    uint64     `json:"orderType"`
 	OrderValue                   float64    `json:"orderValue"`
 	PegPriceDeviation            float64    `json:"pegPriceDeviation"`
 	PegPriceMax                  float64    `json:"pegPriceMax"`
@@ -193,7 +193,7 @@ type OpenOrder struct {
 	Timestamp                    types.Time `json:"timestamp"`
 	TrailValue                   float64    `json:"trailValue"`
 	TriggerOrder                 bool       `json:"triggerOrder"`
-	TriggerOrderType             int        `json:"triggerOrderType"`
+	TriggerOrderType             uint64     `json:"triggerOrderType"`
 	TriggerOriginalPrice         float64    `json:"triggerOriginalPrice"`
 	TriggerPrice                 float64    `json:"triggerPrice"`
 	TriggerStopPrice             float64    `json:"triggerStopPrice"`
@@ -212,11 +212,11 @@ type Order struct {
 	FillSize         float64    `json:"fillSize"`
 	Message          string     `json:"message"`
 	OrderID          string     `json:"orderID"`
-	OrderType        int        `json:"orderType"`
+	OrderType        uint64     `json:"orderType"`
 	Price            float64    `json:"price"`
 	Side             string     `json:"side"`
 	Size             float64    `json:"size"`
-	Status           int        `json:"status"`
+	Status           int64      `json:"status"` // Signed because the status enum includes -1 for a timed out request
 	Stealth          float64    `json:"stealth"`
 	StopPrice        float64    `json:"stopPrice"`
 	Symbol           string     `json:"symbol"`
@@ -283,9 +283,9 @@ type wsOrderUpdate struct {
 
 // ErrorResponse contains errors received from API
 type ErrorResponse struct {
-	ErrorCode int    `json:"errorCode"`
+	ErrorCode int64  `json:"errorCode"` // Signed because BTSE documents error codes as an unbounded Long
 	Message   string `json:"message"`
-	Status    int    `json:"status"`
+	Status    int64  `json:"status"` // Signed because the status enum includes -1 for a timed out request
 }
 
 // WsSubscriptionAcknowledgement contains successful subscription messages

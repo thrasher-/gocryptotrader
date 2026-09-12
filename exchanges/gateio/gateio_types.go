@@ -523,16 +523,16 @@ type Ticker struct {
 	LowestAsk        types.Number `json:"lowest_ask"`
 	HighestBid       types.Number `json:"highest_bid"`
 	ChangePercentage string       `json:"change_percentage"`
-	ChangeUtc0       string       `json:"change_utc0"`
-	ChangeUtc8       string       `json:"change_utc8"`
+	ChangeUTC0       string       `json:"change_utc0"`
+	ChangeUTC8       string       `json:"change_utc8"`
 	BaseVolume       types.Number `json:"base_volume"`
 	QuoteVolume      types.Number `json:"quote_volume"`
 	High24Hour       types.Number `json:"high_24h"`
 	Low24Hour        types.Number `json:"low_24h"`
-	EtfNetValue      string       `json:"etf_net_value"`
-	EtfPreNetValue   string       `json:"etf_pre_net_value"`
-	EtfPreTimestamp  types.Time   `json:"etf_pre_timestamp"`
-	EtfLeverage      types.Number `json:"etf_leverage"`
+	ETFNetValue      string       `json:"etf_net_value"`
+	ETFPreNetValue   string       `json:"etf_pre_net_value"`
+	ETFPreTimestamp  types.Time   `json:"etf_pre_timestamp"`
+	ETFLeverage      types.Number `json:"etf_leverage"`
 }
 
 // OrderbookData holds orderbook ask and bid datas.

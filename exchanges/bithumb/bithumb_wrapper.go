@@ -233,6 +233,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 			Low:          t.MinPrice,
 			BaseVolume:   t.UnitsTraded24Hour,
 			Open:         t.OpeningPrice,
+			Last:         t.ClosingPrice,
 			Close:        t.ClosingPrice,
 			Pair:         p,
 			ExchangeName: e.Name,

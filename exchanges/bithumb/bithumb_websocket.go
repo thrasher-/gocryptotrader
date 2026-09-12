@@ -111,7 +111,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, respRaw []byte) error {
 		return e.Websocket.DataHandler.Send(ctx, &ticker.Price{
 			ExchangeName: e.Name,
 			AssetType:    asset.Spot,
-			Last:         tick.PreviousClosePrice,
+			Last:         tick.ClosePrice,
 			Pair:         tick.Symbol,
 			Open:         tick.OpenPrice,
 			Close:        tick.ClosePrice,

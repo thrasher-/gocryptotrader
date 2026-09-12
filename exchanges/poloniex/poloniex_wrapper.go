@@ -401,6 +401,7 @@ func (e *Exchange) futuresTicker(t *FuturesTickerDetails) *ticker.Price {
 
 // UpdateTicker updates and returns the ticker for a currency pair
 func (e *Exchange) UpdateTicker(ctx context.Context, pair currency.Pair, assetType asset.Item) (*ticker.Price, error) {
+	var tick *ticker.Price
 	switch assetType {
 	case asset.Spot:
 		formattedPair, err := e.FormatExchangeCurrency(pair, assetType)
@@ -411,10 +412,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, pair currency.Pair, assetTy
 		if err != nil {
 			return nil, err
 		}
-		if err := ticker.ProcessTicker(e.spotTicker(tickerResult)); err != nil {
-			return nil, err
-		}
-		return ticker.GetTicker(e.Name, pair, assetType)
+		tick = e.spotTicker(tickerResult)
 	case asset.Futures:
 		formattedPair, err := e.FormatExchangeCurrency(pair, assetType)
 		if err != nil {
@@ -427,13 +425,17 @@ func (e *Exchange) UpdateTicker(ctx context.Context, pair currency.Pair, assetTy
 		if len(tickerResult) != 1 {
 			return nil, common.ErrInvalidResponse
 		}
-		if err := ticker.ProcessTicker(e.futuresTicker(tickerResult[0])); err != nil {
-			return nil, err
-		}
-		return ticker.GetTicker(e.Name, pair, assetType)
+		tick = e.futuresTicker(tickerResult[0])
 	default:
 		return nil, fmt.Errorf("%w: %q", asset.ErrNotSupported, assetType)
 	}
+	// The store keys base and quote separately, and the response's symbol can split differently
+	// from the requested pair, so the ticker is stored under the pair it is looked up by
+	tick.Pair = pair
+	if err := ticker.ProcessTicker(tick); err != nil {
+		return nil, err
+	}
+	return ticker.GetTicker(e.Name, pair, assetType)
 }
 
 func orderbookLevelFromSlice(data []types.Number) orderbook.Levels {

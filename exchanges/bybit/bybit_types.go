@@ -183,50 +183,50 @@ type TickerWebsocket struct {
 
 // TickerCommon common ticker fields
 type TickerCommon struct {
-	Symbol                 string       `json:"symbol"`
-	TickDirection          string       `json:"tickDirection"`
-	LastPrice              types.Number `json:"lastPrice"`
-	IndexPrice             types.Number `json:"indexPrice"`
-	MarkPrice              types.Number `json:"markPrice"`
-	PreviousPrice24Hour    types.Number `json:"prevPrice24h"`
-	Price24HourPercent     types.Number `json:"price24hPcnt"`
-	HighPrice24Hour        types.Number `json:"highPrice24h"`
-	LowPrice24Hour         types.Number `json:"lowPrice24h"`
-	PreviousPrice1Hour     types.Number `json:"prevPrice1h"`
-	OpenInterest           types.Number `json:"openInterest"`
-	OpenInterestValue      types.Number `json:"openInterestValue"`
-	Turnover24Hour         types.Number `json:"turnover24h"`
-	Volume24Hour           types.Number `json:"volume24h"`
-	FundingRate            types.Number `json:"fundingRate"`
-	NextFundingTime        types.Time   `json:"nextFundingTime"`
-	PredictedDeliveryPrice types.Number `json:"predictedDeliveryPrice"`
-	BasisRate              types.Number `json:"basisRate"`
-	DeliveryFeeRate        types.Number `json:"deliveryFeeRate"`
-	DeliveryTime           types.Time   `json:"deliveryTime"`
-	Ask1Size               types.Number `json:"ask1Size"`
-	Bid1Price              types.Number `json:"bid1Price"`
-	Ask1Price              types.Number `json:"ask1Price"`
-	Bid1Size               types.Number `json:"bid1Size"`
-	Basis                  types.Number `json:"basis"`
-	Bid1Iv                 types.Number `json:"bid1Iv"`
-	Ask1Iv                 types.Number `json:"ask1Iv"`
-	MarkIv                 types.Number `json:"markIv"`
-	MarkPriceIv            types.Number `json:"markPriceIv"`
-	UnderlyingPrice        types.Number `json:"underlyingPrice"`
-	TotalVolume            types.Number `json:"totalVolume"`
-	TotalTurnover          types.Number `json:"totalTurnover"`
-	Delta                  types.Number `json:"delta"`
-	Gamma                  types.Number `json:"gamma"`
-	Vega                   types.Number `json:"vega"`
-	Theta                  types.Number `json:"theta"`
-	Change24Hour           types.Number `json:"change24h"`
-	UsdIndexPrice          types.Number `json:"usdIndexPrice"`
-	BidPrice               types.Number `json:"bidPrice"`
-	BidSize                types.Number `json:"bidSize"`
-	BidIv                  types.Number `json:"bidIv"`
-	AskPrice               types.Number `json:"askPrice"`
-	AskSize                types.Number `json:"askSize"`
-	AskIv                  types.Number `json:"askIv"`
+	Symbol                     string       `json:"symbol"`
+	TickDirection              string       `json:"tickDirection"`
+	LastPrice                  types.Number `json:"lastPrice"`
+	IndexPrice                 types.Number `json:"indexPrice"`
+	MarkPrice                  types.Number `json:"markPrice"`
+	PreviousPrice24Hour        types.Number `json:"prevPrice24h"`
+	Price24HourPercent         types.Number `json:"price24hPcnt"`
+	HighPrice24Hour            types.Number `json:"highPrice24h"`
+	LowPrice24Hour             types.Number `json:"lowPrice24h"`
+	PreviousPrice1Hour         types.Number `json:"prevPrice1h"`
+	OpenInterest               types.Number `json:"openInterest"`
+	OpenInterestValue          types.Number `json:"openInterestValue"`
+	Turnover24Hour             types.Number `json:"turnover24h"`
+	Volume24Hour               types.Number `json:"volume24h"`
+	FundingRate                types.Number `json:"fundingRate"`
+	NextFundingTime            types.Time   `json:"nextFundingTime"`
+	PredictedDeliveryPrice     types.Number `json:"predictedDeliveryPrice"`
+	BasisRate                  types.Number `json:"basisRate"`
+	DeliveryFeeRate            types.Number `json:"deliveryFeeRate"`
+	DeliveryTime               types.Time   `json:"deliveryTime"`
+	Ask1Size                   types.Number `json:"ask1Size"`
+	Bid1Price                  types.Number `json:"bid1Price"`
+	Ask1Price                  types.Number `json:"ask1Price"`
+	Bid1Size                   types.Number `json:"bid1Size"`
+	Basis                      types.Number `json:"basis"`
+	Bid1ImpliedVolatility      types.Number `json:"bid1Iv"`
+	Ask1ImpliedVolatility      types.Number `json:"ask1Iv"`
+	MarkImpliedVolatility      types.Number `json:"markIv"`
+	MarkPriceImpliedVolatility types.Number `json:"markPriceIv"`
+	UnderlyingPrice            types.Number `json:"underlyingPrice"`
+	TotalVolume                types.Number `json:"totalVolume"`
+	TotalTurnover              types.Number `json:"totalTurnover"`
+	Delta                      types.Number `json:"delta"`
+	Gamma                      types.Number `json:"gamma"`
+	Vega                       types.Number `json:"vega"`
+	Theta                      types.Number `json:"theta"`
+	Change24Hour               types.Number `json:"change24h"`
+	USDIndexPrice              types.Number `json:"usdIndexPrice"`
+	BidPrice                   types.Number `json:"bidPrice"`
+	BidSize                    types.Number `json:"bidSize"`
+	BidImpliedVolatility       types.Number `json:"bidIv"`
+	AskPrice                   types.Number `json:"askPrice"`
+	AskSize                    types.Number `json:"askSize"`
+	AskImpliedVolatility       types.Number `json:"askIv"`
 }
 
 // FundingRateHistory represents a funding rate history for a category.
@@ -1314,15 +1314,15 @@ type SubUIDAPIResponse struct {
 	IsUnifiedTradeAccount uint8     `json:"uta"`     // Whether the account to which the account upgrade to unified trade account.
 	UserID                int64     `json:"userID"`
 	InviterID             int64     `json:"inviterID"`
-	VipLevel              string    `json:"vipLevel"`
+	VIPLevel              string    `json:"vipLevel"`
 	MktMakerLevel         string    `json:"mktMakerLevel"`
 	AffiliateID           int64     `json:"affiliateID"`
-	RsaPublicKey          string    `json:"rsaPublicKey"`
+	RSAPublicKey          string    `json:"rsaPublicKey"`
 	IsMaster              bool      `json:"isMaster"`
 
 	// Personal account kyc level. LEVEL_DEFAULT, LEVEL_1， LEVEL_2
-	KycLevel  string `json:"kycLevel"`
-	KycRegion string `json:"kycRegion"`
+	KYCLevel  string `json:"kycLevel"`
+	KYCRegion string `json:"kycRegion"`
 }
 
 // SubAccountAPIKeys holds list of sub-account API Keys

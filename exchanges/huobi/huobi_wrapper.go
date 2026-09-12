@@ -357,6 +357,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				BaseVolume:   ticks.Data[i].Amount,
 				QuoteVolume:  ticks.Data[i].Volume,
 				Open:         ticks.Data[i].Open,
+				Last:         ticks.Data[i].Close,
 				Close:        ticks.Data[i].Close,
 				BidSize:      ticks.Data[i].BidSize,
 				AskSize:      ticks.Data[i].AskSize,
@@ -390,6 +391,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				BaseVolume:   ticks[i].Amount.Float64(),
 				QuoteVolume:  ticks[i].Volume.Float64(),
 				Open:         ticks[i].Open.Float64(),
+				Last:         ticks[i].Close.Float64(),
 				Close:        ticks[i].Close.Float64(),
 				Bid:          ticks[i].Bid[0],
 				BidSize:      ticks[i].Bid[1],
@@ -443,6 +445,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				BaseVolume:   ticks[i].Amount.Float64(),
 				QuoteVolume:  ticks[i].Volume.Float64(),
 				Open:         ticks[i].Open.Float64(),
+				Last:         ticks[i].Close.Float64(),
 				Close:        ticks[i].Close.Float64(),
 				Bid:          ticks[i].Bid[0],
 				BidSize:      ticks[i].Bid[1],
@@ -463,9 +466,9 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 	return errs
 }
 
-// bookLevel returns the price and size one side of a futures tick carries. Huobi serves each side
-// as a two element array and omits it entirely when nothing rests there, so neither element can be
-// indexed unconditionally
+// bookLevel returns the price and size one side of a tick carries. Huobi serves each side as a two
+// element array and null when nothing rests there, so neither element can be indexed
+// unconditionally, and a contract with an empty book still has a ticker to record
 func bookLevel(level []float64) (price, size float64) {
 	if len(level) > 0 {
 		price = level[0]
@@ -492,38 +495,31 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 		if err != nil {
 			return nil, err
 		}
-		price := &ticker.Price{
+		bid, bidSize := bookLevel(tickerData.Bid)
+		ask, askSize := bookLevel(tickerData.Ask)
+		if err := ticker.ProcessTicker(&ticker.Price{
 			High:         tickerData.High,
 			Low:          tickerData.Low,
 			BaseVolume:   tickerData.Amount,
 			QuoteVolume:  tickerData.Volume,
 			Open:         tickerData.Open,
+			Last:         tickerData.Close,
 			Close:        tickerData.Close,
+			Bid:          bid,
+			BidSize:      bidSize,
+			Ask:          ask,
+			AskSize:      askSize,
 			Pair:         p,
 			ExchangeName: e.Name,
 			AssetType:    asset.Spot,
 			LastUpdated:  tickerData.Timestamp.Time(),
-		}
-		if len(tickerData.Bid) == 2 {
-			price.Bid, price.BidSize = tickerData.Bid[0], tickerData.Bid[1]
-		}
-		if len(tickerData.Ask) == 2 {
-			price.Ask, price.AskSize = tickerData.Ask[0], tickerData.Ask[1]
-		}
-		if err := ticker.ProcessTicker(price); err != nil {
+		}); err != nil {
 			return nil, err
 		}
 	case asset.CoinMarginedFutures:
 		marketData, err := e.GetSwapMarketOverview(ctx, p)
 		if err != nil {
 			return nil, err
-		}
-
-		if len(marketData.Tick.Bid) == 0 {
-			return nil, errors.New("invalid data for bid")
-		}
-		if len(marketData.Tick.Ask) == 0 {
-			return nil, errors.New("invalid data for Ask")
 		}
 
 		bid, bidSize := bookLevel(marketData.Tick.Bid)
@@ -535,6 +531,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			// vol counts contracts on this endpoint, unlike the batch one where it is the quote
 			// currency, and no turnover is served here, so no quote volume is recorded
 			Open:         marketData.Tick.Open,
+			Last:         marketData.Tick.Close,
 			Close:        marketData.Tick.Close,
 			Pair:         p,
 			Bid:          bid,
@@ -562,6 +559,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			// vol counts contracts on this endpoint, unlike the batch one where it is the quote
 			// currency, and no turnover is served here, so no quote volume is recorded
 			Open:         marketData.Tick.Open,
+			Last:         marketData.Tick.Close,
 			Close:        marketData.Tick.Close,
 			Pair:         p,
 			Bid:          bid,
@@ -930,7 +928,7 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 	status := order.New
 	switch s.AssetType {
 	case asset.Spot:
-		accountID, err := strconv.ParseInt(s.ClientID, 10, 64)
+		accountID, err := strconv.ParseUint(s.ClientID, 10, 64)
 		if err != nil {
 			return nil, err
 		}
@@ -939,7 +937,7 @@ func (e *Exchange) SubmitOrder(ctx context.Context, s *order.Submit) (*order.Sub
 			Amount:    s.Amount,
 			Source:    "api",
 			Symbol:    s.Pair,
-			AccountID: int(accountID),
+			AccountID: accountID,
 		}
 		switch {
 		case s.Side.IsLong() && s.Type == order.Market:

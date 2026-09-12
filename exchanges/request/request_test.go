@@ -1073,14 +1073,14 @@ func TestDoRequest_NoContent(t *testing.T) {
 			name: "no content header response must be copied",
 			run: func(t *testing.T) {
 				t.Helper()
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
 					w.Header().Set("X-No-Content", "true")
 					w.WriteHeader(http.StatusNoContent)
 				}))
-				t.Cleanup(server.Close)
 
 				r := newRequester(t)
+				require.NoError(t, r.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 				headers := http.Header{}
 				var resp struct {
 					Response bool `json:"response"`

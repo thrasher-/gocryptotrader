@@ -286,6 +286,8 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, assetType 
 		Close:        tickerData.LastPrice,
 		IndexPrice:   tickerData.IndexPrice,
 		MarkPrice:    tickerData.MarkPrice,
+		OpenInterest: tickerData.OpenInterest,
+		LastUpdated:  tickerData.Timestamp.Time(),
 		QuoteVolume:  quoteVolume(tickerData.Stats.VolumeUSD, tickerData.Stats.VolumeNotional, assetType),
 	}
 	err = ticker.ProcessTicker(&resp)

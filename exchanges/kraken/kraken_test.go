@@ -331,7 +331,7 @@ func TestCancelAllOrdersDataUnmarshal(t *testing.T) {
 					ClientOrderID: "client-cancel-17",
 				},
 			},
-			OrderEvents: []CancelAllOrderEvent{
+			OrderEvents: []FuturesOrderEvent{
 				{
 					UID: "89e3edbe-d739-4c52-b866-6f5a8407ff6e",
 					Order: FuturesOrderData{
@@ -427,7 +427,7 @@ func TestBatchOrderDataUnmarshal(t *testing.T) {
 				OrderID:          "022774bc-2c4a-4f26-9317-436c8d85746d",
 				ClientOrderID:    "client-batch-1",
 				DateTimeReceived: time.Date(2019, 9, 5, 16, 41, 35, 173000000, time.UTC),
-				OrderEvents: []BatchOrderEvent{
+				OrderEvents: []FuturesOrderEvent{
 					{
 						DataType: "PLACE",
 						UID:      "0cb1e7c0-0a1d-41f3-8b1e-9f1a2c3d4e5f",
@@ -448,7 +448,7 @@ func TestBatchOrderDataUnmarshal(t *testing.T) {
 			{
 				Status:  "edited",
 				OrderID: "9c2cbcc8-14f6-42fe-a020-6e395babafd1",
-				OrderEvents: []BatchOrderEvent{
+				OrderEvents: []FuturesOrderEvent{
 					{
 						DataType: "EDIT",
 						OldEditedOrder: FuturesOrderData{
@@ -473,6 +473,141 @@ func TestBatchOrderDataUnmarshal(t *testing.T) {
 		},
 	}
 	assert.Equal(t, exp, x, "BatchOrderData should unmarshal correctly")
+}
+
+// TestFuturesSendOrderDataUnmarshal pins Kraken's published rejected order example for
+// POST /derivatives/api/v3/sendorder, whose events are the objects every order response carries
+func TestFuturesSendOrderDataUnmarshal(t *testing.T) {
+	t.Parallel()
+	const inp = `
+{
+  "result": "success",
+  "sendStatus": {
+    "order_id": "614a5298-0071-450f-83c6-0617ce8c6bc4",
+    "status": "iocWouldNotExecute",
+    "receivedTime": "2019-09-05T16:32:54.076Z",
+    "orderEvents": [
+      {
+        "type": "REJECT",
+        "uid": "614a5298-0071-450f-83c6-0617ce8c6bc4",
+        "reason": "IOC_WOULD_NOT_EXECUTE",
+        "order": {
+          "orderId": "614a5298-0071-450f-83c6-0617ce8c6bc4",
+          "cliOrdId": null,
+          "type": "lmt",
+          "symbol": "PI_XBTUSD",
+          "side": "buy",
+          "quantity": 10000,
+          "filled": 0,
+          "limitPrice": 9400,
+          "reduceOnly": true,
+          "timestamp": "2019-09-05T16:32:54.076Z",
+          "lastUpdateTimestamp": "2019-09-05T16:32:54.076Z"
+        }
+      }
+    ]
+  },
+  "serverTime": "2019-09-05T16:32:54.077Z"
+}
+`
+
+	var x FuturesSendOrderData
+	require.NoError(t, json.Unmarshal([]byte(inp), &x), "Unmarshal must not error")
+	rejectedAt := time.Date(2019, 9, 5, 16, 32, 54, 76000000, time.UTC)
+	exp := FuturesSendOrderData{
+		SendStatus: FuturesSendOrderStatus{
+			OrderID:      "614a5298-0071-450f-83c6-0617ce8c6bc4",
+			Status:       "iocWouldNotExecute",
+			ReceivedTime: rejectedAt,
+			OrderEvents: []FuturesOrderEvent{
+				{
+					DataType: "REJECT",
+					UID:      "614a5298-0071-450f-83c6-0617ce8c6bc4",
+					Reason:   "IOC_WOULD_NOT_EXECUTE",
+					Order: FuturesOrderData{
+						OrderID:             "614a5298-0071-450f-83c6-0617ce8c6bc4",
+						OrderType:           "lmt",
+						Symbol:              "PI_XBTUSD",
+						Side:                "buy",
+						Quantity:            10000,
+						LimitPrice:          9400,
+						ReduceOnly:          true,
+						Timestamp:           rejectedAt,
+						LastUpdateTimestamp: rejectedAt,
+					},
+				},
+			},
+		},
+		ServerTime: time.Date(2019, 9, 5, 16, 32, 54, 77000000, time.UTC),
+	}
+	assert.Equal(t, exp, x, "FuturesSendOrderData should unmarshal correctly")
+}
+
+// TestFuturesCancelOrderDataUnmarshal pins Kraken's published example for
+// POST /derivatives/api/v3/cancelorder
+func TestFuturesCancelOrderDataUnmarshal(t *testing.T) {
+	t.Parallel()
+	const inp = `
+{
+  "result": "success",
+  "cancelStatus": {
+    "status": "cancelled",
+    "order_id": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+    "receivedTime": "2020-07-22T13:26:20.806Z",
+    "orderEvents": [
+      {
+        "type": "CANCEL",
+        "uid": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+        "order": {
+          "orderId": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+          "cliOrdId": "1234568",
+          "type": "lmt",
+          "symbol": "PI_XBTUSD",
+          "side": "buy",
+          "quantity": 5500,
+          "filled": 0,
+          "limitPrice": 8000,
+          "reduceOnly": false,
+          "timestamp": "2020-07-22T13:25:56.366Z",
+          "lastUpdateTimestamp": "2020-07-22T13:25:56.366Z"
+        }
+      }
+    ]
+  },
+  "serverTime": "2020-07-22T13:26:20.806Z"
+}
+`
+
+	var x FuturesCancelOrderData
+	require.NoError(t, json.Unmarshal([]byte(inp), &x), "Unmarshal must not error")
+	placedAt := time.Date(2020, 7, 22, 13, 25, 56, 366000000, time.UTC)
+	cancelledAt := time.Date(2020, 7, 22, 13, 26, 20, 806000000, time.UTC)
+	exp := FuturesCancelOrderData{
+		CancelStatus: FuturesCancelOrderStatus{
+			Status:       "cancelled",
+			OrderID:      "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+			ReceivedTime: cancelledAt,
+			OrderEvents: []FuturesOrderEvent{
+				{
+					DataType: "CANCEL",
+					UID:      "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+					Order: FuturesOrderData{
+						OrderID:             "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+						ClientOrderID:       "1234568",
+						OrderType:           "lmt",
+						Symbol:              "PI_XBTUSD",
+						Side:                "buy",
+						Quantity:            5500,
+						LimitPrice:          8000,
+						Timestamp:           placedAt,
+						LastUpdateTimestamp: placedAt,
+					},
+				},
+			},
+		},
+		ServerTime: cancelledAt,
+	}
+	assert.Equal(t, exp, x, "FuturesCancelOrderData should unmarshal correctly")
 }
 
 func TestGetFuturesAccountData(t *testing.T) {
@@ -1837,7 +1972,7 @@ func TestGetFuturesTrades(t *testing.T) {
 			t.Parallel()
 
 			requestC := make(chan requestData, 1)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				select {
 				case requestC <- requestData{path: r.URL.Path, rawQuery: r.URL.RawQuery, requestURI: r.RequestURI}:
 				default:
@@ -1846,10 +1981,10 @@ func TestGetFuturesTrades(t *testing.T) {
 				_, err := w.Write([]byte(tc.response))
 				assert.NoError(t, err, "ResponseWriter.Write should not error")
 			}))
-			t.Cleanup(server.Close)
 
 			ex := new(Exchange)
 			require.NoError(t, testexch.Setup(ex), "Setup must not error")
+			require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 			require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestFuturesSupplementary.String(), server.URL+"/"), "SetRunningURL must not error")
 
 			resp, err := ex.GetFuturesTrades(t.Context(), futuresTestPair, tc.since, tc.before)
@@ -2350,6 +2485,7 @@ func TestUpdateTickersFuturesVolumes(t *testing.T) {
 
 	ex := new(Exchange)
 	require.NoError(t, testexch.Setup(ex), "Setup must not error")
+	ex.Name = t.Name()
 	require.NoError(t, ex.SetHTTPClient(server.Client()), "SetHTTPClient must not error")
 	require.NoError(t, ex.API.Endpoints.SetRunningURL(exchange.RestFutures.String(), server.URL), "SetRunningURL must not error")
 	require.NoError(t, ex.UpdateTickers(t.Context(), asset.Futures), "UpdateTickers must not error")
