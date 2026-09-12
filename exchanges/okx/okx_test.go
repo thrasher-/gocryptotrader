@@ -3498,8 +3498,9 @@ func TestUpdateTicker(t *testing.T) {
 
 	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
-	testexch.UpdatePairsOnce(t, e)
+	// Renamed before UpdatePairsOnce, which caches by name, so the package's e still loads its own instruments
 	e.Name = t.Name()
+	testexch.UpdatePairsOnce(t, e)
 
 	_, err := e.UpdateTicker(contextGenerate(), currency.Pair{}, asset.Binary)
 	require.ErrorIs(t, err, asset.ErrNotSupported)
@@ -3554,8 +3555,9 @@ func TestUpdateTickers(t *testing.T) {
 
 	e := new(Exchange)
 	require.NoError(t, testexch.Setup(e), "Test instance Setup must not error")
-	testexch.UpdatePairsOnce(t, e)
+	// Renamed before UpdatePairsOnce, which caches by name, so the package's e still loads its own instruments
 	e.Name = t.Name()
+	testexch.UpdatePairsOnce(t, e)
 
 	for _, a := range e.GetAssetTypes(false) {
 		err := e.UpdateTickers(contextGenerate(), a)
