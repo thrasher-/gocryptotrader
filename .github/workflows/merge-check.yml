@@ -1,0 +1,70 @@
+name: merge-check
+on:
+  push:
+    branches: [master]
+  pull_request:
+  merge_group:
+permissions:
+  contents: read
+concurrency:
+  # Pull request runs supersede each other; every other run gets its own group,
+  # because a queued run is cancelled when a newer one joins its group whatever
+  # cancel-in-progress says, which would leave master commits without a verdict.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+env:
+  GO_VERSION: 1.26.x
+jobs:
+  vet:
+    # go vet type-checks _test.go files, which go build skips, in the build
+    # configurations the linter does not cover. It runs no tests, so it is
+    # deterministic enough to be a required check.
+    name: vet (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: default }
+          - { name: udecimal, tags: udecimal_on }
+          - { name: sonic, tags: sonic_on }
+          - { name: sonic+udecimal, tags: 'sonic_on,udecimal_on' }
+          - { name: mock_test_off, tags: mock_test_off }
+          - { name: linux-386, goarch: '386' }
+          - { name: linux-arm64, goarch: arm64 }
+          - { name: windows, goos: windows }
+          - { name: darwin, goos: darwin, goarch: arm64 }
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    # Keeps each configuration's build cache separate; jobs sharing a cache key
+    # race to store the first one that finishes, which suits none of the others.
+    - name: Record Go cache key
+      run: echo "${{ matrix.name }}" > .go-cache-key
+
+    - name: Setup Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: |
+          go.sum
+          .go-cache-key
+
+    - name: Vet
+      run: go vet -tags="${{ matrix.tags }}" ./...
+      env:
+        GOOS: ${{ matrix.goos || 'linux' }}
+        GOARCH: ${{ matrix.goarch || 'amd64' }}
+
+  merge-check:
+    name: merge-check
+    needs: vet
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check vet results
+      run: test "${{ needs.vet.result }}" = success
