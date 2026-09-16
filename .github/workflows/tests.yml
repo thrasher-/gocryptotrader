@@ -153,29 +153,12 @@ jobs:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   backend-live-test-build:
-    name: GoCryptoTrader mock_test_off build (ubuntu-latest, amd64, psql=true, sonic=false)
+    name: GoCryptoTrader mock_test_off build (ubuntu-latest, amd64, psql=false, sonic=false)
     runs-on: ubuntu-latest
     env:
       GCT_SKIP_LIVE_TESTS: true
 
     steps:
-    - name: Setup Postgres
-      uses: ikalnytskyi/action-setup-postgres@v8
-      with:
-        database: gct_dev_ci
-      id: postgres
-
-    - name: Set up Postgres environment
-      run: |
-        echo "PSQL_USER=postgres" >> $GITHUB_ENV
-        echo "PSQL_PASS=postgres" >> $GITHUB_ENV
-        echo "PSQL_HOST=localhost" >> $GITHUB_ENV
-        echo "PSQL_DBNAME=gct_dev_ci" >> $GITHUB_ENV
-        echo "PSQL_TESTDBNAME=gct_dev_ci" >> $GITHUB_ENV
-        echo "PSQL_SSLMODE=disable" >> $GITHUB_ENV
-        echo "PSQL_SKIPSQLCMD=true" >> $GITHUB_ENV
-      shell: bash
-
     - name: Checkout code
       uses: actions/checkout@v7
 
