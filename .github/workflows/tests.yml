@@ -90,6 +90,8 @@ jobs:
 
     - name: Checkout code
       uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Record Go cache key
       run: echo "${{ matrix.goarch }}-sonic=${{ matrix.sonic }}-udecimal=${{ matrix.udecimal }}" > .go-cache-key
@@ -163,6 +165,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Record Go cache key
       run: echo "mock_test_off" > .go-cache-key
@@ -188,6 +192,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
+      with:
+        persist-credentials: false
 
     - name: Set up Docker buildx
       uses: docker/setup-buildx-action@v4
