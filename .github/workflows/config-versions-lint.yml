@@ -1,5 +1,9 @@
 name: configs-versions-lint
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+  pull_request:
+  merge_group:
 permissions:
   contents: read
 env:
