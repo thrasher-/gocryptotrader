@@ -77,13 +77,15 @@ jobs:
     - name: Set up Postgres environment
       if: matrix.psql == true
       run: |
-        echo "PSQL_USER=postgres" >> $GITHUB_ENV
-        echo "PSQL_PASS=postgres" >> $GITHUB_ENV
-        echo "PSQL_HOST=localhost" >> $GITHUB_ENV
-        echo "PSQL_DBNAME=gct_dev_ci" >> $GITHUB_ENV
-        echo "PSQL_TESTDBNAME=gct_dev_ci" >> $GITHUB_ENV
-        echo "PSQL_SSLMODE=disable" >> $GITHUB_ENV
-        echo "PSQL_SKIPSQLCMD=true" >> $GITHUB_ENV
+        {
+          echo "PSQL_USER=postgres"
+          echo "PSQL_PASS=postgres"
+          echo "PSQL_HOST=localhost"
+          echo "PSQL_DBNAME=gct_dev_ci"
+          echo "PSQL_TESTDBNAME=gct_dev_ci"
+          echo "PSQL_SSLMODE=disable"
+          echo "PSQL_SKIPSQLCMD=true"
+        } >> "$GITHUB_ENV"
       shell: bash
 
     - name: Checkout code
@@ -104,7 +106,7 @@ jobs:
     - name: Skip additional wrapper CI tests
       if: matrix.skip_wrapper_tests == true
       run: |
-        echo "SKIP_WRAPPER_CI_TESTS=true" >> $GITHUB_ENV
+        echo "SKIP_WRAPPER_CI_TESTS=true" >> "$GITHUB_ENV"
       shell: bash
 
     - name: Additional steps for 386 architecture
@@ -117,7 +119,7 @@ jobs:
     - name: Set CGO_ENABLED for 386 and macos-latest
       if: matrix.goarch == '386' || matrix.os == 'macos-latest'
       run: |
-        echo "CGO_ENABLED=1" >> $GITHUB_ENV
+        echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
       shell: bash
 
     - name: Set GOFLAGS
@@ -131,7 +133,7 @@ jobs:
         fi
         if [ "${#tags[@]}" -gt 0 ]; then
           tags_csv=$(IFS=,; echo "${tags[*]}")
-          echo "GOFLAGS=${GOFLAGS} -tags=${tags_csv}" >> $GITHUB_ENV
+          echo "GOFLAGS=${GOFLAGS} -tags=${tags_csv}" >> "$GITHUB_ENV"
         fi
       shell: bash
 
