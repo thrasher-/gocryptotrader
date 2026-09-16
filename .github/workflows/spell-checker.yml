@@ -14,6 +14,5 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: codespell-project/actions-codespell@master
-        with:
-          args: --dictionary=-,./contrib/spellcheck/codespell_custom_dictionary.txt
+      # Configuration lives in .codespellrc; this action takes no args input.
+      - uses: codespell-project/actions-codespell@v2.4.3
