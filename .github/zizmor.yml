@@ -1,0 +1,9 @@
+# Configuration for zizmor, the GitHub Actions static analyser, run by the
+# workflow lint job in misc.yml.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Actions must be pinned to a tag or a commit; a branch ref moves under
+        # us. Tighten to hash-pin once Dependabot is maintaining commit pins.
+        "*": ref-pin
