@@ -211,20 +211,24 @@ jobs:
       uses: actions/cache@v6
       with:
         path: /tmp/.docker-buildx-cache
-        key: ${{ runner.os }}-docker-buildx-${{ hashFiles('./.github/workflows/amd64.Dockerfile') }}-${{ github.sha }}
+        key: ${{ runner.os }}-docker-buildx-${{ hashFiles('./.github/workflows/amd64.Dockerfile', 'go.mod', 'go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-docker-buildx-${{ hashFiles('./.github/workflows/amd64.Dockerfile') }}-
           ${{ runner.os }}-docker-buildx-
     
     - name: Build Docker image
       run: |
         docker buildx build \
           --load \
-          --cache-to=type=local,dest=/tmp/.docker-buildx-cache,mode=max \
+          --cache-to=type=local,dest=/tmp/.docker-buildx-cache-new,mode=max \
           --cache-from=type=local,src=/tmp/.docker-buildx-cache \
           --tag gct-backend-amd64 \
           -f ./.github/workflows/amd64.Dockerfile \
           .
+
+    - name: Move Docker cache
+      run: |
+        rm -rf /tmp/.docker-buildx-cache
+        mv /tmp/.docker-buildx-cache-new /tmp/.docker-buildx-cache
     
     - name: Run Docker image
       run: |
