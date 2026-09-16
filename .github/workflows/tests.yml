@@ -89,10 +89,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
 
+    - name: Record Go cache key
+      run: echo "${{ matrix.goarch }}-sonic=${{ matrix.sonic }}-udecimal=${{ matrix.udecimal }}" > .go-cache-key
+      shell: bash
+
     - name: Setup Go
       uses: actions/setup-go@v7
       with:
         go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: |
+          go.sum
+          .go-cache-key
 
     - name: Skip additional wrapper CI tests
       if: matrix.skip_wrapper_tests == true
@@ -172,10 +179,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
 
+    - name: Record Go cache key
+      run: echo "mock_test_off" > .go-cache-key
+      shell: bash
+
     - name: Setup Go
       uses: actions/setup-go@v7
       with:
         go-version: ${{ env.GO_VERSION }}
+        cache-dependency-path: |
+          go.sum
+          .go-cache-key
 
     - name: Build tests with mock_test_off
       run: |
