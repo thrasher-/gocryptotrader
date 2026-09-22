@@ -1,0 +1,13 @@
+{
+  "source": "wss://ws-fapi.binance.com/ws-fapi/v1",
+  "observedAt": "2026-09-21T04:18:08.451043649Z",
+  "responseSHA256": {
+    "depth": "6330a25a8f56b095e1d28ae381ac9a042e6360dc14941d7a0c9af2e7d4354aad",
+    "ticker.book/all": "dc938653d0d9b9a59add3dd228e473cd4eef9d5665f1281d24d34601d5875f89",
+    "ticker.book/single": "e78f99e96fabd4805c2782c6820db4435054c1317d82a2b54f8974258a6a8504",
+    "ticker.price/all": "dec80b4d9a85161135e744c30ba53b466cde027bc5575829870b703f47f01a55",
+    "ticker.price/single": "f2fdd760e163693cf6e572e2ddd09165de6daf1bf0cc4a59a13f7417614b2f7d"
+  },
+  "digestFormat": "Compact JSON of the original complete response; object key order is preserved.",
+  "fixtureTransform": "Long result arrays retain their first five entries, every distinct field set, and BTCUSDT. Scalar values and object fields are preserved."
+}

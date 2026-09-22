@@ -26,3 +26,29 @@ func TestBooleanUnmarshal(t *testing.T) {
 	err = json.Unmarshal(data, &result)
 	require.ErrorIs(t, err, errInvalidBooleanValue)
 }
+
+func TestBooleanQuotedCaseVariants(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		input string
+		want  bool
+	}{
+		{`"true"`, true},
+		{`"True"`, true},
+		{`"TRUE"`, true},
+		{`"false"`, false},
+		{`"False"`, false},
+		{`"FALSE"`, false},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+			var value Boolean
+			require.NoError(t, json.Unmarshal([]byte(tc.input), &value), "documented quoted boolean must decode")
+			assert.Equal(t, tc.want, value.Bool(), "boolean should retain its meaning regardless of the documented spelling")
+		})
+	}
+	for _, input := range []string{`"TrUe"`, `"yes"`, `"False "`, `null`, `2`} {
+		var value Boolean
+		assert.ErrorIs(t, json.Unmarshal([]byte(input), &value), errInvalidBooleanValue, "unsupported values should retain the boolean sentinel")
+	}
+}

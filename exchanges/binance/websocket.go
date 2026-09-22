@@ -45,11 +45,6 @@ var (
 	// maxWSOrderbookWorkers defines a max amount of workers allowed to execute
 	// jobs from the job channel
 	maxWSOrderbookWorkers = 10
-	// maxDefaultSubscriptionPairs bounds how many tradable pairs the default subscription
-	// generators cover. Binance allows 1024 streams per connection and options in
-	// particular has thousands of tradable contracts, so defaults are capped and the
-	// truncation is logged rather than applied silently.
-	maxDefaultSubscriptionPairs = 4
 )
 
 // WsConnect initiates a websocket connection
@@ -116,10 +111,30 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 	}
 	jsonData, _, _, err := jsonparser.Get(respRaw, "data")
 	if err != nil {
+		jsonData, _, _, err = jsonparser.Get(respRaw, "event")
+	}
+	if err != nil {
 		return fmt.Errorf("%s %s %s", e.Name, websocket.UnhandledMessage, string(respRaw))
 	}
 	if event, err := jsonparser.GetUnsafeString(jsonData, "e"); err == nil {
 		switch event {
+		case "eventStreamTerminated":
+			var data WsEventStreamTerminated
+			if err := json.Unmarshal(jsonData, &data); err != nil {
+				return err
+			}
+			subscriptionID, err := jsonparser.GetInt(respRaw, "subscriptionId")
+			if err != nil {
+				return err
+			}
+			data.SubscriptionID = subscriptionID
+			return e.Websocket.DataHandler.Send(ctx, data)
+		case "externalLockUpdate":
+			var data WsExternalLockUpdate
+			if err := json.Unmarshal(jsonData, &data); err != nil {
+				return err
+			}
+			return e.Websocket.DataHandler.Send(ctx, data)
 		case "outboundAccountPosition":
 			var data WsAccountPositionData
 			err = json.Unmarshal(jsonData, &data)
@@ -152,8 +167,8 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 				return err
 			}
 			var feeAsset currency.Code
-			if data.CommissionAsset != "" {
-				feeAsset = currency.NewCode(data.CommissionAsset)
+			if !data.CommissionAsset.IsEmpty() {
+				feeAsset = data.CommissionAsset
 			}
 			orderID := strconv.FormatUint(data.OrderID, 10)
 			var orderStatus order.Status
@@ -213,7 +228,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 			return e.Websocket.DataHandler.Send(ctx, data)
 		case "outboundAccountInfo":
 			var data wsAccountInfo
-			if err := json.Unmarshal(respRaw, &data); err != nil {
+			if err := json.Unmarshal(jsonData, &data); err != nil {
 				return fmt.Errorf("%s - could not convert to outboundAccountInfo structure: %w", e.Name, err)
 			}
 			return e.Websocket.DataHandler.Send(ctx, data)
@@ -230,6 +245,24 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 	streamType := strings.Split(streamStr, "@")
 	if len(streamType) <= 1 {
 		return fmt.Errorf("%s %s %s", e.Name, websocket.UnhandledMessage, string(respRaw))
+	}
+	if strings.HasPrefix(streamStr, "!ticker") || strings.HasPrefix(streamStr, "!miniTicker") || strings.HasPrefix(streamStr, "!ticker_") {
+		return e.processSpotTickers(ctx, jsonData, true)
+	}
+	if isPartialDepthStream(streamStr) {
+		pair, enabled, err := e.MatchSymbolCheckEnabled(streamType[0], asset.Spot, false)
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			return nil
+		}
+		var book OrderBook
+		if err := json.Unmarshal(jsonData, &book); err != nil {
+			return err
+		}
+		// Spot partial snapshots carry no event timestamp; use their receipt time.
+		return e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{Exchange: e.Name, Pair: pair, Asset: asset.Spot, LastUpdateID: book.LastUpdateID, LastUpdated: time.Now(), Bids: book.Bids.Levels(), Asks: book.Asks.Levels()})
 	}
 	var (
 		pair      currency.Pair
@@ -249,6 +282,42 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 		return nil
 	}
 	switch streamType[1] {
+	case "blockTrade":
+		var data SpotBlockTradeStream
+		if err := json.Unmarshal(jsonData, &data); err != nil {
+			return err
+		}
+		return e.Websocket.DataHandler.Send(ctx, data)
+	case "referencePrice":
+		var data SpotReferencePriceStream
+		if err := json.Unmarshal(jsonData, &data); err != nil {
+			return err
+		}
+		return e.Websocket.DataHandler.Send(ctx, data)
+	case aggTradeStream:
+		var data SpotAggregateTradeStream
+		if err := json.Unmarshal(jsonData, &data); err != nil {
+			return err
+		}
+		side := order.Buy
+		if data.IsBuyerMaker {
+			side = order.Sell
+		}
+		return e.Websocket.Trade.Update(e.IsSaveTradeDataEnabled(), trade.Data{Exchange: e.Name, AssetType: asset.Spot, CurrencyPair: pair, Price: data.Price.Float64(), Amount: data.Quantity.Float64(), Timestamp: data.TimeStamp.Time(), TID: strconv.FormatInt(data.ATradeID, 10), Side: side})
+	case "miniTicker", "ticker_1h", "ticker_4h", "ticker_1d":
+		return e.processSpotTickers(ctx, jsonData, false)
+	case bookTickerStream:
+		var data FuturesBookTicker
+		if err := json.Unmarshal(jsonData, &data); err != nil {
+			return err
+		}
+		return e.Websocket.DataHandler.Send(ctx, &ticker.Price{ExchangeName: e.Name, AssetType: asset.Spot, Pair: pair, Bid: data.BestBidPrice.Float64(), Ask: data.BestAskPrice.Float64()})
+	case "avgPrice":
+		var data AveragePriceStream
+		if err := json.Unmarshal(jsonData, &data); err != nil {
+			return err
+		}
+		return e.Websocket.DataHandler.Send(ctx, data)
 	case "trade":
 		saveTradeData := e.IsSaveTradeDataEnabled()
 		if !saveTradeData &&
@@ -278,7 +347,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 				}(),
 				TID: strconv.FormatInt(t.TradeID, 10),
 			})
-	case "ticker":
+	case tickerStream:
 		var t TickerStream
 		if err := json.Unmarshal(jsonData, &t); err != nil {
 			return fmt.Errorf("%v - Could not convert to a TickerStream structure %s",
@@ -289,7 +358,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 			ExchangeName: e.Name,
 			Open:         t.OpenPrice.Float64(),
 			Close:        t.ClosePrice.Float64(),
-			Volume:       t.TotalTradedVolume.Float64(),
+			BaseVolume:   t.TotalTradedVolume.Float64(),
 			QuoteVolume:  t.TotalTradedQuoteVolume.Float64(),
 			High:         t.HighPrice.Float64(),
 			Low:          t.LowPrice.Float64(),
@@ -300,7 +369,7 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 			AssetType:    asset.Spot,
 			Pair:         pair,
 		})
-	case "kline_1m", "kline_3m", "kline_5m", "kline_15m", "kline_30m", "kline_1h", "kline_2h", "kline_4h",
+	case "kline_1s", "kline_1m", "kline_3m", "kline_5m", "kline_15m", "kline_30m", "kline_1h", "kline_2h", "kline_4h",
 		"kline_6h", "kline_8h", "kline_12h", "kline_1d", "kline_3d", "kline_1w", "kline_1M":
 		var ks KlineStream
 		if err := json.Unmarshal(jsonData, &ks); err != nil {
@@ -310,21 +379,26 @@ func (e *Exchange) wsHandleData(ctx context.Context, conn websocket.Connection, 
 		if err != nil {
 			return err
 		}
+		var validationIssues string
+		if !ks.Kline.KlineClosed {
+			validationIssues = kline.PartialCandle
+		}
 		return e.Websocket.DataHandler.Send(ctx, kline.Item{
 			Pair:     pair,
 			Asset:    asset.Spot,
 			Exchange: e.Name,
 			Interval: interval,
 			Candles: []kline.Candle{{
-				Time:   ks.Kline.StartTime.Time(),
-				Open:   ks.Kline.OpenPrice.Float64(),
-				Close:  ks.Kline.ClosePrice.Float64(),
-				High:   ks.Kline.HighPrice.Float64(),
-				Low:    ks.Kline.LowPrice.Float64(),
-				Volume: ks.Kline.Volume.Float64(),
+				Time:             ks.Kline.StartTime.Time(),
+				Open:             ks.Kline.OpenPrice.Float64(),
+				Close:            ks.Kline.ClosePrice.Float64(),
+				High:             ks.Kline.HighPrice.Float64(),
+				Low:              ks.Kline.LowPrice.Float64(),
+				Volume:           ks.Kline.Volume.Float64(),
+				ValidationIssues: validationIssues,
 			}},
 		})
-	case "depth":
+	case cnlDepth:
 		var depth WebsocketDepthStream
 		if err := json.Unmarshal(jsonData, &depth); err != nil {
 			return fmt.Errorf("%s - could not convert to depthStream structure: %w", e.Name, err)
@@ -427,13 +501,19 @@ func (e *Exchange) UpdateLocalBuffer(wsdp *WebsocketDepthStream) (bool, error) {
 }
 
 func (e *Exchange) generateSubscriptions() (subscription.List, error) {
-	for _, s := range e.Features.Subscriptions {
-		if s.Asset == asset.Empty {
-			// Handle backwards compatibility with config without assets, all binance subs are spot
-			s.Asset = asset.Spot
+	var spot subscription.List
+	for _, saved := range e.Features.Subscriptions {
+		if !saved.Enabled {
+			continue
 		}
+		if saved.Asset != asset.Empty && saved.Asset != asset.Spot && saved.Asset != asset.All {
+			continue
+		}
+		sub := saved.Clone()
+		sub.Asset = asset.Spot
+		spot = append(spot, sub)
 	}
-	return e.Features.Subscriptions.ExpandTemplates(e)
+	return spot.ExpandTemplates(e)
 }
 
 var subTemplate *template.Template
@@ -949,7 +1029,36 @@ const subTplText = `
   {{ else if eq $c "allTrades" -}} trade
   {{ else if eq $c "candles"   -}} kline  {{- interval $.S }}
   {{ else if eq $c "orderbook" -}} depth  {{- levels $.S }}{{ interval $.S }}
+  {{ else -}} {{ $c }}
   {{- end }}{{ end }}
   {{ $.PairSeparator }}
 {{end}}
 `
+
+func (e *Exchange) processSpotTickers(ctx context.Context, data []byte, array bool) error {
+	var rows []*TickerStream
+	if err := unmarshalObjectOrArray(data, &rows); err != nil {
+		return err
+	}
+	values := make([]ticker.Price, 0, len(rows))
+	for _, row := range rows {
+		pair, enabled, err := e.MatchSymbolCheckEnabled(row.Symbol, asset.Spot, false)
+		if errors.Is(err, currency.ErrPairNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			continue
+		}
+		values = append(values, ticker.Price{ExchangeName: e.Name, AssetType: asset.Spot, Pair: pair, Open: row.OpenPrice.Float64(), Last: row.LastPrice.Float64(), Close: row.LastPrice.Float64(), High: row.HighPrice.Float64(), Low: row.LowPrice.Float64(), Bid: row.BestBidPrice.Float64(), Ask: row.BestAskPrice.Float64(), BaseVolume: row.TotalTradedVolume.Float64(), QuoteVolume: row.TotalTradedQuoteVolume.Float64(), LastUpdated: row.EventTime.Time()})
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	if array {
+		return e.Websocket.DataHandler.Send(ctx, values)
+	}
+	return e.Websocket.DataHandler.Send(ctx, &values[0])
+}

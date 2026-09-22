@@ -1,0 +1,206 @@
+{
+ "derivatives_trading_portfolio_margin_pro/delete_margin_call_level": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#delete-margin-call-level",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/get_delta_mode_status": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#get-delta-mode-status",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/get_margin_call_level": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#get-margin-call-level",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/get_portfolio_margin_pro_account_balance": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#get-portfolio-margin-pro-account-balance",
+  "params": {
+   "asset": "USDT",
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/get_portfolio_margin_pro_span_account_info": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#get-portfolio-margin-pro-span-account-info",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/get_transferable_earn_asset_balance_for_portfolio_margin": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#get-transferable-earn-asset-balance-for-portfolio-margin",
+  "params": {
+   "asset": "USDT",
+   "transferType": "TO_MARGIN",
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/query_portfolio_margin_pro_bankruptcy_loan_repay_history": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#query-portfolio-margin-pro-bankruptcy-loan-repay-history",
+  "params": {
+   "startTime": 1750500000000,
+   "endTime": 1750500060000,
+   "size": 1,
+   "current": 1,
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/set_margin_call_level": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#set-margin-call-level",
+  "params": {
+   "marginCallLevel": 1.5,
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/switch_delta_mode": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#switch-delta-mode",
+  "params": {
+   "deltaEnabled": false,
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/transfer_ldusdt_rwusd_for_portfolio_margin": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/account#transfer-ldusdt-rwusd-for-portfolio-margin",
+  "params": {
+   "asset": "USDT",
+   "transferType": "TO_MARGIN",
+   "amount": 0.125,
+   "recvWindow": 5000
+  }
+ },
+ "derivatives_trading_portfolio_margin_pro/portfolio_margin_pro_tiered_collateral_rate": {
+  "source": "https://developers.binance.com/en/docs/catalog/advanced-trading-derivatives-trading-portfolio-margin-pro/api/rest-api/market-data#portfolio-margin-pro-tiered-collateral-rate",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "margin_trading/query_liquidation_loan": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-margin-trading/api/rest-api/trade#query-liquidation-loan",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "wallet/get_spot_asset_tags": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/asset#get-spot-asset-tags",
+  "params": {
+   "tag": "test-tag"
+  }
+ },
+ "wallet/broker_withdraw": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#broker-withdraw",
+  "params": {
+   "address": "test-address",
+   "coin": "USDT",
+   "amount": 0.125,
+   "withdrawOrderId": "test-withdrawOrderId",
+   "questionnaire": {
+    "test": "value & space"
+   },
+   "originatorPii": {
+    "test": "value & space"
+   },
+   "addressTag": "test-addressTag",
+   "network": "test-network",
+   "addressName": "test-addressName",
+   "transactionFeeFlag": false,
+   "walletType": 0
+  }
+ },
+ "wallet/deposit_history_v2": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#deposit-history-v2",
+  "params": {
+   "depositId": "9007199254740993,9007199254740995",
+   "txId": "test-txId",
+   "network": "test-network",
+   "coin": "USDT",
+   "retrieveQuestionnaire": false,
+   "startTime": 1750500000000,
+   "endTime": 1750500060000,
+   "offset": 1,
+   "limit": 1
+  }
+ },
+ "wallet/fetch_address_verification_list": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#fetch-address-verification-list",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "wallet/get_country_list": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#get-country-list",
+  "params": {
+   "recvWindow": 5000
+  }
+ },
+ "wallet/get_region_list": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#get-region-list",
+  "params": {
+   "countryCode": "AU",
+   "recvWindow": 5000
+  }
+ },
+ "wallet/submit_deposit_questionnaire": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#submit-deposit-questionnaire",
+  "params": {
+   "subAccountId": "test-subAccountId",
+   "depositId": 9007199254740993,
+   "questionnaire": {
+    "test": "value & space"
+   },
+   "beneficiaryPii": {
+    "test": "value & space"
+   },
+   "network": "test-network",
+   "coin": "USDT",
+   "amount": 0.125,
+   "address": "test-address",
+   "addressTag": "test-addressTag"
+  }
+ },
+ "wallet/submit_deposit_questionnaire_v2": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#submit-deposit-questionnaire-v2",
+  "params": {
+   "depositId": 9007199254740993,
+   "questionnaire": {
+    "test": "value & space"
+   }
+  }
+ },
+ "wallet/withdraw_history_v1": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#withdraw-history-v1",
+  "params": {
+   "trId": "test-trId",
+   "txId": "test-txId",
+   "withdrawOrderId": "test-withdrawOrderId",
+   "network": "test-network",
+   "coin": "USDT",
+   "travelRuleStatus": 0,
+   "offset": 1,
+   "limit": 1,
+   "startTime": 1750500000000,
+   "endTime": 1750500060000,
+   "recvWindow": 5000
+  }
+ },
+ "wallet/withdraw_travel_rule": {
+  "source": "https://developers.binance.com/en/docs/catalog/core-trading-wallet/api/rest-api/travel-rule#withdraw-travel-rule",
+  "params": {
+   "coin": "USDT",
+   "address": "test-address",
+   "amount": 0.125,
+   "questionnaire": {
+    "test": "value & space"
+   },
+   "withdrawOrderId": "test-withdrawOrderId",
+   "network": "test-network",
+   "addressTag": "test-addressTag",
+   "transactionFeeFlag": false,
+   "name": "test-name",
+   "walletType": 0,
+   "recvWindow": 5000
+  }
+ }
+}

@@ -1,0 +1,337 @@
+[
+  {
+    "model": "AccountUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/account_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "ACCOUNT_UPDATE",
+      "fs": "UM",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "i": "1.25",
+      "a": {
+        "m": "ORDER",
+        "B": [
+          {
+            "a": "USDT",
+            "wb": "1.25",
+            "cw": "1.25",
+            "bc": "1.25"
+          }
+        ],
+        "P": [
+          {
+            "s": "BTCUSDT",
+            "pa": "1.25",
+            "ep": "1.25",
+            "cr": "1.25",
+            "up": "1.25",
+            "ps": "LONG",
+            "bep": "1.25"
+          }
+        ],
+        "S": "BTCUSDT"
+      }
+    }
+  },
+  {
+    "model": "AccountConfigUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/account_config_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "ACCOUNT_CONFIG_UPDATE",
+      "fs": "UM",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "ac": {
+        "s": "BTCUSDT",
+        "l": 9007199254740993
+      }
+    }
+  },
+  {
+    "model": "AlgoOrderUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/algo_order_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "ALGO_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "fs": "UM",
+      "ao": {
+        "caid": "test-client",
+        "aid": 9007199254740993,
+        "at": "CONDITIONAL",
+        "o": "LIMIT",
+        "s": "BTCUSDT",
+        "S": "BUY",
+        "ps": "LONG",
+        "f": "GTC",
+        "q": "1.25",
+        "X": "1.25",
+        "ai": "1.25",
+        "ap": "1.25",
+        "aq": "1.25",
+        "act": "1.25",
+        "tp": "1.25",
+        "p": "1.25",
+        "V": "1.25",
+        "wt": "MARK_PRICE",
+        "pm": "NONE",
+        "cp": false,
+        "pP": false,
+        "R": false,
+        "tt": -1,
+        "gtd": 0,
+        "rm": "0",
+        "ia": false
+      }
+    }
+  },
+  {
+    "model": "ConditionalOrderTradeUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/conditional_order_trade_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "CONDITIONAL_ORDER_TRADE_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "fs": "UM",
+      "so": {
+        "s": "BTCUSDT",
+        "c": "test-client",
+        "si": 9007199254740993,
+        "S": "BUY",
+        "st": "GRID",
+        "f": "GTC",
+        "q": "1.25",
+        "p": "1.25",
+        "sp": "1.25",
+        "os": "1.25",
+        "T": 1750515742297,
+        "ut": 1750515742297,
+        "R": false,
+        "wt": "MARK_PRICE",
+        "ps": "LONG",
+        "cp": false,
+        "AP": "1.25",
+        "cr": "1.25",
+        "i": 9007199254740993,
+        "V": "EXPIRE_TAKER",
+        "gtd": 0
+      }
+    }
+  },
+  {
+    "model": "BalanceUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/balance_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "balanceUpdate",
+      "E": 1750515742297,
+      "a": "USDT",
+      "d": "1.25",
+      "U": 9007199254740993,
+      "T": 1750515742297
+    }
+  },
+  {
+    "model": "ExecutionReport",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/execution_report.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "executionReport",
+      "E": 1750515742297,
+      "s": "BTCUSDT",
+      "c": "test-client",
+      "S": "BUY",
+      "o": "LIMIT",
+      "f": "GTC",
+      "q": "1.25",
+      "p": "1.25",
+      "P": "1.25",
+      "d": 9007199254740993,
+      "F": "1.25",
+      "g": 9007199254740993,
+      "C": "test-client",
+      "x": "1.25",
+      "X": "1.25",
+      "r": "0",
+      "i": 9007199254740993,
+      "l": "1.25",
+      "z": "1.25",
+      "L": "1.25",
+      "n": "1.25",
+      "N": "1.25",
+      "T": 1750515742297,
+      "t": 9007199254740993,
+      "v": 9007199254740993,
+      "I": 9007199254740993,
+      "w": false,
+      "m": false,
+      "O": 1750515742297,
+      "Z": "1.25",
+      "Y": "1.25",
+      "Q": "1.25",
+      "D": 1750515742297,
+      "j": 9007199254740993,
+      "J": 9007199254740993,
+      "W": 1750515742297,
+      "V": "1.25",
+      "u": 9007199254740993,
+      "U": 9007199254740993,
+      "A": "1.25",
+      "B": "1.25",
+      "Cs": "1.25",
+      "pl": "1.25",
+      "pL": "1.25",
+      "pY": "1.25",
+      "eR": "0"
+    }
+  },
+  {
+    "model": "LiabilityChange",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/liability_change.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "liabilityChange",
+      "E": 1750515742297,
+      "a": "USDT",
+      "t": "1.25",
+      "T": 1750515742297,
+      "p": "1.25",
+      "i": "1.25",
+      "l": "1.25"
+    }
+  },
+  {
+    "model": "ListenKeyExpired",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/listen_key_expired.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "listenKeyExpired",
+      "E": 1750515742297
+    }
+  },
+  {
+    "model": "OpenOrderLoss",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/open_order_loss.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "openOrderLoss",
+      "E": 1750515742297,
+      "O": [
+        {
+          "a": "USDT",
+          "o": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "model": "OrderTradeUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/order_trade_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "ORDER_TRADE_UPDATE",
+      "fs": "UM",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "i": "1.25",
+      "o": {
+        "s": "BTCUSDT",
+        "c": "test-client",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "GTC",
+        "q": "1.25",
+        "p": "1.25",
+        "ap": "1.25",
+        "sp": "1.25",
+        "x": "NEW",
+        "X": "NEW",
+        "i": 9007199254740993,
+        "M": "test-client",
+        "l": "1.25",
+        "z": "1.25",
+        "L": "1.25",
+        "N": "1.25",
+        "n": "1.25",
+        "T": 1750515742297,
+        "t": 9007199254740993,
+        "b": "1.25",
+        "a": "1.25",
+        "m": false,
+        "R": false,
+        "ps": "LONG",
+        "rp": "1.25",
+        "st": "1.25",
+        "si": 9007199254740993,
+        "V": "EXPIRE_TAKER",
+        "gtd": 0
+      }
+    }
+  },
+  {
+    "model": "OutboundAccountPosition",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/outbound_account_position.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "outboundAccountPosition",
+      "E": 1750515742297,
+      "u": 1750515742297,
+      "U": 1750515742297,
+      "B": [
+        {
+          "a": "USDT",
+          "f": "1.25",
+          "l": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "model": "RiskLevelChange",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin/src/binance_sdk_derivatives_trading_portfolio_margin/websocket_streams/models/risk_level_change.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "RISK_LEVEL_CHANGE",
+      "E": 1750515742297,
+      "u": "1.25",
+      "s": "NORMAL",
+      "eq": "1.25",
+      "ae": "1.25",
+      "m": "1.25"
+    }
+  },
+  {
+    "model": "PmProAccountUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin_pro/src/binance_sdk_derivatives_trading_portfolio_margin_pro/websocket_streams/models/pm_pro_account_update.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "PM_PRO_ACCOUNT_UPDATE",
+      "E": 1750515742303,
+      "u": "1.25",
+      "eq": "1000.5",
+      "ae": "990.25",
+      "im": "10.5",
+      "mm": "9.5",
+      "avb": "980.5",
+      "vmw": "970.5"
+    }
+  },
+  {
+    "model": "Risklevelchange",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_portfolio_margin_pro/src/binance_sdk_derivatives_trading_portfolio_margin_pro/websocket_streams/models/risklevelchange.py",
+    "provenance": "Synthetic values following the official schema; authenticated success was not tested live.",
+    "data": {
+      "e": "riskLevelChange",
+      "E": 1750515742303,
+      "u": "1.25",
+      "s": "MARGIN_CALL",
+      "eq": "1000.5",
+      "ae": "990.25",
+      "m": "9.5"
+    }
+  }
+]

@@ -75,7 +75,7 @@ func (e *Exchange) GetFuturesHistoricalTrades(ctx context.Context, symbol curren
 	params := url.Values{}
 	params.Set("symbol", symbol.String())
 	if fromID != "" {
-		params.Set("fromID", fromID)
+		params.Set("fromId", fromID)
 	}
 	if limit > 0 {
 		params.Set("limit", strconv.FormatUint(limit, 10))
@@ -95,7 +95,7 @@ func (e *Exchange) GetPastPublicTrades(ctx context.Context, symbol currency.Pair
 		params.Set("limit", strconv.FormatUint(limit, 10))
 	}
 	if fromID != 0 {
-		params.Set("fromID", strconv.FormatUint(fromID, 10))
+		params.Set("fromId", strconv.FormatUint(fromID, 10))
 	}
 	var resp []*FuturesPublicTradesData
 	return resp, e.SendHTTPRequest(ctx, exchange.RestCoinMargined, common.EncodeURLValues("/dapi/v1/trades", params), cFuturesTradesRate, &resp)
@@ -123,7 +123,7 @@ func (e *Exchange) GetFuturesAggregatedTradesList(ctx context.Context, arg *GetF
 		params.Set("limit", strconv.FormatUint(limit, 10))
 	}
 	if fromID != 0 {
-		params.Set("fromID", strconv.FormatUint(fromID, 10))
+		params.Set("fromId", strconv.FormatUint(fromID, 10))
 	}
 	if !startTime.IsZero() {
 		params.Set("startTime", strconv.FormatInt(startTime.UnixMilli(), 10))
@@ -515,6 +515,10 @@ func (e *Exchange) GetTraderFuturesAccountRatio(ctx context.Context, arg *GetTra
 		params.Set("limit", strconv.FormatUint(limit, 10))
 	}
 	var resp []*TopTraderAccountRatio
+	if arg.ContractType != "" {
+		params.Set("contractType", arg.ContractType)
+	}
+
 	return resp, e.SendHTTPRequest(ctx, exchange.RestCoinMargined, common.EncodeURLValues("/futures/data/topLongShortAccountRatio", params), cFuturesDefaultRate, &resp)
 }
 
@@ -549,11 +553,15 @@ func (e *Exchange) GetTraderFuturesPositionsRatio(ctx context.Context, arg *GetT
 		params.Set("limit", strconv.FormatUint(limit, 10))
 	}
 	var resp []*TopTraderPositionRatio
+	if arg.ContractType != "" {
+		params.Set("contractType", arg.ContractType)
+	}
+
 	return resp, e.SendHTTPRequest(ctx, exchange.RestCoinMargined, common.EncodeURLValues("/futures/data/topLongShortPositionRatio", params), cFuturesDefaultRate, &resp)
 }
 
 // GetMarketRatio gets global long/short ratio
-func (e *Exchange) GetMarketRatio(ctx context.Context, arg *GetMarketRatioRequest) ([]*TopTraderPositionRatio, error) {
+func (e *Exchange) GetMarketRatio(ctx context.Context, arg *GetMarketRatioRequest) ([]*TopTraderAccountRatio, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
@@ -582,7 +590,11 @@ func (e *Exchange) GetMarketRatio(ctx context.Context, arg *GetMarketRatioReques
 	if limit > 0 {
 		params.Set("limit", strconv.FormatUint(limit, 10))
 	}
-	var resp []*TopTraderPositionRatio
+	var resp []*TopTraderAccountRatio
+	if arg.ContractType != "" {
+		params.Set("contractType", arg.ContractType)
+	}
+
 	return resp, e.SendHTTPRequest(ctx, exchange.RestCoinMargined, common.EncodeURLValues("/futures/data/globalLongShortAccountRatio", params), cFuturesDefaultRate, &resp)
 }
 
@@ -859,6 +871,15 @@ func (e *Exchange) GetAllFuturesOrders(ctx context.Context, arg *GetAllFuturesOr
 		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
 			return nil, err
 		}
+		if endTime.Sub(startTime) >= 7*24*time.Hour {
+			return nil, fmt.Errorf("%w: futures history queries must span less than 7 days", errOrderHistoryWindowExceeded)
+		}
+	}
+	if symbol.IsEmpty() && pair.IsEmpty() {
+		return nil, currency.ErrCurrencyPairEmpty
+	}
+	if !pair.IsEmpty() && orderID != 0 {
+		return nil, fmt.Errorf("%w: pair cannot be combined with orderId", errInvalidOrderQueryCombination)
 	}
 	params := url.Values{}
 	rateLimit := cFuturesPairOrdersRate
@@ -874,7 +895,7 @@ func (e *Exchange) GetAllFuturesOrders(ctx context.Context, arg *GetAllFuturesOr
 		params.Set("pair", pair.String())
 	}
 	if orderID != 0 {
-		params.Set("orderID", strconv.FormatUint(orderID, 10))
+		params.Set("orderId", strconv.FormatUint(orderID, 10))
 	}
 	if limit > 0 {
 		params.Set("limit", strconv.FormatUint(limit, 10))
@@ -1048,6 +1069,10 @@ func (e *Exchange) FuturesTradeHistory(ctx context.Context, arg *FuturesTradeHis
 		params.Set("fromId", strconv.FormatInt(fromID, 10))
 	}
 	var resp []*FuturesAccountTradeList
+	if arg.OrderID != "" {
+		params.Set("orderId", arg.OrderID)
+	}
+
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestCoinMargined, http.MethodGet, "/dapi/v1/userTrades", params, rateLimit, nil, &resp)
 }
 
@@ -1087,11 +1112,20 @@ func (e *Exchange) FuturesIncomeHistory(ctx context.Context, arg *FuturesIncomeH
 		params.Set("limit", strconv.FormatInt(limit, 10))
 	}
 	var resp []*FuturesIncomeHistoryData
+	if arg.Page != 0 {
+		params.Set("page", strconv.FormatUint(arg.Page, 10))
+	}
+
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestCoinMargined, http.MethodGet, "/dapi/v1/income", params, cFuturesIncomeHistoryRate, nil, &resp)
 }
 
 // FuturesForceOrders gets futures forced orders
-func (e *Exchange) FuturesForceOrders(ctx context.Context, symbol currency.Pair, autoCloseType string, startTime, endTime time.Time) ([]*ForcedOrdersData, error) {
+func (e *Exchange) FuturesForceOrders(ctx context.Context, symbol currency.Pair, autoCloseType string, startTime, endTime time.Time, options ...*FuturesForceOrdersRequest) ([]*ForcedOrdersData, error) {
+	option := new(FuturesForceOrdersRequest)
+	if len(options) != 0 && options[0] != nil {
+		option = options[0]
+	}
+
 	if !startTime.IsZero() && !endTime.IsZero() {
 		if err := common.StartEndTimeCheck(startTime, endTime); err != nil {
 			return nil, err
@@ -1120,6 +1154,10 @@ func (e *Exchange) FuturesForceOrders(ctx context.Context, symbol currency.Pair,
 		params.Set("endTime", strconv.FormatInt(endTime.UnixMilli(), 10))
 	}
 	var resp []*ForcedOrdersData
+	if option.Limit != 0 {
+		params.Set("limit", strconv.FormatUint(option.Limit, 10))
+	}
+
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestCoinMargined, http.MethodGet, "/dapi/v1/forceOrders", params, rateLimit, nil, &resp)
 }
 
@@ -1148,7 +1186,7 @@ func (e *Exchange) FetchCoinMarginExchangeLimits(ctx context.Context) ([]limits.
 	for x := range coinFutures.Symbols {
 		sym := coinFutures.Symbols[x]
 		var cp currency.Pair
-		cp, err = currency.NewPairFromStrings(sym.BaseAsset, sym.Symbol[len(sym.BaseAsset):])
+		cp, err = currency.NewPairFromString(sym.Symbol)
 		if err != nil {
 			return nil, err
 		}

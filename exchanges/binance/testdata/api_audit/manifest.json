@@ -1,0 +1,38 @@
+{
+  "auditDate": "2026-09-21",
+  "pr": "https://github.com/thrasher-corp/gocryptotrader/pull/1546",
+  "prHead": "8db72437445be70e746241a68052fc0b3cf30db3",
+  "master": "c6e47c6e1e6d6f7353148379d587188ec47c0367",
+  "sdkCommit": "506e738ade8b53056db177a37189077de1004ff1",
+  "counts": {
+    "sdkREST": 761,
+    "sdkRESTMatched": 690,
+    "additionalDocumentedREST": 59,
+    "supersededVersions": 10,
+    "excludedNewProductREST": 61,
+    "websocketAPIMethods": 84,
+    "streamSchemas": 113,
+    "legacyGoCalls": 57,
+    "documentedResponseFixtures": 661,
+    "documentedResponseModelCases": 666,
+    "publicRESTRequests": 115
+  },
+  "sourcePrecedence": [
+    "observed public production response",
+    "current Binance documentation",
+    "pinned official SDK schema"
+  ],
+  "notes": [
+    "Parameter inventories omit automatic timestamp/signature/API-key headers where supplied by the common transport. Default REST recvWindow is supplied centrally; documented WebSocket recvWindow parameters are included.",
+    "Schema field coverage is separate from live success. All authenticated success tests require explicit credentials.",
+    "Alpha, Stocks, stock-contract signing and Web3 Prediction are new product families outside the existing integration. The new TradFi trading-session stream is also excluded.",
+    "API retirement, product retirement and unavailable current contracts are distinct statuses in legacy.json.",
+    "Public fixture manifests record observed responses, quiet subscriptions and transformations. API error envelopes have separate offline coverage; HTTP 200 alone does not establish success."
+  ],
+  "files": {
+    "legacy.json": "97118f71d945a5d626794fda159d99eb2a6d7aec97f5e1f64db82eea35bfd75a",
+    "rest.json": "5bafafc32271ca3a7f7971d3cc2e2a450335d7cb50c30fb7b2009cc1f55cf93f",
+    "streams.json": "a500ace863ed5dc561d4b42bec514d821e530dd3ff7d17a91a992c06bf28efa7",
+    "websocket.json": "71c6f102976a582c7a05b9687b1c81a98aae064a0c3039f91966fe035b551c4c"
+  }
+}

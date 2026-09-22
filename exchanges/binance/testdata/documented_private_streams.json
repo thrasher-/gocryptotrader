@@ -1,0 +1,565 @@
+[
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "AccountUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/account_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ACCOUNT_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "a": {
+        "m": "ORDER",
+        "B": [
+          {
+            "a": "USDT",
+            "wb": "1.25",
+            "cw": "1.25",
+            "bc": "1.25"
+          }
+        ],
+        "P": [
+          {
+            "s": "BTCUSDT",
+            "pa": "1.25",
+            "ep": "1.25",
+            "bep": "1.25",
+            "cr": "1.25",
+            "up": "1.25",
+            "mt": "cross",
+            "iw": "1.25",
+            "ps": "LONG"
+          }
+        ],
+        "S": "BTCUSDT"
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "AccountConfigUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/account_config_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ACCOUNT_CONFIG_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "ac": {
+        "s": "BTCUSDT",
+        "l": 9007199254740993
+      },
+      "ai": {
+        "j": false
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "AlgoUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/algo_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ALGO_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "o": {
+        "caid": "test-client",
+        "aid": 9007199254740993,
+        "at": "CONDITIONAL",
+        "o": "LIMIT",
+        "s": "BTCUSDT",
+        "S": "BUY",
+        "ps": "LONG",
+        "f": "GTC",
+        "q": "1.25",
+        "X": "NEW",
+        "ai": "9007199254740993",
+        "ap": "1.25",
+        "aq": "1.25",
+        "act": "1.25",
+        "tp": "1.25",
+        "p": "1.25",
+        "V": "EXPIRE_TAKER",
+        "wt": "MARK_PRICE",
+        "pm": "NONE",
+        "cp": false,
+        "pP": false,
+        "R": false,
+        "tt": -1,
+        "gtd": 0,
+        "rm": "0",
+        "ia": false
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "ConditionalOrderTriggerReject",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/conditional_order_trigger_reject.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "CONDITIONAL_ORDER_TRIGGER_REJECT",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "or": {
+        "s": "BTCUSDT",
+        "i": 9007199254740993,
+        "r": "0"
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "GridUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/grid_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "GRID_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "gu": {
+        "si": 9007199254740993,
+        "st": "GRID",
+        "ss": "WORKING",
+        "s": "BTCUSDT",
+        "r": "1.25",
+        "up": "1.25",
+        "uq": "1.25",
+        "uf": "1.25",
+        "mp": "1.25",
+        "ut": 1750515742297
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "ListenKeyExpired",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/listen_key_expired.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "listenKeyExpired",
+      "E": 1750515742297,
+      "listenKey": "test-listen-key"
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "MarginCall",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/margin_call.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "MARGIN_CALL",
+      "E": 1750515742297,
+      "cw": "1.25",
+      "p": [
+        {
+          "s": "BTCUSDT",
+          "ps": "LONG",
+          "pa": "1.25",
+          "mt": "cross",
+          "iw": "1.25",
+          "mp": "1.25",
+          "up": "1.25",
+          "mm": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "OrderTradeUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/order_trade_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ORDER_TRADE_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "o": {
+        "s": "BTCUSDT",
+        "c": "test-client",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "GTC",
+        "q": "1.25",
+        "p": "1.25",
+        "ap": "1.25",
+        "sp": "1.25",
+        "x": "NEW",
+        "X": "NEW",
+        "i": 9007199254740993,
+        "M": "test-client",
+        "l": "1.25",
+        "z": "1.25",
+        "L": "1.25",
+        "N": "USDT",
+        "n": "1.25",
+        "T": 1750515742297,
+        "t": 9007199254740993,
+        "b": "1.25",
+        "a": "1.25",
+        "m": false,
+        "R": false,
+        "wt": "MARK_PRICE",
+        "ot": "LIMIT",
+        "ps": "LONG",
+        "cp": false,
+        "AP": "1.25",
+        "cr": "1.25",
+        "pP": false,
+        "si": 9007199254740993,
+        "ss": 9007199254740993,
+        "rp": "1.25",
+        "V": "EXPIRE_TAKER",
+        "pm": "NONE",
+        "gtd": 0,
+        "er": "0"
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "StrategyUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/strategy_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "STRATEGY_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "su": {
+        "si": 9007199254740993,
+        "st": "GRID",
+        "ss": "WORKING",
+        "s": "BTCUSDT",
+        "ut": 1750515742297,
+        "c": 9007199254740993
+      }
+    }
+  },
+  {
+    "asset": "USDTMarginedFutures",
+    "model": "TradeLite",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/src/binance_sdk_derivatives_trading_usds_futures/websocket_streams/models/trade_lite.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "TRADE_LITE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "s": "BTCUSDT",
+      "q": "1.25",
+      "p": "1.25",
+      "m": false,
+      "c": "test-client",
+      "S": "BUY",
+      "L": "1.25",
+      "l": "1.25",
+      "t": 9007199254740993,
+      "i": 9007199254740993
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "AccountUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/account_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ACCOUNT_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "i": "test-account",
+      "a": {
+        "m": "ORDER",
+        "B": [
+          {
+            "a": "USDT",
+            "wb": "1.25",
+            "cw": "1.25",
+            "bc": "1.25"
+          }
+        ],
+        "P": [
+          {
+            "s": "BTCUSD_PERP",
+            "pa": "1.25",
+            "ep": "1.25",
+            "bep": "1.25",
+            "cr": "1.25",
+            "up": "1.25",
+            "mt": "cross",
+            "iw": "1.25",
+            "ps": "LONG"
+          }
+        ],
+        "S": "BTCUSD_PERP"
+      }
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "AccountConfigUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/account_config_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ACCOUNT_CONFIG_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "ac": {
+        "s": "BTCUSD_PERP",
+        "l": 9007199254740993
+      }
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "GridUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/grid_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "GRID_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "gu": {
+        "si": 9007199254740993,
+        "st": "GRID",
+        "ss": "WORKING",
+        "s": "BTCUSD_PERP",
+        "r": "1.25",
+        "up": "1.25",
+        "uq": "1.25",
+        "uf": "1.25",
+        "mp": "1.25",
+        "ut": 1750515742297
+      }
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "ListenKeyExpired",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/listen_key_expired.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "listenKeyExpired",
+      "E": 1750515742297,
+      "listenKey": "test-listen-key"
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "MarginCall",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/margin_call.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "MARGIN_CALL",
+      "E": 1750515742297,
+      "i": "test-account",
+      "cw": "1.25",
+      "p": [
+        {
+          "s": "BTCUSD_PERP",
+          "ps": "LONG",
+          "pa": "1.25",
+          "mt": "cross",
+          "iw": "1.25",
+          "mp": "1.25",
+          "up": "1.25",
+          "mm": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "OrderTradeUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/order_trade_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ORDER_TRADE_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "i": "test-account",
+      "o": {
+        "s": "BTCUSD_PERP",
+        "c": "test-client",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "GTC",
+        "q": "1.25",
+        "p": "1.25",
+        "ap": "1.25",
+        "sp": "1.25",
+        "x": "NEW",
+        "X": "NEW",
+        "i": 9007199254740993,
+        "M": "test-client",
+        "l": "1.25",
+        "z": "1.25",
+        "L": "1.25",
+        "ma": "USDT",
+        "N": "USDT",
+        "n": "1.25",
+        "T": 1750515742297,
+        "t": 9007199254740993,
+        "rp": "1.25",
+        "b": "1.25",
+        "a": "1.25",
+        "m": false,
+        "R": false,
+        "wt": "MARK_PRICE",
+        "ot": "LIMIT",
+        "ps": "LONG",
+        "cp": false,
+        "AP": "1.25",
+        "cr": "1.25",
+        "pP": false,
+        "V": "EXPIRE_TAKER",
+        "pm": "NONE",
+        "er": "0"
+      }
+    }
+  },
+  {
+    "asset": "CoinMarginedFutures",
+    "model": "StrategyUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_coin_futures/src/binance_sdk_derivatives_trading_coin_futures/websocket_streams/models/strategy_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "STRATEGY_UPDATE",
+      "T": 1750515742297,
+      "E": 1750515742297,
+      "su": {
+        "si": 9007199254740993,
+        "st": "GRID",
+        "ss": "WORKING",
+        "s": "BTCUSD_PERP",
+        "ut": 1750515742297,
+        "c": 9007199254740993
+      }
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "AccountUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/account_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ACCOUNT_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "eq": "1.25",
+      "aeq": "1.25",
+      "b": "1.25",
+      "m": "1.25",
+      "u": "1.25",
+      "i": "1.25",
+      "M": "1.25"
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "ListenKeyExpired",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/listen_key_expired.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "listenKeyExpired",
+      "E": "1750515742297",
+      "listenKey": "test-listen-key"
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "OrderTradeUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/order_trade_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "ORDER_TRADE_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "o": {
+        "s": "BTC-270101-100000-C",
+        "c": "test-client",
+        "S": "BUY",
+        "o": "LIMIT",
+        "f": "GTC",
+        "q": "1.25",
+        "p": "1.25",
+        "ap": "1.25",
+        "x": "NEW",
+        "X": "NEW",
+        "i": 9007199254740993,
+        "l": "1.25",
+        "z": "1.25",
+        "L": "1.25",
+        "N": "USDT",
+        "n": "1.25",
+        "T": 1750515742297,
+        "t": 9007199254740993,
+        "b": "1.25",
+        "a": "1.25",
+        "m": false,
+        "R": false,
+        "ot": "LIMIT",
+        "rp": "1.25",
+        "V": "EXPIRE_TAKER"
+      }
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "BalancePositionUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/balance_position_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "BALANCE_POSITION_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "m": "ORDER",
+      "B": [
+        {
+          "a": "USDT",
+          "b": "1.25",
+          "bc": "1.25"
+        }
+      ],
+      "P": [
+        {
+          "s": "BTC-270101-100000-C",
+          "c": "1.25",
+          "p": "1.25",
+          "a": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "GreekUpdate",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/greek_update.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "GREEK_UPDATE",
+      "E": 1750515742297,
+      "T": 1750515742297,
+      "G": [
+        {
+          "u": "BTC",
+          "d": "1.25",
+          "g": "1.25",
+          "t": "1.25",
+          "v": "1.25"
+        }
+      ]
+    }
+  },
+  {
+    "asset": "Options",
+    "model": "RiskLevelChange",
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_options/src/binance_sdk_derivatives_trading_options/websocket_streams/models/risk_level_change.py",
+    "provenance": "Synthetic values following the official event schema; not a live authenticated capture.",
+    "data": {
+      "e": "RISK_LEVEL_CHANGE",
+      "E": 1750515742297,
+      "s": "NORMAL",
+      "mb": "1.25",
+      "mm": "1.25"
+    }
+  }
+]

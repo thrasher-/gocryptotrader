@@ -10,11 +10,16 @@ import (
 
 // UMCMOrder represents a portfolio margin USDT Margined or Coin Margined order.
 type UMCMOrder struct {
+	ModifyID     uint64     `json:"modifyId"`
+	PriceMatch   string     `json:"priceMatch"`
+	OriginalType string     `json:"origType"`
+	Time         types.Time `json:"time"`
+
 	OrderID            uint64            `json:"orderId"`
 	ClientOrderID      string            `json:"clientOrderId"`
 	CumulativeQuantity types.Number      `json:"cumQty"`
 	ExecutedQuantity   types.Number      `json:"executedQty"`
-	AvgPrice           types.Number      `json:"avgPrice"`
+	AveragePrice       types.Number      `json:"avgPrice"`
 	OriginalQuantity   types.Number      `json:"origQty"`
 	Price              types.Number      `json:"price"`
 	ReduceOnly         bool              `json:"reduceOnly"`
@@ -29,15 +34,17 @@ type UMCMOrder struct {
 	// Used By USDT Margined Futures only
 	SelfTradePreventionMode string       `json:"selfTradePreventionMode"`
 	GoodTillDate            types.Time   `json:"goodTillDate"`
-	CumQuote                types.Number `json:"cumQuote"`
+	CumulativeQuote         types.Number `json:"cumQuote"`
 
 	// Used By Coin Margined Futures only
-	Pair    string `json:"pair"`
-	CumBase string `json:"cumBase"`
+	Pair           string `json:"pair"`
+	CumulativeBase string `json:"cumBase"`
 }
 
 // UMOrderRequest request parameters for UM order
 type UMOrderRequest struct {
+	PriceMatch string `json:"priceMatch,omitempty"`
+
 	Symbol                  currency.Pair `json:"symbol"`
 	Side                    string        `json:"side"`
 	PositionSide            string        `json:"positionSide,omitempty"`
@@ -55,6 +62,8 @@ type UMOrderRequest struct {
 
 // MarginOrderRequest represents request parameter for margin trade order
 type MarginOrderRequest struct {
+	AutoRepayAtCancel *bool `json:"autoRepayAtCancel,omitempty"`
+
 	Symbol                  currency.Pair `json:"symbol"`
 	Side                    string        `json:"side"`
 	OrderType               string        `json:"type"`
@@ -72,27 +81,27 @@ type MarginOrderRequest struct {
 
 // PortfolioMarginOrderResponse represents a margin order response.
 type PortfolioMarginOrderResponse struct {
-	Symbol                  string       `json:"symbol"`
-	OrderID                 uint64       `json:"orderId"`
-	ClientOrderID           string       `json:"clientOrderId"`
-	OrigClientOrderID       string       `json:"origClientOrderId"`
-	TransactTime            types.Time   `json:"transactTime"`
-	Price                   types.Number `json:"price"`
-	SelfTradePreventionMode string       `json:"selfTradePreventionMode"`
-	OriginalQuantity        types.Number `json:"origQty"`
-	ExecutedQuantity        types.Number `json:"executedQty"`
-	CumulativeQuoteQuantity types.Number `json:"cummulativeQuoteQty"`
-	Status                  string       `json:"status"`
-	TimeInForce             string       `json:"timeInForce"`
-	Type                    string       `json:"type"`
-	Side                    string       `json:"side"`
-	MarginBuyBorrowAmount   types.Number `json:"marginBuyBorrowAmount"`
-	MarginBuyBorrowAsset    string       `json:"marginBuyBorrowAsset"`
+	Symbol                  string        `json:"symbol"`
+	OrderID                 uint64        `json:"orderId"`
+	ClientOrderID           string        `json:"clientOrderId"`
+	OrigClientOrderID       string        `json:"origClientOrderId"`
+	TransactTime            types.Time    `json:"transactTime"`
+	Price                   types.Number  `json:"price"`
+	SelfTradePreventionMode string        `json:"selfTradePreventionMode"`
+	OriginalQuantity        types.Number  `json:"origQty"`
+	ExecutedQuantity        types.Number  `json:"executedQty"`
+	CumulativeQuoteQuantity types.Number  `json:"cummulativeQuoteQty"`
+	Status                  string        `json:"status"`
+	TimeInForce             string        `json:"timeInForce"`
+	Type                    string        `json:"type"`
+	Side                    string        `json:"side"`
+	MarginBuyBorrowAmount   types.Number  `json:"marginBuyBorrowAmount"`
+	MarginBuyBorrowAsset    currency.Code `json:"marginBuyBorrowAsset"`
 	Fills                   []struct {
-		Price           types.Number `json:"price"`
-		Qty             types.Number `json:"qty"`
-		Commission      types.Number `json:"commission"`
-		CommissionAsset string       `json:"commissionAsset"`
+		Price           types.Number  `json:"price"`
+		Quantity        types.Number  `json:"qty"`
+		Commission      types.Number  `json:"commission"`
+		CommissionAsset currency.Code `json:"commissionAsset"`
 	} `json:"fills"`
 }
 
@@ -101,6 +110,12 @@ type MarginAccOrdersList []*MarginAccountOrder
 
 // ConditionalOrder represents a USDT/Coin margined conditional order instance.
 type ConditionalOrder struct {
+	OrderID     uint64     `json:"orderId"`
+	Status      string     `json:"status"`
+	TriggerTime types.Time `json:"triggerTime"`
+	Type        string     `json:"type"`
+	PriceMatch  string     `json:"priceMatch"`
+
 	NewClientStrategyID string       `json:"newClientStrategyId"`
 	StrategyID          uint64       `json:"strategyId"`
 	StrategyStatus      string       `json:"strategyStatus"`
@@ -139,7 +154,7 @@ type ConditionalOrderRequest struct {
 	Price               float64       `json:"price,omitempty"`
 	WorkingType         string        `json:"workingType,omitempty"`
 	PriceProtect        bool          `json:"priceProtect,omitempty"`
-	NewClientStrategyID string        `json:"newClientStrategyID,omitempty"`
+	NewClientStrategyID string        `json:"newClientStrategyId,omitempty"`
 	StopPrice           float64       `json:"stopPrice,omitempty"`
 	ActivationPrice     float64       `json:"activationPrice,omitempty"`
 	CallbackRate        float64       `json:"callbackRate,omitempty"`
@@ -152,8 +167,11 @@ type ConditionalOrderRequest struct {
 
 // SuccessResponse represents a success code and message; used when cancelling orders in portfolio margin endpoints.
 type SuccessResponse struct {
-	Code    int64  `json:"code"`
-	Message string `json:"msg"`
+	RedeemID uint64 `json:"redeemId"`
+	Success  bool   `json:"success"`
+
+	Code    types.Number `json:"code"`
+	Message string       `json:"msg"`
 }
 
 // MarginOrder represents a margin account order
@@ -182,19 +200,19 @@ type MarginOrder struct {
 
 // AccountBalance represents an account balance information for an asset from all margin and futures accounts.
 type AccountBalance struct {
-	Asset               string       `json:"asset"`
-	TotalWalletBalance  types.Number `json:"totalWalletBalance"`  // wallet balance =  cross margin free + cross margin locked + UM wallet balance + CM wallet balance
-	CrossMarginAsset    types.Number `json:"crossMarginAsset"`    // crossMarginAsset = crossMarginFree + crossMarginLocked
-	CrossMarginBorrowed types.Number `json:"crossMarginBorrowed"` // principal of cross margin
-	CrossMarginFree     types.Number `json:"crossMarginFree"`     // free asset of cross margin
-	CrossMarginInterest types.Number `json:"crossMarginInterest"` // interest of cross margin
-	CrossMarginLocked   types.Number `json:"crossMarginLocked"`   // lock asset of cross margin
-	UmWalletBalance     types.Number `json:"umWalletBalance"`     // wallet balance of um
-	UmUnrealizedPNL     types.Number `json:"umUnrealizedPNL"`     // unrealized profit of um
-	CmWalletBalance     types.Number `json:"cmWalletBalance"`     // wallet balance of cm
-	CmUnrealizedPNL     string       `json:"cmUnrealizedPNL"`     // unrealized profit of cm
-	UpdateTime          types.Time   `json:"updateTime"`
-	NegativeBalance     types.Number `json:"negativeBalance"`
+	Asset               currency.Code `json:"asset"`
+	TotalWalletBalance  types.Number  `json:"totalWalletBalance"`  // wallet balance =  cross margin free + cross margin locked + UM wallet balance + CM wallet balance
+	CrossMarginAsset    types.Number  `json:"crossMarginAsset"`    // crossMarginAsset = crossMarginFree + crossMarginLocked
+	CrossMarginBorrowed types.Number  `json:"crossMarginBorrowed"` // principal of cross margin
+	CrossMarginFree     types.Number  `json:"crossMarginFree"`     // free asset of cross margin
+	CrossMarginInterest types.Number  `json:"crossMarginInterest"` // interest of cross margin
+	CrossMarginLocked   types.Number  `json:"crossMarginLocked"`   // lock asset of cross margin
+	UmWalletBalance     types.Number  `json:"umWalletBalance"`     // wallet balance of um
+	UmUnrealizedPNL     types.Number  `json:"umUnrealizedPNL"`     // unrealized profit of um
+	CmWalletBalance     types.Number  `json:"cmWalletBalance"`     // wallet balance of cm
+	CmUnrealizedPNL     string        `json:"cmUnrealizedPNL"`     // unrealized profit of cm
+	UpdateTime          types.Time    `json:"updateTime"`
+	NegativeBalance     types.Number  `json:"negativeBalance"`
 }
 
 // AccountBalanceResponse takes an instance object or slice of instances of AccountBalance as a slice.
@@ -202,7 +220,7 @@ type AccountBalanceResponse []AccountBalance
 
 // AccountInformation represents a portfolio margin account information.
 type AccountInformation struct {
-	UniMMR                   string       `json:"uniMMR"`        // Portfolio margin account maintenance margin rate
+	UniMMR                   types.Number `json:"uniMMR"`        // Portfolio margin account maintenance margin rate
 	AccountEquity            types.Number `json:"accountEquity"` // Account equity, in USD value
 	ActualEquity             types.Number `json:"actualEquity"`  // Account equity calculated without discount on collateral rate, in USD value
 	AccountInitialMargin     types.Number `json:"accountInitialMargin"`
@@ -236,13 +254,13 @@ type UMPositionInformation struct {
 }
 
 // CMPositionInformation represents a Coin Margined Futures position information.
-type CMPositionInformation []struct {
+type CMPositionInformation struct {
 	Symbol           string       `json:"symbol"`
 	PositionAmount   types.Number `json:"positionAmt"`
 	EntryPrice       types.Number `json:"entryPrice"`
 	MarkPrice        types.Number `json:"markPrice"`
 	LiquidationPrice types.Number `json:"liquidationPrice"`
-	UnRealizedProfit string       `json:"unRealizedProfit"`
+	UnRealizedProfit types.Number `json:"unRealizedProfit"`
 	Leverage         string       `json:"leverage"`
 	PositionSide     string       `json:"positionSide"`
 	UpdateTime       types.Time   `json:"updateTime"`
@@ -272,31 +290,31 @@ type DualPositionMode struct {
 
 // UMCMAccountTradeItem represents an account trade list
 type UMCMAccountTradeItem struct {
-	Symbol          string       `json:"symbol"`
-	ID              int64        `json:"id"`
-	OrderID         uint64       `json:"orderId"`
-	Side            types.Number `json:"side"`
-	Price           types.Number `json:"price"`
-	Qty             types.Number `json:"qty"`
-	RealizedPnl     types.Number `json:"realizedPnl"`
-	MarginAsset     string       `json:"marginAsset"`
-	QuoteQuantity   types.Number `json:"quoteQty"`
-	Commission      types.Number `json:"commission"`
-	CommissionAsset string       `json:"commissionAsset"`
-	Time            types.Time   `json:"time"`
-	Buyer           bool         `json:"buyer"`
-	Maker           bool         `json:"maker"`
-	PositionSide    string       `json:"positionSide"`
+	Symbol          string        `json:"symbol"`
+	ID              int64         `json:"id"`
+	OrderID         uint64        `json:"orderId"`
+	Side            string        `json:"side"`
+	Price           types.Number  `json:"price"`
+	Quantity        types.Number  `json:"qty"`
+	RealizedPnl     types.Number  `json:"realizedPnl"`
+	MarginAsset     currency.Code `json:"marginAsset"`
+	QuoteQuantity   types.Number  `json:"quoteQty"`
+	Commission      types.Number  `json:"commission"`
+	CommissionAsset currency.Code `json:"commissionAsset"`
+	Time            types.Time    `json:"time"`
+	Buyer           bool          `json:"buyer"`
+	Maker           bool          `json:"maker"`
+	PositionSide    string        `json:"positionSide"`
 
 	// used with the CM trade info
-	Pair         types.Number `json:"pair"`
+	Pair         string       `json:"pair"`
 	BaseQuantity types.Number `json:"baseQty"`
 }
 
 // NotionalAndLeverage represents notional and leverage brackets
 type NotionalAndLeverage struct {
-	Symbol       string `json:"symbol"`
-	NotionalCoef string `json:"notionalCoef"`
+	Symbol       string       `json:"symbol"`
+	NotionalCoef types.Number `json:"notionalCoef"`
 	Brackets     []struct {
 		Bracket          float64      `json:"bracket"`
 		InitialLeverage  float64      `json:"initialLeverage"`
@@ -325,10 +343,10 @@ type CMNotionalAndLeverage struct {
 type MarginForceOrder struct {
 	Rows []struct {
 		OrderID          uint64       `json:"orderId"`
-		AvgPrice         types.Number `json:"avgPrice"`
+		AveragePrice     types.Number `json:"avgPrice"`
 		ExecutedQuantity types.Number `json:"executedQty"`
 		Price            types.Number `json:"price"`
-		Qty              types.Number `json:"qty"`
+		Quantity         types.Number `json:"qty"`
 		Side             string       `json:"side"`
 		Symbol           string       `json:"symbol"`
 		TimeInForce      string       `json:"timeInForce"`
@@ -344,7 +362,7 @@ type ForceOrder struct {
 	Status           string       `json:"status"`
 	ClientOrderID    string       `json:"clientOrderId"`
 	Price            types.Number `json:"price"`
-	AvgPrice         types.Number `json:"avgPrice"`
+	AveragePrice     types.Number `json:"avgPrice"`
 	OriginalQuantity types.Number `json:"origQty"`
 	ExecutedQuantity types.Number `json:"executedQty"`
 	TimeInForce      string       `json:"timeInForce"`
@@ -352,20 +370,22 @@ type ForceOrder struct {
 	ReduceOnly       bool         `json:"reduceOnly"`
 	Side             string       `json:"side"`
 	PositionSide     string       `json:"positionSide"`
-	OrigType         string       `json:"origType"`
+	OriginalType     string       `json:"origType"`
 	Time             types.Time   `json:"time"`
 	UpdateTime       types.Time   `json:"updateTime"`
 
 	// used by usdt margined futures
-	CumQuote types.Number `json:"cumQuote"`
+	CumulativeQuote types.Number `json:"cumQuote"`
 
 	// used by coin margined futures
-	Pair    string       `json:"pair"`
-	CumBase types.Number `json:"cumBase"`
+	Pair           string       `json:"pair"`
+	CumulativeBase types.Number `json:"cumBase"`
 }
 
 // CommissionRate represents a user's commission rate
 type CommissionRate struct {
+	RPICommissionRate types.Number `json:"rpiCommissionRate"`
+
 	Symbol              string       `json:"symbol"`
 	MakerCommissionRate types.Number `json:"makerCommissionRate"`
 	TakerCommissionRate types.Number `json:"takerCommissionRate"`
@@ -374,11 +394,11 @@ type CommissionRate struct {
 // MarginLoanRecord represents a margin loan record.
 type MarginLoanRecord struct {
 	Rows []struct {
-		TransactionID uint64     `json:"txId"`
-		Asset         string     `json:"asset"`
-		Principal     string     `json:"principal"`
-		Timestamp     types.Time `json:"timestamp"`
-		Status        string     `json:"status"`
+		TransactionID uint64        `json:"txId"`
+		Asset         currency.Code `json:"asset"`
+		Principal     types.Number  `json:"principal"`
+		Timestamp     types.Time    `json:"timestamp"`
+		Status        string        `json:"status"`
 	} `json:"rows"`
 	Total int64 `json:"total"`
 }
@@ -386,13 +406,13 @@ type MarginLoanRecord struct {
 // MarginRepayRecord represents a margin repay record.
 type MarginRepayRecord struct {
 	Rows []struct {
-		Amount        types.Number `json:"amount"`
-		Asset         string       `json:"asset"`
-		Interest      types.Number `json:"interest"`
-		Principal     types.Number `json:"principal"`
-		Status        string       `json:"status"`
-		Timestamp     types.Time   `json:"timestamp"`
-		TransactionID uint64       `json:"txId"`
+		Amount        types.Number  `json:"amount"`
+		Asset         currency.Code `json:"asset"`
+		Interest      types.Number  `json:"interest"`
+		Principal     types.Number  `json:"principal"`
+		Status        string        `json:"status"`
+		Timestamp     types.Time    `json:"timestamp"`
+		TransactionID uint64        `json:"txId"`
 	} `json:"rows"`
 	Total int64 `json:"total"`
 }
@@ -400,51 +420,51 @@ type MarginRepayRecord struct {
 // MarginBorrowOrLoanInterest represents margin borrow/loan interest history
 type MarginBorrowOrLoanInterest struct {
 	Rows []struct {
-		TransactionID       uint64       `json:"txId"`
-		InterestAccuredTime types.Time   `json:"interestAccuredTime"`
-		Asset               string       `json:"asset"`
-		RawAsset            string       `json:"rawAsset"`
-		Principal           string       `json:"principal"`
-		Interest            types.Number `json:"interest"`
-		InterestRate        types.Number `json:"interestRate"`
-		Type                string       `json:"type"`
+		TransactionID       uint64        `json:"txId"`
+		InterestAccuredTime types.Time    `json:"interestAccuredTime"`
+		Asset               currency.Code `json:"asset"`
+		RawAsset            currency.Code `json:"rawAsset"`
+		Principal           types.Number  `json:"principal"`
+		Interest            types.Number  `json:"interest"`
+		InterestRate        types.Number  `json:"interestRate"`
+		Type                string        `json:"type"`
 	} `json:"rows"`
 	Total int64 `json:"total"`
 }
 
 // PortfolioMarginNegativeBalanceInterest represents interest history of negative balance.
 type PortfolioMarginNegativeBalanceInterest struct {
-	Asset               string       `json:"asset"`
-	Interest            string       `json:"interest"`
-	InterestAccuredTime types.Time   `json:"interestAccuredTime"`
-	InterestRate        types.Number `json:"interestRate"`
-	Principal           string       `json:"principal"`
+	Asset               currency.Code `json:"asset"`
+	Interest            types.Number  `json:"interest"`
+	InterestAccuredTime types.Time    `json:"interestAccuredTime"`
+	InterestRate        types.Number  `json:"interestRate"`
+	Principal           types.Number  `json:"principal"`
 }
 
 // IncomeItem represents a USDT margined income item.
 type IncomeItem struct {
-	Symbol       string       `json:"symbol"`
-	IncomeType   string       `json:"incomeType"`
-	IncomeAmount types.Number `json:"income"`
-	IncomeAsset  string       `json:"asset"`
-	ExtraInfo    string       `json:"info"`
-	Time         types.Time   `json:"time"`
-	TranferID    string       `json:"tranId"`
-	TradeID      string       `json:"tradeId"`
+	Symbol       string        `json:"symbol"`
+	IncomeType   string        `json:"incomeType"`
+	IncomeAmount types.Number  `json:"income"`
+	IncomeAsset  currency.Code `json:"asset"`
+	ExtraInfo    string        `json:"info"`
+	Time         types.Time    `json:"time"`
+	TranferID    string        `json:"tranId"`
+	TradeID      string        `json:"tradeId"`
 }
 
 // AccountDetail represents account asset and position information.
 type AccountDetail struct {
 	TradeGroupID int64 `json:"tradeGroupId"`
 	Assets       []struct {
-		Asset                  string       `json:"asset"`
-		CrossWalletBalance     types.Number `json:"crossWalletBalance"`
-		CrossUnPnl             types.Number `json:"crossUnPnl"`
-		MaintMargin            types.Number `json:"maintMargin"`
-		InitialMargin          types.Number `json:"initialMargin"`
-		PositionInitialMargin  types.Number `json:"positionInitialMargin"`
-		OpenOrderInitialMargin types.Number `json:"openOrderInitialMargin"`
-		UpdateTime             types.Time   `json:"updateTime"`
+		Asset                  currency.Code `json:"asset"`
+		CrossWalletBalance     types.Number  `json:"crossWalletBalance"`
+		CrossUnPnl             types.Number  `json:"crossUnPnl"`
+		MaintMargin            types.Number  `json:"maintMargin"`
+		InitialMargin          types.Number  `json:"initialMargin"`
+		PositionInitialMargin  types.Number  `json:"positionInitialMargin"`
+		OpenOrderInitialMargin types.Number  `json:"openOrderInitialMargin"`
+		UpdateTime             types.Time    `json:"updateTime"`
 	} `json:"assets"`
 	Positions []struct {
 		Symbol                 string       `json:"symbol"`
@@ -480,6 +500,8 @@ type ADLQuantileEstimation struct {
 	Symbol string `json:"symbol"`
 	// if the positions of the symbol are crossed margined in Hedge Mode, "LONG" and "SHORT" will be returned a same quantile value, and "HEDGE" will be returned instead of "BOTH".
 	ADLQuantile struct {
+		Both uint64 `json:"BOTH"`
+
 		Long  float64 `json:"LONG"`  // adl quantile for "LONG" position in hedge mode
 		Short float64 `json:"SHORT"` // adl qauntile for "SHORT" position in hedge mode
 		Hedge float64 `json:"HEDGE"` // only a sign, ignore the value
@@ -488,9 +510,9 @@ type ADLQuantileEstimation struct {
 
 // PortfolioMarginAssetIndexPrice holds a portfolio margin asset index price in usd
 type PortfolioMarginAssetIndexPrice struct {
-	Asset                string       `json:"asset"`
-	AssetIndexPriceInUSD types.Number `json:"assetIndexPrice"`
-	Time                 types.Time   `json:"time"`
+	Asset                currency.Code `json:"asset"`
+	AssetIndexPriceInUSD types.Number  `json:"assetIndexPrice"`
+	Time                 types.Time    `json:"time"`
 }
 
 // UMAccountDetailV2 is the V2 UM account response. Compared to V1 it returns only symbols the
@@ -519,20 +541,22 @@ type UMAccountDetailV2 struct {
 	} `json:"positions"`
 }
 
-// UMAlgoOrderRequest holds parameters for placing a portfolio margin UM algo order. Unlike the
-// USD-M conditional algo orders, these are duration based execution algorithms.
+// UMAlgoOrderRequest holds parameters for a portfolio margin UM conditional order.
 type UMAlgoOrderRequest struct {
+	ClosePosition           string `json:"closePosition,omitempty"`
+	SelfTradePreventionMode string `json:"selfTradePreventionMode,omitempty"`
+
 	Symbol       currency.Pair `json:"symbol"`
 	Side         string        `json:"side"`
-	AlgoType     string        `json:"algoType,omitempty"`
-	OrderType    string        `json:"type,omitempty"`
+	AlgoType     string        `json:"algoType"`
+	OrderType    string        `json:"type"`
 	PositionSide string        `json:"positionSide,omitempty"`
 	Quantity     float64       `json:"quantity,omitempty"`
 	Price        float64       `json:"price,omitempty"`
 	TriggerPrice float64       `json:"triggerPrice,omitempty"`
 	// Duration is carried by the sapi TWAP endpoint rather than this one, and is
 	// retained only so existing callers keep compiling.
-	Duration         int64   `json:"duration,omitempty"`
+	Duration         int64   `json:"-"`
 	ActivatePrice    float64 `json:"activatePrice,omitempty"`
 	CallbackRate     float64 `json:"callbackRate,omitempty"`
 	WorkingType      string  `json:"workingType,omitempty"`
@@ -547,6 +571,11 @@ type UMAlgoOrderRequest struct {
 
 // UMAlgoOrder represents a portfolio margin UM algo order.
 type UMAlgoOrder struct {
+	Complete      bool         `json:"complete"`
+	ClosePosition bool         `json:"closePosition"`
+	ActualOrderID string       `json:"actualOrderId"`
+	ActualPrice   types.Number `json:"actualPrice"`
+
 	AlgoID                  uint64            `json:"algoId"`
 	ClientAlgoID            string            `json:"clientAlgoId"`
 	AlgoType                string            `json:"algoType"`
@@ -587,20 +616,20 @@ type UMFuturesAccountConfig struct {
 // UMFuturesSymbolConfig holds the per symbol configuration for portfolio margin UM futures.
 // IsAutoAddMargin is quoted by the API, which the SDK models confirm.
 type UMFuturesSymbolConfig struct {
-	Symbol           string       `json:"symbol"`
-	MarginType       string       `json:"marginType"`
-	IsAutoAddMargin  bool         `json:"isAutoAddMargin,string"`
-	Leverage         int64        `json:"leverage"`
-	MaxNotionalValue types.Number `json:"maxNotionalValue"`
+	Symbol           string        `json:"symbol"`
+	MarginType       string        `json:"marginType"`
+	IsAutoAddMargin  types.Boolean `json:"isAutoAddMargin"`
+	Leverage         int64         `json:"leverage"`
+	MaxNotionalValue types.Number  `json:"maxNotionalValue"`
 }
 
 // MarginRepayDebtResponse is returned when repaying margin debt.
 type MarginRepayDebtResponse struct {
-	Amount             types.Number `json:"amount"`
-	Asset              string       `json:"asset"`
-	SpecifyRepayAssets []string     `json:"specifyRepayAssets"`
-	UpdateTime         types.Time   `json:"updateTime"`
-	Success            bool         `json:"success"`
+	Amount             types.Number  `json:"amount"`
+	Asset              currency.Code `json:"asset"`
+	SpecifyRepayAssets []string      `json:"specifyRepayAssets"`
+	UpdateTime         types.Time    `json:"updateTime"`
+	Success            bool          `json:"success"`
 }
 
 // GetAllUMOrdersRequest holds the parameters for GetAllUMOrders.
@@ -698,6 +727,8 @@ type GetUsersCMForceOrdersRequest struct {
 
 // GetMarginLoanRecordRequest holds the parameters for GetMarginLoanRecord.
 type GetMarginLoanRecordRequest struct {
+	Archived string `json:"archived,omitempty"`
+
 	AssetName     currency.Code
 	StartTime     time.Time
 	EndTime       time.Time
@@ -708,6 +739,8 @@ type GetMarginLoanRecordRequest struct {
 
 // GetMarginRepayRecordRequest holds the parameters for GetMarginRepayRecord.
 type GetMarginRepayRecordRequest struct {
+	Archived string `json:"archived,omitempty"`
+
 	AssetName     currency.Code
 	StartTime     time.Time
 	EndTime       time.Time
@@ -718,6 +751,8 @@ type GetMarginRepayRecordRequest struct {
 
 // GetMarginBorrowOrLoanInterestHistoryRequest holds the parameters for GetMarginBorrowOrLoanInterestHistory.
 type GetMarginBorrowOrLoanInterestHistoryRequest struct {
+	Archived string `json:"archived,omitempty"`
+
 	AssetName     currency.Code
 	StartTime     time.Time
 	EndTime       time.Time
@@ -728,6 +763,8 @@ type GetMarginBorrowOrLoanInterestHistoryRequest struct {
 
 // GetUMIncomeHistoryRequest holds the parameters for GetUMIncomeHistory.
 type GetUMIncomeHistoryRequest struct {
+	Page uint64 `json:"page,omitempty"`
+
 	Symbol     currency.Pair
 	IncomeType string
 	StartTime  time.Time
@@ -737,6 +774,8 @@ type GetUMIncomeHistoryRequest struct {
 
 // GetCMIncomeHistoryRequest holds the parameters for GetCMIncomeHistory.
 type GetCMIncomeHistoryRequest struct {
+	Page uint64 `json:"page,omitempty"`
+
 	Symbol     currency.Pair
 	IncomeType string
 	StartTime  time.Time

@@ -1,0 +1,749 @@
+{
+  "POST /sapi/v1/broker/subAccountApi/permission": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi/permission",
+    "data": {
+      "subaccountId": "1",
+      "apikey": "documented-key",
+      "canTrade": true,
+      "marginTrade": true,
+      "futuresTrade": true
+    },
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "canTrade",
+      "marginTrade",
+      "futuresTrade",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccount": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccount",
+    "data": [
+      {
+        "subaccountId": "1",
+        "email": "vai_42038996_47411276_brokersubuser@lac.info",
+        "tag": "bob123",
+        "makerCommission": 0.001,
+        "takerCommission": 0.001,
+        "marginMakerCommission": -1,
+        "marginTakerCommission": -1,
+        "createTime": 1544433328000
+      }
+    ],
+    "parameters": [
+      "timestamp",
+      "subAccountId",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccount": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccount",
+    "data": {
+      "subaccountId": "1",
+      "email": "vai_42038996_47411276_brokersubuser@lac.info",
+      "tag": "bob123d"
+    },
+    "parameters": [
+      "timestamp",
+      "tag",
+      "recvWindow"
+    ]
+  },
+  "DELETE /sapi/v1/broker/subAccount": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "DELETE",
+    "path": "/sapi/v1/broker/subAccount",
+    "data": null,
+    "parameters": [
+      "subAccountId",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccountApi": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccountApi",
+    "data": [
+      {
+        "apikey": "documented-key",
+        "subaccountId": "1",
+        "canTrade": true,
+        "marginTrade": true,
+        "futuresTrade": false
+      }
+    ],
+    "parameters": [
+      "subAccountId",
+      "timestamp",
+      "subAccountApiKey",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccountApi": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi",
+    "data": {
+      "subaccountId": "1",
+      "apiKey": "documented-key",
+      "secretKey": "documented-secret",
+      "canTrade": true,
+      "marginTrade": false,
+      "futuresTrade": false
+    },
+    "parameters": [
+      "subAccountId",
+      "canTrade",
+      "timestamp",
+      "publicKey",
+      "marginTrade",
+      "futuresTrade",
+      "recvWindow"
+    ]
+  },
+  "DELETE /sapi/v1/broker/subAccountApi": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "DELETE",
+    "path": "/sapi/v1/broker/subAccountApi",
+    "data": null,
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "DELETE /sapi/v1/broker/subAccountApi/ipRestriction/ipList": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "DELETE",
+    "path": "/sapi/v1/broker/subAccountApi/ipRestriction/ipList",
+    "data": {
+      "subaccountId": "1",
+      "apikey": "documented-key",
+      "ipList": [
+        "54.128.193.28"
+      ],
+      "updateTime": 1544433328000
+    },
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "timestamp",
+      "ipAddress",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccount/futures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccount/futures",
+    "data": {
+      "subaccountId": "1",
+      "enableFutures": true,
+      "updateTime": 1570801523523
+    },
+    "parameters": [
+      "subAccountId",
+      "futures",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccount/bnbBurn/marginInterest": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccount/bnbBurn/marginInterest",
+    "data": {
+      "subAccountId": 1,
+      "interestBNBBurn": true
+    },
+    "parameters": [
+      "subAccountId",
+      "interestBNBBurn",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccount/bnbBurn/spot": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccount/bnbBurn/spot",
+    "data": {
+      "subAccountId": 1,
+      "spotBNBBurn": true
+    },
+    "parameters": [
+      "subAccountId",
+      "spotBNBBurn",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccountApi/permission/universalTransfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi/permission/universalTransfer",
+    "data": {
+      "subaccountId": "1",
+      "apikey": "documented-key",
+      "canUniversalTransfer": true
+    },
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "canUniversalTransfer",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccount/bnbBurn/status": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccount/bnbBurn/status",
+    "data": {
+      "subAccountId": 1,
+      "spotBNBBurn": true,
+      "interestBNBBurn": true
+    },
+    "parameters": [
+      "subAccountId",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccountApi/ipRestriction": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccountApi/ipRestriction",
+    "data": {
+      "subaccountId": "1",
+      "ipRestrict": true,
+      "apikey": "documented-key",
+      "ipList": [
+        "54.128.193.23"
+      ],
+      "updateTime": 1544433328000
+    },
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/info": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "GET",
+    "path": "/sapi/v1/broker/info",
+    "data": {
+      "maxMakerCommission": 0.002,
+      "minMakerCommission": 0.001,
+      "maxTakerCommission": 0.002,
+      "minTakerCommission": 0.001,
+      "subAccountQty": 400,
+      "maxSubAccountQty": 1000
+    },
+    "parameters": [
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v2/broker/subAccountApi/ipRestriction": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/account",
+    "method": "POST",
+    "path": "/sapi/v2/broker/subAccountApi/ipRestriction",
+    "data": {
+      "status": "2",
+      "ipList": [
+        "69.210.67.14"
+      ],
+      "updateTime": 1636371437000,
+      "apiKey": "documented-key"
+    },
+    "parameters": [
+      "subAccountId",
+      "subAccountApiKey",
+      "status",
+      "timestamp",
+      "ipAddress",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/futures/accountTransfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "POST",
+    "path": "/sapi/v1/broker/futures/accountTransfer",
+    "data": {
+      "txnId": "2966662589"
+    },
+    "parameters": [
+      "subAccountId",
+      "asset",
+      "amount",
+      "type",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccount/depositHist": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccount/depositHist",
+    "data": [
+      {
+        "depositId": 1234567890123,
+        "subAccountId": "1",
+        "address": "0xddc66e4313fd6c737b6cae67cad90bb4e0ac7092",
+        "addressTag": "",
+        "amount": "139.04370000",
+        "coin": "USDT",
+        "insertTime": 1566791463000,
+        "transferType": 0,
+        "network": "ETH",
+        "status": 1,
+        "txId": "0x5759dfe9983a4c7619bce9bc736bb6c26f804091753bf66fa91e7cd5cfeebafd",
+        "sourceAddress": "xxxxxxxxxxxxxx",
+        "confirmTimes": "12/12",
+        "selfReturnStatus": 0,
+        "travelRuleStatus": 0
+      }
+    ],
+    "parameters": [
+      "timestamp",
+      "subAccountId",
+      "coin",
+      "status",
+      "startTime",
+      "endTime",
+      "limit",
+      "offset",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v2/broker/subAccount/depositHist": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v2/broker/subAccount/depositHist",
+    "data": [
+      {
+        "depositId": 1234567890123,
+        "subAccountId": "1",
+        "address": "0xddc66e4313fd6c737b6cae67cad90bb4e0ac7092",
+        "addressTag": "",
+        "amount": "139.04370000",
+        "coin": "USDT",
+        "insertTime": 1566791463000,
+        "transferType": 0,
+        "network": "ETH",
+        "status": 3,
+        "txId": "0x5759dfe9983a4c7619bce9bc736bb6c26f804091753bf66fa91e7cd5cfeebafd",
+        "sourceAddress": "xxxxxxxxxxxxxx",
+        "confirmTimes": "12/12",
+        "selfReturnStatus": 0,
+        "travelRuleStatus": 0
+      }
+    ],
+    "parameters": [
+      "depositId",
+      "subAccountId",
+      "timestamp",
+      "limit",
+      "offset",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v3/broker/subAccount/futuresSummary": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v3/broker/subAccount/futuresSummary",
+    "data": {
+      "data": [
+        {
+          "subAccountId": "1",
+          "totalInitialMargin": "0.0000000000",
+          "totalMaintenanceMargin": "0.0000000000",
+          "totalWalletBalance": "577.6799732808",
+          "totalUnrealizedProfit": "0.0000000000",
+          "totalMarginBalance": "577.6799732808",
+          "totalPositionInitialMargin": "0.0000000000",
+          "totalOpenOrderInitialMargin": "0.0000000000",
+          "futuresEnable": true,
+          "asset": "USD",
+          "totalWalletBalanceOfUsdt": "6.73252085685700",
+          "totalUnrealizedProfitOfUsdt": "0.00000000000000",
+          "totalMarginBalanceOfUsdt": "6.73252085685700"
+        }
+      ],
+      "timestamp": 1583127900000
+    },
+    "parameters": [
+      "futuresType",
+      "timestamp",
+      "subAccountId",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccount/marginSummary": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccount/marginSummary",
+    "data": {
+      "data": [
+        {
+          "marginEnable": true,
+          "subAccountId": "367537027503425913",
+          "totalAssetOfBtc": "0.03558520",
+          "totalLiabilityOfBtc": "0.34585210",
+          "totalNetAssetOfBtc": "0.23334213",
+          "marginLevel": "0.009"
+        }
+      ],
+      "timestamp": 1583127900000
+    },
+    "parameters": [
+      "timestamp",
+      "subAccountId",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccount/spotSummary": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccount/spotSummary",
+    "data": {
+      "data": [
+        {
+          "subAccountId": "367537027503425913",
+          "totalBalanceOfBtc": "0.0355852154360000"
+        }
+      ],
+      "timestamp": 1583432900000
+    },
+    "parameters": [
+      "timestamp",
+      "subAccountId",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/transfer/futures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/transfer/futures",
+    "data": {
+      "success": true,
+      "futuresType": 2,
+      "transfers": [
+        {
+          "from": "",
+          "to": "2",
+          "asset": "BTC",
+          "qty": "1",
+          "tranId": "12137888538",
+          "clientTranId": "a123",
+          "time": 1544433328000,
+          "fromId": "1",
+          "toId": "2"
+        }
+      ]
+    },
+    "parameters": [
+      "subAccountId",
+      "futuresType",
+      "timestamp",
+      "clientTranId",
+      "startTime",
+      "endTime",
+      "page",
+      "limit",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/transfer/futures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "POST",
+    "path": "/sapi/v1/broker/transfer/futures",
+    "data": {
+      "success": true,
+      "txnId": "2966662589",
+      "clientTranId": "a123"
+    },
+    "parameters": [
+      "futuresType",
+      "asset",
+      "amount",
+      "timestamp",
+      "fromId",
+      "toId",
+      "clientTranId",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/transfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/transfer",
+    "data": [
+      {
+        "fromId": "1",
+        "toId": "2",
+        "asset": "BTC",
+        "qty": "1",
+        "time": 1544433328000,
+        "txnId": "2966662589",
+        "clientTranId": "abc",
+        "status": "SUCCESS"
+      }
+    ],
+    "parameters": [
+      "timestamp",
+      "fromId",
+      "toId",
+      "clientTranId",
+      "showAllStatus",
+      "startTime",
+      "endTime",
+      "page",
+      "limit",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/transfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "POST",
+    "path": "/sapi/v1/broker/transfer",
+    "data": {
+      "txnId": "2966662589",
+      "clientTranId": "abc"
+    },
+    "parameters": [
+      "asset",
+      "amount",
+      "timestamp",
+      "fromId",
+      "toId",
+      "clientTranId",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/universalTransfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "GET",
+    "path": "/sapi/v1/broker/universalTransfer",
+    "data": [
+      {
+        "toId": "444016824578949121",
+        "asset": "BTC",
+        "qty": "0.1",
+        "time": 1544433328000,
+        "status": "SUCCESS",
+        "txnId": "12831078279",
+        "clientTranId": "abc",
+        "fromAccountType": "SPOT",
+        "toAccountType": "USDT_FUTURE"
+      }
+    ],
+    "parameters": [
+      "timestamp",
+      "fromId",
+      "toId",
+      "clientTranId",
+      "startTime",
+      "endTime",
+      "page",
+      "limit",
+      "showAllStatus",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/universalTransfer": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/asset",
+    "method": "POST",
+    "path": "/sapi/v1/broker/universalTransfer",
+    "data": {
+      "txnId": 12831061179,
+      "clientTranId": "abc"
+    },
+    "parameters": [
+      "fromAccountType",
+      "toAccountType",
+      "asset",
+      "amount",
+      "timestamp",
+      "fromId",
+      "toId",
+      "clientTranId",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccountApi/commission/coinFutures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccountApi/commission/coinFutures",
+    "data": [
+      {
+        "subAccountId": 1,
+        "pair": "BTCUSD",
+        "makerCommission": 450,
+        "takerCommission": 550
+      }
+    ],
+    "parameters": [
+      "subAccountId",
+      "pair",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccountApi/commission/coinFutures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi/commission/coinFutures",
+    "data": {
+      "subAccountId": 1,
+      "pair": "BTCUSD",
+      "makerAdjustment": 150,
+      "takerAdjustment": 150,
+      "makerCommission": 450,
+      "takerCommission": 550
+    },
+    "parameters": [
+      "subAccountId",
+      "pair",
+      "makerAdjustment",
+      "takerAdjustment",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccountApi/commission": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi/commission",
+    "data": {
+      "subAccountId": "1",
+      "makerCommission": 0.001,
+      "takerCommission": 0.002,
+      "marginMakerCommission": 0.001,
+      "marginTakerCommission": 0.002
+    },
+    "parameters": [
+      "subAccountId",
+      "makerCommission",
+      "takerCommission",
+      "timestamp",
+      "marginMakerCommission",
+      "marginTakerCommission",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/subAccountApi/commission/futures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "GET",
+    "path": "/sapi/v1/broker/subAccountApi/commission/futures",
+    "data": [
+      {
+        "subAccountId": 1,
+        "symbol": "BTCUSDT",
+        "makerCommission": 450,
+        "takerCommission": 550
+      }
+    ],
+    "parameters": [
+      "subAccountId",
+      "symbol",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "POST /sapi/v1/broker/subAccountApi/commission/futures": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "POST",
+    "path": "/sapi/v1/broker/subAccountApi/commission/futures",
+    "data": {
+      "subAccountId": 1,
+      "symbol": "BTCUSDT",
+      "makerAdjustment": 150,
+      "takerAdjustment": 150,
+      "makerCommission": 450,
+      "takerCommission": 550
+    },
+    "parameters": [
+      "subAccountId",
+      "symbol",
+      "makerAdjustment",
+      "takerAdjustment",
+      "timestamp",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/rebate/recentRecord": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "GET",
+    "path": "/sapi/v1/broker/rebate/recentRecord",
+    "data": [
+      {
+        "subaccountId": "1",
+        "income": "0.02063898",
+        "asset": "BTC",
+        "symbol": "ETHBTC",
+        "tradeId": 123456,
+        "time": 1544433328000,
+        "status": 1
+      }
+    ],
+    "parameters": [
+      "timestamp",
+      "subAccountId",
+      "startTime",
+      "endTime",
+      "page",
+      "size",
+      "recvWindow"
+    ]
+  },
+  "GET /sapi/v1/broker/rebate/futures/recentRecord": {
+    "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-caas/api/rest-api/fee",
+    "method": "GET",
+    "path": "/sapi/v1/broker/rebate/futures/recentRecord",
+    "data": [
+      {
+        "subaccountId": "1",
+        "income": "0.02063898",
+        "asset": "USDT",
+        "symbol": "ETHUSDT",
+        "tradeId": 123456,
+        "time": 1544433328000,
+        "status": 1
+      }
+    ],
+    "parameters": [
+      "futuresType",
+      "startTime",
+      "endTime",
+      "timestamp",
+      "page",
+      "size",
+      "filterResult",
+      "recvWindow"
+    ]
+  }
+}

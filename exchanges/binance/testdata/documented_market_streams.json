@@ -1,0 +1,66 @@
+[
+  {
+    "source": "https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-streams.md#reference-price-streams",
+    "asset": "spot",
+    "model": "SpotReferencePriceStream",
+    "data": {
+      "stream": "bazusd@referencePrice",
+      "data": {
+        "e": "referencePrice",
+        "s": "BAZUSD",
+        "r": "1.00",
+        "t": 1770313263917
+      }
+    }
+  },
+  {
+    "source": "https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-streams.md#block-trade-streams",
+    "asset": "spot",
+    "model": "SpotBlockTradeStream",
+    "data": {
+      "stream": "bnbbtc@blockTrade",
+      "data": {
+        "e": "blockTrade",
+        "E": 1772506983582,
+        "s": "BNBBTC",
+        "t": 582,
+        "p": "0.052",
+        "q": "5838",
+        "T": 1772506983321,
+        "m": true
+      }
+    }
+  },
+  {
+    "source": "https://github.com/binance/binance-connector-python/blob/506e738ade8b53056db177a37189077de1004ff1/clients/derivatives_trading_usds_futures/tests/unit/websocket_streams/test_public_api_ws_streams.py",
+    "asset": "usdtmarginedfutures",
+    "model": "FuturesRPIDepth",
+    "provenance": "Official SDK example; placeholder E/T timestamps replaced with contemporary milliseconds accepted by types.Time.",
+    "data": {
+      "stream": "bnbusdt@rpiDepth@500ms",
+      "data": {
+        "e": "depthUpdate",
+        "E": 1750515742297,
+        "T": 1750515742296,
+        "s": "BNBUSDT",
+        "U": 157,
+        "u": 160,
+        "pu": 149,
+        "b": [
+          [
+            "0.0024",
+            "10"
+          ]
+        ],
+        "a": [
+          [
+            "0.0026",
+            "100"
+          ]
+        ],
+        "ps": "BTCUSDT",
+        "st": 1
+      }
+    }
+  }
+]

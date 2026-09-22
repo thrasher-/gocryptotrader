@@ -4,8 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+	"uuid"
 
-	"github.com/gofrs/uuid"
 	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/dispatch"
@@ -177,14 +177,6 @@ type Movement struct {
 	// exchange as they might restrict the amount of information being passed
 	// back from either a REST request or websocket update
 	FullBookSideConsumed bool
-}
-
-// SideAmounts define the amounts total for the Levels, total value in
-// quotation and the cumulative base amounts.
-type SideAmounts struct {
-	Levels     int64
-	QuoteValue float64
-	BaseAmount float64
 }
 
 // LevelsArrayPriceAmount used to unmarshal orderbook levels from JSON slice of arrays

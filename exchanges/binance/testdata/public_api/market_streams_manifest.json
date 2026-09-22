@@ -1,0 +1,198 @@
+{
+  "spot-current": {
+    "endpoint": "wss://stream.binance.com:9443/stream",
+    "capturedAt": "2026-09-21T04:21:22.678277184Z",
+    "subscribed": [
+      "btcusdt@aggTrade",
+      "btcusdt@trade",
+      "btcusdt@depth@100ms",
+      "btcusdt@depth5@100ms",
+      "btcusdt@kline_1m",
+      "btcusdt@miniTicker",
+      "btcusdt@ticker",
+      "btcusdt@bookTicker",
+      "btcusdt@avgPrice",
+      "!miniTicker@arr",
+      "!ticker@arr",
+      "btcusdt@ticker_1h"
+    ],
+    "observed": [
+      "!miniTicker@arr",
+      "btcusdt@aggTrade",
+      "btcusdt@avgPrice",
+      "btcusdt@bookTicker",
+      "btcusdt@depth5@100ms",
+      "btcusdt@depth@100ms",
+      "btcusdt@kline_1m",
+      "btcusdt@miniTicker",
+      "btcusdt@ticker",
+      "btcusdt@ticker_1h",
+      "btcusdt@trade"
+    ],
+    "unobserved": [
+      "!ticker@arr"
+    ],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "7c15a269dca532f7b51b99c2bca7cb4222c2ff1ec48f7065d636e61991356c4e",
+    "fixtureSHA256": "5703a6026b0bd0272e6007b9916db0f06b8ef5158a1a09614208bf1d57608cc1",
+    "fixture": "spot_streams.json",
+    "transformation": "Two frames per observed stream retained. Arrays retain each distinct recursive field shape and stream type, plus BTCUSDT and BTCUSD_PERP when present. No object fields are removed."
+  },
+  "um-public-current": {
+    "endpoint": "wss://fstream.binance.com/public/stream",
+    "capturedAt": "2026-09-21T04:21:22.678118494Z",
+    "subscribed": [
+      "btcusdt@depth@100ms",
+      "btcusdt@depth5@100ms",
+      "btcusdt@bookTicker",
+      "!bookTicker"
+    ],
+    "observed": [
+      "!bookTicker",
+      "btcusdt@bookTicker",
+      "btcusdt@depth5@100ms",
+      "btcusdt@depth@100ms"
+    ],
+    "unobserved": [],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "fdcc878395ee862f8f54b9c91fc771876ea065ee822989880a28c4c98decbf7c",
+    "fixtureSHA256": "a518125d9f214ec9f1f76b689698b4b77e5733cb5d8ef7a467f7e8a944aadd73",
+    "fixture": "um-public_streams.json",
+    "transformation": "Two frames per observed stream retained. Arrays retain each distinct recursive field shape and stream type, plus BTCUSDT and BTCUSD_PERP when present. No object fields are removed."
+  },
+  "um-market-current": {
+    "endpoint": "wss://fstream.binance.com/market/stream",
+    "capturedAt": "2026-09-21T04:21:22.678173715Z",
+    "subscribed": [
+      "btcusdt@aggTrade",
+      "btcusdt@markPrice@1s",
+      "!markPrice@arr@1s",
+      "btcusdt@kline_1m",
+      "btcusdt_perpetual@continuousKline_1m",
+      "btcusdt@miniTicker",
+      "btcusdt@ticker",
+      "!ticker@arr",
+      "!miniTicker@arr",
+      "btcusd@assetIndex",
+      "!assetIndex@arr",
+      "!contractInfo",
+      "!forceOrder@arr",
+      "btcusdt@forceOrder",
+      "defiusdt@compositeIndex"
+    ],
+    "observed": [
+      "!assetIndex@arr",
+      "!forceOrder@arr",
+      "!markPrice@arr@1s",
+      "!miniTicker@arr",
+      "!ticker@arr",
+      "btcusd@assetIndex",
+      "btcusdt@aggTrade",
+      "btcusdt@kline_1m",
+      "btcusdt@markPrice@1s",
+      "btcusdt@miniTicker",
+      "btcusdt@ticker",
+      "btcusdt_perpetual@continuousKline_1m"
+    ],
+    "unobserved": [
+      "!contractInfo",
+      "btcusdt@forceOrder",
+      "defiusdt@compositeIndex"
+    ],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "749f209e028ff5f0cc509d2d8c7b5faeccabc5119f16a257de03d6809ea6e115",
+    "fixtureSHA256": "aa7d2171818da090ddc7b28715f3c620317f1fb3e3fe06da7ddc907729f7892a",
+    "fixture": "um-market_streams.json",
+    "transformation": "Two frames per observed stream retained. Arrays retain each distinct recursive field shape and stream type, plus BTCUSDT and BTCUSD_PERP when present. No object fields are removed."
+  },
+  "coin-current": {
+    "endpoint": "wss://dstream.binance.com/stream",
+    "capturedAt": "2026-09-21T04:21:22.678122079Z",
+    "subscribed": [
+      "btcusd_perp@aggTrade",
+      "btcusd_perp@depth@100ms",
+      "btcusd_perp@depth5@100ms",
+      "btcusd_perp@bookTicker",
+      "!bookTicker",
+      "btcusd_perp@markPrice@1s",
+      "btcusd@markPrice@1s",
+      "btcusd@indexPrice@1s",
+      "btcusd_perp@kline_1m",
+      "btcusd_perpetual@continuousKline_1m",
+      "btcusd@indexPriceKline_1m",
+      "btcusd_perp@markPriceKline_1m",
+      "btcusd_perp@miniTicker",
+      "btcusd_perp@ticker",
+      "!ticker@arr",
+      "!miniTicker@arr",
+      "!contractInfo",
+      "!forceOrder@arr"
+    ],
+    "observed": [
+      "!bookTicker",
+      "!forceOrder@arr",
+      "!miniTicker@arr",
+      "!ticker@arr",
+      "btcusd@indexPriceKline_1m",
+      "btcusd_perp@aggTrade",
+      "btcusd_perp@bookTicker",
+      "btcusd_perp@depth5@100ms",
+      "btcusd_perp@depth@100ms",
+      "btcusd_perp@kline_1m",
+      "btcusd_perp@markPrice@1s",
+      "btcusd_perp@markPriceKline_1m",
+      "btcusd_perp@miniTicker",
+      "btcusd_perp@ticker",
+      "btcusd_perpetual@continuousKline_1m"
+    ],
+    "unobserved": [
+      "!contractInfo",
+      "btcusd@indexPrice@1s",
+      "btcusd@markPrice@1s"
+    ],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "11e8538bfdefe38f87248bd29dc4c827666c91874451c04369a7c23742fd749b",
+    "fixtureSHA256": "1e66e79df2c7e70c6b535c62c24e3f495a027f0a13853cd3d3035d7e0e3e0cc9",
+    "fixture": "coin_streams.json",
+    "transformation": "Two frames per observed stream retained. Arrays retain each distinct recursive field shape and stream type, plus BTCUSDT and BTCUSD_PERP when present. No object fields are removed."
+  },
+  "spot-extra": {
+    "endpoint": "wss://stream.binance.com:9443/stream",
+    "capturedAt": "2026-09-21T05:05:27.403460272Z",
+    "subscribed": [
+      "btcusdt@blockTrade",
+      "btcusdt@referencePrice",
+      "bnbbtc@blockTrade",
+      "!ticker@arr"
+    ],
+    "observed": [
+      "btcusdt@referencePrice"
+    ],
+    "unobserved": [
+      "!ticker@arr",
+      "bnbbtc@blockTrade",
+      "btcusdt@blockTrade"
+    ],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "b9a82e12708ecbddfda82bf536c45eeeffa3c6291a7a84b09f278412d27d192b",
+    "fixtureSHA256": "64415d4c81a13c62175ecfd02e8d45184088df6aee5bf259b270cbe1e4f32ccd",
+    "fixture": "spot-extra_streams.json",
+    "transformation": "Acknowledgements excluded; all captured event values and fields retained."
+  },
+  "um-rpi": {
+    "endpoint": "wss://fstream.binance.com/public/stream",
+    "capturedAt": "2026-09-21T05:05:27.403433647Z",
+    "subscribed": [
+      "btcusdt@rpiDepth@500ms"
+    ],
+    "observed": [
+      "btcusdt@rpiDepth@500ms"
+    ],
+    "unobserved": [],
+    "stopReason": "30-second capture window ended",
+    "rawCaptureSHA256": "db2979090d679ab3d40f0431e965677e6f53e279f4d9e8798cee1c2e53332699",
+    "fixtureSHA256": "86465ad850fa8ace28e9a830393fa9271f52616927f3b1a74cf176a415f8adcb",
+    "fixture": "um-rpi_streams.json",
+    "transformation": "Acknowledgements excluded; all captured event values and fields retained."
+  }
+}
