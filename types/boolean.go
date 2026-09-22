@@ -10,9 +10,9 @@ type Boolean bool
 // UnmarshalJSON implements json.Unmarshaler and converts the JSON boolean representation into a Boolean type
 func (b *Boolean) UnmarshalJSON(data []byte) error {
 	switch string(data) {
-	case "1", `"1"`, "true", `"true"`:
+	case "1", `"1"`, "true", `"true"`, `"True"`, `"TRUE"`:
 		*b = Boolean(true)
-	case "0", `"0"`, "false", `"false"`:
+	case "0", `"0"`, "false", `"false"`, `"False"`, `"FALSE"`:
 		*b = Boolean(false)
 	default:
 		return errInvalidBooleanValue

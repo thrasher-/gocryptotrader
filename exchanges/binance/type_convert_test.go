@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 )
 
@@ -109,7 +110,7 @@ func TestAccountBalanceResponse_UnmarshalJSON(t *testing.T) {
 	var single AccountBalanceResponse
 	require.NoError(t, json.Unmarshal([]byte(`{"asset":"BTC","totalWalletBalance":"1.5"}`), &single))
 	require.Len(t, single, 1, "single object input must unmarshal to one element")
-	assert.Equal(t, "BTC", single[0].Asset, "asset should match")
+	assert.Equal(t, currency.BTC, single[0].Asset, "asset should match")
 
 	var bad AccountBalanceResponse
 	assert.Error(t, json.Unmarshal([]byte(`"oops"`), &bad), "invalid input should error")

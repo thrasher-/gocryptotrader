@@ -1,0 +1,64 @@
+{
+ "routes": {
+  "/initial/fapi/v1/depth": {
+   "GET": [
+    {
+     "data": {
+      "lastUpdateId": 100,
+      "E": 1789953400000,
+      "T": 1789953400000,
+      "bids": [
+       [
+        "100",
+        "2"
+       ],
+       [
+        "99",
+        "3"
+       ]
+      ],
+      "asks": [
+       [
+        "110",
+        "4"
+       ]
+      ]
+     },
+     "queryString": "limit=1000&symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  },
+  "/recovery/fapi/v1/depth": {
+   "GET": [
+    {
+     "data": {
+      "lastUpdateId": 200,
+      "E": 1789953400000,
+      "T": 1789953400000,
+      "bids": [
+       [
+        "100",
+        "2"
+       ],
+       [
+        "99",
+        "3"
+       ]
+      ],
+      "asks": [
+       [
+        "110",
+        "4"
+       ]
+      ]
+     },
+     "queryString": "limit=1000&symbol=BTCUSDT",
+     "bodyParams": "",
+     "headers": {}
+    }
+   ]
+  }
+ }
+}

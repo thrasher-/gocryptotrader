@@ -2,7 +2,7 @@ package binance
 
 import (
 	"context"
-	"encoding/hex"
+	"crypto/ed25519"
 	"fmt"
 	"net/http"
 	"slices"
@@ -12,7 +12,6 @@ import (
 
 	gws "github.com/gorilla/websocket"
 	"github.com/thrasher-corp/gocryptotrader/common"
-	"github.com/thrasher-corp/gocryptotrader/common/crypto"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/order/limits"
@@ -21,7 +20,6 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
-	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
@@ -29,15 +27,6 @@ const (
 )
 
 const spotWebsocketAPI = "Spot-Websocket-API"
-
-// websocket request status codes
-var websocketStatusCodes = map[int64]string{
-	400: "request failed",
-	403: "request blocked",
-	409: "request partially failed but also partially succeeded",
-	418: "auto-banned for repeated violation of rate limits",
-	419: "exceeded API request rate limit",
-}
 
 // WsConnectAPI creates a new websocket connection to API server
 func (e *Exchange) WsConnectAPI(ctx context.Context, conn websocket.Connection) (err error) {
@@ -62,15 +51,6 @@ func (e *Exchange) WsConnectAPI(ctx context.Context, conn websocket.Connection) 
 		Delay:             pingDelay,
 	})
 
-	// Spot user data is delivered on this connection since Binance retired the
-	// /api/v3/userDataStream listen keys. The signature variant is used because it works
-	// with HMAC keys, whereas userDataStream.subscribe requires an Ed25519 session logon.
-	if e.Websocket.CanUseAuthenticatedEndpoints() {
-		if _, err := e.WsSubscribeUserDataStreamWithSignature(); err != nil {
-			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys, "%s unable to subscribe to the user data stream: %s", e.Name, err)
-		}
-	}
 	return nil
 }
 
@@ -80,73 +60,70 @@ func (e *Exchange) IsAPIStreamConnected() bool {
 	return err == nil
 }
 
-// wsHandleSpotAPIData routes API response data.
-func (e *Exchange) wsHandleSpotAPIData(_ context.Context, conn websocket.Connection, respRaw []byte) error {
-	result := struct {
-		Result json.RawMessage `json:"result"`
-		ID     string          `json:"id"`
-		Data   json.RawMessage `json:"data"`
-	}{}
-	if err := json.Unmarshal(respRaw, &result); err != nil {
+// wsAuthenticateSpotAPI runs after the manager registers the connection and starts
+// its reader, so the signed subscription can receive its acknowledgement.
+func (e *Exchange) wsAuthenticateSpotAPI(ctx context.Context, conn websocket.Connection) error {
+	params := map[string]any{"timestamp": time.Now().UnixMilli()}
+	_, signature, err := e.SignRequest(params)
+	if err != nil {
 		return err
 	}
-	if result.ID != "" {
-		return conn.RequireMatchWithData(result.ID, respRaw)
-	}
-	return fmt.Errorf("unhandled stream data %s", string(respRaw))
+	params["signature"] = signature
+	var response *UserDataStreamSubscriptionResponse
+	return e.sendWsRequest(ctx, conn, "userDataStream.subscribe.signature", params, &response)
 }
 
-// SendWsRequest sends websocket endpoint request through the websocket connection
-func (e *Exchange) SendWsRequest(method string, param, result any) error {
+// wsHandleSpotAPIData routes API replies and the documented user-data envelope.
+func (e *Exchange) wsHandleSpotAPIData(ctx context.Context, conn websocket.Connection, data []byte) error {
+	var envelope struct {
+		ID    json.RawMessage `json:"id"`
+		Event json.RawMessage `json:"event"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return err
+	}
+	if len(envelope.Event) > 0 && string(envelope.Event) != "null" {
+		return e.wsHandleData(ctx, conn, data)
+	}
+	if len(envelope.ID) > 0 && string(envelope.ID) != "null" {
+		return matchSubscriptionResponse(conn, envelope.ID, data)
+	}
+	return fmt.Errorf("%w: %s", errUnsupportedChannel, data)
+}
+
+// SendWsRequest sends a Spot WebSocket API request.
+func (e *Exchange) SendWsRequest(method string, params, result any) error {
 	conn, err := e.Websocket.GetConnection(spotWebsocketAPI)
 	if err != nil {
 		return err
 	}
-	input := &struct {
-		ID     string `json:"id"`
-		Method string `json:"method"`
-		Params any    `json:"params"`
-	}{
-		ID:     e.MessageID(),
-		Method: method,
-		Params: param,
-	}
-	respRaw, err := conn.SendMessageReturnResponse(context.Background(), request.UnAuth, input.ID, input)
+	return e.sendWsRequest(context.Background(), conn, method, params, result)
+}
+
+func (e *Exchange) sendWsRequest(ctx context.Context, conn websocket.Connection, method string, params, result any) error {
+	input := &WsAPIRequest{ID: e.MessageID(), Method: method, Params: params}
+	data, err := conn.SendMessageReturnResponse(ctx, request.UnAuth, input.ID, input)
 	if err != nil {
 		return err
 	}
-	resp := &struct {
-		ID         string             `json:"id"`
-		Status     int64              `json:"status"`
-		Result     any                `json:"result"`
-		Error      *WebsocketAPIError `json:"error"`
-		Ratelimits []RateLimitItem    `json:"ratelimits,omitempty"`
-	}{
-		Result: result,
-	}
-	err = json.Unmarshal(respRaw, &resp)
-	if err != nil {
+	var response WsAPIResponse
+	if err := json.Unmarshal(data, &response); err != nil {
 		return err
 	}
-	if resp.Status != 200 {
-		if resp.Error != nil {
-			return fmt.Errorf("status code: %d error code: %d msg: %s", resp.Status, resp.Error.Code, resp.Error.Message)
-		}
-		switch resp.Status {
-		case 400, 403, 409, 418, 419:
-			return fmt.Errorf("status code: %d, msg: %s", resp.Status, websocketStatusCodes[resp.Status])
-		default:
-			switch {
-			case resp.Status >= 500 && resp.Error != nil:
-				return fmt.Errorf("error code: %d msg: %s", resp.Error.Code, resp.Error.Message)
-			case resp.Status >= 500:
-				return fmt.Errorf("status code: %d, msg: internal server error", resp.Status)
-			default:
-				return fmt.Errorf("status code: %d, msg: request failed", resp.Status)
-			}
-		}
+	if err := apiResponseError(response.Error); err != nil {
+		return err
 	}
-	return nil
+	if response.Status != http.StatusOK {
+		return fmt.Errorf("%w: websocket status %d", errAPIResponse, response.Status)
+	}
+	// Some methods, including referencePrice, return errors in result with status 200.
+	if err := apiResponseError(response.Result); err != nil {
+		return err
+	}
+	if result == nil {
+		return nil
+	}
+	return json.Unmarshal(response.Result, result)
 }
 
 // GetWsOrderbook returns full orderbook information
@@ -267,14 +244,23 @@ func (e *Exchange) tickerDataChange(method string, arg *PriceChangeRequest) ([]*
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.Symbol == "" && len(arg.Symbols) == 0 {
-		return nil, currency.ErrCurrencyPairsEmpty
+	params := spotSymbolParams(currency.EMPTYPAIR, arg.Symbols, arg.SymbolStatus)
+	if arg.Symbol != "" {
+		params["symbol"] = arg.Symbol
+	}
+	if arg.TickerType != "" {
+		params["type"] = arg.TickerType
+	}
+	if method == "ticker.tradingDay" && arg.Timezone != "" {
+		params["timeZone"] = arg.Timezone
 	}
 	var resp PriceChanges
-	return resp, e.SendWsRequest(method, arg, &resp)
+	return resp, e.SendWsRequest(method, params, &resp)
 }
 
-// WindowSizeToString converts a duration instance and returns a string.
+// WindowSizeToString converts a ticker window to Binance's duration notation.
+
+// WindowSizeToString formats a supported rolling-window duration.
 func (e *Exchange) WindowSizeToString(windowSize time.Duration) string {
 	switch {
 	case windowSize/(time.Hour*24) > 0:
@@ -288,12 +274,13 @@ func (e *Exchange) WindowSizeToString(windowSize time.Duration) string {
 }
 
 // GetSymbolPriceTicker represents a symbol ticker item information.
-func (e *Exchange) GetSymbolPriceTicker(symbol currency.Pair) ([]*SymbolTickerItem, error) {
-	if symbol.IsEmpty() {
-		return nil, currency.ErrCurrencyPairsEmpty
+func (e *Exchange) GetSymbolPriceTicker(symbol currency.Pair, options ...*WsMarketSymbolsRequest) ([]*SymbolTickerItem, error) {
+	params := spotSymbolParams(symbol, nil, "")
+	if len(options) != 0 && options[0] != nil {
+		params = spotSymbolParams(symbol, options[0].Symbols, options[0].SymbolStatus)
 	}
 	var resp SymbolTickers
-	return resp, e.SendWsRequest("ticker.price", map[string]string{"symbol": symbol.String()}, &resp)
+	return resp, e.SendWsRequest("ticker.price", params, &resp)
 }
 
 // GetWsRollingWindowPriceChanges retrieves rolling window price change statistics with a custom window.
@@ -302,38 +289,41 @@ func (e *Exchange) GetWsRollingWindowPriceChanges(arg *WsRollingWindowPriceReque
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
 	}
-	if arg.Symbol == "" && len(arg.Symbols) == 0 {
-		return nil, currency.ErrCurrencyPairEmpty
+	params := spotSymbolParams(currency.EMPTYPAIR, arg.Symbols, arg.SymbolStatus)
+	if arg.Symbol != "" {
+		params["symbol"] = arg.Symbol
 	}
-	arg.WindowSize = e.WindowSizeToString(arg.WindowSizeDuration)
+	if arg.TickerType != "" {
+		params["type"] = arg.TickerType
+	}
+	window := arg.WindowSize
+	if arg.WindowSizeDuration != 0 {
+		window = e.WindowSizeToString(arg.WindowSizeDuration)
+	}
+	if window != "" {
+		params["windowSize"] = window
+	}
 	var resp PriceChanges
-	return resp, e.SendWsRequest("ticker", arg, &resp)
+	return resp, e.SendWsRequest("ticker", params, &resp)
 }
 
 // GetWsSymbolOrderbookTicker retrieves the current best price and quantity on the order book.
-func (e *Exchange) GetWsSymbolOrderbookTicker(symbols currency.Pairs) ([]*WsOrderbookTicker, error) {
-	if len(symbols) == 0 || (len(symbols) == 1 && symbols[0].IsEmpty()) {
-		return nil, currency.ErrCurrencyPairsEmpty
+func (e *Exchange) GetWsSymbolOrderbookTicker(symbols currency.Pairs, symbolStatus ...string) ([]*WsOrderbookTicker, error) {
+	for _, symbol := range symbols {
+		if symbol.IsEmpty() {
+			return nil, currency.ErrCurrencyPairsEmpty
+		}
 	}
-	var (
-		symbolString  string
-		symbolsString []string
-	)
-	if len(symbols) > 1 {
-		symbolsString = symbols.Strings()
-	} else {
-		symbolString = symbols[0].String()
+	status := ""
+	if len(symbolStatus) != 0 {
+		status = symbolStatus[0]
 	}
-	arg := &struct {
-		Symbol  string   `json:"symbol,omitempty"`
-		Symbols []string `json:"symbols,omitempty"`
-	}{
-		Symbols: symbolsString,
-		Symbol:  symbolString,
+	params := spotSymbolParams(currency.EMPTYPAIR, symbols, status)
+	if len(symbols) == 1 {
+		params = spotSymbolParams(symbols[0], nil, status)
 	}
-
 	var resp WsOrderbookTickers
-	return resp, e.SendWsRequest("ticker.book", arg, &resp)
+	return resp, e.SendWsRequest("ticker.book", params, &resp)
 }
 
 func (e *Exchange) getSignature(arg any) (apiKey, signature string, err error) {
@@ -346,7 +336,11 @@ func (e *Exchange) getSignature(arg any) (apiKey, signature string, err error) {
 
 // SignRequest creates a signature given params map
 func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string, err error) {
-	creds, err := e.GetCredentials(context.Background())
+	return e.signRequest(context.Background(), params)
+}
+
+func (e *Exchange) signRequest(ctx context.Context, params map[string]any) (apiKey, signature string, err error) {
+	creds, err := e.GetCredentials(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -375,14 +369,8 @@ func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string,
 		payload.WriteByte('=')
 		payload.WriteString(signatureValue(params[k]))
 	}
-	var hmacSigned []byte
-	hmacSigned, err = crypto.GetHMAC(crypto.HashSHA256,
-		[]byte(payload.String()),
-		[]byte(creds.Secret))
-	if err != nil {
-		return "", "", err
-	}
-	return creds.Key, hex.EncodeToString(hmacSigned), nil
+	signature, err = signPayload([]byte(payload.String()), creds.Secret)
+	return creds.Key, signature, err
 }
 
 // sortMapKeys returns the map's keys in ascending order, which is the order Binance
@@ -437,26 +425,31 @@ func (e *Exchange) WsPlaceNewOrder(arg *TradeOrderRequest) (*TradeOrderResponse,
 
 // ValidatePlaceNewOrderRequest tests whether the request order is valid or not.
 func (e *Exchange) ValidatePlaceNewOrderRequest(arg *TradeOrderRequest) error {
+	_, err := e.WsTestNewOrder(arg, false)
+	return err
+}
+
+// WsTestNewOrder validates an order and optionally returns commission estimates.
+func (e *Exchange) WsTestNewOrder(arg *TradeOrderRequest, computeCommissionRates bool) (*TestOrderResponse, error) {
 	if err := common.NilGuard(arg); err != nil {
-		return err
+		return nil, err
 	}
 	if arg.Symbol.IsEmpty() {
-		return currency.ErrCurrencyPairEmpty
+		return nil, currency.ErrCurrencyPairEmpty
 	}
 	if arg.Side == "" {
-		return order.ErrSideIsInvalid
+		return nil, order.ErrSideIsInvalid
 	}
 	if arg.OrderType == "" {
-		return order.ErrTypeIsInvalid
+		return nil, order.ErrTypeIsInvalid
 	}
-	arg.Timestamp = time.Now().UnixMilli()
-	apiKey, signature, err := e.getSignature(arg)
+	params, err := e.ToMap(arg)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	arg.APIKey = apiKey
-	arg.Signature = signature
-	return e.SendWsRequest("order.test", arg, &struct{}{})
+	params["computeCommissionRates"] = computeCommissionRates
+	var response *TestOrderResponse
+	return response, e.sendSignedWsRequest("order.test", params, &response)
 }
 
 // WsQueryOrder to query a trade order
@@ -534,7 +527,7 @@ func (e *Exchange) WsCancelAndReplaceTradeOrder(arg *WsCancelAndReplaceRequest) 
 	return resp, e.SendWsRequest("order.cancelReplace", &arg, &resp)
 }
 
-func (e *Exchange) openOrdersFilter(symbol currency.Pair, recvWindow int64) (map[string]any, error) {
+func (e *Exchange) openOrdersFilter(symbol currency.Pair, recvWindow float64) (map[string]any, error) {
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -554,7 +547,7 @@ func (e *Exchange) openOrdersFilter(symbol currency.Pair, recvWindow int64) (map
 }
 
 // WsCurrentOpenOrders retrieves list of open orders.
-func (e *Exchange) WsCurrentOpenOrders(symbol currency.Pair, recvWindow int64) ([]*TradeOrder, error) {
+func (e *Exchange) WsCurrentOpenOrders(symbol currency.Pair, recvWindow float64) ([]*TradeOrder, error) {
 	arg, err := e.openOrdersFilter(symbol, recvWindow)
 	if err != nil {
 		return nil, err
@@ -571,7 +564,7 @@ func (e *Exchange) WsCurrentOpenOrders(symbol currency.Pair, recvWindow int64) (
 }
 
 // WsCancelOpenOrders represents an open orders list
-func (e *Exchange) WsCancelOpenOrders(symbol currency.Pair, recvWindow int64) ([]*WsCancelOrder, error) {
+func (e *Exchange) WsCancelOpenOrders(symbol currency.Pair, recvWindow float64) ([]*WsCancelOrder, error) {
 	arg, err := e.openOrdersFilter(symbol, recvWindow)
 	if err != nil {
 		return nil, err
@@ -602,11 +595,11 @@ func (e *Exchange) WsPlaceOCOOrder(arg *PlaceOCOOrderRequest) (*OCOOrder, error)
 	if arg.Quantity <= 0 {
 		return nil, limits.ErrAmountBelowMin
 	}
-	if arg.StopPrice <= 0 {
-		return nil, fmt.Errorf("stopPrice: %w", limits.ErrPriceBelowMin)
-	}
-	if arg.TrailingDelta <= 0 {
+	if arg.TrailingDelta < 0 {
 		return nil, errInvalidTrailingDelta
+	}
+	if arg.StopPrice <= 0 && arg.TrailingDelta == 0 {
+		return nil, fmt.Errorf("stopPrice: %w", limits.ErrPriceBelowMin)
 	}
 	arg.Timestamp = time.Now().UnixMilli()
 	apiKey, signature, err := e.getSignature(arg)
@@ -620,12 +613,13 @@ func (e *Exchange) WsPlaceOCOOrder(arg *PlaceOCOOrderRequest) (*OCOOrder, error)
 }
 
 // WsQueryOCOOrder execution status of an OCO.
-func (e *Exchange) WsQueryOCOOrder(origClientOrderID string, orderListID, recvWindow int64) (*OCOOrderInfo, error) {
-	if origClientOrderID == "" {
-		return nil, fmt.Errorf("origClientOrderID %w", order.ErrOrderIDNotSet)
+func (e *Exchange) WsQueryOCOOrder(origClientOrderID string, orderListID int64, recvWindow float64) (*OCOOrderInfo, error) {
+	if origClientOrderID == "" && orderListID == 0 {
+		return nil, order.ErrOrderIDNotSet
 	}
-	params := map[string]any{
-		"origClientOrderId": origClientOrderID,
+	params := map[string]any{}
+	if origClientOrderID != "" {
+		params["origClientOrderId"] = origClientOrderID
 	}
 	if orderListID != 0 {
 		params["orderListId"] = orderListID
@@ -645,21 +639,30 @@ func (e *Exchange) WsQueryOCOOrder(origClientOrderID string, orderListID, recvWi
 }
 
 // WsCancelOCOOrder cancel an active OCO order.
-func (e *Exchange) WsCancelOCOOrder(symbol currency.Pair, orderListID, listClientOrderID, newClientOrderID string) (*OCOOrder, error) {
+func (e *Exchange) WsCancelOCOOrder(symbol currency.Pair, orderListID, listClientOrderID, newClientOrderID string, recvWindow ...float64) (*OCOOrder, error) {
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
-	if orderListID == "" {
+	if orderListID == "" && listClientOrderID == "" {
 		return nil, fmt.Errorf("orderListID %w", order.ErrOrderIDNotSet)
 	}
-	params := make(map[string]any)
+	params := spotSymbolParams(symbol, nil, "")
 	if listClientOrderID != "" {
 		params["listClientOrderId"] = listClientOrderID
 	}
 	if newClientOrderID != "" {
 		params["newClientOrderId"] = newClientOrderID
 	}
-	params["orderListId"] = orderListID
+	if orderListID != "" {
+		id, err := strconv.ParseUint(orderListID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", errInvalidOrderListID, err)
+		}
+		params["orderListId"] = id
+	}
+	if len(recvWindow) > 0 && recvWindow[0] != 0 {
+		params["recvWindow"] = recvWindow[0]
+	}
 	params["timestamp"] = time.Now().UnixMilli()
 	apiKey, signature, err := e.SignRequest(params)
 	if err != nil {
@@ -672,7 +675,7 @@ func (e *Exchange) WsCancelOCOOrder(symbol currency.Pair, orderListID, listClien
 }
 
 // WsCurrentOpenOCOOrders query execution status of all open OCOs.
-func (e *Exchange) WsCurrentOpenOCOOrders(recvWindow int64) ([]*OCOOrder, error) {
+func (e *Exchange) WsCurrentOpenOCOOrders(recvWindow float64) ([]*OCOOrder, error) {
 	params := make(map[string]any)
 	if recvWindow != 0 {
 		params["recvWindow"] = recvWindow
@@ -718,30 +721,31 @@ func (e *Exchange) WsPlaceNewSOROrder(arg *WsOSRPlaceOrderRequest) ([]*OSROrder,
 
 // WsTestNewOrderUsingSOR test new order creation and signature/recvWindow using smart order routing (SOR).
 // Creates and validates a new order but does not send it into the matching engine.
-func (e *Exchange) WsTestNewOrderUsingSOR(arg *WsOSRPlaceOrderRequest) error {
+func (e *Exchange) WsTestNewOrderUsingSOR(arg *WsOSRPlaceOrderRequest, computeCommissionRates ...bool) (*TestOrderResponse, error) {
 	if err := common.NilGuard(arg); err != nil {
-		return err
+		return nil, err
 	}
 	if arg.Symbol.IsEmpty() {
-		return currency.ErrCurrencyPairEmpty
+		return nil, currency.ErrCurrencyPairEmpty
 	}
 	if arg.Side == "" {
-		return order.ErrSideIsInvalid
+		return nil, order.ErrSideIsInvalid
 	}
 	if arg.OrderType == "" {
-		return order.ErrTypeIsInvalid
+		return nil, order.ErrTypeIsInvalid
 	}
 	if arg.Quantity <= 0 {
-		return limits.ErrAmountBelowMin
+		return nil, limits.ErrAmountBelowMin
 	}
-	arg.Timestamp = time.Now().UnixMilli()
-	apiKey, signature, err := e.getSignature(arg)
+	params, err := e.ToMap(arg)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	arg.APIKey = apiKey
-	arg.Signature = signature
-	return e.SendWsRequest("sor.order.place", arg, &struct{}{})
+	if len(computeCommissionRates) > 0 {
+		params["computeCommissionRates"] = computeCommissionRates[0]
+	}
+	var response *TestOrderResponse
+	return response, e.sendSignedWsRequest("sor.order.test", params, &response)
 }
 
 // ToMap creates a map out of struct instances
@@ -773,8 +777,11 @@ func (e *Exchange) ToMap(input any) (map[string]any, error) {
 // ------------------------------------------- Account Requests --------------------------------
 
 // GetWsAccountInfo query information about your account.
-func (e *Exchange) GetWsAccountInfo(recvWindow int64) (*Account, error) {
+func (e *Exchange) GetWsAccountInfo(recvWindow float64, omitZeroBalances ...bool) (*Account, error) {
 	params := map[string]any{}
+	if len(omitZeroBalances) > 0 {
+		params["omitZeroBalances"] = omitZeroBalances[0]
+	}
 	if recvWindow != 0 {
 		params["recvWindow"] = recvWindow
 	}
@@ -790,7 +797,7 @@ func (e *Exchange) GetWsAccountInfo(recvWindow int64) (*Account, error) {
 }
 
 // WsQueryAccountOrderRateLimits query your current order rate limit.
-func (e *Exchange) WsQueryAccountOrderRateLimits(recvWindow int64) ([]*RateLimitItem, error) {
+func (e *Exchange) WsQueryAccountOrderRateLimits(recvWindow float64) ([]*RateLimitItem, error) {
 	params := map[string]any{}
 	if recvWindow > 0 {
 		params["recvWindow"] = recvWindow
@@ -839,7 +846,7 @@ func (e *Exchange) WsQueryAccountOrderHistory(arg *AccountOrderRequest) ([]*Trad
 
 // WsQueryAccountOCOOrderHistory query information about all your OCOs, filtered by time range.
 // Status reports for OCOs are identical to orderList.status.
-func (e *Exchange) WsQueryAccountOCOOrderHistory(fromID, limit, recvWindow int64, startTime, endTime time.Time) ([]*OCOOrder, error) {
+func (e *Exchange) WsQueryAccountOCOOrderHistory(fromID, limit int64, recvWindow float64, startTime, endTime time.Time) ([]*OCOOrder, error) {
 	params := make(map[string]any)
 	if fromID != 0 {
 		params["fromId"] = fromID
@@ -909,7 +916,7 @@ func (e *Exchange) WsAccountTradeHistory(arg *AccountOrderRequest) ([]*TradeHist
 // symbol + orderId
 // symbol + orderId + fromPreventedMatchId (limit will default to 500)
 // symbol + orderId + fromPreventedMatchId + limit
-func (e *Exchange) WsAccountPreventedMatches(symbol currency.Pair, preventedMatchID, orderID, fromPreventedMatchID, limit, recvWindow int64) ([]*SelfTradePrevention, error) {
+func (e *Exchange) WsAccountPreventedMatches(symbol currency.Pair, preventedMatchID, orderID, fromPreventedMatchID, limit int64, recvWindow float64) ([]*SelfTradePrevention, error) {
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
@@ -945,12 +952,12 @@ func (e *Exchange) WsAccountPreventedMatches(symbol currency.Pair, preventedMatc
 }
 
 // WsAccountAllocation retrieves allocations resulting from SOR order placement.
-func (e *Exchange) WsAccountAllocation(symbol currency.Pair, startTime, endTime time.Time, orderID, fromAllocationID, recvWindow, limit int64) ([]*SORReplacements, error) {
+func (e *Exchange) WsAccountAllocation(symbol currency.Pair, startTime, endTime time.Time, orderID, fromAllocationID int64, recvWindow float64, limit int64) ([]*SORReplacements, error) {
 	if symbol.IsEmpty() {
 		return nil, currency.ErrCurrencyPairEmpty
 	}
 	params := map[string]any{
-		"symbol": symbol.String(),
+		symbolParam: symbol.String(),
 	}
 	switch {
 	case !startTime.IsZero() && !endTime.IsZero():
@@ -992,7 +999,7 @@ func (e *Exchange) WsAccountCommissionRates(symbol currency.Pair) (*CommissionRa
 		return nil, currency.ErrCurrencyPairEmpty
 	}
 	params := map[string]any{
-		"symbol": symbol.String(),
+		symbolParam: symbol.String(),
 	}
 	params["timestamp"] = time.Now().UnixMilli()
 	apiKey, signature, err := e.SignRequest(params)
@@ -1010,8 +1017,23 @@ func (e *Exchange) WsAccountCommissionRates(symbol currency.Pair) (*CommissionRa
 // WsSessionLogon authenticates the websocket connection with the configured API key, so that
 // subsequent signed requests may omit apiKey and signature. Binance only permits one
 // authenticated key per connection; calling this again replaces it.
-func (e *Exchange) WsSessionLogon() (*FuturesAuthenticationResponse, error) {
+func (e *Exchange) WsSessionLogon(recvWindow ...float64) (*FuturesAuthenticationResponse, error) {
+	creds, err := e.GetCredentials(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	key, err := parsePrivateKey(creds.Secret)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errEd25519KeyRequired, err)
+	}
+	if _, ok := key.(ed25519.PrivateKey); !ok {
+		return nil, errEd25519KeyRequired
+	}
+
 	params := map[string]any{"timestamp": time.Now().UnixMilli()}
+	if len(recvWindow) > 0 && recvWindow[0] != 0 {
+		params["recvWindow"] = recvWindow[0]
+	}
 	apiKey, signature, err := e.SignRequest(params)
 	if err != nil {
 		return nil, err
@@ -1036,8 +1058,11 @@ func (e *Exchange) WsSubscribeUserDataStream() (*UserDataStreamSubscriptionRespo
 // WsSubscribeUserDataStreamWithSignature subscribes to the user data stream by signing the
 // request, which works on any connection whether or not it has been authenticated with
 // WsSessionLogon, and works with HMAC as well as Ed25519 keys.
-func (e *Exchange) WsSubscribeUserDataStreamWithSignature() (*UserDataStreamSubscriptionResponse, error) {
+func (e *Exchange) WsSubscribeUserDataStreamWithSignature(recvWindow ...float64) (*UserDataStreamSubscriptionResponse, error) {
 	params := map[string]any{"timestamp": time.Now().UnixMilli()}
+	if len(recvWindow) > 0 && recvWindow[0] != 0 {
+		params["recvWindow"] = recvWindow[0]
+	}
 	apiKey, signature, err := e.SignRequest(params)
 	if err != nil {
 		return nil, err
@@ -1051,13 +1076,35 @@ func (e *Exchange) WsSubscribeUserDataStreamWithSignature() (*UserDataStreamSubs
 // WsUnsubscribeUserDataStream stops listening to the user data stream on this connection.
 // Note that session.logout only closes a subscription opened by WsSubscribeUserDataStream,
 // not one opened by WsSubscribeUserDataStreamWithSignature.
-func (e *Exchange) WsUnsubscribeUserDataStream() error {
-	return e.SendWsRequest("userDataStream.unsubscribe", nil, &struct{}{})
+func (e *Exchange) WsUnsubscribeUserDataStream(subscriptionID ...uint64) error {
+	params := map[string]any{}
+	if len(subscriptionID) > 0 {
+		params["subscriptionId"] = subscriptionID[0]
+	}
+	return e.SendWsRequest("userDataStream.unsubscribe", params, &struct{}{})
 }
 
+// WsUserDataStreamSubscriptions returns all active user-data subscriptions on the connection.
+func (e *Exchange) WsUserDataStreamSubscriptions() ([]*UserDataStreamSubscriptionResponse, error) {
+	var response []*UserDataStreamSubscriptionResponse
+	return response, e.SendWsRequest("session.subscriptions", nil, &response)
+}
+
+// signatureValue preserves JSON number and boolean literals without converting
+// them through float64 or printing RawMessage's underlying byte slice.
 func signatureValue(value any) string {
 	if raw, ok := value.(json.RawMessage); ok {
 		return string(raw)
 	}
 	return fmt.Sprint(value)
+}
+
+func (e *Exchange) sendSignedWsRequest(method string, params map[string]any, response any) error {
+	params["timestamp"] = time.Now().UnixMilli()
+	_, signature, err := e.SignRequest(params)
+	if err != nil {
+		return err
+	}
+	params["signature"] = signature
+	return e.SendWsRequest(method, params, response)
 }

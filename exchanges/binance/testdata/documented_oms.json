@@ -1,0 +1,423 @@
+{
+ "GET /sapi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "GET",
+  "path": "/sapi/v1/apiReferral/userCustomization",
+  "data": {
+   "customerId": "abc123"
+  },
+  "params": [
+   "apiAgentCode",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "POST /sapi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "POST",
+  "path": "/sapi/v1/apiReferral/userCustomization",
+  "data": {
+   "customerId": "abc123"
+  },
+  "params": [
+   "customerId",
+   "apiAgentCode",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /sapi/v1/apiReferral/customization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "GET",
+  "path": "/sapi/v1/apiReferral/customization",
+  "data": [
+   {
+    "customerId": "abc123",
+    "email": "test12345@126.com"
+   }
+  ],
+  "params": [
+   "timestamp",
+   "customerId",
+   "email",
+   "recvWindow"
+  ]
+ },
+ "POST /sapi/v1/apiReferral/customization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "POST",
+  "path": "/sapi/v1/apiReferral/customization",
+  "data": {
+   "customerId": "abc123",
+   "email": "test12345@126.com"
+  },
+  "params": [
+   "customerId",
+   "email",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /sapi/v1/apiReferral/ifNewUser": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "GET",
+  "path": "/sapi/v1/apiReferral/ifNewUser",
+  "data": {
+   "apiAgentCode": "ABCD1234",
+   "rebateWorking": false,
+   "ifNewUser": true,
+   "referrerId": 39472261
+  },
+  "params": [
+   "apiAgentCode",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /sapi/v1/apiReferral/kickback/recentRecord": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "GET",
+  "path": "/sapi/v1/apiReferral/kickback/recentRecord",
+  "data": [
+   {
+    "income": "0.02063898",
+    "asset": "BTC",
+    "symbol": "ETHBTC",
+    "time": 1544433328000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /sapi/v1/apiReferral/rebate/recentRecord": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/spot",
+  "method": "GET",
+  "path": "/sapi/v1/apiReferral/rebate/recentRecord",
+  "data": [
+   {
+    "customerId": "",
+    "email": "om***@***.com",
+    "income": "0.00240635",
+    "asset": "USDC",
+    "symbol": "BNBUSDC",
+    "time": 1764000370000,
+    "orderId": 54321678,
+    "tradeId": 12349876,
+    "distributeTime": 1764004848000,
+    "commissionAsset": "BNB",
+    "commission": "0.00000284",
+    "convertPrice": "847.30952410"
+   }
+  ],
+  "params": [
+   "startTime",
+   "endTime",
+   "limit",
+   "timestamp",
+   "customerId",
+   "recvWindow"
+  ]
+ },
+ "GET /papi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/papi/v1/apiReferral/userCustomization",
+  "data": {
+   "brokerId": "ABCD1234",
+   "customerId": "abc123"
+  },
+  "params": [
+   "brokerId",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "POST /papi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "POST",
+  "path": "/papi/v1/apiReferral/userCustomization",
+  "data": {
+   "brokerId": "ABCD1234",
+   "customerId": "abc123"
+  },
+  "params": [
+   "customerId",
+   "brokerId",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/userCustomization",
+  "data": {
+   "brokerId": "ABCD1234",
+   "customerId": "abc123"
+  },
+  "params": [
+   "brokerId",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "POST /fapi/v1/apiReferral/userCustomization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "POST",
+  "path": "/fapi/v1/apiReferral/userCustomization",
+  "data": {
+   "brokerId": "ABCD1234",
+   "customerId": "abc123"
+  },
+  "params": [
+   "customerId",
+   "brokerId",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/customization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/customization",
+  "data": [
+   {
+    "customerId": "abc123",
+    "email": "test12345@126.com"
+   }
+  ],
+  "params": [
+   "timestamp",
+   "customerId",
+   "email",
+   "page",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "POST /fapi/v1/apiReferral/customization": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "POST",
+  "path": "/fapi/v1/apiReferral/customization",
+  "data": {
+   "customerId": "abc123",
+   "email": "test12345@126.com"
+  },
+  "params": [
+   "customerId",
+   "email",
+   "timestamp",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/income": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/income",
+  "data": [
+   {
+    "symbol": "BTCUSDT",
+    "incomeType": "TRANSFER",
+    "income": "-0.37500000",
+    "asset": "USDT",
+    "info": "",
+    "time": 1570608000000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "symbol",
+   "incomeType",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/overview": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/overview",
+  "data": {
+   "brokerId": "ABCD1234",
+   "newTraderRebateCommission": "0.30000000",
+   "oldTraderRebateCommission": "0.20000000",
+   "totalTradeUser": 13,
+   "unit": "USDT",
+   "totalTradeVol": "405.54379000",
+   "totalRebateVol": "0.01833800",
+   "time": 1597708800000
+  },
+  "params": [
+   "timestamp",
+   "type",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/rebateVol": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/rebateVol",
+  "data": [
+   {
+    "unit": "USDT",
+    "rebateVol": "0.00023200",
+    "time": 1586736000000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "type",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/traderSummary": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/traderSummary",
+  "data": [
+   {
+    "customerId": "sde001",
+    "unit": "USDT",
+    "tradeVol": "9.57083000",
+    "rebateVol": "0.00035400",
+    "time": 1586736000000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "customerId",
+   "type",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/traderNum": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/traderNum",
+  "data": [
+   {
+    "newTrader": "1",
+    "oldTrader": "2",
+    "time": 1586736000000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "type",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/tradeVol": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/tradeVol",
+  "data": [
+   {
+    "unit": "USDT",
+    "tradeVol": "53.60756000",
+    "time": 1586736000000
+   }
+  ],
+  "params": [
+   "timestamp",
+   "type",
+   "startTime",
+   "endTime",
+   "limit",
+   "recvWindow"
+  ]
+ },
+ "GET /papi/v1/apiReferral/ifNewUser": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/papi/v1/apiReferral/ifNewUser",
+  "data": {
+   "brokerId": "ABCD1234",
+   "rebateWorking": false,
+   "ifNewUser": true
+  },
+  "params": [
+   "brokerId",
+   "timestamp",
+   "type",
+   "recvWindow"
+  ]
+ },
+ "GET /fapi/v1/apiReferral/ifNewUser": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/futures",
+  "method": "GET",
+  "path": "/fapi/v1/apiReferral/ifNewUser",
+  "data": {
+   "brokerId": "ABCD1234",
+   "rebateWorking": false,
+   "ifNewUser": true
+  },
+  "params": [
+   "brokerId",
+   "timestamp",
+   "type",
+   "recvWindow"
+  ]
+ },
+ "POST /v1/api-key/create": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/fast-api",
+  "method": "POST",
+  "path": "/v1/api-key/create",
+  "data": {
+   "code": "000000",
+   "message": "null",
+   "data": {
+    "apiKey": "documented-key",
+    "apiName": "testoauth1",
+    "secretKey": "documented-secret",
+    "enableTrade": true,
+    "enableFutureTrade": true,
+    "enableMargin": false,
+    "enableEuropeanOptions": true,
+    "createTime": 1717746281067
+   },
+   "success": true
+  },
+  "params": [
+   "apiName",
+   "enableTrade",
+   "enableFutureTrade",
+   "publicKey",
+   "enableMargin",
+   "enableEuropeanOptions",
+   "status",
+   "ipAddress",
+   "thirdPartyName",
+   "apiKeyPublicKey"
+  ]
+ },
+ "GET /v1/api-key/user-status": {
+  "source": "https://developers.binance.com/en/docs/catalog/vip-and-institutional-oms/api/rest-api/fast-api",
+  "method": "GET",
+  "path": "/v1/api-key/user-status",
+  "data": {
+   "code": "000000",
+   "message": "null",
+   "data": {
+    "isExistFutureAccount": true
+   },
+   "success": true
+  },
+  "params": []
+ }
+}

@@ -63,7 +63,7 @@ func (e *Exchange) GetEOptionsRecentTrades(ctx context.Context, symbol currency.
 		params.Set("limit", strconv.FormatInt(limit, 10))
 	}
 	var resp []*EOptionsTradeItem
-	return resp, e.SendAPIKeyHTTPRequest(ctx, exchange.RestOptions, http.MethodGet, common.EncodeURLValues("/eapi/v1/trades", params), optionsRecentTradesRate, &resp)
+	return resp, e.SendHTTPRequest(ctx, exchange.RestOptions, common.EncodeURLValues("/eapi/v1/trades", params), optionsRecentTradesRate, &resp)
 }
 
 // GetEOptionsCandlesticks retrieves kline/candlestick bars for an option symbol. Klines are uniquely identified by their open time.
@@ -229,6 +229,10 @@ func (e *Exchange) NewOptionsOrder(ctx context.Context, arg *OptionsOrderRequest
 		params.Set("isMmp", "true")
 	}
 	var resp *OptionOrder
+	if arg.SelfTradePreventionMode != "" {
+		params.Set("selfTradePreventionMode", arg.SelfTradePreventionMode)
+	}
+
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodPost, "/eapi/v1/order", params, optionsOrderRate, nil, &resp)
 }
 
@@ -342,12 +346,12 @@ func (e *Exchange) CancelAllOptionOrdersOnSpecificSymbol(ctx context.Context, sy
 }
 
 // CancelAllOptionsOrdersByUnderlying cancel all active orders on specified underlying.
-func (e *Exchange) CancelAllOptionsOrdersByUnderlying(ctx context.Context, underlying string) (int64, error) {
+func (e *Exchange) CancelAllOptionsOrdersByUnderlying(ctx context.Context, underlying string) (*SuccessResponse, error) {
 	params := url.Values{}
 	if underlying != "" {
 		params.Set("underlying", underlying)
 	}
-	var resp int64
+	var resp *SuccessResponse
 	return resp, e.SendAuthHTTPRequest(ctx, exchange.RestOptions, http.MethodDelete, "/eapi/v1/allOpenOrdersByUnderlying", params, optionsAllOpenOrdersByUnderlyingRate, nil, &resp)
 }
 
@@ -355,6 +359,9 @@ func (e *Exchange) CancelAllOptionsOrdersByUnderlying(ctx context.Context, under
 func (e *Exchange) GetCurrentOpenOptionsOrders(ctx context.Context, arg *GetCurrentOpenOptionsOrdersRequest) ([]*OptionOrder, error) {
 	if err := common.NilGuard(arg); err != nil {
 		return nil, err
+	}
+	if arg.Limit != 0 {
+		return nil, fmt.Errorf("%w: limit is supported by option history, not open orders", errUnsupportedParameter)
 	}
 	symbol, startTime, endTime := arg.Symbol, arg.StartTime, arg.EndTime
 	orderID, limit := arg.OrderID, arg.Limit

@@ -1,6 +1,7 @@
 package binance
 
 import (
+	"bytes"
 	"strconv"
 	"time"
 
@@ -124,4 +125,32 @@ func (a *UFuturesInsuranceBalances) UnmarshalJSON(data []byte) error {
 	}
 	*a = resp
 	return nil
+}
+
+// UnmarshalJSON decodes single-symbol and multiple-symbol price responses.
+func (a *SymbolPrices) UnmarshalJSON(data []byte) error {
+	return unmarshalObjectOrArray(data, (*[]*SymbolPrice)(a))
+}
+
+// UnmarshalJSON decodes single-symbol and multiple-symbol best price responses.
+func (a *BestPrices) UnmarshalJSON(data []byte) error {
+	return unmarshalObjectOrArray(data, (*[]*BestPrice)(a))
+}
+
+func unmarshalObjectOrArray[T any](data []byte, target *[]*T) error {
+	data = bytes.TrimSpace(data)
+	if len(data) != 0 && data[0] == '{' {
+		var item *T
+		if err := json.Unmarshal(data, &item); err != nil {
+			return err
+		}
+		*target = []*T{item}
+		return nil
+	}
+	return json.Unmarshal(data, target)
+}
+
+// UnmarshalJSON decodes one symbol or all symbols' ADL risks.
+func (a *UFuturesSymbolADLRisks) UnmarshalJSON(data []byte) error {
+	return unmarshalObjectOrArray(data, (*[]*UFuturesSymbolADLRisk)(a))
 }

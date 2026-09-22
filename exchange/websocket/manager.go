@@ -669,12 +669,17 @@ func (m *Manager) createConnectAndSubscribe(ctx context.Context, ws *websocket, 
 	}
 
 	conn := m.createConnectionFromSetup(ws.setup)
+	// Connector-owned work, such as listen-key renewal, must end when this
+	// connection closes, including rollback of a partially successful Connect.
+	ctx, conn.cancel = context.WithCancel(ctx)
 
 	if err := ws.setup.Connector(ctx, conn); err != nil {
+		_ = conn.Shutdown()
 		return fmt.Errorf("%w: %w", common.ErrFatal, err)
 	}
 
 	if !conn.IsConnected() {
+		conn.cancel()
 		return fmt.Errorf("%w: %w", common.ErrFatal, ErrNotConnected)
 	}
 

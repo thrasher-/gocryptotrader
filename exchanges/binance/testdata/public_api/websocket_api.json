@@ -1,0 +1,1271 @@
+{
+ "observedAt": "2026-09-21T03:22:30.894577297Z",
+ "responses": {
+  "avgPrice": {
+   "id": "01a0c1fc-a1b3-712f-b669-d8ff804ffb42",
+   "status": 200,
+   "result": {
+    "mins": 5,
+    "price": "81395.60954185",
+    "closeTime": 1789960954252
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 116
+    }
+   ]
+  },
+  "blockTrades.historical": {
+   "id": "01a0c1fc-9ec5-7558-933f-5563e5fa1b65",
+   "status": 200,
+   "result": [
+    {
+     "id": 0,
+     "price": "63706.01000000",
+     "qty": "0.00000100",
+     "quoteQty": "0.06370601",
+     "time": 1780558354006,
+     "isBuyerMaker": true
+    },
+    {
+     "id": 1,
+     "price": "62284.35000000",
+     "qty": "0.00000010",
+     "quoteQty": "0.00622843",
+     "time": 1780573138447,
+     "isBuyerMaker": true
+    },
+    {
+     "id": 2,
+     "price": "62847.99000000",
+     "qty": "0.00000010",
+     "quoteQty": "0.00628479",
+     "time": 1780974802794,
+     "isBuyerMaker": true
+    },
+    {
+     "id": 3,
+     "price": "63928.95000000",
+     "qty": "0.00001000",
+     "quoteQty": "0.63928950",
+     "time": 1784533382646,
+     "isBuyerMaker": true
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 110
+    }
+   ]
+  },
+  "depth": {
+   "id": "01a0c1fc-9adc-7670-af91-9b78295affaa",
+   "status": 200,
+   "result": {
+    "lastUpdateId": 100399767979,
+    "bids": [
+     [
+      "81430.79000000",
+      "3.42558000"
+     ],
+     [
+      "81430.78000000",
+      "0.01077000"
+     ],
+     [
+      "81430.77000000",
+      "0.00013000"
+     ],
+     [
+      "81430.41000000",
+      "0.00007000"
+     ],
+     [
+      "81430.40000000",
+      "0.03058000"
+     ]
+    ],
+    "asks": [
+     [
+      "81430.80000000",
+      "1.24528000"
+     ],
+     [
+      "81430.81000000",
+      "0.00027000"
+     ],
+     [
+      "81430.82000000",
+      "0.00013000"
+     ],
+     [
+      "81431.43000000",
+      "0.00007000"
+     ],
+     [
+      "81431.44000000",
+      "0.03683000"
+     ]
+    ]
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 31
+    }
+   ]
+  },
+  "exchangeInfo": {
+   "id": "01a0c1fc-98e8-7d87-bb14-cfbb0aba7185",
+   "status": 200,
+   "result": {
+    "timezone": "UTC",
+    "serverTime": 1789960952723,
+    "rateLimits": [
+     {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000
+     },
+     {
+      "rateLimitType": "ORDERS",
+      "interval": "SECOND",
+      "intervalNum": 10,
+      "limit": 100
+     },
+     {
+      "rateLimitType": "ORDERS",
+      "interval": "DAY",
+      "intervalNum": 1,
+      "limit": 200000
+     },
+     {
+      "rateLimitType": "CONNECTIONS",
+      "interval": "MINUTE",
+      "intervalNum": 5,
+      "limit": 300
+     }
+    ],
+    "exchangeFilters": [],
+    "symbols": [
+     {
+      "symbol": "BTCUSDT",
+      "status": "TRADING",
+      "baseAsset": "BTC",
+      "baseAssetPrecision": 8,
+      "quoteAsset": "USDT",
+      "quotePrecision": 8,
+      "quoteAssetPrecision": 8,
+      "baseCommissionPrecision": 8,
+      "quoteCommissionPrecision": 8,
+      "orderTypes": [
+       "LIMIT",
+       "LIMIT_MAKER",
+       "MARKET",
+       "STOP_LOSS",
+       "STOP_LOSS_LIMIT",
+       "TAKE_PROFIT",
+       "TAKE_PROFIT_LIMIT"
+      ],
+      "icebergAllowed": true,
+      "ocoAllowed": true,
+      "otoAllowed": true,
+      "opoAllowed": true,
+      "quoteOrderQtyMarketAllowed": true,
+      "allowTrailingStop": true,
+      "cancelReplaceAllowed": true,
+      "amendAllowed": true,
+      "pegInstructionsAllowed": true,
+      "isSpotTradingAllowed": true,
+      "isMarginTradingAllowed": true,
+      "filters": [
+       {
+        "filterType": "PRICE_FILTER",
+        "minPrice": "0.01000000",
+        "maxPrice": "1000000.00000000",
+        "tickSize": "0.01000000"
+       },
+       {
+        "filterType": "LOT_SIZE",
+        "minQty": "0.00001000",
+        "maxQty": "9000.00000000",
+        "stepSize": "0.00001000"
+       },
+       {
+        "filterType": "ICEBERG_PARTS",
+        "limit": 100
+       },
+       {
+        "filterType": "MARKET_LOT_SIZE",
+        "minQty": "0.00000000",
+        "maxQty": "107.04095375",
+        "stepSize": "0.00000000"
+       },
+       {
+        "filterType": "TRAILING_DELTA",
+        "minTrailingAboveDelta": 10,
+        "maxTrailingAboveDelta": 2000,
+        "minTrailingBelowDelta": 10,
+        "maxTrailingBelowDelta": 2000
+       },
+       {
+        "filterType": "PERCENT_PRICE_BY_SIDE",
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "avgPriceMins": 5
+       },
+       {
+        "filterType": "NOTIONAL",
+        "minNotional": "5.00000000",
+        "applyMinToMarket": true,
+        "maxNotional": "9000000.00000000",
+        "applyMaxToMarket": false,
+        "avgPriceMins": 5
+       },
+       {
+        "filterType": "MAX_NUM_ORDERS",
+        "maxNumOrders": 200
+       },
+       {
+        "filterType": "MAX_NUM_ORDER_LISTS",
+        "maxNumOrderLists": 20
+       },
+       {
+        "filterType": "MAX_NUM_ALGO_ORDERS",
+        "maxNumAlgoOrders": 5
+       },
+       {
+        "filterType": "MAX_NUM_ORDER_AMENDS",
+        "maxNumOrderAmends": 10
+       }
+      ],
+      "permissions": [],
+      "permissionSets": [
+       [
+        "SPOT",
+        "MARGIN",
+        "TRD_GRP_004",
+        "TRD_GRP_005",
+        "TRD_GRP_006",
+        "TRD_GRP_015",
+        "TRD_GRP_016",
+        "TRD_GRP_017",
+        "TRD_GRP_018",
+        "TRD_GRP_019",
+        "TRD_GRP_020",
+        "TRD_GRP_021",
+        "TRD_GRP_022",
+        "TRD_GRP_023",
+        "TRD_GRP_024",
+        "TRD_GRP_025",
+        "TRD_GRP_049",
+        "TRD_GRP_050",
+        "TRD_GRP_051",
+        "TRD_GRP_052",
+        "TRD_GRP_053",
+        "TRD_GRP_054",
+        "TRD_GRP_055",
+        "TRD_GRP_056",
+        "TRD_GRP_057",
+        "TRD_GRP_058",
+        "TRD_GRP_059",
+        "TRD_GRP_060",
+        "TRD_GRP_061",
+        "TRD_GRP_062",
+        "TRD_GRP_063",
+        "TRD_GRP_064",
+        "TRD_GRP_065",
+        "TRD_GRP_066",
+        "TRD_GRP_067",
+        "TRD_GRP_068",
+        "TRD_GRP_069",
+        "TRD_GRP_070",
+        "TRD_GRP_071",
+        "TRD_GRP_072",
+        "TRD_GRP_073",
+        "TRD_GRP_074",
+        "TRD_GRP_075",
+        "TRD_GRP_076",
+        "TRD_GRP_077",
+        "TRD_GRP_078",
+        "TRD_GRP_079",
+        "TRD_GRP_080",
+        "TRD_GRP_081",
+        "TRD_GRP_082",
+        "TRD_GRP_083",
+        "TRD_GRP_084",
+        "TRD_GRP_085",
+        "TRD_GRP_086",
+        "TRD_GRP_087",
+        "TRD_GRP_088",
+        "TRD_GRP_089",
+        "TRD_GRP_090",
+        "TRD_GRP_091",
+        "TRD_GRP_092",
+        "TRD_GRP_093",
+        "TRD_GRP_094",
+        "TRD_GRP_095",
+        "TRD_GRP_096",
+        "TRD_GRP_097",
+        "TRD_GRP_098",
+        "TRD_GRP_099",
+        "TRD_GRP_100",
+        "TRD_GRP_101",
+        "TRD_GRP_102",
+        "TRD_GRP_103",
+        "TRD_GRP_104",
+        "TRD_GRP_105",
+        "TRD_GRP_106",
+        "TRD_GRP_107",
+        "TRD_GRP_108",
+        "TRD_GRP_109",
+        "TRD_GRP_110",
+        "TRD_GRP_111",
+        "TRD_GRP_112",
+        "TRD_GRP_113",
+        "TRD_GRP_114",
+        "TRD_GRP_115",
+        "TRD_GRP_116",
+        "TRD_GRP_117",
+        "TRD_GRP_118",
+        "TRD_GRP_119",
+        "TRD_GRP_120",
+        "TRD_GRP_121",
+        "TRD_GRP_122",
+        "TRD_GRP_123",
+        "TRD_GRP_124",
+        "TRD_GRP_125",
+        "TRD_GRP_126",
+        "TRD_GRP_127",
+        "TRD_GRP_128",
+        "TRD_GRP_129",
+        "TRD_GRP_130",
+        "TRD_GRP_131",
+        "TRD_GRP_132",
+        "TRD_GRP_133",
+        "TRD_GRP_134",
+        "TRD_GRP_135",
+        "TRD_GRP_136",
+        "TRD_GRP_137",
+        "TRD_GRP_138",
+        "TRD_GRP_139",
+        "TRD_GRP_140",
+        "TRD_GRP_141",
+        "TRD_GRP_142",
+        "TRD_GRP_143",
+        "TRD_GRP_144",
+        "TRD_GRP_145",
+        "TRD_GRP_146",
+        "TRD_GRP_147",
+        "TRD_GRP_148",
+        "TRD_GRP_149",
+        "TRD_GRP_150",
+        "TRD_GRP_151",
+        "TRD_GRP_152",
+        "TRD_GRP_153",
+        "TRD_GRP_154",
+        "TRD_GRP_155",
+        "TRD_GRP_156",
+        "TRD_GRP_157",
+        "TRD_GRP_158",
+        "TRD_GRP_159",
+        "TRD_GRP_160",
+        "TRD_GRP_161",
+        "TRD_GRP_162",
+        "TRD_GRP_163",
+        "TRD_GRP_164",
+        "TRD_GRP_165",
+        "TRD_GRP_166",
+        "TRD_GRP_167",
+        "TRD_GRP_168",
+        "TRD_GRP_169",
+        "TRD_GRP_170",
+        "TRD_GRP_171",
+        "TRD_GRP_172",
+        "TRD_GRP_173",
+        "TRD_GRP_174",
+        "TRD_GRP_175",
+        "TRD_GRP_176",
+        "TRD_GRP_177",
+        "TRD_GRP_178",
+        "TRD_GRP_179",
+        "TRD_GRP_180",
+        "TRD_GRP_181",
+        "TRD_GRP_182",
+        "TRD_GRP_183",
+        "TRD_GRP_184",
+        "TRD_GRP_185",
+        "TRD_GRP_186",
+        "TRD_GRP_187",
+        "TRD_GRP_188",
+        "TRD_GRP_189",
+        "TRD_GRP_190",
+        "TRD_GRP_191",
+        "TRD_GRP_192",
+        "TRD_GRP_193",
+        "TRD_GRP_194",
+        "TRD_GRP_195",
+        "TRD_GRP_196",
+        "TRD_GRP_197",
+        "TRD_GRP_198",
+        "TRD_GRP_199",
+        "TRD_GRP_200",
+        "TRD_GRP_201",
+        "TRD_GRP_202",
+        "TRD_GRP_203",
+        "TRD_GRP_204",
+        "TRD_GRP_205",
+        "TRD_GRP_206",
+        "TRD_GRP_207",
+        "TRD_GRP_208",
+        "TRD_GRP_209",
+        "TRD_GRP_210",
+        "TRD_GRP_211",
+        "TRD_GRP_212",
+        "TRD_GRP_213",
+        "TRD_GRP_214",
+        "TRD_GRP_215",
+        "TRD_GRP_216",
+        "TRD_GRP_217",
+        "TRD_GRP_218",
+        "TRD_GRP_219",
+        "TRD_GRP_220",
+        "TRD_GRP_221",
+        "TRD_GRP_222",
+        "TRD_GRP_223",
+        "TRD_GRP_224",
+        "TRD_GRP_225",
+        "TRD_GRP_226",
+        "TRD_GRP_227",
+        "TRD_GRP_228",
+        "TRD_GRP_229",
+        "TRD_GRP_230",
+        "TRD_GRP_231",
+        "TRD_GRP_232",
+        "TRD_GRP_233",
+        "TRD_GRP_234",
+        "TRD_GRP_235",
+        "TRD_GRP_236",
+        "TRD_GRP_237",
+        "TRD_GRP_238",
+        "TRD_GRP_239",
+        "TRD_GRP_240",
+        "TRD_GRP_242",
+        "TRD_GRP_243",
+        "TRD_GRP_244",
+        "TRD_GRP_245",
+        "TRD_GRP_246",
+        "TRD_GRP_247",
+        "TRD_GRP_248",
+        "TRD_GRP_249",
+        "TRD_GRP_250",
+        "TRD_GRP_251",
+        "TRD_GRP_252",
+        "TRD_GRP_253",
+        "TRD_GRP_256",
+        "TRD_GRP_258",
+        "TRD_GRP_259"
+       ]
+      ],
+      "defaultSelfTradePreventionMode": "EXPIRE_MAKER",
+      "allowedSelfTradePreventionModes": [
+       "EXPIRE_TAKER",
+       "EXPIRE_MAKER",
+       "EXPIRE_BOTH",
+       "DECREMENT",
+       "TRANSFER"
+      ]
+     }
+    ]
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 24
+    }
+   ]
+  },
+  "executionRules": {
+   "id": "01a0c1fc-99e3-79a1-a743-d942085ff566",
+   "status": 200,
+   "result": {
+    "symbolRules": [
+     {
+      "symbol": "BTCUSDT",
+      "rules": [
+       {
+        "ruleType": "PRICE_RANGE",
+        "bidLimitMultUp": "1.1500",
+        "bidLimitMultDown": "0.8500",
+        "askLimitMultUp": "1.1500",
+        "askLimitMultDown": "0.8500"
+       }
+      ]
+     }
+    ]
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 26
+    }
+   ]
+  },
+  "klines": {
+   "id": "01a0c1fc-9fc2-7149-b119-18933cd1c745",
+   "status": 200,
+   "result": [
+    [
+     1789960680000,
+     "81378.01000000",
+     "81408.01000000",
+     "81378.00000000",
+     "81401.97000000",
+     "22.95870000",
+     1789960739999,
+     "1868787.32563900",
+     1853,
+     "2.80377000",
+     "228206.99013910",
+     "0"
+    ],
+    [
+     1789960740000,
+     "81401.97000000",
+     "81403.92000000",
+     "81401.97000000",
+     "81403.92000000",
+     "2.19484000",
+     1789960799999,
+     "178668.21360380",
+     263,
+     "1.95270000",
+     "158957.07083640",
+     "0"
+    ],
+    [
+     1789960800000,
+     "81403.92000000",
+     "81403.92000000",
+     "81374.00000000",
+     "81374.00000000",
+     "2.10050000",
+     1789960859999,
+     "170957.97623840",
+     961,
+     "0.17473000",
+     "14219.51511070",
+     "0"
+    ],
+    [
+     1789960860000,
+     "81374.01000000",
+     "81400.01000000",
+     "81374.00000000",
+     "81400.00000000",
+     "2.70221000",
+     1789960919999,
+     "219912.44530100",
+     665,
+     "2.39644000",
+     "195024.34820610",
+     "0"
+    ],
+    [
+     1789960920000,
+     "81400.01000000",
+     "81430.80000000",
+     "81400.00000000",
+     "81430.80000000",
+     "2.10150000",
+     1789960979999,
+     "171090.59049670",
+     700,
+     "1.39235000",
+     "113357.51198470",
+     "0"
+    ]
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 112
+    }
+   ]
+  },
+  "ping": {
+   "id": "01a0c1fc-9747-71d6-ae10-148327d34231",
+   "status": 200,
+   "result": {},
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 3
+    }
+   ]
+  },
+  "referencePrice": {
+   "id": "01a0c1fc-a2ac-7018-90bb-a2e015a8fcc6",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "referencePrice": "81392.73080633",
+    "timestamp": 1789960955001
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 118
+    }
+   ]
+  },
+  "referencePrice.calculation": {
+   "id": "01a0c1fc-a3a5-796c-bee4-6daea9fa0000",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "calculationType": "ARITHMETIC_MEAN",
+    "bucketCount": 80,
+    "bucketWidthMs": 3750
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 120
+    }
+   ]
+  },
+  "ticker": {
+   "id": "01a0c1fc-a4a0-77f5-ac12-66feffcf6996",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "priceChange": "-25.20000000",
+     "priceChangePercent": "-0.031",
+     "weightedAvgPrice": "81326.14172261",
+     "openPrice": "81456.00000000",
+     "highPrice": "81514.01000000",
+     "lowPrice": "81151.97000000",
+     "lastPrice": "81430.80000000",
+     "volume": "395.32129000",
+     "quoteVolume": "32149955.25650600",
+     "openTime": 1789957320000,
+     "closeTime": 1789960955722,
+     "firstId": 6697789834,
+     "lastId": 6697893210,
+     "count": 103377
+    },
+    {
+     "symbol": "ETHUSDT",
+     "priceChange": "2.21000000",
+     "priceChangePercent": "0.083",
+     "weightedAvgPrice": "2661.98139811",
+     "openPrice": "2664.50000000",
+     "highPrice": "2669.54000000",
+     "lowPrice": "2653.00000000",
+     "lastPrice": "2666.71000000",
+     "volume": "8590.85840000",
+     "quoteVolume": "22868705.25458100",
+     "openTime": 1789957320000,
+     "closeTime": 1789960955722,
+     "firstId": 4373208853,
+     "lastId": 4373290209,
+     "count": 81357
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 128
+    }
+   ]
+  },
+  "ticker.24hr": {
+   "id": "01a0c1fc-a59d-7880-b929-a8f07401e510",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "priceChange": "904.97000000",
+     "priceChangePercent": "1.124",
+     "weightedAvgPrice": "80945.24520177",
+     "prevClosePrice": "80525.83000000",
+     "lastPrice": "81430.79000000",
+     "lastQty": "0.00024000",
+     "bidPrice": "81430.79000000",
+     "bidQty": "1.79074000",
+     "askPrice": "81430.80000000",
+     "askQty": "1.58204000",
+     "openPrice": "80525.82000000",
+     "highPrice": "82100.00000000",
+     "lowPrice": "80165.49000000",
+     "volume": "11027.82394000",
+     "quoteVolume": "892649912.86528440",
+     "openTime": 1789874555001,
+     "closeTime": 1789960955001,
+     "firstId": 6695587547,
+     "lastId": 6697893209,
+     "count": 2305663
+    },
+    {
+     "symbol": "ETHUSDT",
+     "priceChange": "75.72000000",
+     "priceChangePercent": "2.922",
+     "weightedAvgPrice": "2628.54886975",
+     "prevClosePrice": "2590.99000000",
+     "lastPrice": "2666.71000000",
+     "lastQty": "0.13530000",
+     "bidPrice": "2666.70000000",
+     "bidQty": "14.63330000",
+     "askPrice": "2666.71000000",
+     "askQty": "18.21800000",
+     "openPrice": "2590.99000000",
+     "highPrice": "2707.70000000",
+     "lowPrice": "2567.52000000",
+     "volume": "276096.27020000",
+     "quoteVolume": "725732538.97559600",
+     "openTime": 1789874554992,
+     "closeTime": 1789960954992,
+     "firstId": 4370470761,
+     "lastId": 4373290209,
+     "count": 2819449
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 130
+    }
+   ]
+  },
+  "ticker.book/all": {
+   "id": "01a0c1fc-ae2d-7040-91b3-2106d0e60413",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "ETHBTC",
+     "bidPrice": "0.03274000",
+     "bidQty": "45.75730000",
+     "askPrice": "0.03275000",
+     "askQty": "55.53970000"
+    },
+    {
+     "symbol": "LTCBTC",
+     "bidPrice": "0.00072600",
+     "bidQty": "259.77800000",
+     "askPrice": "0.00072700",
+     "askQty": "225.00300000"
+    },
+    {
+     "symbol": "BNBBTC",
+     "bidPrice": "0.00955500",
+     "bidQty": "7.50100000",
+     "askPrice": "0.00955600",
+     "askQty": "2.21100000"
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 158
+    }
+   ]
+  },
+  "ticker.book/multiple": {
+   "id": "01a0c1fc-ad31-7f40-bb37-db643b68c28f",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "bidPrice": "81430.79000000",
+     "bidQty": "1.78836000",
+     "askPrice": "81430.80000000",
+     "askQty": "1.57451000"
+    },
+    {
+     "symbol": "ETHUSDT",
+     "bidPrice": "2666.70000000",
+     "bidQty": "9.48650000",
+     "askPrice": "2666.71000000",
+     "askQty": "14.32120000"
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 154
+    }
+   ]
+  },
+  "ticker.book/single": {
+   "id": "01a0c1fc-ac8b-76b3-a63a-cf7f48e3260a",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "bidPrice": "81430.79000000",
+    "bidQty": "1.78836000",
+    "askPrice": "81430.80000000",
+    "askQty": "1.57460000"
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 150
+    }
+   ]
+  },
+  "ticker.price/all": {
+   "id": "01a0c1fc-a982-7784-9a26-03c8c9b6194b",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "ETHBTC",
+     "price": "0.03275000"
+    },
+    {
+     "symbol": "LTCBTC",
+     "price": "0.00072700"
+    },
+    {
+     "symbol": "BNBBTC",
+     "price": "0.00955600"
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 148
+    }
+   ]
+  },
+  "ticker.price/multiple": {
+   "id": "01a0c1fc-a888-784f-a025-0030746b9211",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "price": "81430.80000000"
+    },
+    {
+     "symbol": "ETHUSDT",
+     "price": "2666.70000000"
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 144
+    }
+   ]
+  },
+  "ticker.price/single": {
+   "id": "01a0c1fc-a790-7569-a86c-d90021a45692",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "price": "81430.80000000"
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 140
+    }
+   ]
+  },
+  "ticker.tradingDay": {
+   "id": "01a0c1fc-a694-763b-9429-3671edab4be3",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "priceChange": "252.79000000",
+     "priceChangePercent": "0.311",
+     "weightedAvgPrice": "81535.90504036",
+     "openPrice": "81178.01000000",
+     "highPrice": "82100.00000000",
+     "lowPrice": "80850.22000000",
+     "lastPrice": "81430.80000000",
+     "volume": "2638.08778000",
+     "quoteVolume": "215098874.71820620",
+     "openTime": 1789948800000,
+     "closeTime": 1790035199999,
+     "firstId": 6697229131,
+     "lastId": 6697893212,
+     "count": 664082
+    },
+    {
+     "symbol": "ETHUSDT",
+     "priceChange": "21.50000000",
+     "priceChangePercent": "0.813",
+     "weightedAvgPrice": "2675.10259289",
+     "openPrice": "2645.21000000",
+     "highPrice": "2707.70000000",
+     "lowPrice": "2643.71000000",
+     "lastPrice": "2666.71000000",
+     "volume": "94617.70060000",
+     "quoteVolume": "253112056.20819900",
+     "openTime": 1789948800000,
+     "closeTime": 1790035199999,
+     "firstId": 4372366663,
+     "lastId": 4373290209,
+     "count": 923547
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 138
+    }
+   ]
+  },
+  "time": {
+   "id": "01a0c1fc-97ed-7a9f-b967-b7a333252169",
+   "status": 200,
+   "result": {
+    "serverTime": 1789960952473
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 4
+    }
+   ]
+  },
+  "trades.aggregate": {
+   "id": "01a0c1fc-9dca-76ff-8a47-07e76ef03eb6",
+   "status": 200,
+   "result": [
+    {
+     "a": 4068826238,
+     "p": "81430.80000000",
+     "q": "0.02310000",
+     "f": 6697893202,
+     "l": 6697893204,
+     "T": 1789960949483,
+     "m": false,
+     "M": true
+    },
+    {
+     "a": 4068826239,
+     "p": "81430.79000000",
+     "q": "0.00020000",
+     "f": 6697893205,
+     "l": 6697893205,
+     "T": 1789960949485,
+     "m": true,
+     "M": true
+    },
+    {
+     "a": 4068826240,
+     "p": "81430.80000000",
+     "q": "0.02834000",
+     "f": 6697893206,
+     "l": 6697893206,
+     "T": 1789960949489,
+     "m": false,
+     "M": true
+    },
+    {
+     "a": 4068826241,
+     "p": "81430.79000000",
+     "q": "0.00015000",
+     "f": 6697893207,
+     "l": 6697893207,
+     "T": 1789960949534,
+     "m": true,
+     "M": true
+    },
+    {
+     "a": 4068826242,
+     "p": "81430.80000000",
+     "q": "0.00010000",
+     "f": 6697893208,
+     "l": 6697893208,
+     "T": 1789960953645,
+     "m": false,
+     "M": true
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 85
+    }
+   ]
+  },
+  "trades.historical": {
+   "id": "01a0c1fc-9cd0-76ae-bde4-6f1a138251db",
+   "status": 200,
+   "result": [
+    {
+     "id": 6697893204,
+     "price": "81430.80000000",
+     "qty": "0.02296000",
+     "quoteQty": "1869.65116800",
+     "time": 1789960949483,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893205,
+     "price": "81430.79000000",
+     "qty": "0.00020000",
+     "quoteQty": "16.28615800",
+     "time": 1789960949485,
+     "isBuyerMaker": true,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893206,
+     "price": "81430.80000000",
+     "qty": "0.02834000",
+     "quoteQty": "2307.74887200",
+     "time": 1789960949489,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893207,
+     "price": "81430.79000000",
+     "qty": "0.00015000",
+     "quoteQty": "12.21461850",
+     "time": 1789960949534,
+     "isBuyerMaker": true,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893208,
+     "price": "81430.80000000",
+     "qty": "0.00010000",
+     "quoteQty": "8.14308000",
+     "time": 1789960953645,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 81
+    }
+   ]
+  },
+  "trades.recent": {
+   "id": "01a0c1fc-9bd6-73d0-80a7-56ccdd97902c",
+   "status": 200,
+   "result": [
+    {
+     "id": 6697893203,
+     "price": "81430.80000000",
+     "qty": "0.00007000",
+     "quoteQty": "5.70015600",
+     "time": 1789960949483,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893204,
+     "price": "81430.80000000",
+     "qty": "0.02296000",
+     "quoteQty": "1869.65116800",
+     "time": 1789960949483,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893205,
+     "price": "81430.79000000",
+     "qty": "0.00020000",
+     "quoteQty": "16.28615800",
+     "time": 1789960949485,
+     "isBuyerMaker": true,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893206,
+     "price": "81430.80000000",
+     "qty": "0.02834000",
+     "quoteQty": "2307.74887200",
+     "time": 1789960949489,
+     "isBuyerMaker": false,
+     "isBestMatch": true
+    },
+    {
+     "id": 6697893207,
+     "price": "81430.79000000",
+     "qty": "0.00015000",
+     "quoteQty": "12.21461850",
+     "time": 1789960949534,
+     "isBuyerMaker": true,
+     "isBestMatch": true
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 56
+    }
+   ]
+  },
+  "uiKlines": {
+   "id": "01a0c1fc-a0b9-7310-88de-febc4e92a93e",
+   "status": 200,
+   "result": [
+    [
+     1789960680000,
+     "81378.01000000",
+     "81408.01000000",
+     "81378.00000000",
+     "81401.97000000",
+     "22.95870000",
+     1789960739999,
+     "1868787.32563900",
+     1853,
+     "2.80377000",
+     "228206.99013910",
+     "0"
+    ],
+    [
+     1789960740000,
+     "81401.97000000",
+     "81403.92000000",
+     "81401.97000000",
+     "81403.92000000",
+     "2.19484000",
+     1789960799999,
+     "178668.21360380",
+     263,
+     "1.95270000",
+     "158957.07083640",
+     "0"
+    ],
+    [
+     1789960800000,
+     "81403.92000000",
+     "81403.92000000",
+     "81374.00000000",
+     "81374.00000000",
+     "2.10050000",
+     1789960859999,
+     "170957.97623840",
+     961,
+     "0.17473000",
+     "14219.51511070",
+     "0"
+    ],
+    [
+     1789960860000,
+     "81374.01000000",
+     "81400.01000000",
+     "81374.00000000",
+     "81400.00000000",
+     "2.70221000",
+     1789960919999,
+     "219912.44530100",
+     665,
+     "2.39644000",
+     "195024.34820610",
+     "0"
+    ],
+    [
+     1789960920000,
+     "81400.01000000",
+     "81430.80000000",
+     "81400.00000000",
+     "81430.79000000",
+     "2.10174000",
+     1789960979999,
+     "171110.13388630",
+     701,
+     "1.39235000",
+     "113357.51198470",
+     "0"
+    ]
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 6000,
+     "count": 114
+    }
+   ]
+  }
+ },
+ "source": "wss://ws-api.binance.com/ws-api/v3",
+ "originalRecordingSHA256": "e7f552747d81b18b39e0f1314fd5c6da046d17268c682dd0fae0bb7770715c4b",
+ "transformation": "All-symbol ticker arrays retain their first three entries; every field is preserved. All other responses are unchanged."
+}

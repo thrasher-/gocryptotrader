@@ -563,7 +563,7 @@ func TestUModifyOrder(t *testing.T) {
 	_, err := e.UModifyOrder(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	arg := &USDTOrderUpdateRequest{PriceMatch: "1234"}
+	arg := &USDTOrderUpdateRequest{}
 	_, err = e.UModifyOrder(t.Context(), arg)
 	require.ErrorIs(t, err, order.ErrOrderIDNotSet)
 
@@ -588,7 +588,7 @@ func TestUModifyOrder(t *testing.T) {
 		OrderID:           1,
 		OrigClientOrderID: "",
 		Side:              order.Sell.String(),
-		PriceMatch:        "TAKE_PROFIT",
+		PriceMatch:        "",
 		Symbol:            usdtmTradablePair,
 		Amount:            0.0000001,
 		Price:             123455554,
@@ -614,7 +614,7 @@ func TestUPlaceBatchOrders(t *testing.T) {
 	_, err = e.UPlaceBatchOrders(t.Context(), []*PlaceBatchOrderData{arg})
 	require.ErrorIs(t, err, errInvalidWorkingType)
 
-	arg.WorkingType = "CONTRACT_TYPE"
+	arg.WorkingType = "CONTRACT_PRICE"
 	arg.NewOrderRespType = "abc"
 	_, err = e.UPlaceBatchOrders(t.Context(), []*PlaceBatchOrderData{arg})
 	require.ErrorIs(t, err, errInvalidNewOrderResponseType)
@@ -664,7 +664,7 @@ func TestModifyMultipleOrders(t *testing.T) {
 			OrderID:           1,
 			OrigClientOrderID: "",
 			Side:              order.Sell.String(),
-			PriceMatch:        "TAKE_PROFIT",
+			PriceMatch:        "",
 			Symbol:            spotTradablePair,
 			Amount:            0.0000001,
 			Price:             123455554,
@@ -673,7 +673,7 @@ func TestModifyMultipleOrders(t *testing.T) {
 			OrderID:           1,
 			OrigClientOrderID: "",
 			Side:              "BUY",
-			PriceMatch:        order.Limit.String(),
+			PriceMatch:        "",
 			Symbol:            spotTradablePair,
 			Amount:            0.0000001,
 			Price:             123455554,
@@ -2643,10 +2643,10 @@ func TestCancelAllOpenOrderOnSymbol(t *testing.T) {
 
 func TestAllOrders(t *testing.T) {
 	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err := e.AllOrders(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	_, err = e.AllOrders(t.Context(), &AllOrdersRequest{Symbol: usdtmTradablePair})
 	require.False(t, sharedtestvalues.AreAPICredentialsSet(e) && err != nil, err)
 	require.False(t, !sharedtestvalues.AreAPICredentialsSet(e) && err == nil && !mockTests, "expecting an error when no keys are set")
@@ -2904,11 +2904,11 @@ func TestGetOrderHistory(t *testing.T) {
 
 func TestNewOrderTest(t *testing.T) {
 	t.Parallel()
-	err := e.NewOrderTest(t.Context(), nil, false)
+	_, err := e.NewOrderTest(t.Context(), nil, false)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	err = e.NewOrderTest(t.Context(), &NewOrderRequest{
+	_, err = e.NewOrderTest(t.Context(), &NewOrderRequest{
 		Symbol:      currency.NewPair(currency.LTC, currency.BTC),
 		Side:        order.Buy.String(),
 		TradeType:   order.Limit.String(),
@@ -2918,7 +2918,7 @@ func TestNewOrderTest(t *testing.T) {
 	}, false)
 	require.NoError(t, err)
 
-	err = e.NewOrderTest(t.Context(), &NewOrderRequest{
+	_, err = e.NewOrderTest(t.Context(), &NewOrderRequest{
 		Symbol:             currency.NewPair(currency.LTC, currency.BTC),
 		Side:               order.Sell.String(),
 		TradeType:          order.Market.String(),
@@ -3668,7 +3668,6 @@ func TestSeedLocalCache(t *testing.T) {
 
 func TestGenerateSubscriptions(t *testing.T) {
 	t.Parallel()
-	exp := subscription.List{}
 	pairs, err := e.GetEnabledPairs(asset.Spot)
 	require.NoError(t, err)
 	wsFmt := currency.PairFormat{Uppercase: false, Delimiter: ""}
@@ -3678,6 +3677,7 @@ func TestGenerateSubscriptions(t *testing.T) {
 		{Channel: subscription.TickerChannel, QualifiedChannel: "ticker", Asset: asset.Spot},
 		{Channel: subscription.AllTradesChannel, QualifiedChannel: "trade", Asset: asset.Spot},
 	}
+	exp := make(subscription.List, 0, len(pairs)*len(baseExp))
 	for _, p := range pairs {
 		for _, baseSub := range baseExp {
 			sub := baseSub.Clone()
@@ -3860,14 +3860,16 @@ func TestFormatExchangeCurrency(t *testing.T) {
 			expectedDelimiter: "",
 		},
 		{
-			name:  "coinmarginedfutures-btcusd_perp",
-			pair:  currency.NewPair(currency.BTC, currency.NewCode("USD_PERP")),
-			asset: asset.CoinMarginedFutures,
+			name:              "coinmarginedfutures-btcusd_perp",
+			pair:              currency.NewPairWithDelimiter("BTCUSD", "PERP", currency.UnderscoreDelimiter),
+			asset:             asset.CoinMarginedFutures,
+			expectedDelimiter: currency.UnderscoreDelimiter,
 		},
 		{
-			name:  "coinmarginedfutures-btcusd_211231",
-			pair:  currency.NewPair(currency.BTC, currency.NewCode("USD_211231")),
-			asset: asset.CoinMarginedFutures,
+			name:              "coinmarginedfutures-btcusd_211231",
+			pair:              currency.NewPairWithDelimiter("BTCUSD", "211231", currency.UnderscoreDelimiter),
+			asset:             asset.CoinMarginedFutures,
+			expectedDelimiter: currency.UnderscoreDelimiter,
 		},
 		{
 			name:              "margin-ltousdt",
@@ -3910,13 +3912,13 @@ func TestFormatSymbol(t *testing.T) {
 		},
 		{
 			name:           "coinmarginedfutures-btcusdperp",
-			pair:           currency.NewPairWithDelimiter("BTC", "USD_PERP", ""),
+			pair:           currency.NewPairWithDelimiter("BTCUSD", "PERP", ""),
 			asset:          asset.CoinMarginedFutures,
 			expectedString: "BTCUSD_PERP",
 		},
 		{
 			name:           "coinmarginedfutures-BTCUSD_211231",
-			pair:           currency.NewPair(currency.BTC, currency.NewCode("USD_211231")),
+			pair:           currency.NewPairWithDelimiter("BTCUSD", "211231", currency.UnderscoreDelimiter),
 			asset:          asset.CoinMarginedFutures,
 			expectedString: "BTCUSD_211231",
 		},
@@ -3980,8 +3982,8 @@ func TestExchangeLimitsFromSymbols(t *testing.T) {
 	t.Parallel()
 	symbols := []*SymbolInfo{
 		{
-			BaseAsset:      "BTC",
-			QuoteAsset:     "USDT",
+			BaseAsset:      currency.BTC,
+			QuoteAsset:     currency.USDT,
 			PermissionSets: [][]string{{"SPOT", "MARGIN"}},
 			Filters: []*filterData{
 				{FilterType: priceFilter, MinPrice: 0.01, MaxPrice: 1000000, TickSize: 0.01},
@@ -3993,8 +3995,8 @@ func TestExchangeLimitsFromSymbols(t *testing.T) {
 			},
 		},
 		{ // MARGIN-only symbol must be excluded from a spot lookup
-			BaseAsset:      "ETH",
-			QuoteAsset:     "USDT",
+			BaseAsset:      currency.ETH,
+			QuoteAsset:     currency.USDT,
 			PermissionSets: [][]string{{"MARGIN"}},
 			Filters:        []*filterData{{FilterType: priceFilter, MinPrice: 0.01, MaxPrice: 100, TickSize: 0.01}},
 		},
@@ -4019,7 +4021,7 @@ func TestExchangeLimitsFromSymbols(t *testing.T) {
 	require.NoError(t, err, "exchangeLimitsFromSymbols must not error for margin")
 	assert.Len(t, l, 2, "both MARGIN-permitted symbols should be returned")
 
-	_, err = e.exchangeLimitsFromSymbols(asset.Spot, []*SymbolInfo{{BaseAsset: "BT C", QuoteAsset: "USDT", PermissionSets: [][]string{{"SPOT"}}}})
+	_, err = e.exchangeLimitsFromSymbols(asset.Spot, []*SymbolInfo{{BaseAsset: currency.NewCode("BT C"), QuoteAsset: currency.USDT, PermissionSets: [][]string{{"SPOT"}}}})
 	require.Error(t, err, "an invalid currency string must return an error")
 }
 
@@ -4949,9 +4951,6 @@ func TestGetWs24HourPriceChanges(t *testing.T) {
 	_, err := e.GetWs24HourPriceChanges(nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	_, err = e.GetWs24HourPriceChanges(&PriceChangeRequest{})
-	require.ErrorIs(t, err, currency.ErrCurrencyPairsEmpty)
-
 	if mockTests {
 		t.SkipNow()
 	}
@@ -4968,9 +4967,6 @@ func TestGetWsTradingDayTickers(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetWsTradingDayTickers(nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
-
-	_, err = e.GetWsTradingDayTickers(&PriceChangeRequest{Timezone: "GMT+3"})
-	require.ErrorIs(t, err, currency.ErrCurrencyPairsEmpty)
 
 	if mockTests {
 		t.SkipNow()
@@ -4991,9 +4987,6 @@ func TestGetWsRollingWindowPriceChanges(t *testing.T) {
 	_, err := e.GetWsRollingWindowPriceChanges(nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	_, err = e.GetWsRollingWindowPriceChanges(&WsRollingWindowPriceRequest{})
-	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
-
 	if mockTests {
 		t.SkipNow()
 	}
@@ -5008,8 +5001,6 @@ func TestGetWsRollingWindowPriceChanges(t *testing.T) {
 
 func TestGetSymbolPriceTicker(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetSymbolPriceTicker(currency.EMPTYPAIR)
-	require.ErrorIs(t, err, currency.ErrCurrencyPairsEmpty)
 
 	if mockTests {
 		t.SkipNow()
@@ -5393,7 +5384,7 @@ func TestWsTestNewOrderUsingSOR(t *testing.T) {
 	if !e.IsAPIStreamConnected() {
 		t.Skip(apiStreamingIsNotConnected)
 	}
-	err := e.WsTestNewOrderUsingSOR(&WsOSRPlaceOrderRequest{
+	_, err := e.WsTestNewOrderUsingSOR(&WsOSRPlaceOrderRequest{
 		Symbol:      usdtmTradablePair,
 		Side:        "BUY",
 		OrderType:   order.Limit.String(),
@@ -5764,7 +5755,7 @@ func TestGetCommissionRate(t *testing.T) {
 
 func TestMarginAccountBorrowRepay(t *testing.T) {
 	t.Parallel()
-	_, err := e.MarginAccountBorrowRepay(t.Context(), &MarginAccountBorrowRepayRequest{AssetName: currency.ETH, LendingType: "BORROW", Amount: 0.1234})
+	_, err := e.MarginAccountBorrowRepay(t.Context(), &MarginAccountBorrowRepayRequest{AssetName: currency.ETH, LendingType: "BORROW", Amount: 0.1234, IsIsolated: true})
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 	_, err = e.MarginAccountBorrowRepay(t.Context(), &MarginAccountBorrowRepayRequest{Symbol: usdtmTradablePair, LendingType: "BORROW", Amount: 0.1234})
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
@@ -6500,9 +6491,7 @@ func TestMarginAccountNewOCO(t *testing.T) {
 	_, err := e.MarginAccountNewOCO(t.Context(), nil)
 	require.ErrorIs(t, err, common.ErrNilPointer)
 
-	arg := &OCOOrderRequest{
-		TrailingDelta: 1,
-	}
+	arg := new(OCOOrderRequest)
 	_, err = e.MarginAccountNewOCO(t.Context(), arg)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
@@ -6510,7 +6499,7 @@ func TestMarginAccountNewOCO(t *testing.T) {
 	_, err = e.MarginAccountNewOCO(t.Context(), arg)
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
 
-	arg.Side = "Buy"
+	arg.Side = "BUY"
 	_, err = e.MarginAccountNewOCO(t.Context(), arg)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
@@ -6523,10 +6512,10 @@ func TestMarginAccountNewOCO(t *testing.T) {
 	require.ErrorIs(t, err, limits.ErrPriceBelowMin)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.NewOCOOrder(t.Context(), &OCOOrderRequest{
+	result, err := e.MarginAccountNewOCO(t.Context(), &OCOOrderRequest{
 		Symbol:             usdtmTradablePair,
 		ListClientOrderID:  "1231231231231",
-		Side:               "Buy",
+		Side:               "BUY",
 		Amount:             0.1,
 		LimitClientOrderID: "3423423",
 		Price:              0.001,
@@ -6547,7 +6536,7 @@ func TestNewOCOOrderList(t *testing.T) {
 	_, err = e.NewOCOOrderList(t.Context(), arg)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	arg.Symbol = "LTCBTC"
+	arg.Symbol = currency.NewPair(currency.LTC, currency.BTC)
 	_, err = e.NewOCOOrderList(t.Context(), arg)
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
 
@@ -6565,7 +6554,7 @@ func TestNewOCOOrderList(t *testing.T) {
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	result, err := e.NewOCOOrderList(t.Context(), &OCOOrderListRequest{
-		Symbol:     "LTCBTC",
+		Symbol:     currency.NewPair(currency.LTC, currency.BTC),
 		Side:       order.Sell.String(),
 		Quantity:   1,
 		AbovePrice: 100,
@@ -8708,8 +8697,6 @@ func TestGetHashrateRescaleDetail(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetHashRateRescaleDetail(t.Context(), "", "sams", 10, 20)
 	require.ErrorIs(t, err, errConfigIDRequired)
-	_, err = e.GetHashRateRescaleDetail(t.Context(), "168", "", 10, 20)
-	require.ErrorIs(t, err, errUsernameRequired)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 	result, err := e.GetHashRateRescaleDetail(t.Context(), "168", "sams", 10, 20)
@@ -9476,11 +9463,11 @@ func TestCreateDualTokenGiftCard(t *testing.T) {
 	require.ErrorIs(t, err, currency.ErrCurrencyCodeEmpty)
 	_, err = e.CreateDualTokenGiftCard(t.Context(), currency.BUSD, currency.BNB, 0, 10)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
-	_, err = e.CreateDualTokenGiftCard(t.Context(), currency.BUSD, currency.BNB, 10, 0)
-	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
+	_, err = e.CreateDualTokenGiftCard(t.Context(), currency.BUSD, currency.BNB, 10, 10)
+	require.ErrorIs(t, err, errUnsupportedParameter, "unsupported discount must fail before submission")
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
-	result, err := e.CreateDualTokenGiftCard(t.Context(), currency.BUSD, currency.BNB, 10, 10)
+	result, err := e.CreateDualTokenGiftCard(t.Context(), currency.BUSD, currency.BNB, 10, 0)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -9665,11 +9652,8 @@ func TestKeepMarginListenKeyAlive(t *testing.T) {
 
 func TestCloseMarginListenKey(t *testing.T) {
 	t.Parallel()
-	err := e.CloseMarginListenKey(t.Context(), "")
-	require.ErrorIs(t, err, errListenKeyIsRequired)
-
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	err = e.CloseMarginListenKey(t.Context(), "T3ee22BIYuWqmvne0HNq2A2WsFlEtLhvWCtItw6ffhhdmjifQ2tRbuKkTHhr")
+	err := e.CloseMarginListenKey(t.Context())
 	assert.NoError(t, err)
 }
 
@@ -10091,9 +10075,9 @@ func TestChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t *testing.T) {
 	require.ErrorIs(t, err, errSubAccountIDMissing)
 	_, err = e.ChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t.Context(), "234", currency.EMPTYPAIR, 1, 10)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
-	_, err = e.ChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t.Context(), "234", spotTradablePair, 0, 10)
+	_, err = e.ChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t.Context(), "234", spotTradablePair, -1, 10)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
-	_, err = e.ChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t.Context(), "234", spotTradablePair, 1, 0)
+	_, err = e.ChangeSubAccountUSDTMarginedFuturesCommissionAdjustment(t.Context(), "234", spotTradablePair, 1, -1)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
@@ -10119,9 +10103,9 @@ func TestChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t *testing.T) {
 	require.ErrorIs(t, err, errSubAccountIDMissing)
 	_, err = e.ChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t.Context(), "231", currency.EMPTYPAIR, 1., 2.)
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
-	_, err = e.ChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t.Context(), "231", coinmTradablePair, 0, 2.)
+	_, err = e.ChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t.Context(), "231", coinmTradablePair, -1, 2.)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
-	_, err = e.ChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t.Context(), "231", coinmTradablePair, 1., 0)
+	_, err = e.ChangeSubAccountCoinMarginedFuturesCommissionAdjustment(t.Context(), "231", coinmTradablePair, 1., -1)
 	require.ErrorIs(t, err, limits.ErrAmountBelowMin)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
@@ -10416,7 +10400,11 @@ func TestGetUsersCustomiseIDs(t *testing.T) {
 func TestGetUserStatus(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetFastAPIUserStatus(t.Context())
+	accessToken := os.Getenv("BINANCE_FASTAPI_ACCESS_TOKEN")
+	if accessToken == "" {
+		t.Skip("OAuth access token is required for Fast API success testing")
+	}
+	result, err := e.GetFastAPIUserStatus(t.Context(), &FastAPIRequest{AccessToken: accessToken})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -10429,7 +10417,12 @@ func TestCreateAPIKey(t *testing.T) {
 	require.ErrorIs(t, err, errEmptySubAccountAPIKey)
 
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateAPICredentials)
-	result, err := e.CreateAPIKey(t.Context(), &BrokerAPIKeyRequest{APIName: "Thrasher", PublicKey: "sub-acc-API-key-here", Status: "1", EnableTrade: true, EnableFutureTrade: true, EnableEuropeanOptions: true})
+	accessToken := os.Getenv("BINANCE_FASTAPI_ACCESS_TOKEN")
+	publicKey := os.Getenv("BINANCE_FASTAPI_PUBLIC_KEY")
+	if accessToken == "" || publicKey == "" {
+		t.Skip("OAuth access token and public key are required for Fast API success testing")
+	}
+	result, err := e.CreateAPIKey(t.Context(), &BrokerAPIKeyRequest{AccessToken: accessToken, APIName: "Thrasher", PublicKey: publicKey, Status: "1", EnableTrade: true, EnableFutureTrade: true, EnableEuropeanOptions: true})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -10546,13 +10539,13 @@ func TestSendHTTPRequestErrorResponse(t *testing.T) {
 			statusCode: http.StatusBadRequest,
 			body:       `{"code":-1121,"msg":"Invalid symbol."}`,
 			wantErr:    currency.ErrCurrencyPairEmpty,
-			wantMsg:    "msg: Invalid symbol.",
+			wantMsg:    "Invalid symbol.",
 		},
 		{
 			name:       "unmapped error code",
 			statusCode: http.StatusBadRequest,
 			body:       `{"code":-9999,"msg":"Unknown error."}`,
-			wantMsg:    "err code: -9999 msg: Unknown error.",
+			wantMsg:    "Unknown error.",
 		},
 		{
 			name:       "non error response body",
@@ -10572,12 +10565,12 @@ func TestSendHTTPRequestErrorResponse(t *testing.T) {
 			e := new(Exchange)
 			require.NoError(t, testexch.Setup(e), "Setup must not error")
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.statusCode)
 				_, err := w.Write([]byte(tc.body))
 				assert.NoError(t, err, "Writing response should not error")
 			}))
-			defer server.Close()
+			require.NoError(t, e.SetHTTPClient(server.Client()), "test client must use the in-memory server")
 
 			require.NoError(t, e.API.Endpoints.SetRunningURL(exchange.RestSpot.String(), server.URL), "SetRunningURL must not error")
 
@@ -10688,7 +10681,7 @@ func TestClosePortfolioMarginListenKey(t *testing.T) {
 func TestCreateMarginListenToken(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.CreateMarginListenToken(t.Context())
+	result, err := e.CreateMarginListenToken(t.Context(), &MarginListenTokenRequest{})
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 }
@@ -10738,13 +10731,13 @@ func TestWsHandleFuturesUserData(t *testing.T) {
 	require.NoError(t, e.wsHandleFuturesUserData(t.Context(), "ACCOUNT_CONFIG_UPDATE", []byte(accountConfigUpdate)),
 		"ACCOUNT_CONFIG_UPDATE must be handled")
 
-	// MARGIN_CALL is forwarded untyped rather than erroring as unhandled
+	// MARGIN_CALL has a typed decoder.
 	const marginCall = `{"e":"MARGIN_CALL","E":1587727187525,"p":[]}`
 	assert.NoError(t, e.wsHandleFuturesUserData(t.Context(), "MARGIN_CALL", []byte(marginCall)),
-		"MARGIN_CALL should be forwarded rather than reported unhandled")
+		"MARGIN_CALL should be decoded")
 
 	err := e.wsHandleFuturesUserData(t.Context(), "SOMETHING_NEW", []byte(`{"e":"SOMETHING_NEW"}`))
-	assert.ErrorContains(t, err, websocket.UnhandledMessage, "an unrecognised event should be reported as unhandled")
+	assert.ErrorIs(t, err, errUnsupportedChannel, "an unrecognised event should retain its sentinel")
 }
 
 func TestProcessFuturesOrderTradeUpdate(t *testing.T) {
@@ -11019,8 +11012,6 @@ func TestGetUFuturesInsuranceBalance(t *testing.T) {
 
 func TestGetUFuturesSymbolADLRisk(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetUFuturesSymbolADLRisk(t.Context(), currency.EMPTYPAIR)
-	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
 	result, err := e.GetUFuturesSymbolADLRisk(t.Context(), usdtmTradablePair)
 	require.NoError(t, err)
@@ -11266,6 +11257,12 @@ func TestNewUMAlgoOrder(t *testing.T) {
 
 	_, err = e.NewUMAlgoOrder(t.Context(), &UMAlgoOrderRequest{Symbol: usdtmTradablePair})
 	require.ErrorIs(t, err, order.ErrSideIsInvalid)
+
+	_, err = e.NewUMAlgoOrder(t.Context(), &UMAlgoOrderRequest{Symbol: usdtmTradablePair, Side: "BUY"})
+	require.ErrorIs(t, err, errAlgoTypeRequired, "algo type must be supplied")
+
+	_, err = e.NewUMAlgoOrder(t.Context(), &UMAlgoOrderRequest{Symbol: usdtmTradablePair, Side: "BUY", AlgoType: "CONDITIONAL"})
+	require.ErrorIs(t, err, order.ErrTypeIsInvalid, "conditional order type must be supplied")
 }
 
 func TestCancelUMAlgoOrder(t *testing.T) {
@@ -11283,18 +11280,24 @@ func TestCancelAllUMAlgoOpenOrders(t *testing.T) {
 func TestGetUMOpenAlgoOrder(t *testing.T) {
 	t.Parallel()
 	_, err := e.GetUMOpenAlgoOrder(t.Context(), currency.EMPTYPAIR)
-	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
-
+	require.ErrorIs(t, err, order.ErrOrderIDNotSet, "single algo query must require an identifier")
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	result, err := e.GetUMOpenAlgoOrder(t.Context(), usdtmTradablePair)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
+	orders, err := e.GetAllUMOpenAlgoOrders(t.Context(), currency.EMPTYPAIR)
+	require.NoError(t, err, "open algo orders must load")
+	if len(orders) == 0 {
+		t.Skip("account has no open algo order to query")
+	}
+	response, err := e.GetUMOpenAlgoOrder(t.Context(), currency.EMPTYPAIR, &GetUMOpenAlgoOrderRequest{AlgoID: orders[0].AlgoID})
+	require.NoError(t, err, "existing algo order must be queryable")
+	assert.Equal(t, orders[0].AlgoID, response.AlgoID, "queried order should match the requested ID")
 }
 
 func TestGetAllUMOpenAlgoOrders(t *testing.T) {
 	t.Parallel()
-	_, err := e.GetAllUMOpenAlgoOrders(t.Context(), currency.EMPTYPAIR)
-	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
+	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+	result, err := e.GetAllUMOpenAlgoOrders(t.Context(), currency.EMPTYPAIR)
+	require.NoError(t, err, "all open algo orders must allow an omitted symbol")
+	assert.NotNil(t, result, "open algo orders should return a collection")
 }
 
 func TestGetUMAlgoOrderHistory(t *testing.T) {

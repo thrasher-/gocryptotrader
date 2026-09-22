@@ -459,6 +459,30 @@ const (
 	uFuturesTradesRate
 	uFuturesTradingScheduleRate
 
+	// Current Portfolio Margin Pro and travel-rule endpoints.
+	sapiDeletePortfolioMarginCallLevelRate
+	sapiGetPortfolioDeltaModeRate
+	sapiGetPortfolioMarginCallLevelRate
+	sapiGetPortfolioMarginProBalancesRate
+	sapiGetPortfolioMarginProSPANAccountRate
+	sapiGetPortfolioTransferableEarnBalanceRate
+	sapiGetPortfolioMarginProLoanRepaymentsRate
+	sapiSetPortfolioMarginCallLevelRate
+	sapiSetPortfolioDeltaModeRate
+	sapiTransferPortfolioEarnAssetsRate
+	sapiGetPortfolioTieredCollateralRatesRate
+	sapiGetMarginLiquidationLoanRate
+	sapiGetSpotAssetTagsRate
+	sapiBrokerTravelRuleWithdrawRate
+	sapiGetTravelRuleDepositHistoryV2Rate
+	sapiGetAddressVerificationsRate
+	sapiGetTravelRuleCountriesRate
+	sapiGetTravelRuleRegionsRate
+	sapiSubmitBrokerDepositQuestionnaireRate
+	sapiSubmitDepositQuestionnaireV2Rate
+	sapiGetTravelRuleWithdrawalHistoryRate
+	sapiTravelRuleWithdrawRate
+
 	// endpointLimitSentinel must remain last. It bounds the iota block so tests can
 	// assert every declared limit has a rate limiter defined for it.
 	endpointLimitSentinel
@@ -502,6 +526,29 @@ func GetRateLimits() request.RateLimitDefinitions {
 	cryptoLoanLimiter := request.NewRateLimit(time.Second, 52900)
 
 	return request.RateLimitDefinitions{
+		sapiDeletePortfolioMarginCallLevelRate:      request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiGetPortfolioDeltaModeRate:               request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiGetPortfolioMarginCallLevelRate:         request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiGetPortfolioMarginProBalancesRate:       request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 20),
+		sapiGetPortfolioMarginProSPANAccountRate:    request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 5),
+		sapiGetPortfolioTransferableEarnBalanceRate: request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiGetPortfolioMarginProLoanRepaymentsRate: request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 500),
+		sapiSetPortfolioMarginCallLevelRate:         request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiSetPortfolioDeltaModeRate:               request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1500),
+		sapiTransferPortfolioEarnAssetsRate:         request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 1500),
+		sapiGetPortfolioTieredCollateralRatesRate:   request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 50),
+		sapiGetMarginLiquidationLoanRate:            request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 100),
+		sapiGetSpotAssetTagsRate:                    request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 100),
+		sapiBrokerTravelRuleWithdrawRate:            request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 600),
+		sapiGetTravelRuleDepositHistoryV2Rate:       request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1),
+		sapiGetAddressVerificationsRate:             request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1),
+		sapiGetTravelRuleCountriesRate:              request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1),
+		sapiGetTravelRuleRegionsRate:                request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1),
+		sapiSubmitBrokerDepositQuestionnaireRate:    request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 600),
+		sapiSubmitDepositQuestionnaireV2Rate:        request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 600),
+		sapiGetTravelRuleWithdrawalHistoryRate:      request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 12000), 1),
+		sapiTravelRuleWithdrawRate:                  request.GetRateLimiterWithWeight(request.NewRateLimit(time.Minute, 180000), 600),
+
 		spotDefaultRate:                        request.GetRateLimiterWithWeight(spotLimiter, 1),
 		spotOrderAmendmentsRate:                request.GetRateLimiterWithWeight(spotLimiter, 4),
 		spotMyFiltersRate:                      request.GetRateLimiterWithWeight(spotLimiter, 40),

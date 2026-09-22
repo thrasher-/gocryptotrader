@@ -1,0 +1,700 @@
+{
+  "observedDate": "2026-09-21",
+  "fixture": "http.json",
+  "fixtureSHA256": "46fb0f6732d8820cd7c63b40702f23623a5ea9e1878d30fdf1e65525f4f11b5f",
+  "requests": [
+    {
+      "url": "https://eapi.binance.com/eapi/v1/exchangeInfo",
+      "status": 200,
+      "bytes": 1021406,
+      "sha256": "15ed122bb55cfb1f42e968a01037d913afa0ed7de49a8e2ffb2da46a6d04f730"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/ping",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/delivery-price?pair=BTCUSD",
+      "status": 200,
+      "bytes": 1119,
+      "sha256": "c188481d46020f89b12a1b82a59c8eb424e39cb7a593d9ab39c46fb07f2a035a"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/time",
+      "status": 200,
+      "bytes": 28,
+      "sha256": "ece34597d1cdb53a4ec4baa875cd5092a694da38e15781c36ea5ca8860f33c94"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/time",
+      "status": 200,
+      "bytes": 28,
+      "sha256": "d9918f147e8c7353ef4c924b94b3bdbfd1db5c6da7b3218ad14d8a21f863140c"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/ping",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/exchangeInfo",
+      "status": 200,
+      "bytes": 35676,
+      "sha256": "76c18f3dc4d018be734fe7e3f00a0532bec7ce190700760f83767d0085d822a5"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/fundingRate?limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1301,
+      "sha256": "724e0840206c9920aebb7e5eb5a4032d5d8d3a333a3c21850e3ba586590d907e"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/aggTrades?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1216,
+      "sha256": "9ae66c083016f726db50ea5a378e963b27e67d595a30d9a7fec84cf11135d04e"
+    },
+    {
+      "url": "https://api4.binance.com/sapi/v1/convert/exchangeInfo?fromAsset=BTC&toAsset=USDT",
+      "status": 200,
+      "bytes": 172,
+      "sha256": "a413c55bbbe4b7f7a64d23781e9ec8e9b07ee685c618f4986c7e7612e473b89b"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/avgPrice?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 61,
+      "sha256": "06f26b396cf37d23362cd33f2d2e9589e6136a0ec9e3bd9f57055c454a4ff681"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/basis?contractType=PERPETUAL&limit=10&pair=BTCUSDT&period=5m",
+      "status": 200,
+      "bytes": 1981,
+      "sha256": "b094fd6f805f2f20c6140fdd8db6737d9795aef81b64680543223be35e9dac6c"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 120,
+      "sha256": "0c3456426d09dcfe748d69195e9adff27f243066626d3e3286ace569d2063fb5"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/constituents?symbol=BTCUSD",
+      "status": 200,
+      "bytes": 450,
+      "sha256": "14d254194323eccff771fcce37031ddab8d0f0f378d0d3b3bbf253f205c6fbd4"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/openInterest?symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 114,
+      "sha256": "c73892994f1ed8dcaba444d7c85645d19e6024b49a11ed65276f13ccaf2f036e"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/continuousKlines?contractType=PERPETUAL&interval=1m&limit=10&pair=BTCUSD",
+      "status": 200,
+      "bytes": 1126,
+      "sha256": "51b5f61fec0fa9f01567b8d91cb1b3e92ed776185a7971334e9cee2875b3ea1d"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/ticker?symbol=BTC-260921-81000-C",
+      "status": 200,
+      "bytes": 367,
+      "sha256": "9610ecdeaab3f9390980c92c8e0a1b2ad30645e04be59d9680fad36fc64abc52"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/klines?interval=1m&limit=10&symbol=BTC-260921-81000-C",
+      "status": 200,
+      "bytes": 1101,
+      "sha256": "28a5f3c2b5df0ea1ffcff974f2e1769a570acfe2ab489044daba8394f8f0f3fd"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/exerciseHistory?limit=10&underlying=BTCUSDT",
+      "status": 200,
+      "bytes": 1527,
+      "sha256": "4fcc7867aa80c7b18962d8054718e00c53d726db01a2a2f5fc37f3ba9899b41f"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/openInterest?expiration=260921&underlyingAsset=BTC",
+      "status": 200,
+      "bytes": 4846,
+      "sha256": "39ad2e84e648123e36be66212c0b4f1260566e8119d809619656df3b941c03c6"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/depth?limit=10&symbol=BTC-260921-81000-C",
+      "status": 200,
+      "bytes": 444,
+      "sha256": "9e31e59f7588f0337f208e71c083cf845aadb1fdf93503577b4bb1807892cb97"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/blockTrades?limit=10",
+      "status": 200,
+      "bytes": 1450,
+      "sha256": "17aa8ba6a0fb03f3814497c8dc1573ea7c2ff68c2b648b6603e32046b3fc9e58"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/trades?limit=10&symbol=BTC-260921-81000-C",
+      "status": 200,
+      "bytes": 1451,
+      "sha256": "8eeebbd108eaf926a7a4196cac12c34c61e68334205c192a8af88c7c534597c9"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/index?underlying=BTCUSDT",
+      "status": 200,
+      "bytes": 52,
+      "sha256": "b1c645dabf51fd62c4963302b960f53c254b744bbd82b2929c50a478e9e951b3"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/exchangeInfo",
+      "status": 200,
+      "bytes": 17610521,
+      "sha256": "8c44c437b0ee7108b409495f5a5304540dd317750f7019d79001e62b6e9b9448"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/time",
+      "status": 200,
+      "bytes": 28,
+      "sha256": "3d1edb28ce3fb9a0d4ff51c3d10674ec84b4be210354c19122013e5528048d2a"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/executionRules?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 183,
+      "sha256": "e05d1c8f0221689f82a0f68e3d15e40991879c68ae1cd065dd78a57d5f72ac48"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/fundingInfo",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/aggTrades?limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 953,
+      "sha256": "9f8bceaf09c9589f9152c22af45857c261bc232e74aecacda6f79af30d85fcc9"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/basis?contractType=PERPETUAL&limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1961,
+      "sha256": "edf3bcad22dae4e3b04459eab320525ef51c5446975f35bff09cdf6ec883baaa"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/klines?interval=1m&limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1138,
+      "sha256": "bd83a7030362bf2fb9537bfd0d60e90a9e3187337a124c693e6d73bfc89340a4"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/depth?limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 469,
+      "sha256": "3bcce487088494cf1156930ba9bc505acc14d23989d4e0f2f97e0f6e2757c393"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/ticker/bookTicker?pair=BTCUSD&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 166,
+      "sha256": "f3d0d5a6b73a631ccb1cad031d07b47dd2adb0e143aff4fc558eb6dcf4cd9a8d"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/trades?limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1101,
+      "sha256": "8907b6ad4385a47ca9bbd6cf1f7f8ed16cefd2104fbe3cf47429fa557ffc5bee"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/ticker/24hr?pair=BTCUSD&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 379,
+      "sha256": "4759d4265c92fc5201eb59c5c93e6752f64ad05488e3ddf2bfa5713ba05ec95a"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/ticker/price?pair=BTCUSD&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 79,
+      "sha256": "7e0bfebc5554e9eaa787719ad9982e43433afe4df3fd37ed3a6c5713a8f76a6b"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/takerBuySellVol?contractType=PERPETUAL&limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1713,
+      "sha256": "ddee3f1465919e0475f88ddcbc125f1b589f6213433763121e0e41fca58d2d78"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/historicalBlockTrades?fromId=0&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 473,
+      "sha256": "293c94a96fc6f7f92993ac40289b5900a1ccb83177e3a46876b191c3830d1e60"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/historicalTrades?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1481,
+      "sha256": "cb81b9f5cd93a7050b39608cf0428f0dc484778d3c3cffcd51bda642bb371075"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/premiumIndex?pair=BTCUSD&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 253,
+      "sha256": "7aec02ea0e526e3ed449913e4ba36a07944793ee222f4221de5440859f40eb80"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/constituents?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 764,
+      "sha256": "ac24727b2c16c2a5e6a850cfdf38922d9ca9e253674ad43ce144892cacc18d69"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/indexPriceKlines?interval=1m&limit=10&pair=BTCUSDT",
+      "status": 200,
+      "bytes": 1210,
+      "sha256": "529b808db146f1b3fb260b94fac0dcd0ea30c6a2903432f0f61db543c15c5217"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/indexPriceKlines?interval=1m&limit=10&pair=BTCUSD",
+      "status": 200,
+      "bytes": 1211,
+      "sha256": "e908c0c69c0cd5e14b6fa486af681887158eab4e22d673006beeeb288a677b55"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 45,
+      "sha256": "53d8cfcd4e287227b4e30371829839e7ebe5167a30380897165bbb562d4da9a4"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/markPriceKlines?interval=1m&limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1211,
+      "sha256": "7ec6ac2298e7f494138f37a4062bf7f129f353038b34318c26f8a0e1bd9ecc77"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?interval=1m&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1210,
+      "sha256": "c43cd0e52a8c04b9b9b41b7427aac347eef4b73afdda60b1caa405dad0855ff2"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/globalLongShortAccountRatio?limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1171,
+      "sha256": "b27e83a976ae618f724b645b14b5bbbc266c46457dcbbd379fe5ce8f566797e8"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/trades?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1478,
+      "sha256": "cd37b281a66d9d325816d8cd4fc6cb18cd588de17a6952cbc36ec3905e8bd395"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/assetIndex?symbol=BTCUSD",
+      "status": 200,
+      "bytes": 321,
+      "sha256": "e394b1cdfcff3a70bb156281ac3fbdaf8c89693830f7b6dd1d75bf6f0058ad8a"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/openInterestHist?contractType=PERPETUAL&limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1491,
+      "sha256": "bb3d79b4997161f5b95fa78382a17b2d476d1c31765496a9a9963cb36f901da5"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/mark?symbol=BTC-260921-81000-C",
+      "status": 200,
+      "bytes": 272,
+      "sha256": "b8802da33ab227f334512892d43e2cc2038854194c33c7e6224753c578478f97"
+    },
+    {
+      "url": "https://eapi.binance.com/eapi/v1/exchangeInfo",
+      "status": 200,
+      "bytes": 1021405,
+      "sha256": "6e4b7a8fbd121e2742cd8e5c9b7a94d72e0a6600877eafd916a8e8dc4e5da041"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/depth?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 687,
+      "sha256": "212c40a571924c1d53a2abbb443db123e756bca573c5812f7a1417129bb5efbc"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/trades?limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1101,
+      "sha256": "8907b6ad4385a47ca9bbd6cf1f7f8ed16cefd2104fbe3cf47429fa557ffc5bee"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "status": 200,
+      "bytes": 1123073,
+      "sha256": "0153b7ea90bd390fe2d4d913235fe7e172c1e71fa6b117ba95c4a5cb02cd0618"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/premiumIndexKlines?interval=1m&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1090,
+      "sha256": "74e6e5949b6b013f6f6e32ed29f39d45bc5c30d05445c06bb01e90ffb3d5c3e1"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/premiumIndexKlines?interval=1m&limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 1090,
+      "sha256": "948656e6977f7941f41580a37fe7a17766558de0cc535563632a88fb17c6dc25"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 555,
+      "sha256": "628533830d51bf6446afafbf5c16da14dd5f9aa7de71ac9458450f2ebc971337"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/delivery-price?pair=BTCUSDT",
+      "status": 200,
+      "bytes": 1119,
+      "sha256": "4c11fe09afdd8a46e6496440d1c99ba7ac325326732b3dc0fda327044f02d8c4"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/klines?interval=1m&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1682,
+      "sha256": "4e4e49fd51343e93b7d609b58d9bc11d89bc6ed315c10d86531487d9bea55e2e"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/referencePrice?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 80,
+      "sha256": "1abce125e613a874bb3911a507918a10c30ee58c9677812667c2732e8b1dfaa8"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/referencePrice/calculation?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 94,
+      "sha256": "c88b4e24a8fac60c24d52f723918a10e5addc8fc3645811469ec558d75484ce1"
+    },
+    {
+      "url": "https://api4.binance.com/sapi/v1/system/status",
+      "status": 200,
+      "bytes": 27,
+      "sha256": "744ef3f9b4c0aecb8f23ab56ef0110a28c22ccda969d1a332dfcf0cdf17d0f2b"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D&type=FULL&windowSize=1h",
+      "status": 200,
+      "bytes": 783,
+      "sha256": "34c656f2a4760159296585f096c8328d8d3a3bd38b9642b8750d83b2ea27d9d8"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/topLongShortAccountRatio?limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1171,
+      "sha256": "f6ed623277025edb6b2f6ba78a4a70105ac52d137ff0d3ea5d7aab19dba4b299"
+    },
+    {
+      "url": "https://dapi.binance.com/futures/data/topLongShortPositionRatio?limit=10&pair=BTCUSD&period=5m",
+      "status": 200,
+      "bytes": 1191,
+      "sha256": "d6b6e2fd4d06ab5220f1314bd555db38e53fc28713fba97e422ce95b2e307d48"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/tradingDay?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D&type=FULL",
+      "status": 200,
+      "bytes": 790,
+      "sha256": "d56c6a6ae643c808a5b3dfe17c2a92289a6ef9802afb198b0bdd449942c44c9c"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/continuousKlines?contractType=PERPETUAL&interval=1m&limit=10&pair=BTCUSDT",
+      "status": 200,
+      "bytes": 1308,
+      "sha256": "8faca4a6b9322bd324631fda5bbc4f067aa6eda1325aaafaef3bebe1e0bb45c2"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/convert/exchangeInfo?fromAsset=BTC&toAsset=USDT",
+      "status": 200,
+      "bytes": 171,
+      "sha256": "088c3dad8d9f045d91d0ba5a4dde68d64f1348d11e5bca45c460be24cff35543"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/constituents?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 764,
+      "sha256": "ac24727b2c16c2a5e6a850cfdf38922d9ca9e253674ad43ce144892cacc18d69"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/insuranceBalance?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 591,
+      "sha256": "cb0387c58780d965bd987c60ab4cc283c5050551ba45865f16ac33a83bf68d98"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/symbolAdlRisk?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 63,
+      "sha256": "110b6bf8de0c6eb24005c0943c2c7ec78e559afeee4eb1df72ac0b437f20a50d"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/symbolAdlRisk",
+      "status": 200,
+      "bytes": 50893,
+      "sha256": "5419389287c910154c029d392ae8aaa8296fa811951f10f8eb5ee8294900da44"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/executionRules?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D",
+      "status": 200,
+      "bytes": 349,
+      "sha256": "4c0af3881b6a16da023104a1154d60b6331ee55a98b279b6a14db153884b59c7"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/exchangeInfo?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D",
+      "status": 200,
+      "bytes": 10245,
+      "sha256": "5c46025830ad2c444f8597187d8a69b4c87465e3180e3753eac5cbb1e9d0d469"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/tradingSchedule?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 11247,
+      "sha256": "30cbd018f3bea42424eb4734264eb43b76e304e225b9f4dce23b810634d5fa8f"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/uiKlines?interval=1m&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1682,
+      "sha256": "72442701a32e8f379e5cafdb6360fd1efbff4672c2029feff88f898e2d08b08d"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/rpiDepth?limit=1000&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 42087,
+      "sha256": "5fca20a37c425b664e9ac1a4bbe74493d981fb7e066d70ee5b4a5f5031b1838f"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/openInterest?symbol=BTCUSD_PERP",
+      "status": 200,
+      "bytes": 114,
+      "sha256": "de754e5fb1fc1240d2666896047e4d88ad7766b48c62a3c956bdc60fe5807dba"
+    },
+    {
+      "url": "https://papi.binance.com/papi/v1/ping",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ping",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 371,
+      "sha256": "b05bb971260a92a55f325d27ea5f5086b4a517fe0f9cb401b586477ac0eca63b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/indexInfo",
+      "status": 200,
+      "bytes": 69326,
+      "sha256": "120eaa2eb49be855cb4ad10c31aeff3414d18fbb2f6686f1d95aeb3c8e4498ab"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/aggTrades?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1149,
+      "sha256": "8b83ba84eb820808d7636de28605bff62f5d1cd642a9f4c42aa35b44c3c039c2"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/exchangeInfo",
+      "status": 200,
+      "bytes": 1123073,
+      "sha256": "49273d345ab20ab78b1e46d9351d641d1637a8a24c10edffea6d7147a3f7999c"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/depth?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 505,
+      "sha256": "ce990c129c31b615c4fd98e9736aa5400e7b3d1c508b840c165c3ceee73fd08b"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/ping",
+      "status": 200,
+      "bytes": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/fundingRate?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1261,
+      "sha256": "d71031aa1249b0c10a05d76e6395f2fbb545e7eb143dfe6555518132b6587a8d"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/fundingInfo",
+      "status": 200,
+      "bytes": 134893,
+      "sha256": "1369142e65f6a071c77e87700b33c8cade13ba3724d5dcd04eb0bfcab6358f31"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 231,
+      "sha256": "789b7fda69644ede9e4885565c55ce5348ba48abda9c001a2e24a44210c710d0"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?limit=10&period=5m&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1201,
+      "sha256": "d23e4c0b497cfe2d83af4108118445e5b1c7da92bc79e9aaf0c18cbf63e9b1a8"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/klines?interval=1m&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1308,
+      "sha256": "6c6d00d80a218140a0f6bda26b63480fad52cde08c131d11c55181a72393e214"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 69,
+      "sha256": "836cc614f47029a1c7cc965c46a08934f315926f970b456c1d986468001c71fa"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/openInterestHist?limit=10&period=5m&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1711,
+      "sha256": "198c35e368397900bc626f6b05ec21f37f932bbcbddf504f115def9613b778fc"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/trades?limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1318,
+      "sha256": "bf0325188f5de2b530e7c86e272e30a23ab5af6fd030bbd62f0504753a10e791"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/time",
+      "status": 200,
+      "bytes": 28,
+      "sha256": "bda3cbfe118410d8af4a69bdfb501e95333fbafea10a4488c6cfdd82a29e694a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 149,
+      "sha256": "bba38350e36970a503faf55c0ad516a18fc94e3bb92e19d4e0b418fbc207a5c5"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v2/ticker/price?symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 60,
+      "sha256": "b1db4398af7731bf4f241fc2e7a0fd3df0b4241a1fb6a59460188301b848dc90"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/takerlongshortRatio?limit=10&period=5m&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 921,
+      "sha256": "cfe2f0ef6a02cf4c07af4f68f82065014f7f35008fee0ec3a2a51c643e139275"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/topLongShortAccountRatio?limit=10&period=5m&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1201,
+      "sha256": "4ecf58d1e727bb98f4b0deec4fd93e394ca2d31e12ef61e1a7db48b29300e483"
+    },
+    {
+      "url": "https://fapi.binance.com/futures/data/topLongShortPositionRatio?limit=10&period=5m&symbol=BTCUSDT",
+      "status": 200,
+      "bytes": 1201,
+      "sha256": "7e7a497e6f5910c1227b1e5c4d8494f9d2d808a4e67b82b87860cf4e10418cec"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/bookTicker?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D",
+      "status": 200,
+      "bytes": 242,
+      "sha256": "281c605fa5222ee4b4a7e2f02309e203e8efa43857379b41e74c233519053ba6"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/bookTicker",
+      "status": 200,
+      "bytes": 426480,
+      "sha256": "f6d1d2dd6143ab0dca8448b5d677f374c4a3c7de1b4175808af2b0631e25beaa"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/price?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D",
+      "status": 200,
+      "bytes": 92,
+      "sha256": "85d89c5a03ed890f7bd39255822682cd71151e8d762c75d85b63fa7358d28091"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/price",
+      "status": 200,
+      "bytes": 157345,
+      "sha256": "cc6892862a596a85282f4cd84cbbc12ac9c56c54fd96c043de1e6cad08d5aba7"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22%2C%22ETHUSDT%22%5D",
+      "status": 200,
+      "bytes": 1106,
+      "sha256": "0b51b96ae9fae2c15ad74e0650e8c30d8ab71212a0c7c9be92e246c95c51865d"
+    },
+    {
+      "url": "https://api4.binance.com/api/v3/ticker/24hr",
+      "status": 200,
+      "bytes": 1898811,
+      "sha256": "830e121580722faa474784ed2fa56d4aebf8225924516ec84a800337376fea0a"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/ticker/24hr",
+      "status": 200,
+      "bytes": 286746,
+      "sha256": "114e9115f46cc78ed47a1e6b274d029306615a67e44ccef4f11f5f6ecf641cb2"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/premiumIndex",
+      "status": 200,
+      "bytes": 201480,
+      "sha256": "bf67690599c92dcafb9d800af3505608877a5728daccd39d6a6a5b076515e039"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v2/ticker/price",
+      "status": 200,
+      "bytes": 48361,
+      "sha256": "b1ff816015e58b5990a481688a028be0bde3dbff9863bc76843bba5681d73100"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/ticker/bookTicker",
+      "status": 200,
+      "bytes": 116628,
+      "sha256": "cf5ae4a2215d295d6347c991d4795cdd98d68764121e03d5e92c02b7f9868adc"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/assetIndex",
+      "status": 200,
+      "bytes": 8866,
+      "sha256": "305456e7d111cffaa31b40c7df6051d689c988696a9309f367f43746d7f6e11c"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/insuranceBalance",
+      "status": 200,
+      "bytes": 21824,
+      "sha256": "dd8b593019b8797a0cbcede666db30ae0cb17ac075ed3b887dfddb1e8f0416eb"
+    },
+    {
+      "url": "https://dapi.binance.com/dapi/v1/trades?fromId=1&limit=10&symbol=BTCUSD_PERP",
+      "status": 200,
+      "observedAt": "2026-09-21T07:01:21.807335+00:00",
+      "bytes": 1101,
+      "sha256": "01ac325117506e2f28465bb50ed39d2a348c9ac2d3cab0efc06d820ddad06056"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/trades?fromId=1&limit=10&symbol=BTCUSDT",
+      "status": 200,
+      "observedAt": "2026-09-21T07:01:21.939277+00:00",
+      "bytes": 1312,
+      "sha256": "7f6e5a5b441f243d286b1f37aedf50784bebe195877df5bbf1b8fea9dbe456ed"
+    }
+  ],
+  "fixtureTransform": "Long arrays retain their first five entries, every distinct field/type shape, and the symbols used by requests. Object fields and scalar values are preserved. Request digests describe the original complete responses."
+}

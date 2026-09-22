@@ -129,6 +129,7 @@ type connection struct {
 	Wg                   *sync.WaitGroup
 	Connection           *gws.Conn
 	shutdown             chan struct{}
+	cancel               context.CancelFunc
 	Match                *Match
 	ResponseMaxLimit     time.Duration
 	Traffic              chan struct{}
@@ -334,7 +335,13 @@ func parseBinaryResponse(resp []byte) ([]byte, error) {
 
 // Shutdown shuts down and closes specific connection
 func (c *connection) Shutdown() error {
-	if c == nil || c.Connection == nil {
+	if c == nil {
+		return nil
+	}
+	if c.cancel != nil {
+		c.cancel()
+	}
+	if c.Connection == nil {
 		return nil // Allow Shutdown to be called during early startup/teardown when the socket hasn't been created yet.
 	}
 	c.setConnectedStatus(false)

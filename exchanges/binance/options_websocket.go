@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -13,16 +14,13 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/encoding/json"
 	"github.com/thrasher-corp/gocryptotrader/exchange/websocket"
-	exchange "github.com/thrasher-corp/gocryptotrader/exchanges"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/asset"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/order"
-	"github.com/thrasher-corp/gocryptotrader/exchanges/orderbook"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/request"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/subscription"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/ticker"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
-	"github.com/thrasher-corp/gocryptotrader/log"
 )
 
 const (
@@ -34,13 +32,13 @@ const (
 	optionsMarketFilter  = "options-market"
 	optionsPrivateFilter = "options-private"
 
-	cnlTrade                    = "trade"
-	cnlTradeWithUnderlyingAsset = "@trade"
-	cnlIndex                    = "index"
-	cnlMarkPrice                = "@markPrice"
+	cnlTrade                    = "optionTrade"
+	cnlTradeWithUnderlyingAsset = "@optionTrade"
+	cnlIndex                    = "!index@arr"
+	cnlMarkPrice                = "optionMarkPrice"
 	cnlKline                    = "kline"
-	cnlTicker                   = "ticker"
-	cnlTickerWithExpiration     = "@ticker@"
+	cnlTicker                   = "optionTicker"
+	cnlTickerWithExpiration     = "@optionTicker@"
 	cnlOpenInterest             = "@openInterest@"
 	cnlDepth                    = "depth"
 	cnlOptionPair               = "option_pair"
@@ -49,6 +47,7 @@ const (
 
 // defaultEOptionsSubscriptions list of default subscription channels
 var defaultEOptionsSubscriptions = []string{
+	cnlTrade,
 	cnlTicker,
 	cnlKline,
 	cnlDepth,
@@ -64,17 +63,6 @@ func (e *Exchange) WsOptionsConnect(ctx context.Context, conn websocket.Connecti
 	dialer := gws.Dialer{
 		HandshakeTimeout: e.Config.HTTPTimeout,
 		Proxy:            http.ProxyFromEnvironment,
-	}
-	if conn.GetURL() == fstreamOptionsPrivateURL && e.Websocket.CanUseAuthenticatedEndpoints() && e.CanUseAuthenticatedWebsocketEndpoints() {
-		key, keyErr := e.GetEOptionsWsAuthStreamKey(ctx)
-		switch {
-		case keyErr != nil:
-			e.Websocket.SetCanUseAuthenticatedEndpoints(false)
-			log.Errorf(log.ExchangeSys, "%v unable to connect to authenticated Websocket. Error: %s", e.Name, keyErr)
-		default:
-			e.setListenKey(asset.Options, key)
-			conn.SetURL(fstreamOptionsPrivateURL + "/ws/" + key)
-		}
 	}
 	if err := conn.Dial(ctx, &dialer, http.Header{}, nil); err != nil {
 		return fmt.Errorf("%s - unable to connect to websocket: %w", e.Name, err)
@@ -97,69 +85,10 @@ func (e *Exchange) handleEOptionsSubscriptions(ctx context.Context, conn websock
 		Params: make([]string, 0, len(subscs)),
 		ID:     e.MessageSequence(),
 	}
-	for s := range subscs {
-		switch subscs[s].Channel {
-		case cnlTrade, cnlIndex, cnlTicker: // subscriptions with <symbol>@channel pattern
-			for p := range subscs[s].Pairs {
-				params.Params = append(params.Params, subscs[s].Pairs[p].String()+"@"+subscs[s].Channel)
-			}
-		case cnlTradeWithUnderlyingAsset, cnlMarkPrice: // subscriptions with <underlyingAsset>@channel
-			for p := range subscs[s].Pairs {
-				params.Params = append(params.Params, subscs[s].Pairs[p].Base.String()+"@"+subscs[s].Channel)
-			}
-		case cnlKline: // subscriptions with <symbol>@channel<interval> pattern
-			intervalString := e.intervalToString(subscs[s].Interval)
-			if intervalString == "" {
-				intervalString = "15m"
-			}
-			for p := range subscs[s].Pairs {
-				params.Params = append(params.Params, subscs[s].Pairs[p].String()+"@"+subscs[s].Channel+"_"+intervalString)
-			}
-		case cnlTickerWithExpiration, cnlOpenInterest: // subscriptions with <underlyingAsset>@channel@<expirationDate>
-			var expirationTime time.Time
-			expirationTimeInterface, okay := subscs[s].Params["expiration"]
-			if !okay {
-				// default: five day expiration time
-				expirationTime = time.Now().Add(time.Hour * 24 * 5)
-			} else {
-				expirationTime, okay = expirationTimeInterface.(time.Time)
-				if !okay {
-					// default: five day expiration time
-					expirationTime = time.Now().Add(time.Hour * 24 * 5)
-				}
-			}
-			expirationTimeString := expirationTime.Format("060102")
-			for p := range subscs[s].Pairs {
-				params.Params = append(params.Params, subscs[s].Pairs[p].String()+subscs[s].Channel+expirationTimeString)
-			}
-		case cnlDepth:
-			// The level may be configured as either a number or a string, so accept
-			// both rather than silently falling back to the smallest book.
-			level := "10"
-			switch v := subscs[s].Params["level"].(type) {
-			case string:
-				if v != "" {
-					level = v
-				}
-			case int:
-				level = strconv.Itoa(v)
-			case int64:
-				level = strconv.FormatInt(v, 10)
-			case float64:
-				level = strconv.FormatInt(int64(v), 10)
-			}
-			var intervalString string
-			if subscs[s].Interval != kline.Interval(0) {
-				intervalString = "@" + e.intervalToString(subscs[s].Interval)
-			}
-			for p := range subscs[s].Pairs {
-				params.Params = append(params.Params, subscs[s].Pairs[p].String()+"@"+subscs[s].Channel+"@"+level+intervalString)
-			}
-		case cnlOptionPair:
-			params.Params = append(params.Params, subscs[s].Channel)
-		default:
-			return errUnsupportedChannel
-		}
+	var err error
+	params.Params, err = optionsSubscriptionParams(subscs)
+	if err != nil {
+		return err
 	}
 
 	response, err := conn.SendMessageReturnResponse(ctx, request.UnAuth, params.ID, params)
@@ -190,26 +119,38 @@ func (e *Exchange) OptionUnsubscribe(ctx context.Context, conn websocket.Connect
 
 // GenerateEOptionsDefaultSubscriptions generates the default subscription set
 func (e *Exchange) GenerateEOptionsDefaultSubscriptions(filter string) (subscription.List, error) {
+	switch filter {
+	case optionsPublicFilter, optionsMarketFilter:
+	case optionsPrivateFilter:
+		return subscription.List{}, nil
+	default:
+		return nil, fmt.Errorf("%w: %s", errUnsupportedSubscription, filter)
+	}
+	if !slices.Contains(e.GetAssetTypes(true), asset.Options) {
+		return nil, nil
+	}
+	if configured, present, err := e.configuredDerivativeSubscriptions(asset.Options, filter); present || err != nil {
+		return configured, err
+	}
 	var subscriptions subscription.List
-	pairs, err := e.FetchTradablePairs(context.Background(), asset.Options)
+	pairs, err := e.GetEnabledPairs(asset.Options)
 	if err != nil {
 		return nil, err
 	}
-	if len(pairs) > maxDefaultSubscriptionPairs {
-		log.Warnf(log.ExchangeSys, "%s limiting default subscriptions to %d of %d tradable pairs", e.Name, maxDefaultSubscriptionPairs, len(pairs))
-		pairs = pairs[:maxDefaultSubscriptionPairs]
+	if len(pairs) == 0 {
+		return nil, nil
 	}
 	var channels []string
 	for _, ch := range defaultEOptionsSubscriptions {
 		switch filter {
 		case optionsPublicFilter:
 			switch ch {
-			case cnlTrade, cnlTradeWithUnderlyingAsset, cnlDepth, cnlTicker, cnlTickerWithExpiration, cnlKline:
+			case cnlTrade, cnlTradeWithUnderlyingAsset, cnlDepth, cnlTicker, cnlTickerWithExpiration:
 				channels = append(channels, ch)
 			}
 		case optionsMarketFilter:
 			switch ch {
-			case cnlOptionSymbol, cnlMarkPrice, cnlIndex, cnlOptionPair, cnlOpenInterest:
+			case cnlOptionSymbol, cnlMarkPrice, cnlIndex, cnlOpenInterest, cnlKline:
 				channels = append(channels, ch)
 			}
 		case optionsPrivateFilter:
@@ -263,96 +204,67 @@ func (e *Exchange) GenerateEOptionsDefaultSubscriptions(filter string) (subscrip
 	return subscriptions, nil
 }
 
-// GetEOptionsWsAuthStreamKey will retrieve a key to use for authorised WS streaming
+// GetEOptionsWsAuthStreamKey retrieves the options user-data listen key.
 func (e *Exchange) GetEOptionsWsAuthStreamKey(ctx context.Context) (string, error) {
-	endpointPath, err := e.API.Endpoints.GetURL(exchange.RestOptions)
+	response, err := e.CreateOptionsListenKey(ctx)
 	if err != nil {
 		return "", err
 	}
-
-	creds, err := e.GetCredentials(ctx)
-	if err != nil {
-		return "", err
+	if response == nil {
+		return "", common.ErrNoResponse
 	}
-
-	var resp UserAccountStream
-	headers := make(map[string]string)
-	headers["X-MBX-APIKEY"] = creds.Key
-	item := &request.Item{
-		Method:        http.MethodPost,
-		Path:          endpointPath + "/eapi/v1/listenKey",
-		Headers:       headers,
-		Result:        &resp,
-		Verbose:       e.Verbose,
-		HTTPDebugging: e.HTTPDebugging,
-		HTTPRecording: e.HTTPRecording,
-	}
-
-	return resp.ListenKey, e.SendPayload(ctx, request.Unset, func() (*request.Item, error) {
-		return item, nil
-	}, request.AuthenticatedRequest)
+	return response.ListenKey, nil
 }
 
 func (e *Exchange) wsHandleEOptionsData(ctx context.Context, conn websocket.Connection, respRaw []byte) error {
-	var result WsOptionIncomingResponses
-	if err := json.Unmarshal(respRaw, &result); err != nil {
-		return err
-	}
-	if len(result.Instances) == 0 {
+	var envelope WsOptionIncomingResponse
+	data := respRaw
+	if len(data) == 0 {
 		return errEmptyWebsocketResponse
 	}
-	if result.Instances[0].EventType == "" || (result.Instances[0].ID != 0 && result.Instances[0].Result != nil) {
-		return conn.RequireMatchWithData(result.Instances[0].ID, respRaw)
+	if data[0] == '{' {
+		if err := json.Unmarshal(data, &envelope); err != nil {
+			return err
+		}
+		if len(envelope.Data) != 0 {
+			data = envelope.Data
+		} else if envelope.ID != 0 {
+			return conn.RequireMatchWithData(envelope.ID, respRaw)
+		}
 	}
-	switch result.Instances[0].Stream {
-	case cnlTrade:
-		return e.processOptionsTradeStream(ctx, respRaw)
-	case cnlIndex:
-		return e.processOptionsIndexPrice(ctx, respRaw)
+	var result WsOptionIncomingResponses
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+	if len(result.Instances) == 0 || result.Instances[0] == nil {
+		return errEmptyWebsocketResponse
+	}
+	switch result.Instances[0].EventType {
+	case "ACCOUNT_UPDATE", "BALANCE_POSITION_UPDATE", "ORDER_TRADE_UPDATE", "GREEK_UPDATE", "RISK_LEVEL_CHANGE", listenKeyExpiredEvent:
+		return e.wsHandleOptionsUserData(ctx, result.Instances[0].EventType, data)
+	case "trade":
+		return e.processOptionsTradeStream(ctx, data)
+	case "indexPrice":
+		return e.processOptionsIndexPrice(ctx, data)
 	case "24hrTicker":
-		return e.processOptionsTicker(ctx, respRaw, result.IsSlice)
+		return e.processOptionsTicker(ctx, data, result.IsSlice)
 	case "markPrice":
-		return e.processOptionsMarkPrices(ctx, respRaw)
-	case "kline":
-		return e.processOptionsKline(ctx, respRaw)
+		return e.processOptionsMarkPrices(ctx, data)
+	case cnlKline:
+		return e.processOptionsKline(ctx, data)
 	case "openInterest":
-		return e.processOptionsOpenInterest(ctx, respRaw)
+		return e.processOptionsOpenInterest(ctx, data)
 	case "option_pair":
-		return e.processOptionsPair(ctx, respRaw)
-	case "depth":
-		return e.processOptionsOrderbook(respRaw)
-	case cnlOptionSymbol:
-		return e.processOptionsSymbol(ctx, respRaw)
+		return e.processOptionsPair(ctx, data)
+	case "depthUpdate":
+		return e.processDerivativeDepth(ctx, data, asset.Options, isPartialDepthStream(envelope.Stream))
+	case bookTickerStream:
+		return e.processOptionsBookTicker(ctx, data)
+	case "optionSymbol", "!optionSymbol":
+		return e.processOptionsSymbol(ctx, data)
 	default:
-		return e.Websocket.DataHandler.Send(ctx, websocket.UnhandledMessageWarning{
-			Message: string(respRaw),
-		})
+		return e.Websocket.DataHandler.Send(ctx, websocket.UnhandledMessageWarning{Message: string(respRaw)})
 	}
-}
-
-func (e *Exchange) processOptionsOrderbook(data []byte) error {
-	var resp WsOptionsOrderbook
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return err
-	}
-	pair, err := currency.NewPairFromString(resp.OptionSymbol)
-	if err != nil {
-		return err
-	}
-	if len(resp.Asks) == 0 && len(resp.Bids) == 0 {
-		return nil
-	}
-	// This is a partial book depth stream: each message carries the top N levels in
-	// full, so it is loaded as a snapshot rather than applied as an incremental update.
-	return e.Websocket.Orderbook.LoadSnapshot(&orderbook.Book{
-		Pair:         pair,
-		Exchange:     e.Name,
-		Asset:        asset.Options,
-		LastUpdated:  resp.TransactionTime.Time(),
-		LastUpdateID: resp.UpdateID,
-		Asks:         resp.Asks.Levels(),
-		Bids:         resp.Bids.Levels(),
-	})
 }
 
 // processOptionsSymbol represents a new symbol listing stream
@@ -390,9 +302,13 @@ func (e *Exchange) processOptionsKline(ctx context.Context, data []byte) error {
 	if err != nil {
 		return err
 	}
-	interval, err := formatToInterval(strings.Split(resp.EventType, "_")[1])
+	interval, err := formatToInterval(resp.KlineData.CandlePeriod)
 	if err != nil {
 		return err
+	}
+	var validationIssues string
+	if !resp.KlineData.ContractCompleted {
+		validationIssues = kline.PartialCandle
 	}
 	return e.Websocket.DataHandler.Send(ctx, kline.Item{
 		Pair:     pair,
@@ -400,12 +316,13 @@ func (e *Exchange) processOptionsKline(ctx context.Context, data []byte) error {
 		Asset:    asset.Options,
 		Interval: interval,
 		Candles: []kline.Candle{{
-			Time:   resp.EventTime.Time(),
-			Open:   resp.KlineData.Open.Float64(),
-			Close:  resp.KlineData.Close.Float64(),
-			High:   resp.KlineData.High.Float64(),
-			Low:    resp.KlineData.Low.Float64(),
-			Volume: resp.KlineData.ContractVolume.Float64(),
+			Time:             resp.KlineData.StartTime.Time(),
+			Open:             resp.KlineData.Open.Float64(),
+			Close:            resp.KlineData.Close.Float64(),
+			High:             resp.KlineData.High.Float64(),
+			Low:              resp.KlineData.Low.Float64(),
+			Volume:           resp.KlineData.ContractVolume.Float64(),
+			ValidationIssues: validationIssues,
 		}},
 	})
 }
@@ -419,7 +336,7 @@ func (e *Exchange) processOptionsMarkPrices(ctx context.Context, data []byte) er
 }
 
 func (e *Exchange) processOptionsIndexPrice(ctx context.Context, data []byte) error {
-	var resp OptionsIndexInfo
+	var resp []*OptionsIndexInfo
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return err
 	}
@@ -434,7 +351,7 @@ func (e *Exchange) processOptionsTicker(ctx context.Context, data []byte, isSlic
 		}
 	} else {
 		respSingle := OptionsTicker24Hr{}
-		if err := json.Unmarshal(data, &resp); err != nil {
+		if err := json.Unmarshal(data, &respSingle); err != nil {
 			return err
 		}
 		resp = append(resp, respSingle)
@@ -445,15 +362,13 @@ func (e *Exchange) processOptionsTicker(ctx context.Context, data []byte, isSlic
 			return err
 		}
 		if err := e.Websocket.DataHandler.Send(ctx, &ticker.Price{
-			High:         resp[a].HightPrice.Float64(),
+			High:         resp[a].HighPrice.Float64(),
 			Low:          resp[a].LowPrice.Float64(),
-			Bid:          resp[a].BestBuyPrice.Float64(),
-			Ask:          resp[a].BestSellPrice.Float64(),
 			BaseVolume:   resp[a].TradingVolume.Float64(),
 			QuoteVolume:  resp[a].TradingAmount.Float64(),
 			Open:         resp[a].OpeningPrice.Float64(),
 			Close:        resp[a].ClosingPrice.Float64(),
-			MarkPrice:    resp[a].MarkPrice.Float64(),
+			Last:         resp[a].ClosingPrice.Float64(),
 			Pair:         pair,
 			ExchangeName: e.Name,
 			AssetType:    asset.Options,
@@ -475,7 +390,7 @@ func (e *Exchange) processOptionsTradeStream(ctx context.Context, data []byte) e
 		return err
 	}
 	side := order.Buy
-	if resp.Direction == "-1" {
+	if resp.Direction == "SELL" || resp.Direction == "-1" {
 		side = order.Sell
 	}
 	return e.Websocket.DataHandler.Send(ctx, trade.Data{
@@ -501,10 +416,145 @@ var intervalsMap = map[kline.Interval]string{
 	kline.SixHour: "6h", kline.TwelveHour: "12h", kline.OneDay: "1d", kline.ThreeDay: "3d", kline.OneWeek: "1w",
 }
 
-func (e *Exchange) intervalToString(interval kline.Interval) string {
-	intervalString, okay := intervalsMap[interval]
-	if !okay {
-		return ""
+// optionsSubscriptionParams preserves the case of channel names while lowercasing symbols.
+// Expiry tickers use an @ separator even though the SDK's placeholder omits it.
+func optionsSubscriptionParams(subscriptions subscription.List) ([]string, error) {
+	if len(subscriptions) == 0 {
+		return nil, common.ErrEmptyParams
 	}
-	return intervalString
+	var streams []string
+	for _, sub := range subscriptions {
+		switch sub.Channel {
+		case cnlIndex, "index", cnlOptionSymbol:
+			channel := sub.Channel
+			if channel == "index" {
+				channel = cnlIndex
+			}
+			streams = append(streams, channel)
+			continue
+		}
+		if len(sub.Pairs) == 0 {
+			return nil, currency.ErrCurrencyPairsEmpty
+		}
+		for _, pair := range sub.Pairs {
+			if pair.IsEmpty() {
+				return nil, currency.ErrCurrencyPairEmpty
+			}
+			symbol := strings.ToLower(pair.String())
+			underlying := strings.ToLower(pair.Base.String() + "USDT")
+			if value, ok := sub.Params["underlying"].(string); ok && value != "" {
+				underlying = strings.ToLower(value)
+			}
+			switch sub.Channel {
+			case cnlTrade, "trade", cnlTicker, tickerStream, bookTickerStream:
+				channel := sub.Channel
+				if channel == "trade" {
+					channel = cnlTrade
+				}
+				if channel == "ticker" {
+					channel = cnlTicker
+				}
+				streams = append(streams, symbol+"@"+channel)
+			case cnlTradeWithUnderlyingAsset, "@trade":
+				streams = append(streams, underlying+"@"+cnlTrade)
+			case cnlMarkPrice, "@markPrice":
+				streams = append(streams, underlying+"@"+cnlMarkPrice)
+			case cnlKline:
+				interval := sub.Interval
+				if interval == 0 {
+					interval = kline.FiveMin
+				}
+				value := getKlineIntervalString(interval)
+				if value == "" {
+					return nil, kline.ErrInvalidInterval
+				}
+				streams = append(streams, symbol+"@kline_"+value)
+			case cnlTickerWithExpiration, "@ticker@", cnlOpenInterest:
+				expiry, ok := sub.Params["expiration"].(time.Time)
+				if !ok || expiry.IsZero() {
+					parts := strings.Split(pair.Quote.String(), "-")
+					if len(parts) < 3 {
+						return nil, errExpirationTimeRequired
+					}
+					var err error
+					expiry, err = time.Parse("060102", parts[0])
+					if err != nil {
+						return nil, fmt.Errorf("%w: %w", errExpirationTimeRequired, err)
+					}
+				}
+				channel := sub.Channel
+				if channel == "@ticker@" {
+					channel = cnlTickerWithExpiration
+				}
+				streams = append(streams, underlying+channel+expiry.UTC().Format("060102"))
+			case cnlDepth:
+				level := "10"
+				if value, ok := sub.Params["level"]; ok {
+					level = fmt.Sprint(value)
+				}
+				switch level {
+				case "10", "20", "50", "100":
+				default:
+					return nil, fmt.Errorf("%w: %s", errLimitNumberRequired, level)
+				}
+				interval := sub.Interval
+				if interval == 0 {
+					interval = kline.HundredMilliseconds
+				}
+				switch interval {
+				case kline.HundredMilliseconds, kline.FiveHundredMilliseconds, kline.ThousandMilliseconds:
+				default:
+					return nil, kline.ErrInvalidInterval
+				}
+				streams = append(streams, symbol+"@depth"+level+"@"+intervalsMap[interval])
+			default:
+				return nil, fmt.Errorf("%w: %s", errUnsupportedChannel, sub.Channel)
+			}
+		}
+	}
+	seen := make(map[string]bool, len(streams))
+	unique := streams[:0]
+	for _, stream := range streams {
+		if !seen[stream] {
+			seen[stream] = true
+			unique = append(unique, stream)
+		}
+	}
+	return unique, nil
+}
+
+func (e *Exchange) processOptionsBookTicker(ctx context.Context, data []byte) error {
+	var resp FuturesBookTicker
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return err
+	}
+	pair, err := currency.NewPairFromString(resp.Symbol)
+	if err != nil {
+		return err
+	}
+	return e.Websocket.DataHandler.Send(ctx, &ticker.Price{ExchangeName: e.Name, AssetType: asset.Options, Pair: pair, Bid: resp.BestBidPrice.Float64(), Ask: resp.BestAskPrice.Float64(), LastUpdated: resp.TransactionTime.Time()})
+}
+
+func (e *Exchange) wsHandleOptionsUserData(ctx context.Context, eventType string, data []byte) error {
+	var response any
+	switch eventType {
+	case "ACCOUNT_UPDATE":
+		response = new(OptionsAccountUpdate)
+	case "BALANCE_POSITION_UPDATE":
+		response = new(OptionsBalancePositionUpdate)
+	case "ORDER_TRADE_UPDATE":
+		return e.processFuturesOrderTradeUpdate(ctx, data, asset.Options)
+	case "GREEK_UPDATE":
+		response = new(OptionsGreekUpdate)
+	case "RISK_LEVEL_CHANGE":
+		response = new(OptionsRiskLevelChange)
+	case listenKeyExpiredEvent:
+		response = new(FuturesListenKeyExpired)
+	default:
+		return fmt.Errorf("%w: %s", errUnsupportedChannel, eventType)
+	}
+	if err := json.Unmarshal(data, response); err != nil {
+		return err
+	}
+	return e.Websocket.DataHandler.Send(ctx, response)
 }

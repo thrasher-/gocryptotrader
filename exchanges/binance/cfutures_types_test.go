@@ -480,7 +480,7 @@ func TestFuturesAccountBalanceDataUnmarshal(t *testing.T) {
 	t.Parallel()
 	want := FuturesAccountBalanceData{
 		AccountAlias:       "test-account",
-		Asset:              "BTC",
+		Asset:              currency.BTC,
 		Balance:            0.0025,
 		WithdrawAvailable:  0.0024,
 		CrossWalletBalance: 0.00241969,
@@ -507,7 +507,7 @@ func TestFuturesAccountBalanceDataUnmarshal(t *testing.T) {
 			input: `[{"accountAlias":"test-account","asset":"BTC","balance":"","withdrawAvailable":"","crossWalletBalance":"","crossUnPnl":"","availableBalance":"","updateTime":1592468353979}]`,
 			want: FuturesAccountBalanceData{
 				AccountAlias: "test-account",
-				Asset:        "BTC",
+				Asset:        currency.BTC,
 				UpdateTime:   types.Time(time.UnixMilli(1592468353979)),
 			},
 		},

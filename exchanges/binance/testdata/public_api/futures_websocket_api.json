@@ -1,0 +1,212 @@
+{
+ "observedAt": "2026-09-21T04:18:08.451043649Z",
+ "responses": {
+  "depth": {
+   "id": "01a0c22f-83c8-757d-9809-96ea5a739ed2",
+   "status": 200,
+   "result": {
+    "lastUpdateId": 11612536916661,
+    "E": 1789964289255,
+    "T": 1789964289251,
+    "bids": [
+     [
+      "81303.40",
+      "5.355"
+     ],
+     [
+      "81303.30",
+      "0.021"
+     ],
+     [
+      "81303.20",
+      "0.004"
+     ],
+     [
+      "81303.10",
+      "0.002"
+     ],
+     [
+      "81303.00",
+      "0.102"
+     ]
+    ],
+    "asks": [
+     [
+      "81303.50",
+      "4.511"
+     ],
+     [
+      "81303.60",
+      "0.021"
+     ],
+     [
+      "81303.70",
+      "0.002"
+     ],
+     [
+      "81303.80",
+      "0.261"
+     ],
+     [
+      "81303.90",
+      "0.486"
+     ]
+    ]
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 2400,
+     "count": 7
+    }
+   ]
+  },
+  "ticker.book/all": {
+   "id": "01a0c22f-8859-7269-948a-99df87163738",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "BTCUSDT",
+     "bidPrice": "81303.40",
+     "bidQty": "5.357",
+     "askPrice": "81303.50",
+     "askQty": "4.541",
+     "time": 1789964290270,
+     "lastUpdateId": 11612536990494
+    },
+    {
+     "symbol": "ETHUSDT",
+     "bidPrice": "2659.44",
+     "bidQty": "32.158",
+     "askPrice": "2659.45",
+     "askQty": "110.393",
+     "time": 1789964290482,
+     "lastUpdateId": 11612537006536
+    },
+    {
+     "symbol": "BCHUSDT",
+     "bidPrice": "254.13",
+     "bidQty": "0.932",
+     "askPrice": "254.14",
+     "askQty": "0.735",
+     "time": 1789964286489,
+     "lastUpdateId": 11612536653750
+    },
+    {
+     "symbol": "XRPUSDT",
+     "bidPrice": "1.4176",
+     "bidQty": "13032.2",
+     "askPrice": "1.4177",
+     "askQty": "14354.6",
+     "time": 1789964290352,
+     "lastUpdateId": 11612536996183
+    },
+    {
+     "symbol": "LTCUSDT",
+     "bidPrice": "58.68",
+     "bidQty": "0.492",
+     "askPrice": "58.69",
+     "askQty": "285.998",
+     "time": 1789964288352,
+     "lastUpdateId": 11612536843134
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 2400,
+     "count": 10
+    }
+   ]
+  },
+  "ticker.book/single": {
+   "id": "01a0c22f-87b3-76b7-83de-a1d55f60616c",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "bidPrice": "81303.40",
+    "bidQty": "5.355",
+    "askPrice": "81303.50",
+    "askQty": "4.511",
+    "time": 1789964289024,
+    "lastUpdateId": 11612536895739
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 2400,
+     "count": 5
+    }
+   ]
+  },
+  "ticker.price/all": {
+   "id": "01a0c22f-8568-7430-a879-933e769ac077",
+   "status": 200,
+   "result": [
+    {
+     "symbol": "REZUSDT",
+     "price": "0.0037780",
+     "time": 1789964287459
+    },
+    {
+     "symbol": "ZECUSDT",
+     "price": "1509.48",
+     "time": 1789964289284
+    },
+    {
+     "symbol": "BREVUSDT",
+     "price": "0.0830100",
+     "time": 1789964282051
+    },
+    {
+     "symbol": "BASUSDT",
+     "price": "0.0241140",
+     "time": 1789964287872
+    },
+    {
+     "symbol": "IOTAUSDT",
+     "price": "0.047230",
+     "time": 1789964289258
+    },
+    {
+     "symbol": "BTCUSDT",
+     "price": "81303.50",
+     "time": 1789964287467
+    }
+   ],
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 2400,
+     "count": 3
+    }
+   ]
+  },
+  "ticker.price/single": {
+   "id": "01a0c22f-846e-73cc-a69b-63491b0fbbf2",
+   "status": 200,
+   "result": {
+    "symbol": "BTCUSDT",
+    "price": "81303.50",
+    "time": 1789964287467
+   },
+   "rateLimits": [
+    {
+     "rateLimitType": "REQUEST_WEIGHT",
+     "interval": "MINUTE",
+     "intervalNum": 1,
+     "limit": 2400,
+     "count": 1
+    }
+   ]
+  }
+ }
+}

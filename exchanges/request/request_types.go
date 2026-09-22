@@ -42,11 +42,14 @@ type Requester struct {
 
 // Item is a temp item for requests
 type Item struct {
-	Method                 string
-	Path                   string
-	Headers                map[string]string
-	Body                   io.Reader
-	Result                 any
+	Method  string
+	Path    string
+	Headers map[string]string
+	Body    io.Reader
+	Result  any
+	// AllowEmptyResponse permits an empty successful body for endpoints whose
+	// documented response has no content. Nonempty bodies are still decoded.
+	AllowEmptyResponse     bool
 	NonceEnabled           bool
 	Verbose                bool
 	HTTPDebugging          bool

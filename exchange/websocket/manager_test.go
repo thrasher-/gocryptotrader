@@ -1994,3 +1994,52 @@ func TestShutdown(t *testing.T) {
 	require.Equal(t, m.ShutdownC, authConn.shutdown, "shutdown channels must be the same after original shutdown channel is closed")
 	require.Equal(t, m.ShutdownC, unauthConn.shutdown, "shutdown channels must be the same after original shutdown channel is closed")
 }
+
+func TestConnectionContextLifecycle(t *testing.T) {
+	t.Parallel()
+	server, dialer := mockws.NewTestServer(t, mockws.CurryWsMockUpgrader(t, func(testing.TB, []byte, *gws.Conn) error { return nil }))
+	var contexts []context.Context
+	fail := true
+	first := &ConnectionSetup{
+		URL:                      "ws" + strings.TrimPrefix(server.URL, "http"),
+		MessageFilter:            "first",
+		SubscriptionsNotRequired: true,
+		Connector: func(ctx context.Context, conn Connection) error {
+			contexts = append(contexts, ctx)
+			return conn.Dial(ctx, dialer, http.Header{}, nil)
+		},
+		Handler: func(context.Context, Connection, []byte) error { return nil },
+	}
+	mgr := NewManager()
+	setup := newDefaultSetup()
+	setup.UseMultiConnectionManagement = true
+	require.NoError(t, mgr.Setup(setup), "manager must initialise")
+	require.NoError(t, mgr.SetupNewConnection(first), "first connection must register")
+	require.NoError(t, mgr.SetupNewConnection(&ConnectionSetup{
+		URL: first.URL, MessageFilter: "second", SubscriptionsNotRequired: true,
+		Connector: func(ctx context.Context, conn Connection) error {
+			contexts = append(contexts, ctx)
+			if fail {
+				return errDastardlyReason
+			}
+			return conn.Dial(ctx, dialer, http.Header{}, nil)
+		},
+		Handler: first.Handler,
+	}), "second connection must register")
+	require.ErrorIs(t, mgr.Connect(t.Context()), errDastardlyReason, "second connection must cause rollback")
+	require.Len(t, contexts, 2, "both connectors must run")
+	for _, ctx := range contexts {
+		assert.ErrorIs(t, ctx.Err(), context.Canceled, "failed connect and rolled-back connections should cancel their work")
+	}
+	require.NoError(t, t.Context().Err(), "rollback must preserve the caller context")
+	fail = false
+	require.NoError(t, mgr.Connect(t.Context()), "a fresh connection attempt must succeed")
+	require.Len(t, contexts, 4, "reconnection must create new lifetimes")
+	for _, ctx := range contexts[2:] {
+		assert.NoError(t, ctx.Err(), "active connections should retain a live context")
+	}
+	require.NoError(t, mgr.Shutdown(), "manager shutdown must succeed")
+	for _, ctx := range contexts[2:] {
+		assert.ErrorIs(t, ctx.Err(), context.Canceled, "shutdown should cancel each connection's work")
+	}
+}
