@@ -8,12 +8,10 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/shopspring/decimal"
 	"github.com/thrasher-corp/gocryptotrader/common"
 	"github.com/thrasher-corp/gocryptotrader/common/key"
 	"github.com/thrasher-corp/gocryptotrader/config"
@@ -39,6 +37,7 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/trade"
 	"github.com/thrasher-corp/gocryptotrader/log"
 	"github.com/thrasher-corp/gocryptotrader/portfolio/withdraw"
+	"github.com/thrasher-corp/gocryptotrader/types/decimal"
 )
 
 var defaultAssetPairStores = map[asset.Item]currency.PairStore{
@@ -534,7 +533,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Low:          tick[y].LowPrice.Float64(),
 				Bid:          tick[y].BidPrice.Float64(),
 				Ask:          tick[y].AskPrice.Float64(),
-				Volume:       tick[y].Volume.Float64(),
+				BaseVolume:   tick[y].Volume.Float64(),
 				QuoteVolume:  tick[y].QuoteVolume.Float64(),
 				Open:         tick[y].OpenPrice.Float64(),
 				Close:        tick[y].PrevClosePrice.Float64(),
@@ -561,7 +560,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Last:         tick[y].LastPrice.Float64(),
 				High:         tick[y].HighPrice.Float64(),
 				Low:          tick[y].LowPrice.Float64(),
-				Volume:       tick[y].Volume.Float64(),
+				BaseVolume:   tick[y].Volume.Float64(),
 				QuoteVolume:  tick[y].QuoteVolume.Float64(),
 				Open:         tick[y].OpenPrice.Float64(),
 				Close:        tick[y].PrevClosePrice.Float64(),
@@ -588,7 +587,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Last:         t.LastPrice.Float64(),
 				High:         t.HighPrice.Float64(),
 				Low:          t.LowPrice.Float64(),
-				Volume:       t.BaseVolume.Float64(),
+				BaseVolume:   t.BaseVolume.Float64(),
 				QuoteVolume:  t.QuoteVolume.Float64(),
 				Open:         t.OpenPrice.Float64(),
 				Close:        t.PrevClosePrice.Float64(),
@@ -614,7 +613,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 				Last:         tick[a].LastPrice.Float64(),
 				High:         tick[a].High.Float64(),
 				Low:          tick[a].Low.Float64(),
-				Volume:       tick[a].Volume.Float64(),
+				BaseVolume:   tick[a].Volume.Float64(),
 				Open:         tick[a].Open.Float64(),
 				Pair:         cp,
 				ExchangeName: e.Name,
@@ -670,7 +669,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 				Low:          ticks[t].LowPrice.Float64(),
 				Bid:          ticks[t].BidPrice.Float64(),
 				Ask:          ticks[t].AskPrice.Float64(),
-				Volume:       ticks[t].Volume.Float64(),
+				BaseVolume:   ticks[t].Volume.Float64(),
 				QuoteVolume:  ticks[t].QuoteVolume.Float64(),
 				Open:         ticks[t].OpenPrice.Float64(),
 				Close:        ticks[t].PrevClosePrice.Float64(),
@@ -695,7 +694,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 			Last:         tick[0].LastPrice.Float64(),
 			High:         tick[0].HighPrice.Float64(),
 			Low:          tick[0].LowPrice.Float64(),
-			Volume:       tick[0].Volume.Float64(),
+			BaseVolume:   tick[0].Volume.Float64(),
 			QuoteVolume:  tick[0].QuoteVolume.Float64(),
 			Open:         tick[0].OpenPrice.Float64(),
 			Close:        tick[0].PrevClosePrice.Float64(),
@@ -721,7 +720,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 				Last:         tick[t].LastPrice.Float64(),
 				High:         tick[t].HighPrice.Float64(),
 				Low:          tick[t].LowPrice.Float64(),
-				Volume:       tick[t].BaseVolume.Float64(),
+				BaseVolume:   tick[t].BaseVolume.Float64(),
 				QuoteVolume:  tick[t].QuoteVolume.Float64(),
 				Open:         tick[t].OpenPrice.Float64(),
 				Close:        tick[t].PrevClosePrice.Float64(),
@@ -750,7 +749,7 @@ func (e *Exchange) UpdateTicker(ctx context.Context, p currency.Pair, a asset.It
 				Last:         tick[a].LastPrice.Float64(),
 				High:         tick[a].High.Float64(),
 				Low:          tick[a].Low.Float64(),
-				Volume:       tick[a].Volume.Float64(),
+				BaseVolume:   tick[a].Volume.Float64(),
 				Open:         tick[a].Open.Float64(),
 				Pair:         cp,
 				ExchangeName: e.Name,
@@ -1079,7 +1078,7 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, a asset
 				CurrencyPair: p,
 				AssetType:    a,
 				Price:        tradeData[i].Price.Float64(),
-				Amount:       tradeData[i].Qty.Float64(),
+				Amount:       tradeData[i].Quantity.Float64(),
 				Timestamp:    tradeData[i].Time.Time(),
 			}
 			if tradeData[i].IsBuyerMaker { // Seller is Taker
@@ -1136,7 +1135,7 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, a asset
 		}
 	}
 
-	sort.Sort(trade.ByDate(resp))
+	trade.SortByDate(resp)
 	return resp, nil
 }
 
@@ -1927,7 +1926,7 @@ func (e *Exchange) CancelBatchOrders(ctx context.Context, o []order.Cancel) (*or
 			return nil, err
 		}
 		for _, c := range cancelled {
-			resp.Status[c.OrderID.String()] = c.Status
+			resp.Status[strconv.FormatInt(c.OrderID, 10)] = c.Status
 		}
 	case asset.Options:
 		ids := make([]int64, len(orderIDs))
@@ -2728,7 +2727,7 @@ func (e *Exchange) GetActiveOrders(ctx context.Context, req *order.MultiOrderReq
 				for y := range openOrders {
 					var feeBuilder exchange.FeeBuilder
 					feeBuilder.Amount = openOrders[y].ExecutedQuantity.Float64()
-					feeBuilder.PurchasePrice = openOrders[y].AvgPrice.Float64()
+					feeBuilder.PurchasePrice = openOrders[y].AveragePrice.Float64()
 					feeBuilder.Pair = req.Pairs[i]
 					fee, err := e.GetFee(ctx, &feeBuilder)
 					if err != nil {
@@ -3233,7 +3232,7 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, req *order.MultiOrderReq
 				for y := range orderHistory {
 					var feeBuilder exchange.FeeBuilder
 					feeBuilder.Amount = orderHistory[y].ExecutedQuantity.Float64()
-					feeBuilder.PurchasePrice = orderHistory[y].AvgPrice.Float64()
+					feeBuilder.PurchasePrice = orderHistory[y].AveragePrice.Float64()
 					feeBuilder.Pair = req.Pairs[i]
 					fee, err := e.GetFee(ctx, &feeBuilder)
 					if err != nil {
@@ -3347,7 +3346,7 @@ func (e *Exchange) GetOrderHistory(ctx context.Context, req *order.MultiOrderReq
 				for y := range orderHistory {
 					var feeBuilder exchange.FeeBuilder
 					feeBuilder.Amount = orderHistory[y].ExecutedQuantity.Float64()
-					feeBuilder.PurchasePrice = orderHistory[y].AvgPrice.Float64()
+					feeBuilder.PurchasePrice = orderHistory[y].AveragePrice.Float64()
 					feeBuilder.Pair = req.Pairs[i]
 					fee, err := e.GetFee(ctx, &feeBuilder)
 					if err != nil {
@@ -3842,7 +3841,7 @@ func (e *Exchange) GetLatestFundingRates(ctx context.Context, r *fundingrate.Lat
 				Pair:        cp,
 				LatestRate: fundingrate.Rate{
 					Time: cft,
-					Rate: decimal.NewFromFloat(mp[i].LastFundingRate.Float64()),
+					Rate: decimal.MustFromFloat(mp[i].LastFundingRate.Float64()),
 				},
 			}
 			if nft.Year() == rate.TimeChecked.Year() {
@@ -3967,7 +3966,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, r *fundingrate
 			for j := range frh {
 				pairRate.FundingRates = append(pairRate.FundingRates, fundingrate.Rate{
 					Time: frh[j].FundingTime.Time(),
-					Rate: decimal.NewFromFloat(frh[j].FundingRate.Float64()),
+					Rate: decimal.MustFromFloat(frh[j].FundingRate.Float64()),
 				})
 			}
 			if len(frh) < requestLimit {
@@ -3984,7 +3983,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, r *fundingrate
 		}
 		pairRate.LatestRate = fundingrate.Rate{
 			Time: mp[len(mp)-1].Time.Time().Truncate(time.Duration(fundingRateFrequency) * time.Hour),
-			Rate: decimal.NewFromFloat(mp[len(mp)-1].LastFundingRate.Float64()),
+			Rate: decimal.MustFromFloat(mp[len(mp)-1].LastFundingRate.Float64()),
 		}
 		pairRate.TimeOfNextRate = mp[len(mp)-1].NextFundingTime.Time()
 		if r.IncludePayments {
@@ -4003,7 +4002,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, r *fundingrate
 					if pairRate.PaymentCurrency.IsEmpty() {
 						pairRate.PaymentCurrency = currency.NewCode(income[j].Asset)
 					}
-					pairRate.FundingRates[x].Payment = decimal.NewFromFloat(income[j].Income.Float64())
+					pairRate.FundingRates[x].Payment = decimal.MustFromFloat(income[j].Income.Float64())
 					pairRate.PaymentSum = pairRate.PaymentSum.Add(pairRate.FundingRates[x].Payment)
 					break
 				}
@@ -4033,7 +4032,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, r *fundingrate
 				return nil, err
 			}
 			for j := range frh {
-				pairRate.FundingRates = append(pairRate.FundingRates, fundingrate.Rate{Time: frh[j].FundingTime.Time(), Rate: decimal.NewFromFloat(frh[j].FundingRate.Float64())})
+				pairRate.FundingRates = append(pairRate.FundingRates, fundingrate.Rate{Time: frh[j].FundingTime.Time(), Rate: decimal.MustFromFloat(frh[j].FundingRate.Float64())})
 			}
 			if len(frh) < requestLimit {
 				break
@@ -4067,7 +4066,7 @@ func (e *Exchange) GetHistoricalFundingRates(ctx context.Context, r *fundingrate
 					if pairRate.PaymentCurrency.IsEmpty() {
 						pairRate.PaymentCurrency = currency.NewCode(income[j].Asset)
 					}
-					pairRate.FundingRates[x].Payment = decimal.NewFromFloat(income[j].Income.Float64())
+					pairRate.FundingRates[x].Payment = decimal.MustFromFloat(income[j].Income.Float64())
 					pairRate.PaymentSum = pairRate.PaymentSum.Add(pairRate.FundingRates[x].Payment)
 					break
 				}
@@ -4343,7 +4342,7 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 
 		var maintenanceMarginFraction decimal.Decimal
 		if collateralTotal != 0 {
-			maintenanceMarginFraction = decimal.NewFromFloat(maintenanceMargin).Div(decimal.NewFromFloat(collateralTotal)).Mul(decimal.NewFromInt32(100))
+			maintenanceMarginFraction = decimal.MustFromFloat(maintenanceMargin).Div(decimal.MustFromFloat(collateralTotal)).Mul(decimal.NewFromInt32(100))
 		}
 
 		positionSize = relevantPosition.PositionAmount.Float64()
@@ -4356,20 +4355,20 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 			CollateralMode:               collateralMode,
 			Currency:                     c,
 			ContractSettlementType:       contractSettlementType,
-			IsolatedMargin:               decimal.NewFromFloat(isolatedMargin),
-			Leverage:                     decimal.NewFromFloat(leverage),
-			MaintenanceMarginRequirement: decimal.NewFromFloat(maintenanceMargin),
-			InitialMarginRequirement:     decimal.NewFromFloat(initialMargin),
-			EstimatedLiquidationPrice:    decimal.NewFromFloat(liquidationPrice),
-			CollateralUsed:               decimal.NewFromFloat(collateralUsed),
-			MarkPrice:                    decimal.NewFromFloat(markPrice),
-			CurrentSize:                  decimal.NewFromFloat(positionSize),
-			AverageOpenPrice:             decimal.NewFromFloat(openPrice),
-			UnrealisedPNL:                decimal.NewFromFloat(unrealisedPNL),
+			IsolatedMargin:               decimal.MustFromFloat(isolatedMargin),
+			Leverage:                     decimal.MustFromFloat(leverage),
+			MaintenanceMarginRequirement: decimal.MustFromFloat(maintenanceMargin),
+			InitialMarginRequirement:     decimal.MustFromFloat(initialMargin),
+			EstimatedLiquidationPrice:    decimal.MustFromFloat(liquidationPrice),
+			CollateralUsed:               decimal.MustFromFloat(collateralUsed),
+			MarkPrice:                    decimal.MustFromFloat(markPrice),
+			CurrentSize:                  decimal.MustFromFloat(positionSize),
+			AverageOpenPrice:             decimal.MustFromFloat(openPrice),
+			UnrealisedPNL:                decimal.MustFromFloat(unrealisedPNL),
 			MaintenanceMarginFraction:    maintenanceMarginFraction,
-			FreeCollateral:               decimal.NewFromFloat(collateralAvailable),
-			TotalCollateral:              decimal.NewFromFloat(collateralTotal),
-			NotionalSize:                 decimal.NewFromFloat(positionSize).Mul(decimal.NewFromFloat(markPrice)),
+			FreeCollateral:               decimal.MustFromFloat(collateralAvailable),
+			TotalCollateral:              decimal.MustFromFloat(collateralTotal),
+			NotionalSize:                 decimal.MustFromFloat(positionSize).Mul(decimal.MustFromFloat(markPrice)),
 		}, nil
 	case asset.CoinMarginedFutures:
 		ai, err := e.GetFuturesAccountInfo(ctx)
@@ -4416,7 +4415,7 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 			marginType = margin.Isolated
 		}
 		collateralTotal = accountAsset.WalletBalance.Float64()
-		frozenBalance := decimal.NewFromFloat(accountAsset.WalletBalance.Float64()).Sub(decimal.NewFromFloat(accountAsset.AvailableBalance.Float64()))
+		frozenBalance := decimal.MustFromFloat(accountAsset.WalletBalance.Float64()).Sub(decimal.MustFromFloat(accountAsset.AvailableBalance.Float64()))
 		collateralAvailable = accountAsset.AvailableBalance.Float64()
 		pnl = accountAsset.UnrealizedProfit.Float64()
 		if marginType == margin.Multi {
@@ -4450,8 +4449,8 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 		positionSize = relevantPosition.PositionAmount.Float64()
 		var mmf, tc decimal.Decimal
 		if collateralTotal != 0 {
-			tc = decimal.NewFromFloat(collateralTotal)
-			mmf = decimal.NewFromFloat(maintenanceMargin).Div(tc).Mul(decimal.NewFromInt(100))
+			tc = decimal.MustFromFloat(collateralTotal)
+			mmf = decimal.MustFromFloat(maintenanceMargin).Div(tc).Mul(decimal.NewFromInt(100))
 		}
 
 		var contracts []futures.Contract
@@ -4474,9 +4473,9 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 
 		// Inverse contracts report a contract count, and each contract is worth a fixed
 		// amount of the quote asset, so the mark price does not yield the notional.
-		notional := decimal.NewFromFloat(positionSize).Mul(decimal.NewFromFloat(markPrice))
+		notional := decimal.MustFromFloat(positionSize).Mul(decimal.MustFromFloat(markPrice))
 		if contractSettlementType == futures.Inverse && contractMultiplier > 0 {
-			notional = decimal.NewFromFloat(positionSize).Mul(decimal.NewFromFloat(contractMultiplier))
+			notional = decimal.MustFromFloat(positionSize).Mul(decimal.MustFromFloat(contractMultiplier))
 		}
 
 		return &futures.PositionSummary{
@@ -4486,19 +4485,19 @@ func (e *Exchange) GetFuturesPositionSummary(ctx context.Context, req *futures.P
 			CollateralMode:               collateralMode,
 			ContractSettlementType:       contractSettlementType,
 			Currency:                     accountAsset.Asset,
-			IsolatedMargin:               decimal.NewFromFloat(isolatedMargin),
+			IsolatedMargin:               decimal.MustFromFloat(isolatedMargin),
 			NotionalSize:                 notional,
-			Leverage:                     decimal.NewFromFloat(leverage),
-			MaintenanceMarginRequirement: decimal.NewFromFloat(maintenanceMargin),
-			InitialMarginRequirement:     decimal.NewFromFloat(initialMargin),
-			EstimatedLiquidationPrice:    decimal.NewFromFloat(liquidationPrice),
-			CollateralUsed:               decimal.NewFromFloat(collateralUsed),
-			MarkPrice:                    decimal.NewFromFloat(markPrice),
-			CurrentSize:                  decimal.NewFromFloat(positionSize),
-			AverageOpenPrice:             decimal.NewFromFloat(openPrice),
-			UnrealisedPNL:                decimal.NewFromFloat(pnl),
+			Leverage:                     decimal.MustFromFloat(leverage),
+			MaintenanceMarginRequirement: decimal.MustFromFloat(maintenanceMargin),
+			InitialMarginRequirement:     decimal.MustFromFloat(initialMargin),
+			EstimatedLiquidationPrice:    decimal.MustFromFloat(liquidationPrice),
+			CollateralUsed:               decimal.MustFromFloat(collateralUsed),
+			MarkPrice:                    decimal.MustFromFloat(markPrice),
+			CurrentSize:                  decimal.MustFromFloat(positionSize),
+			AverageOpenPrice:             decimal.MustFromFloat(openPrice),
+			UnrealisedPNL:                decimal.MustFromFloat(pnl),
 			MaintenanceMarginFraction:    mmf,
-			FreeCollateral:               decimal.NewFromFloat(collateralAvailable),
+			FreeCollateral:               decimal.MustFromFloat(collateralAvailable),
 			TotalCollateral:              tc,
 			FrozenBalance:                frozenBalance,
 		}, nil
@@ -4589,7 +4588,7 @@ func (e *Exchange) GetFuturesPositionOrders(ctx context.Context, req *futures.Po
 							Price:                orders[i].Price.Float64(),
 							Amount:               orders[i].ExecutedQuantity.Float64(),
 							TriggerPrice:         orders[i].ActivatePrice.Float64(),
-							AverageExecutedPrice: orders[i].AvgPrice.Float64(),
+							AverageExecutedPrice: orders[i].AveragePrice.Float64(),
 							ExecutedAmount:       orders[i].ExecutedQuantity.Float64(),
 							RemainingAmount:      orders[i].OriginalQuantity.Float64() - orders[i].ExecutedQuantity.Float64(),
 							CostAsset:            req.Pairs[x].Quote,
@@ -4667,7 +4666,7 @@ func (e *Exchange) GetFuturesPositionOrders(ctx context.Context, req *futures.Po
 							Price:                orders[i].Price.Float64(),
 							Amount:               orders[i].ExecutedQuantity.Float64(),
 							TriggerPrice:         orders[i].ActivatePrice.Float64(),
-							AverageExecutedPrice: orders[i].AvgPrice.Float64(),
+							AverageExecutedPrice: orders[i].AveragePrice.Float64(),
 							ExecutedAmount:       orders[i].ExecutedQuantity.Float64(),
 							RemainingAmount:      orders[i].OriginalQuantity.Float64() - orders[i].ExecutedQuantity.Float64(),
 							Leverage:             result[y].Leverage.Float64(),

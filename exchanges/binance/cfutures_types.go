@@ -11,15 +11,15 @@ import (
 
 // Response holds basic binance api response data
 type Response struct {
-	Code int64  `json:"code"`
+	Code int64  `json:"code"` // Signed because Binance error codes are negative
 	Msg  string `json:"msg"`
 }
 
-// FuturesPublicTradesData stores recent public trades for futures
+// FuturesPublicTradesData stores recent public trades for futures. Quantity counts contracts, so
+// BaseQuantity is the traded base asset amount; coin margined futures sends no quote figure
 type FuturesPublicTradesData struct {
-	ID    int64        `json:"id"`
-	Price types.Number `json:"price"`
-	// Quantity is the number of contracts; BaseQuantity is the base asset amount
+	ID           int64        `json:"id"`
+	Price        types.Number `json:"price"`
 	Quantity     types.Number `json:"qty"`
 	BaseQuantity types.Number `json:"baseQty"`
 	Time         types.Time   `json:"time"`
@@ -144,15 +144,6 @@ type TopTraderPositionRatio struct {
 	Timestamp      types.Time   `json:"timestamp"`
 }
 
-// GlobalLongShortRatio stores ratio data of all longs vs shorts
-type GlobalLongShortRatio struct {
-	Symbol         string     `json:"symbol"`
-	LongShortRatio float64    `json:"longShortRatio"`
-	LongAccount    float64    `json:"longAccount"`
-	ShortAccount   float64    `json:"shortAccount"`
-	Timestamp      types.Time `json:"timestamp"`
-}
-
 // TakerBuySellVolume stores taker buy sell volume
 type TakerBuySellVolume struct {
 	Pair           string       `json:"pair"`
@@ -196,32 +187,34 @@ type PlaceBatchOrderData struct {
 
 // BatchCancelOrderData stores batch cancel order data
 type BatchCancelOrderData struct {
-	ClientOrderID      string       `json:"clientOrderID"`
-	CumulativeQuantity types.Number `json:"cumQty"`
-	CumBase            types.Number `json:"cumBase"`
-	ExecutedQuantity   types.Number `json:"executeQty"`
-	OrderID            types.Number `json:"orderID"`
-	AvgPrice           types.Number `json:"avgPrice"`
-	OriginalQuantity   types.Number `json:"origQty"`
-	Price              types.Number `json:"price"`
-	ReduceOnly         bool         `json:"reduceOnly"`
-	Side               string       `json:"side"`
-	PositionSide       string       `json:"positionSide"`
-	Status             string       `json:"status"`
-	StopPrice          int64        `json:"stopPrice"`
-	ClosePosition      bool         `json:"closePosition"`
-	Symbol             string       `json:"symbol"`
-	Pair               string       `json:"pair"`
-	TimeInForce        string       `json:"TimeInForce"`
-	OrderType          string       `json:"type"`
-	OrigType           string       `json:"origType"`
-	ActivatePrice      types.Number `json:"activatePrice"`
-	PriceRate          types.Number `json:"priceRate"`
-	UpdateTime         types.Time   `json:"updateTime"`
-	WorkingType        string       `json:"workingType"`
-	PriceProtect       bool         `json:"priceProtect"`
-	Code               int64        `json:"code"`
-	Msg                string       `json:"msg"`
+	ClientOrderID           string       `json:"clientOrderId"`
+	CumulativeQuantity      types.Number `json:"cumQty"`
+	ExecutedQuantity        types.Number `json:"executedQty"`
+	OrderID                 int64        `json:"orderId"`
+	OriginalQuantity        types.Number `json:"origQty"`
+	Price                   types.Number `json:"price"`
+	ReduceOnly              bool         `json:"reduceOnly"`
+	Side                    string       `json:"side"`
+	PositionSide            string       `json:"positionSide"`
+	Status                  string       `json:"status"`
+	StopPrice               types.Number `json:"stopPrice"`
+	ClosePosition           bool         `json:"closePosition"`
+	Symbol                  string       `json:"symbol"`
+	Pair                    string       `json:"pair"`
+	TimeInForce             string       `json:"timeInForce"`
+	OrderType               string       `json:"type"`
+	OriginalType            string       `json:"origType"`
+	ActivatePrice           types.Number `json:"activatePrice"`
+	PriceRate               types.Number `json:"priceRate"`
+	UpdateTime              types.Time   `json:"updateTime"`
+	WorkingType             string       `json:"workingType"`
+	PriceProtect            bool         `json:"priceProtect"`
+	PriceMatch              string       `json:"priceMatch"`
+	SelfTradePreventionMode string       `json:"selfTradePreventionMode"`
+	Code                    int64        `json:"code"`
+	Message                 string       `json:"msg"`
+	CumBase                 types.Number `json:"cumBase"`
+	AvgPrice                types.Number `json:"avgPrice"`
 }
 
 // FuturesNewOrderRequest stores all the data needed to submit a
@@ -247,88 +240,101 @@ type FuturesNewOrderRequest struct {
 
 // FuturesOrderPlaceData stores futures order data
 type FuturesOrderPlaceData struct {
-	AveragePrice       types.Number      `json:"avgPrice"`
-	ClientOrderID      string            `json:"clientOrderID"`
-	CumulativeQuantity types.Number      `json:"cumQty"`
-	CumulativeBase     types.Number      `json:"cumBase"`
-	ExecutedQuantity   types.Number      `json:"executedQty"`
-	OrderID            uint64            `json:"orderId"`
-	OriginalQuantity   types.Number      `json:"origQty"`
-	OriginalType       string            `json:"origType"`
-	Price              types.Number      `json:"price"`
-	ReduceOnly         bool              `json:"reduceOnly"`
-	Side               string            `json:"side"`
-	PositionSide       string            `json:"positionSide"`
-	Status             string            `json:"status"`
-	StopPrice          types.Number      `json:"stopPrice"`
-	ClosePosition      bool              `json:"closePosition"`
-	Symbol             string            `json:"symbol"`
-	Pair               string            `json:"pair"`
-	TimeInForce        order.TimeInForce `json:"timeInForce"`
-	OrderType          string            `json:"type"`
-	ActivatePrice      types.Number      `json:"activatePrice"`
-	PriceRate          types.Number      `json:"priceRate"`
-	Time               types.Time        `json:"time"`
-	UpdateTime         types.Time        `json:"updateTime"`
-	WorkingType        string            `json:"workingType"`
-	PriceProtect       bool              `json:"priceProtect"`
+	ClientOrderID           string            `json:"clientOrderId"`
+	CumulativeQuantity      types.Number      `json:"cumQty"`
+	ExecutedQuantity        types.Number      `json:"executedQty"`
+	OrderID                 uint64            `json:"orderId"`
+	OriginalQuantity        types.Number      `json:"origQty"`
+	Price                   types.Number      `json:"price"`
+	ReduceOnly              bool              `json:"reduceOnly"`
+	Side                    string            `json:"side"`
+	PositionSide            string            `json:"positionSide"`
+	Status                  string            `json:"status"`
+	StopPrice               types.Number      `json:"stopPrice"`
+	ClosePosition           bool              `json:"closePosition"`
+	Symbol                  string            `json:"symbol"`
+	Pair                    string            `json:"pair"`
+	TimeInForce             order.TimeInForce `json:"timeInForce"`
+	OrderType               string            `json:"type"`
+	OriginalType            string            `json:"origType"`
+	ActivatePrice           types.Number      `json:"activatePrice"`
+	PriceRate               types.Number      `json:"priceRate"`
+	UpdateTime              types.Time        `json:"updateTime"`
+	WorkingType             string            `json:"workingType"`
+	PriceProtect            bool              `json:"priceProtect"`
+	PriceMatch              string            `json:"priceMatch"`
+	SelfTradePreventionMode string            `json:"selfTradePreventionMode"`
+	// Code and Message carry a per-item rejection in a batch placement response, where an entry
+	// that failed is otherwise indistinguishable from a zero-valued success
+	Code           int64        `json:"code"`
+	Message        string       `json:"msg"`
+	AveragePrice   types.Number `json:"avgPrice"`
+	CumulativeBase types.Number `json:"cumBase"`
+	Time           types.Time   `json:"time"`
 }
 
 // FuturesOrderGetData stores futures order data for get requests
 type FuturesOrderGetData struct {
-	AveragePrice       types.Number      `json:"avgPrice"`
-	ClientOrderID      string            `json:"clientOrderID"`
-	CumulativeQuantity types.Number      `json:"cumQty"`
-	CumulativeBase     types.Number      `json:"cumBase"`
-	ExecutedQuantity   types.Number      `json:"executedQty"`
-	OrderID            uint64            `json:"orderId"`
-	OriginalQuantity   types.Number      `json:"origQty"`
-	OriginalType       string            `json:"origType"`
-	Price              types.Number      `json:"price"`
-	ReduceOnly         bool              `json:"reduceOnly"`
-	Side               string            `json:"buy"`
-	PositionSide       string            `json:"positionSide"`
-	Status             string            `json:"status"`
-	StopPrice          types.Number      `json:"stopPrice"`
-	ClosePosition      bool              `json:"closePosition"`
-	Symbol             string            `json:"symbol"`
-	Pair               string            `json:"pair"`
-	TimeInForce        order.TimeInForce `json:"timeInForce"`
-	OrderType          string            `json:"type"`
-	ActivatePrice      types.Number      `json:"activatePrice"`
-	PriceRate          types.Number      `json:"priceRate"`
-	Time               types.Time        `json:"time"`
-	UpdateTime         types.Time        `json:"updateTime"`
-	WorkingType        string            `json:"workingType"`
-	PriceProtect       bool              `json:"priceProtect"`
+	AveragePrice            types.Number      `json:"avgPrice"`
+	ClientOrderID           string            `json:"clientOrderId"`
+	CumulativeQuantity      types.Number      `json:"cumQty"`
+	CumulativeBase          types.Number      `json:"cumBase"`
+	ExecutedQuantity        types.Number      `json:"executedQty"`
+	OrderID                 uint64            `json:"orderId"`
+	OriginalQuantity        types.Number      `json:"origQty"`
+	OriginalType            string            `json:"origType"`
+	Price                   types.Number      `json:"price"`
+	ReduceOnly              bool              `json:"reduceOnly"`
+	Side                    string            `json:"side"`
+	PositionSide            string            `json:"positionSide"`
+	Status                  string            `json:"status"`
+	StopPrice               types.Number      `json:"stopPrice"`
+	ClosePosition           bool              `json:"closePosition"`
+	Symbol                  string            `json:"symbol"`
+	Pair                    string            `json:"pair"`
+	TimeInForce             order.TimeInForce `json:"timeInForce"`
+	OrderType               string            `json:"type"`
+	ActivatePrice           types.Number      `json:"activatePrice"`
+	PriceRate               types.Number      `json:"priceRate"`
+	Time                    types.Time        `json:"time"`
+	UpdateTime              types.Time        `json:"updateTime"`
+	WorkingType             string            `json:"workingType"`
+	PriceProtect            bool              `json:"priceProtect"`
+	PriceMatch              string            `json:"priceMatch"`
+	SelfTradePreventionMode string            `json:"selfTradePreventionMode"`
 }
 
-// FuturesOrderData stores order data for futures
+// FuturesOrderData stores order data for futures. cumQuote and goodTillDate were added to
+// allOrders on 2026-08-05; openOrders shares this type and does not send them, so they are zero there
 type FuturesOrderData struct {
-	AvgPrice         types.Number      `json:"avgPrice"`
-	ClientOrderID    string            `json:"clientOrderId"`
-	CumBase          string            `json:"cumBase"`
-	ExecutedQuantity types.Number      `json:"executedQty"`
-	OrderID          uint64            `json:"orderId"`
-	OriginalQuantity types.Number      `json:"origQty"`
-	OrigType         string            `json:"origType"`
-	Price            types.Number      `json:"price"`
-	ReduceOnly       bool              `json:"reduceOnly"`
-	Side             string            `json:"side"`
-	PositionSide     string            `json:"positionSide"`
-	Status           string            `json:"status"`
-	StopPrice        types.Number      `json:"stopPrice"`
-	ClosePosition    bool              `json:"closePosition"`
-	Symbol           string            `json:"symbol"`
-	Pair             string            `json:"pair"`
-	Time             types.Time        `json:"time"`
-	TimeInForce      order.TimeInForce `json:"timeInForce"`
-	OrderType        string            `json:"type"`
-	ActivatePrice    types.Number      `json:"activatePrice"`
-	PriceRate        types.Number      `json:"priceRate"`
-	UpdateTime       types.Time        `json:"updateTime"`
-	WorkingType      string            `json:"workingType"`
-	PriceProtect     bool              `json:"priceProtect"`
+	AveragePrice            types.Number      `json:"avgPrice"`
+	ClientOrderID           string            `json:"clientOrderId"`
+	CumulativeBase          types.Number      `json:"cumBase"`
+	CumulativeQuote         types.Number      `json:"cumQuote"`
+	ExecutedQuantity        types.Number      `json:"executedQty"`
+	OrderID                 uint64            `json:"orderId"`
+	OriginalQuantity        types.Number      `json:"origQty"`
+	OriginalType            string            `json:"origType"`
+	Price                   types.Number      `json:"price"`
+	ReduceOnly              bool              `json:"reduceOnly"`
+	Side                    string            `json:"side"`
+	PositionSide            string            `json:"positionSide"`
+	Status                  string            `json:"status"`
+	StopPrice               types.Number      `json:"stopPrice"`
+	ClosePosition           bool              `json:"closePosition"`
+	Symbol                  string            `json:"symbol"`
+	Pair                    string            `json:"pair"`
+	Time                    types.Time        `json:"time"`
+	TimeInForce             order.TimeInForce `json:"timeInForce"`
+	OrderType               string            `json:"type"`
+	ActivatePrice           types.Number      `json:"activatePrice"`
+	PriceRate               types.Number      `json:"priceRate"`
+	UpdateTime              types.Time        `json:"updateTime"`
+	WorkingType             string            `json:"workingType"`
+	PriceProtect            bool              `json:"priceProtect"`
+	PriceMatch              string            `json:"priceMatch"`
+	SelfTradePreventionMode string            `json:"selfTradePreventionMode"`
+	GoodTillDate            types.Time        `json:"goodTillDate"`
 }
 
 // OrderVars stores side, status and type for any order/trade
@@ -374,7 +380,7 @@ type FuturesAccountBalanceData struct {
 	Balance            types.Number `json:"balance"`
 	WithdrawAvailable  types.Number `json:"withdrawAvailable"`
 	CrossWalletBalance types.Number `json:"crossWalletBalance"`
-	CrossUnPNL         types.Number `json:"crossUnPNL"`
+	CrossUnPNL         types.Number `json:"crossUnPnl"`
 	AvailableBalance   types.Number `json:"availableBalance"`
 	UpdateTime         types.Time   `json:"updateTime"`
 }
@@ -433,8 +439,8 @@ type GenericAuthResponse struct {
 
 // FuturesMarginUpdatedResponse stores margin update response data
 type FuturesMarginUpdatedResponse struct {
-	Amount types.Number `json:"amount"`
-	Type   int64        `json:"type"`
+	Amount float64 `json:"amount"`
+	Type   uint64  `json:"type"`
 	GenericAuthResponse
 }
 
@@ -445,22 +451,14 @@ type FuturesLeverageData struct {
 	Symbol      string       `json:"symbol"`
 }
 
-// ModifyIsolatedMarginData stores margin modification data
-type ModifyIsolatedMarginData struct {
-	Amount  float64 `json:"amount"`
-	Code    int64   `json:"code"`
-	Msg     string  `json:"msg"`
-	ModType string  `json:"modType"`
-}
-
 // GetPositionMarginChangeHistoryData gets margin change history for positions
 type GetPositionMarginChangeHistoryData struct {
-	Amount           types.Number `json:"amount"`
-	Asset            string       `json:"asset"`
-	Symbol           string       `json:"symbol"`
-	Timestamp        types.Time   `json:"time"`
-	MarginChangeType int64        `json:"type"`
-	PositionSide     string       `json:"positionSide"`
+	Amount           types.Number  `json:"amount"`
+	Asset            currency.Code `json:"asset"`
+	Symbol           string        `json:"symbol"`
+	Timestamp        types.Time    `json:"time"`
+	MarginChangeType int64         `json:"type"`
+	PositionSide     string        `json:"positionSide"`
 }
 
 // FuturesPositionInformation stores futures position info
@@ -484,22 +482,23 @@ type FuturesPositionInformation struct {
 
 // FuturesAccountTradeList stores account trade list data
 type FuturesAccountTradeList struct {
-	Symbol          string       `json:"symbol"`
-	ID              int64        `json:"id"`
-	OrderID         uint64       `json:"orderID"`
-	Pair            string       `json:"pair"`
-	Side            string       `json:"side"`
-	Price           string       `json:"price"`
-	Qty             types.Number `json:"qty"`
-	RealizedPNL     types.Number `json:"realizedPNL"`
-	MarginAsset     string       `json:"marginAsset"`
-	BaseQuantity    types.Number `json:"baseQty"`
-	Commission      types.Number `json:"commission"`
-	CommissionAsset string       `json:"commissionAsset"`
-	Timestamp       types.Time   `json:"timestamp"`
-	PositionSide    string       `json:"positionSide"`
-	Buyer           bool         `json:"buyer"`
-	Maker           bool         `json:"maker"`
+	Symbol          string        `json:"symbol"`
+	ID              int64         `json:"id"`
+	OrderID         uint64        `json:"orderId"`
+	Pair            string        `json:"pair"`
+	Side            string        `json:"side"`
+	Price           types.Number  `json:"price"`
+	Quantity        types.Number  `json:"qty"`
+	RealizedPNL     types.Number  `json:"realizedPnl"`
+	MarginAsset     currency.Code `json:"marginAsset"`
+	BaseQuantity    types.Number  `json:"baseQty"`
+	QuoteQuantity   types.Number  `json:"quoteQty"`
+	Commission      types.Number  `json:"commission"`
+	CommissionAsset currency.Code `json:"commissionAsset"`
+	Timestamp       types.Time    `json:"time"`
+	PositionSide    string        `json:"positionSide"`
+	Buyer           bool          `json:"buyer"`
+	Maker           bool          `json:"maker"`
 }
 
 // FuturesIncomeHistoryData stores futures income history data
@@ -514,39 +513,46 @@ type FuturesIncomeHistoryData struct {
 
 // NotionalBracketData stores notional bracket data
 type NotionalBracketData struct {
-	Pair     string `json:"pair"`
-	Brackets []struct {
-		Bracket          int64        `json:"bracket"`
-		InitialLeverage  float64      `json:"initialLeverage"`
-		QtyCap           types.Number `json:"qtyCap"`
-		QtylFloor        types.Number `json:"qtyFloor"`
-		MaintMarginRatio types.Number `json:"maintMarginRatio"`
-	}
+	Pair     string            `json:"pair"`
+	Brackets []NotionalBracket `json:"brackets"`
+}
+
+// NotionalBracket is a single leverage bracket
+type NotionalBracket struct {
+	Bracket          int64   `json:"bracket"`
+	InitialLeverage  float64 `json:"initialLeverage"`
+	QtyCap           float64 `json:"qtyCap"`
+	QtylFloor        float64 `json:"qtylFloor"` // Binance's own spelling, typo included
+	MaintMarginRatio float64 `json:"maintMarginRatio"`
+	Cumulative       float64 `json:"cum"`
 }
 
 // ForcedOrdersData stores forced orders data
 type ForcedOrdersData struct {
 	OrderID          uint64       `json:"orderId"`
 	Symbol           string       `json:"symbol"`
+	Pair             string       `json:"pair"`
 	Status           string       `json:"status"`
 	ClientOrderID    string       `json:"clientOrderId"`
 	Price            types.Number `json:"price"`
-	AvgPrice         types.Number `json:"avgPrice"`
+	AveragePrice     types.Number `json:"avgPrice"`
 	OriginalQuantity types.Number `json:"origQty"`
 	ExecutedQuantity types.Number `json:"executedQty"`
-	CumQuote         types.Number `json:"cumQuote"`
+	CumulativeBase   types.Number `json:"cumBase"`
+	CumulativeQuote  types.Number `json:"cumQuote"`
 	TimeInForce      string       `json:"timeInForce"`
-	OrderType        string       `json:"orderType"`
+	OrderType        string       `json:"type"`
 	ReduceOnly       bool         `json:"reduceOnly"`
 	ClosePosition    bool         `json:"closePosition"`
 	Side             string       `json:"side"`
 	PositionSide     string       `json:"positionSide"`
 	StopPrice        types.Number `json:"stopPrice"`
 	WorkingType      string       `json:"workingType"`
-	PriceProtect     types.Number `json:"priceProtect"`
-	OrigType         string       `json:"origType"`
+	PriceProtect     bool         `json:"priceProtect"`
+	OriginalType     string       `json:"origType"`
 	Time             types.Time   `json:"time"`
 	UpdateTime       types.Time   `json:"updateTime"`
+	GoodTillDate     types.Time   `json:"goodTillDate"`
 }
 
 // ADLEstimateData stores data for ADL estimates
@@ -621,7 +627,7 @@ type UFuturesSymbolInfo struct {
 	SettlePlan               float64                 `json:"settlePlan"`
 	TriggerProtect           types.Number            `json:"triggerProtect"`
 	Filters                  []*OrderExecutionLimits `json:"filters"`
-	OrderTypes               []string                `json:"OrderType"`
+	OrderTypes               []string                `json:"orderTypes"`
 	TimeInForce              []string                `json:"timeInForce"`
 	LiquidationFee           types.Number            `json:"liquidationFee"`
 	MarketTakeBound          types.Number            `json:"marketTakeBound"`
@@ -648,14 +654,14 @@ type CExchangeInfo struct {
 	ExchangeFilters []any `json:"exchangeFilters"`
 	RateLimits      []struct {
 		Interval      string `json:"interval"`
-		IntervalNum   int64  `json:"intervalNul"`
+		IntervalNum   int64  `json:"intervalNum"`
 		Limit         int64  `json:"limit"`
 		RateLimitType string `json:"rateLimitType"`
 	} `json:"rateLimits"`
 	ServerTime types.Time `json:"serverTime"`
 	Symbols    []struct {
 		Filters               []*OrderExecutionLimits `json:"filters"`
-		OrderTypes            []string                `json:"orderType"`
+		OrderTypes            []string                `json:"orderTypes"`
 		TimeInForce           []string                `json:"timeInForce"`
 		Symbol                string                  `json:"symbol"`
 		Pair                  string                  `json:"pair"`

@@ -449,7 +449,7 @@ func (e *Exchange) processOptionsTicker(ctx context.Context, data []byte, isSlic
 			Low:          resp[a].LowPrice.Float64(),
 			Bid:          resp[a].BestBuyPrice.Float64(),
 			Ask:          resp[a].BestSellPrice.Float64(),
-			Volume:       resp[a].TradingVolume.Float64(),
+			BaseVolume:   resp[a].TradingVolume.Float64(),
 			QuoteVolume:  resp[a].TradingAmount.Float64(),
 			Open:         resp[a].OpeningPrice.Float64(),
 			Close:        resp[a].ClosingPrice.Float64(),

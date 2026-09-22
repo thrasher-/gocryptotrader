@@ -197,7 +197,7 @@ func (e *Exchange) processCFuturesMarketTicker(ctx context.Context, respRaw []by
 		Low:  resp.LowPrice.Float64(),
 		// On COIN-M "v" is a contract count and "q" is the base asset volume; the
 		// stream reports no quote volume.
-		Volume:       resp.TotalTradedBaseAssetVolume.Float64(),
+		BaseVolume:   resp.TotalTradedBaseAssetVolume.Float64(),
 		Open:         resp.OpenPrice.Float64(),
 		ExchangeName: e.Name,
 		AssetType:    asset.CoinMarginedFutures,
@@ -217,7 +217,7 @@ func (e *Exchange) getCFuturesTickerInfos(marketTickers []CFuturesMarketTicker) 
 			Last:         marketTickers[a].LastPrice.Float64(),
 			High:         marketTickers[a].HighPrice.Float64(),
 			Low:          marketTickers[a].LowPrice.Float64(),
-			Volume:       marketTickers[a].TotalTradedBaseAssetVolume.Float64(),
+			BaseVolume:   marketTickers[a].TotalTradedBaseAssetVolume.Float64(),
 			Open:         marketTickers[a].OpenPrice.Float64(),
 			ExchangeName: e.Name,
 			AssetType:    asset.CoinMarginedFutures,

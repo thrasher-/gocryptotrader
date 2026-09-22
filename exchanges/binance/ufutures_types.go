@@ -45,16 +45,17 @@ var (
 	errInvalidPeriodOrInterval = errors.New("invalid period")
 )
 
-// USDT Margined Futures
-
-// UPublicTradesData stores trade data
+// UPublicTradesData stores trade data. It serves both usdt margined futures and the coin margined
+// historical trades endpoint, which sends BaseQuantity in place of QuoteQuantity and no IsRPITrade
 type UPublicTradesData struct {
 	ID            int64        `json:"id"`
 	Price         types.Number `json:"price"`
-	Qty           types.Number `json:"qty"`
+	Quantity      types.Number `json:"qty"`
+	BaseQuantity  types.Number `json:"baseQty"`
 	QuoteQuantity types.Number `json:"quoteQty"`
 	Time          types.Time   `json:"time"`
 	IsBuyerMaker  bool         `json:"isBuyerMaker"`
+	IsRPITrade    bool         `json:"isRPITrade"`
 }
 
 // UCompressedTradeData stores compressed trade data
@@ -62,10 +63,13 @@ type UCompressedTradeData struct {
 	AggregateTradeID uint64       `json:"a"`
 	Price            types.Number `json:"p"`
 	Quantity         types.Number `json:"q"`
-	FirstTradeID     uint64       `json:"f"`
-	LastTradeID      uint64       `json:"l"`
-	Timestamp        types.Time   `json:"t"`
-	IsBuyerMaker     bool         `json:"m"`
+	// NormalQuantity is the aggregate quantity excluding trades that involved retail price
+	// improvement orders, so it is a quantity rather than a notional
+	NormalQuantity types.Number `json:"nq"`
+	FirstTradeID   uint64       `json:"f"`
+	LastTradeID    uint64       `json:"l"`
+	Timestamp      types.Time   `json:"T"`
+	IsBuyerMaker   bool         `json:"m"`
 }
 
 // UMarkPrice stores mark price data
@@ -75,6 +79,7 @@ type UMarkPrice struct {
 	IndexPrice           types.Number `json:"indexPrice"`
 	LastFundingRate      types.Number `json:"lastFundingRate"`
 	EstimatedSettlePrice types.Number `json:"estimatedSettlePrice"`
+	InterestRate         types.Number `json:"interestRate"`
 	NextFundingTime      types.Time   `json:"nextFundingTime"`
 	Time                 types.Time   `json:"time"`
 }
@@ -86,6 +91,7 @@ type FundingRateInfoResponse struct {
 	AdjustedFundingRateFloor types.Number `json:"adjustedFundingRateFloor"`
 	FundingIntervalHours     int64        `json:"fundingIntervalHours"`
 	Disclaimer               bool         `json:"disclaimer"`
+	UpdateTime               types.Time   `json:"updateTime"`
 }
 
 // FundingRateHistory stores funding rate history
@@ -93,6 +99,8 @@ type FundingRateHistory struct {
 	Symbol      string       `json:"symbol"`
 	FundingRate types.Number `json:"fundingRate"`
 	FundingTime types.Time   `json:"fundingTime"`
+	MarkPrice   types.Number `json:"markPrice"`
+	RateType    string       `json:"rateType"`
 }
 
 // U24HrPriceChangeStats stores price change stats data
@@ -125,12 +133,13 @@ type USymbolPriceTicker struct {
 
 // USymbolOrderbookTicker stores symbol orderbook ticker data
 type USymbolOrderbookTicker struct {
-	Symbol      string       `json:"symbol"`
-	BidPrice    types.Number `json:"bidPrice"`
-	BidQuantity types.Number `json:"bidQty"`
-	AskPrice    types.Number `json:"askPrice"`
-	AskQuantity types.Number `json:"askQty"`
-	Time        types.Time   `json:"time"`
+	Symbol       string       `json:"symbol"`
+	BidPrice     types.Number `json:"bidPrice"`
+	BidQuantity  types.Number `json:"bidQty"`
+	AskPrice     types.Number `json:"askPrice"`
+	AskQuantity  types.Number `json:"askQty"`
+	Time         types.Time   `json:"time"`
+	LastUpdateID int64        `json:"lastUpdateId"`
 }
 
 // ULiquidationOrdersData stores liquidation orders data
@@ -159,6 +168,7 @@ type UOpenInterestStats struct {
 	Symbol               string       `json:"symbol"`
 	SumOpenInterest      types.Number `json:"sumOpenInterest"`
 	SumOpenInterestValue types.Number `json:"sumOpenInterestValue"`
+	CMCCirculatingSupply types.Number `json:"CMCCirculatingSupply"`
 	Timestamp            types.Time   `json:"timestamp"`
 }
 
@@ -216,40 +226,46 @@ type UOrderData struct {
 	PriceRate               types.Number      `json:"priceRate"`
 	UpdateTime              types.Time        `json:"updateTime"`
 	WorkingType             string            `json:"workingType"`
-	Pair                    string            `json:"pair"`
-	CumBase                 string            `json:"cumBase"`
 	PriceProtect            bool              `json:"priceProtect"`
 	PriceMatch              string            `json:"priceMatch"`
 	SelfTradePreventionMode string            `json:"selfTradePreventionMode"`
-	GoodTillDate            int64             `json:"goodTillDate"`
+	GoodTillDate            types.Time        `json:"goodTillDate"`
 	Code                    int64             `json:"code"`
 	Message                 string            `json:"msg"`
+	Pair                    string            `json:"pair"`
+	CumBase                 string            `json:"cumBase"`
 }
 
 // UFuturesOrderData stores order data for ufutures
 type UFuturesOrderData struct {
-	AvgPrice         types.Number      `json:"avgPrice"`
-	ClientOrderID    string            `json:"clientOrderId"`
-	CumQuote         string            `json:"cumQuote"`
-	ExecutedQuantity types.Number      `json:"executedQty"`
-	OrderID          uint64            `json:"orderId"`
-	OriginalQuantity types.Number      `json:"origQty"`
-	OrigType         string            `json:"origType"`
-	Price            types.Number      `json:"price"`
-	ReduceOnly       bool              `json:"reduceOnly"`
-	Side             string            `json:"side"`
-	PositionSide     string            `json:"positionSide"`
-	Status           string            `json:"status"`
-	StopPrice        types.Number      `json:"stopPrice"`
-	ClosePosition    bool              `json:"closePosition"`
-	Symbol           string            `json:"symbol"`
-	Time             types.Time        `json:"time"`
-	TimeInForce      order.TimeInForce `json:"timeInForce"`
-	OrderType        string            `json:"type"`
-	ActivatePrice    types.Number      `json:"activatePrice"`
-	PriceRate        types.Number      `json:"priceRate"`
-	UpdateTime       types.Time        `json:"updateTime"`
-	WorkingType      string            `json:"workingType"`
+	AveragePrice            types.Number      `json:"avgPrice"`
+	ClientOrderID           string            `json:"clientOrderId"`
+	CumulativeQuote         types.Number      `json:"cumQuote"`
+	CumulativeBase          types.Number      `json:"cumBase"`
+	ExecutedQuantity        types.Number      `json:"executedQty"`
+	OrderID                 uint64            `json:"orderId"`
+	OriginalQuantity        types.Number      `json:"origQty"`
+	OriginalType            string            `json:"origType"`
+	Price                   types.Number      `json:"price"`
+	ReduceOnly              bool              `json:"reduceOnly"`
+	Side                    string            `json:"side"`
+	PositionSide            string            `json:"positionSide"`
+	Status                  string            `json:"status"`
+	StopPrice               types.Number      `json:"stopPrice"`
+	ClosePosition           bool              `json:"closePosition"`
+	Symbol                  string            `json:"symbol"`
+	Pair                    string            `json:"pair"`
+	Time                    types.Time        `json:"time"`
+	TimeInForce             order.TimeInForce `json:"timeInForce"`
+	OrderType               string            `json:"type"`
+	ActivatePrice           types.Number      `json:"activatePrice"`
+	PriceRate               types.Number      `json:"priceRate"`
+	UpdateTime              types.Time        `json:"updateTime"`
+	WorkingType             string            `json:"workingType"`
+	PriceProtect            bool              `json:"priceProtect"`
+	PriceMatch              string            `json:"priceMatch"`
+	SelfTradePreventionMode string            `json:"selfTradePreventionMode"`
+	GoodTillDate            types.Time        `json:"goodTillDate"`
 }
 
 // UAccountBalanceV2Data stores account balance data for ufutures
@@ -366,20 +382,23 @@ type UPositionInformationV2 struct {
 
 // UAccountTradeHistory stores trade data for the users account
 type UAccountTradeHistory struct {
-	Buyer           bool         `json:"buyer"`
-	Commission      types.Number `json:"commission"`
-	CommissionAsset string       `json:"commissionAsset"`
-	ID              int64        `json:"id"`
-	Maker           bool         `json:"maker"`
-	OrderID         uint64       `json:"orderId"`
-	Price           types.Number `json:"price"`
-	Qty             types.Number `json:"qty"`
-	QuoteQuantity   types.Number `json:"quoteQty"`
-	RealizedPNL     types.Number `json:"realizedPnl"`
-	Side            string       `json:"side"`
-	PositionSide    string       `json:"positionSide"`
-	Symbol          string       `json:"symbol"`
-	Time            types.Time   `json:"time"`
+	Buyer           bool          `json:"buyer"`
+	Commission      types.Number  `json:"commission"`
+	CommissionAsset currency.Code `json:"commissionAsset"`
+	ID              int64         `json:"id"`
+	Maker           bool          `json:"maker"`
+	OrderID         uint64        `json:"orderId"`
+	Price           types.Number  `json:"price"`
+	Quantity        types.Number  `json:"qty"`
+	BaseQuantity    types.Number  `json:"baseQty"`
+	QuoteQuantity   types.Number  `json:"quoteQty"`
+	RealizedPNL     types.Number  `json:"realizedPnl"`
+	MarginAsset     currency.Code `json:"marginAsset"`
+	Side            string        `json:"side"`
+	PositionSide    string        `json:"positionSide"`
+	Symbol          string        `json:"symbol"`
+	Pair            string        `json:"pair"`
+	Time            types.Time    `json:"time"`
 }
 
 // UAccountIncomeHistory stores income history data
@@ -396,15 +415,18 @@ type UAccountIncomeHistory struct {
 
 // UNotionalLeverageAndBrakcetsData stores notional and leverage brackets data for the account
 type UNotionalLeverageAndBrakcetsData struct {
-	Symbol   string `json:"symbol"`
-	Brackets []struct {
-		Bracket                int64        `json:"bracket"`
-		InitialLeverage        float64      `json:"initialLeverage"`
-		NotionalCap            float64      `json:"notionalCap"`
-		NotionalFloor          float64      `json:"notionalFloor"`
-		MaintenanceMarginRatio types.Number `json:"maintMarginRatio"`
-		Cumulative             types.Number `json:"cum"`
-	} `json:"brackets"`
+	Symbol   string             `json:"symbol"`
+	Brackets []UNotionalBracket `json:"brackets"`
+}
+
+// UNotionalBracket is a single notional and leverage bracket
+type UNotionalBracket struct {
+	Bracket                int64   `json:"bracket"`
+	InitialLeverage        float64 `json:"initialLeverage"`
+	NotionalCap            float64 `json:"notionalCap"`
+	NotionalFloor          float64 `json:"notionalFloor"`
+	MaintenanceMarginRatio float64 `json:"maintMarginRatio"`
+	Cumulative             float64 `json:"cum"`
 }
 
 // UPositionADLEstimationData stores ADL estimation data for a position

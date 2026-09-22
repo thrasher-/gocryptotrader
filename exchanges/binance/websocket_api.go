@@ -1,7 +1,6 @@
 package binance
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -356,9 +355,9 @@ func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string,
 		return "", "", errTimestampInfoRequired
 	}
 	// Validate against the rendered form rather than the concrete type: values decoded
-	// from JSON arrive as json.Number, and anything that renders in exponent form would
+	// from JSON retain their number literals, and exponent notation would
 	// be signed differently from how it is transmitted.
-	if _, err := strconv.ParseInt(fmt.Sprintf("%v", timestampInfo), 10, 64); err != nil {
+	if _, err := strconv.ParseInt(signatureValue(timestampInfo), 10, 64); err != nil {
 		return "", "", fmt.Errorf("%w: invalid timestamp %v", errTimestampInfoRequired, timestampInfo)
 	}
 	params["apiKey"] = creds.Key
@@ -374,7 +373,7 @@ func (e *Exchange) SignRequest(params map[string]any) (apiKey, signature string,
 		}
 		payload.WriteString(k)
 		payload.WriteByte('=')
-		fmt.Fprintf(&payload, "%v", params[k])
+		payload.WriteString(signatureValue(params[k]))
 	}
 	var hmacSigned []byte
 	hmacSigned, err = crypto.GetHMAC(crypto.HashSHA256,
@@ -751,14 +750,22 @@ func (e *Exchange) ToMap(input any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// UseNumber keeps the original numeric literal; decoding into float64 would
-	// render large values such as millisecond timestamps and order IDs in
-	// exponent form, so the signed payload would not match what is transmitted.
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	var resp map[string]any
-	if err := dec.Decode(&resp); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return nil, err
+	}
+	resp := make(map[string]any, len(fields))
+	for name, value := range fields {
+		if len(value) > 0 && value[0] == '"' {
+			var decoded string
+			if err := json.Unmarshal(value, &decoded); err != nil {
+				return nil, err
+			}
+			resp[name] = decoded
+			continue
+		}
+		// RawMessage preserves the number literal for both signing and encoding.
+		resp[name] = value
 	}
 	return resp, nil
 }
@@ -1046,4 +1053,11 @@ func (e *Exchange) WsSubscribeUserDataStreamWithSignature() (*UserDataStreamSubs
 // not one opened by WsSubscribeUserDataStreamWithSignature.
 func (e *Exchange) WsUnsubscribeUserDataStream() error {
 	return e.SendWsRequest("userDataStream.unsubscribe", nil, &struct{}{})
+}
+
+func signatureValue(value any) string {
+	if raw, ok := value.(json.RawMessage); ok {
+		return string(raw)
+	}
+	return fmt.Sprint(value)
 }

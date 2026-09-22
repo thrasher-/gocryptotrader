@@ -1,7 +1,6 @@
 package binance
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -516,7 +515,7 @@ func (e *Exchange) GetTickerData(ctx context.Context, symbols currency.Pairs, wi
 	case windowSize > time.Hour*24:
 		params.Set("windowSize", strconv.FormatInt(int64(windowSize/(time.Hour*24)), 10)+"d")
 	case windowSize >= time.Hour:
-		params.Set("windowSize", strconv.FormatInt(int64(windowSize/(time.Hour)), 10)+"h")
+		params.Set("windowSize", strconv.FormatInt(int64(windowSize/time.Hour), 10)+"h")
 	case windowSize >= time.Minute:
 		params.Set("windowSize", strconv.FormatInt(int64(windowSize/time.Minute), 10)+"m")
 	}
@@ -1998,18 +1997,22 @@ func interfaceToParams(val any) (url.Values, error) {
 	if err != nil {
 		return nil, err
 	}
-	dMap := make(map[string]any)
-	// UseNumber keeps numbers as their original literal text. Decoding into a
-	// bare any yields float64, and formatting that back out uses %g, which turns
-	// millisecond timestamps and large order IDs into scientific notation.
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	if err := dec.Decode(&dMap); err != nil {
+	dMap := make(map[string]json.RawMessage)
+	// Preserve number literals so timestamps and order IDs cannot lose precision.
+	if err := json.Unmarshal(data, &dMap); err != nil {
 		return nil, err
 	}
 	params := url.Values{}
 	for key, value := range dMap {
-		params.Set(key, fmt.Sprintf("%v", value))
+		if len(value) > 0 && value[0] == '"' {
+			var decoded string
+			if err := json.Unmarshal(value, &decoded); err != nil {
+				return nil, err
+			}
+			params.Set(key, decoded)
+			continue
+		}
+		params.Set(key, string(value))
 	}
 	return params, nil
 }
