@@ -157,7 +157,6 @@ func (e *Exchange) SetDefaults() {
 	e.Websocket = websocket.NewManager()
 	e.WebsocketResponseMaxLimit = exchange.DefaultWebsocketResponseMaxLimit
 	e.WebsocketResponseCheckTimeout = exchange.DefaultWebsocketResponseCheckTimeout
-	e.WebsocketOrderbookBufferLimit = exchange.DefaultWebsocketOrderbookBufferLimit
 	e.pairMappingsMu.Lock()
 	e.pairMappings = make(map[asset.Item][]pairMapping)
 	e.pairMappingsMu.Unlock()
@@ -638,7 +637,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 			}
 			price := &ticker.Price{
 				Last:         last,
-				Volume:       market.DayBaseVolume.Float64(),
+				BaseVolume:   market.DayBaseVolume.Float64(),
 				QuoteVolume:  market.DayNotionalVolume.Float64(),
 				Open:         market.PreviousDayPrice.Float64(),
 				OpenInterest: market.OpenInterest.Float64(),
@@ -689,7 +688,7 @@ func (e *Exchange) UpdateTickers(ctx context.Context, a asset.Item) error {
 			}
 			price := &ticker.Price{
 				Last:         last,
-				Volume:       market.DayBaseVolume.Float64(),
+				BaseVolume:   market.DayBaseVolume.Float64(),
 				QuoteVolume:  market.DayNotionalVolume.Float64(),
 				Open:         market.PreviousDayPrice.Float64(),
 				MarkPrice:    market.MarkPrice.Float64(),
@@ -777,7 +776,7 @@ func (e *Exchange) GetRecentTrades(ctx context.Context, p currency.Pair, a asset
 			Timestamp:    resp[i].Time.Time().UTC(),
 		}
 	}
-	sort.Sort(trade.ByDate(trades))
+	trade.SortByDate(trades)
 	return trades, e.AddTradesToBuffer(trades...)
 }
 

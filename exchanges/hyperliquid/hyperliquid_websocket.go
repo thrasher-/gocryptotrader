@@ -360,7 +360,7 @@ func (e *Exchange) websocketHandleTicker(ctx context.Context, raw []byte, expect
 			price.Last = market.MarkPrice.Float64()
 		}
 		price.Open = market.PreviousDayPrice.Float64()
-		price.Volume = market.DayBaseVolume.Float64()
+		price.BaseVolume = market.DayBaseVolume.Float64()
 		price.QuoteVolume = market.DayNotionalVolume.Float64()
 		price.MarkPrice = market.MarkPrice.Float64()
 	case asset.PerpetualContract:
@@ -373,16 +373,19 @@ func (e *Exchange) websocketHandleTicker(ctx context.Context, raw []byte, expect
 			price.Last = market.MarkPrice.Float64()
 		}
 		price.Open = market.PreviousDayPrice.Float64()
-		price.Volume = market.DayBaseVolume.Float64()
+		price.BaseVolume = market.DayBaseVolume.Float64()
 		price.QuoteVolume = market.DayNotionalVolume.Float64()
 		price.OpenInterest = market.OpenInterest.Float64()
 		price.MarkPrice = market.MarkPrice.Float64()
 		price.IndexPrice = market.OraclePrice.Float64()
 	}
+	if err := ticker.ProcessTicker(price); err != nil {
+		return err
+	}
 	return e.Websocket.DataHandler.Send(ctx, price)
 }
 
-func (e *Exchange) websocketHandleOrderbook(_ context.Context, raw []byte) error {
+func (e *Exchange) websocketHandleOrderbook(ctx context.Context, raw []byte) error {
 	var update L2Book
 	if err := json.Unmarshal(raw, &update); err != nil {
 		return err
@@ -409,7 +412,7 @@ func (e *Exchange) websocketHandleOrderbook(_ context.Context, raw []byte) error
 	for i := range update.Levels[1] {
 		book.Asks[i] = orderbook.Level{Price: update.Levels[1][i].Price.Float64(), Amount: update.Levels[1][i].Size.Float64()}
 	}
-	return e.Websocket.Orderbook.LoadSnapshot(book)
+	return e.Websocket.Orderbook.LoadSnapshot(ctx, book)
 }
 
 func (e *Exchange) websocketHandleTrades(_ context.Context, raw []byte) error {

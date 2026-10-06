@@ -564,7 +564,7 @@ func TestWebsocketHandleTicker(t *testing.T) {
 	spotTicker, ok := receiveWebsocketData(t, ex).(*ticker.Price)
 	require.True(t, ok, "Spot ticker must relay the expected type")
 	assert.Equal(t, 10.0, spotTicker.Last, "Spot mark price should be the zero-midpoint fallback")
-	assert.Equal(t, 5.0, spotTicker.Volume, "Spot base volume should be decoded")
+	assert.Equal(t, 5.0, spotTicker.BaseVolume, "Spot base volume should be decoded")
 
 	require.ErrorIs(t, ex.websocketHandleTicker(t.Context(), []byte(perpetual), asset.Spot), errWebsocketAssetMismatch, "Ticker channel asset mismatch must return the expected error")
 	require.Error(t, ex.websocketHandleTicker(t.Context(), []byte(`{"coin":"BTC","ctx":"bad"}`), asset.PerpetualContract), "Invalid perpetual ticker context must error")
