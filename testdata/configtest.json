@@ -2310,7 +2310,6 @@
      "requiresKey": true
     },
     "urlEndpoints": {
-     "RestFuturesURL": "https://api.hyperliquid.xyz",
      "RestSpotURL": "https://api.hyperliquid.xyz",
      "WebsocketSpotURL": "wss://api.hyperliquid.xyz/ws"
     }

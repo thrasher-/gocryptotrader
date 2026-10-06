@@ -10,7 +10,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	secpECDSA "github.com/decred/dcrd/dcrec/secp256k1/v4/ecdsa"
@@ -24,8 +23,20 @@ const (
 	signatureComponentLength  = 32
 	ethereumSignatureVOffset  = 27
 	eip712ChainID             = 1337
-	userSignedChainID         = 0x66eee
-	userSignedChainIDHex      = "0x66eee"
+	// userSignedChainID is the EIP-712 domain chain used by the Python SDK for user-signed actions; hyperliquidChain,
+	// not this value, selects mainnet or testnet
+	userSignedChainID    = 0x66eee
+	userSignedChainIDHex = "0x66eee"
+)
+
+// EIP-712 types of user-signed action fields
+const (
+	eip712TypeString  = "string"
+	eip712TypeBool    = "bool"
+	eip712TypeUint32  = "uint32"
+	eip712TypeUint64  = "uint64"
+	eip712TypeAddress = "address"
+	eip712TypeBytes   = "bytes"
 )
 
 var (
@@ -39,115 +50,39 @@ var (
 	errWireNumberRounding      = errors.New("number cannot be represented with 8 decimal places")
 )
 
-type l1Signature struct {
+// ActionSignature is an ECDSA signature in the r, s and v form the exchange endpoint expects
+type ActionSignature struct {
 	R string `json:"r"`
 	S string `json:"s"`
 	V uint8  `json:"v"`
 }
 
+// eip712Field is one field of a user-signed action's EIP-712 message
 type eip712Field struct {
 	Name  string
 	Type  string
 	Value any
 }
 
-type limitOrderTypeWire struct {
-	TimeInForce string `json:"tif" msgpack:"tif"`
-}
-
-type triggerOrderTypeWire struct {
-	IsMarket           bool   `json:"isMarket"  msgpack:"isMarket"`
-	TriggerPrice       string `json:"triggerPx" msgpack:"triggerPx"`
-	TakeProfitStopLoss string `json:"tpsl"      msgpack:"tpsl"`
-}
-
-type orderTypeWire struct {
-	Limit   *limitOrderTypeWire   `json:"limit,omitempty"   msgpack:"limit,omitempty"`
-	Trigger *triggerOrderTypeWire `json:"trigger,omitempty" msgpack:"trigger,omitempty"`
-}
-
-type orderWire struct {
-	AssetID       uint64        `json:"a"           msgpack:"a"`
-	IsBuy         bool          `json:"b"           msgpack:"b"`
-	Price         string        `json:"p"           msgpack:"p"`
-	Size          string        `json:"s"           msgpack:"s"`
-	ReduceOnly    bool          `json:"r"           msgpack:"r"`
-	Type          orderTypeWire `json:"t"           msgpack:"t"`
-	ClientOrderID string        `json:"c,omitempty" msgpack:"c,omitempty"`
-}
-
-type orderAction struct {
-	Type     string      `json:"type"     msgpack:"type"`
-	Orders   []orderWire `json:"orders"   msgpack:"orders"`
-	Grouping string      `json:"grouping" msgpack:"grouping"`
-}
-
-type modifyWire struct {
-	OrderID any       `json:"oid"   msgpack:"oid"`
-	Order   orderWire `json:"order" msgpack:"order"`
-}
-
-type batchModifyAction struct {
-	Type     string       `json:"type"     msgpack:"type"`
-	Modifies []modifyWire `json:"modifies" msgpack:"modifies"`
-}
-
-type cancelWire struct {
-	AssetID uint64 `json:"a" msgpack:"a"`
-	OrderID uint64 `json:"o" msgpack:"o"`
-}
-
-type cancelAction struct {
-	Type    string       `json:"type"    msgpack:"type"`
-	Cancels []cancelWire `json:"cancels" msgpack:"cancels"`
-}
-
-type cancelByClientOrderIDWire struct {
-	AssetID       uint64 `json:"asset" msgpack:"asset"`
-	ClientOrderID string `json:"cloid" msgpack:"cloid"`
-}
-
-type cancelByClientOrderIDAction struct {
-	Type    string                      `json:"type"    msgpack:"type"`
-	Cancels []cancelByClientOrderIDWire `json:"cancels" msgpack:"cancels"`
-}
-
-type updateLeverageAction struct {
-	Type     string `json:"type"     msgpack:"type"`
-	AssetID  uint64 `json:"asset"    msgpack:"asset"`
-	IsCross  bool   `json:"isCross"  msgpack:"isCross"`
-	Leverage uint64 `json:"leverage" msgpack:"leverage"`
-}
-
-type signedActionRequest struct {
-	Action       any         `json:"action"`
-	Nonce        uint64      `json:"nonce"`
-	Signature    l1Signature `json:"signature"`
-	VaultAddress string      `json:"vaultAddress,omitempty"`
-	ExpiresAfter *uint64     `json:"expiresAfter,omitempty"`
-}
-
+// normaliseAddress validates a 0x-prefixed EVM address, including its EIP-55 checksum when mixed case, and returns it
+// lower-cased with its raw bytes
 func normaliseAddress(address string) (normalised string, raw [ethereumAddressByteLength]byte, err error) {
 	address = strings.TrimSpace(address)
-	if len(address) != 2+ethereumAddressByteLength*2 ||
-		!strings.EqualFold(address[:2], "0x") {
+	if len(address) != 2+ethereumAddressByteLength*2 || !strings.EqualFold(address[:2], "0x") {
 		return "", raw, fmt.Errorf("%w: expected 0x-prefixed 20-byte hexadecimal value", errInvalidAddress)
 	}
 	encoded := address[2:]
-	decoded, err := hex.DecodeString(encoded)
-	if err != nil {
+	if _, err := hex.Decode(raw[:], []byte(encoded)); err != nil {
 		return "", raw, fmt.Errorf("%w: %w", errInvalidAddress, err)
 	}
-	copy(raw[:], decoded)
-	if bytes.Equal(raw[:], make([]byte, ethereumAddressByteLength)) {
+	if raw == [ethereumAddressByteLength]byte{} {
 		return "", raw, fmt.Errorf("%w: zero address", errInvalidAddress)
 	}
-	hasLower := strings.IndexFunc(encoded, func(r rune) bool { return r >= 'a' && r <= 'f' }) != -1
-	hasUpper := strings.IndexFunc(encoded, func(r rune) bool { return r >= 'A' && r <= 'F' }) != -1
+	hasLower := strings.ContainsFunc(encoded, func(r rune) bool { return r >= 'a' && r <= 'f' })
+	hasUpper := strings.ContainsFunc(encoded, func(r rune) bool { return r >= 'A' && r <= 'F' })
 	if hasLower && hasUpper {
-		lower := strings.ToLower(encoded)
-		checksum := keccak256([]byte(lower))
-		for i := range encoded {
+		checksum := keccak256([]byte(strings.ToLower(encoded)))
+		for i := range len(encoded) {
 			if encoded[i] >= '0' && encoded[i] <= '9' {
 				continue
 			}
@@ -155,8 +90,7 @@ func normaliseAddress(address string) (normalised string, raw [ethereumAddressBy
 			if i%2 == 0 {
 				nibble = checksum[i/2] >> 4
 			}
-			isUpper := encoded[i] >= 'A' && encoded[i] <= 'F'
-			if isUpper != (nibble >= 8) {
+			if isUpper := encoded[i] >= 'A' && encoded[i] <= 'F'; isUpper != (nibble >= 8) {
 				return "", raw, fmt.Errorf("%w: invalid EIP-55 checksum", errInvalidAddress)
 			}
 		}
@@ -164,21 +98,22 @@ func normaliseAddress(address string) (normalised string, raw [ethereumAddressBy
 	return "0x" + strings.ToLower(encoded), raw, nil
 }
 
+// parsePrivateKey decodes a hexadecimal secp256k1 private key, with or without a 0x prefix
 func parsePrivateKey(secret string) (*secp256k1.PrivateKey, error) {
 	secret = strings.TrimSpace(secret)
-	if strings.HasPrefix(secret, "0x") || strings.HasPrefix(secret, "0X") {
+	if len(secret) >= 2 && strings.EqualFold(secret[:2], "0x") {
 		secret = secret[2:]
 	}
 	if len(secret) != privateKeyByteLength*2 {
 		return nil, fmt.Errorf("%w: expected 32-byte hexadecimal scalar", errInvalidPrivateKey)
 	}
-	raw, err := hex.DecodeString(secret)
-	if err != nil {
+	var raw [privateKeyByteLength]byte
+	defer clear(raw[:])
+	if _, err := hex.Decode(raw[:], []byte(secret)); err != nil {
 		return nil, fmt.Errorf("%w: %w", errInvalidPrivateKey, err)
 	}
-	defer clear(raw)
 	var scalar secp256k1.ModNScalar
-	if scalar.SetByteSlice(raw) || scalar.IsZero() {
+	if scalar.SetBytes(&raw) != 0 || scalar.IsZero() {
 		scalar.Zero()
 		return nil, fmt.Errorf("%w: scalar is outside secp256k1 range", errInvalidPrivateKey)
 	}
@@ -197,25 +132,32 @@ func keccak256(parts ...[]byte) [32]byte {
 	return digest
 }
 
+// privateKeyAddress derives the lower-case EVM address of a private key
 func privateKeyAddress(key *secp256k1.PrivateKey) string {
 	publicKey := key.PubKey().SerializeUncompressed()
 	digest := keccak256(publicKey[1:])
 	return "0x" + hex.EncodeToString(digest[len(digest)-ethereumAddressByteLength:])
 }
 
-func actionHash(action any, vaultAddress string, nonce uint64, expiresAfter *uint64) ([32]byte, error) {
-	var actionBuffer bytes.Buffer
-	encoder := msgpack.NewEncoder(&actionBuffer)
+// msgpackAction encodes an L1 action as Hyperliquid hashes it: struct fields in declaration order, with the smallest
+// integer encodings
+func msgpackAction(action any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := msgpack.NewEncoder(&buffer)
 	encoder.UseCompactInts(true)
 	if err := encoder.Encode(action); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+// actionHash returns the connection ID an L1 action is signed over: the msgpack action, nonce, vault and expiry
+func actionHash(action any, vaultAddress string, nonce uint64, expiresAfter *uint64) ([32]byte, error) {
+	preimage, err := msgpackAction(action)
+	if err != nil {
 		return [32]byte{}, err
 	}
-	encodedAction := actionBuffer.Bytes()
-	var nonceBytes [8]byte
-	binary.BigEndian.PutUint64(nonceBytes[:], nonce)
-	preimage := make([]byte, 0, len(encodedAction)+8+1+ethereumAddressByteLength+1+8)
-	preimage = append(preimage, encodedAction...)
-	preimage = append(preimage, nonceBytes[:]...)
+	preimage = binary.BigEndian.AppendUint64(preimage, nonce)
 	if vaultAddress == "" {
 		preimage = append(preimage, 0)
 	} else {
@@ -227,37 +169,37 @@ func actionHash(action any, vaultAddress string, nonce uint64, expiresAfter *uin
 		preimage = append(preimage, raw[:]...)
 	}
 	if expiresAfter != nil {
-		var expiryBytes [8]byte
-		binary.BigEndian.PutUint64(expiryBytes[:], *expiresAfter)
 		preimage = append(preimage, 0)
-		preimage = append(preimage, expiryBytes[:]...)
+		preimage = binary.BigEndian.AppendUint64(preimage, *expiresAfter)
 	}
 	return keccak256(preimage), nil
 }
 
-func eip712AgentDigest(connectionID [32]byte, isMainnet bool) [32]byte {
+// eip712DomainHash returns the hash of an EIP-712 domain with a zero verifying contract
+func eip712DomainHash(name string, chainID uint64) [32]byte {
 	domainTypeHash := keccak256([]byte("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"))
-	agentTypeHash := keccak256([]byte("Agent(string source,bytes32 connectionId)"))
-	nameHash := keccak256([]byte("Exchange"))
+	nameHash := keccak256([]byte(name))
 	versionHash := keccak256([]byte("1"))
+	var encodedChainID [32]byte
+	binary.BigEndian.PutUint64(encodedChainID[24:], chainID)
+	var verifyingContract [32]byte
+	return keccak256(domainTypeHash[:], nameHash[:], versionHash[:], encodedChainID[:], verifyingContract[:])
+}
+
+// eip712AgentDigest returns the digest of the phantom agent message that L1 actions are signed with
+func eip712AgentDigest(connectionID [32]byte, isMainnet bool) [32]byte {
+	agentTypeHash := keccak256([]byte("Agent(string source,bytes32 connectionId)"))
 	source := "b"
 	if isMainnet {
 		source = "a"
 	}
 	sourceHash := keccak256([]byte(source))
-	var chainID [32]byte
-	binary.BigEndian.PutUint64(chainID[24:], eip712ChainID)
-	domainHash := keccak256(
-		domainTypeHash[:],
-		nameHash[:],
-		versionHash[:],
-		chainID[:],
-		make([]byte, 32),
-	)
+	domainHash := eip712DomainHash("Exchange", eip712ChainID)
 	agentHash := keccak256(agentTypeHash[:], sourceHash[:], connectionID[:])
 	return keccak256([]byte{0x19, 0x01}, domainHash[:], agentHash[:])
 }
 
+// eip712UserDigest returns the digest of a user-signed action's EIP-712 message
 func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error) {
 	primaryType = strings.TrimSpace(primaryType)
 	if primaryType == "" {
@@ -266,7 +208,7 @@ func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error
 	var typeDefinition strings.Builder
 	typeDefinition.WriteString(primaryType)
 	typeDefinition.WriteByte('(')
-	encodedFields := make([]byte, 0, 32*(len(fields)+1))
+	encodedFields := make([]byte, 0, 32*len(fields))
 	for i := range fields {
 		if i != 0 {
 			typeDefinition.WriteByte(',')
@@ -279,13 +221,13 @@ func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error
 		typeDefinition.WriteString(fields[i].Name)
 		var encoded [32]byte
 		switch fields[i].Type {
-		case "string":
+		case eip712TypeString:
 			value, ok := fields[i].Value.(string)
 			if !ok {
 				return [32]byte{}, fmt.Errorf("%w: %s must be a string", errEIP712Field, fields[i].Name)
 			}
 			encoded = keccak256([]byte(value))
-		case "bool":
+		case eip712TypeBool:
 			value, ok := fields[i].Value.(bool)
 			if !ok {
 				return [32]byte{}, fmt.Errorf("%w: %s must be a bool", errEIP712Field, fields[i].Name)
@@ -293,12 +235,39 @@ func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error
 			if value {
 				encoded[31] = 1
 			}
-		case "uint64":
+		case eip712TypeUint64:
 			value, ok := fields[i].Value.(uint64)
 			if !ok {
 				return [32]byte{}, fmt.Errorf("%w: %s must be a uint64", errEIP712Field, fields[i].Name)
 			}
 			binary.BigEndian.PutUint64(encoded[24:], value)
+		case eip712TypeUint32:
+			value, ok := fields[i].Value.(uint32)
+			if !ok {
+				return [32]byte{}, fmt.Errorf("%w: %s must be a uint32", errEIP712Field, fields[i].Name)
+			}
+			binary.BigEndian.PutUint32(encoded[28:], value)
+		case eip712TypeAddress:
+			value, ok := fields[i].Value.(string)
+			if !ok {
+				return [32]byte{}, fmt.Errorf("%w: %s must be an address string", errEIP712Field, fields[i].Name)
+			}
+			_, raw, err := normaliseAddress(value)
+			if err != nil {
+				return [32]byte{}, fmt.Errorf("%w: %s: %w", errEIP712Field, fields[i].Name, err)
+			}
+			copy(encoded[32-ethereumAddressByteLength:], raw[:])
+		case eip712TypeBytes:
+			// Byte fields are carried as 0x-prefixed hexadecimal, as the action's JSON body sends them
+			value, ok := fields[i].Value.(string)
+			if !ok || len(value) < 2 || !strings.EqualFold(value[:2], "0x") {
+				return [32]byte{}, fmt.Errorf("%w: %s must be 0x-prefixed hexadecimal", errEIP712Field, fields[i].Name)
+			}
+			decoded, err := hex.DecodeString(value[2:])
+			if err != nil {
+				return [32]byte{}, fmt.Errorf("%w: %s: %w", errEIP712Field, fields[i].Name, err)
+			}
+			encoded = keccak256(decoded)
 		default:
 			return [32]byte{}, fmt.Errorf("%w: unsupported type %q", errEIP712Field, fields[i].Type)
 		}
@@ -307,72 +276,62 @@ func eip712UserDigest(primaryType string, fields []eip712Field) ([32]byte, error
 	typeDefinition.WriteByte(')')
 	typeHash := keccak256([]byte(typeDefinition.String()))
 	structHash := keccak256(typeHash[:], encodedFields)
-
-	domainTypeHash := keccak256([]byte("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"))
-	nameHash := keccak256([]byte("HyperliquidSignTransaction"))
-	versionHash := keccak256([]byte("1"))
-	var chainID [32]byte
-	binary.BigEndian.PutUint64(chainID[24:], userSignedChainID)
-	domainHash := keccak256(
-		domainTypeHash[:],
-		nameHash[:],
-		versionHash[:],
-		chainID[:],
-		make([]byte, 32),
-	)
+	domainHash := eip712DomainHash("HyperliquidSignTransaction", userSignedChainID)
 	return keccak256([]byte{0x19, 0x01}, domainHash[:], structHash[:]), nil
 }
 
-func signL1Action(secret string, action any, vaultAddress string, nonce uint64, expiresAfter *uint64, isMainnet bool) (l1Signature, error) {
+// signL1Action signs a trading action, such as an order or cancel, with the phantom agent scheme
+func signL1Action(secret string, action any, vaultAddress string, nonce uint64, expiresAfter *uint64, isMainnet bool) (ActionSignature, error) {
 	key, err := parsePrivateKey(secret)
 	if err != nil {
-		return l1Signature{}, err
+		return ActionSignature{}, err
 	}
 	defer key.Zero()
 	connectionID, err := actionHash(action, vaultAddress, nonce, expiresAfter)
 	if err != nil {
-		return l1Signature{}, err
+		return ActionSignature{}, err
 	}
 	digest := eip712AgentDigest(connectionID, isMainnet)
-	compact := secpECDSA.SignCompact(key, digest[:], false)
-	return validateCompactSignature(key, digest, compact)
+	return validateCompactSignature(key, digest, secpECDSA.SignCompact(key, digest[:], false))
 }
 
-func signUserSignedAction(secret, primaryType string, fields []eip712Field) (l1Signature, error) {
+// signUserSignedAction signs a human-readable action, such as a transfer, with the EIP-712 user-signed scheme
+func signUserSignedAction(secret, primaryType string, fields []eip712Field) (ActionSignature, error) {
 	key, err := parsePrivateKey(secret)
 	if err != nil {
-		return l1Signature{}, err
+		return ActionSignature{}, err
 	}
 	defer key.Zero()
 	digest, err := eip712UserDigest(primaryType, fields)
 	if err != nil {
-		return l1Signature{}, err
+		return ActionSignature{}, err
 	}
 	return validateCompactSignature(key, digest, secpECDSA.SignCompact(key, digest[:], false))
 }
 
-func validateCompactSignature(key *secp256k1.PrivateKey, digest [32]byte, compact []byte) (l1Signature, error) {
+// validateCompactSignature checks a compact signature recovers the signing key before splitting it into r, s and v
+func validateCompactSignature(key *secp256k1.PrivateKey, digest [32]byte, compact []byte) (ActionSignature, error) {
 	if len(compact) != 1+signatureComponentLength*2 {
-		return l1Signature{}, fmt.Errorf("%w: invalid compact signature length %d", errInvalidRecoveryID, len(compact))
+		return ActionSignature{}, fmt.Errorf("%w: invalid compact signature length %d", errInvalidRecoveryID, len(compact))
 	}
-	if compact[0] < ethereumSignatureVOffset ||
-		compact[0] > ethereumSignatureVOffset+1 {
-		return l1Signature{}, fmt.Errorf("%w: %d", errInvalidRecoveryID, compact[0])
+	if compact[0] < ethereumSignatureVOffset || compact[0] > ethereumSignatureVOffset+1 {
+		return ActionSignature{}, fmt.Errorf("%w: %d", errInvalidRecoveryID, compact[0])
 	}
 	recovered, _, err := secpECDSA.RecoverCompact(compact, digest[:])
 	if err != nil {
-		return l1Signature{}, err
+		return ActionSignature{}, err
 	}
 	if subtle.ConstantTimeCompare(recovered.SerializeUncompressed(), key.PubKey().SerializeUncompressed()) != 1 {
-		return l1Signature{}, errSigningRecoveryMismatch
+		return ActionSignature{}, errSigningRecoveryMismatch
 	}
-	return l1Signature{
+	return ActionSignature{
 		R: formatSignatureComponent(compact[1 : 1+signatureComponentLength]),
 		S: formatSignatureComponent(compact[1+signatureComponentLength:]),
 		V: compact[0],
 	}, nil
 }
 
+// formatSignatureComponent encodes a signature component as 0x-prefixed hexadecimal without leading zeros
 func formatSignatureComponent(component []byte) string {
 	encoded := strings.TrimLeft(hex.EncodeToString(component), "0")
 	if encoded == "" {
@@ -381,32 +340,19 @@ func formatSignatureComponent(component []byte) string {
 	return "0x" + encoded
 }
 
+// floatToWire formats a number with at most eight decimals and no trailing zeros, as signed actions require
 func floatToWire(value float64) (string, error) {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return "", fmt.Errorf("%w: %v", errWireNumberRounding, value)
 	}
 	roundedText := strconv.FormatFloat(value, 'f', 8, 64)
-	rounded, _ := strconv.ParseFloat(roundedText, 64) // FormatFloat always returns a valid floating-point number.
+	rounded, _ := strconv.ParseFloat(roundedText, 64) // FormatFloat of a finite value always parses
 	if math.Abs(rounded-value) >= 1e-12 {
 		return "", fmt.Errorf("%w: %v", errWireNumberRounding, value)
 	}
 	roundedText = strings.TrimRight(strings.TrimRight(roundedText, "0"), ".")
-	if roundedText == "" || roundedText == "-0" {
+	if roundedText == "-0" {
 		return "0", nil
 	}
 	return roundedText, nil
-}
-
-func (e *Exchange) nextNonce() uint64 {
-	now := uint64(time.Now().UnixMilli()) //nolint:gosec // Unix milliseconds are positive for the supported runtime epoch.
-	for {
-		previous := e.lastNonce.Load()
-		next := now
-		if next <= previous {
-			next = previous + 1
-		}
-		if e.lastNonce.CompareAndSwap(previous, next) {
-			return next
-		}
-	}
 }

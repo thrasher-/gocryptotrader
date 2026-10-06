@@ -371,6 +371,21 @@ func TestMatchAndGetResponse(t *testing.T) {
 	}
 }
 
+func TestMatchAndGetResponseNestedJSONBody(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{
+		`{"type":"candleSnapshot","req":{"coin":"BTC","interval":"1m","startTime":1,"endTime":2}}`,
+		`{"type":"cancel","cancels":[{"a":0,"o":1}]}`,
+		`{"type":"meta","dex":null}`,
+	} {
+		requestVals, err := DeriveURLValsFromJSONMap([]byte(body))
+		require.NoErrorf(t, err, "DeriveURLValsFromJSONMap must not error for %s", body)
+		got, err := MatchAndGetResponse([]HTTPResponse{{BodyParams: body, Data: json.RawMessage(`{"match":"nested"}`)}}, requestVals, false)
+		require.NoErrorf(t, err, "MatchAndGetResponse must match nested JSON body %s", body)
+		assert.JSONEqf(t, `{"match":"nested"}`, string(got), "MatchAndGetResponse should return the nested body's data for %s", body)
+	}
+}
+
 func TestJSONBodyArrayRegression(t *testing.T) {
 	t.Parallel()
 
