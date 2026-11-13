@@ -149,7 +149,7 @@ func getFileLoggingState() bool {
 	return fileLoggingConfiguredCorrectly
 }
 
-func TestAddWriter(t *testing.T) {
+func TestAddWriter(t *testing.T) { //nolint:tparallel // subtests add writers to one holder in order
 	t.Parallel()
 	_, err := multiWriter(io.Discard, io.Discard)
 	require.ErrorIs(t, err, errWriterAlreadyLoaded)
@@ -157,17 +157,21 @@ func TestAddWriter(t *testing.T) {
 	mw, err := multiWriter()
 	require.NoError(t, err)
 
-	err = mw.add(io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = mw.add(os.Stdin)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = mw.add(os.Stdout)
-	if err != nil {
-		t.Fatal(err)
+	// Cases run in order: they add writers to the same holder, whose count is checked afterwards
+	for _, tc := range []struct {
+		name   string
+		writer io.Writer
+	}{
+		{"io.Discard", io.Discard},
+		{"os.Stdin", os.Stdin},
+		{"os.Stdout", os.Stdout},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			err := mw.add(tc.writer)
+			require.NoError(t, err, "add must not error")
+		}) {
+			t.FailNow()
+		}
 	}
 
 	err = mw.add(nil)

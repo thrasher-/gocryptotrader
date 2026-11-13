@@ -37,7 +37,7 @@ func TestSupportsSimultaneousProcessing(t *testing.T) {
 	}
 }
 
-func TestSetCustomSettings(t *testing.T) {
+func TestSetCustomSettings(t *testing.T) { //nolint:tparallel // subtests share the strategy and its settings map
 	t.Parallel()
 	s := Strategy{}
 	err := s.SetCustomSettings(nil)
@@ -52,21 +52,16 @@ func TestSetCustomSettings(t *testing.T) {
 	err = s.SetCustomSettings(mappalopalous)
 	assert.NoError(t, err)
 
-	mappalopalous[rsiPeriodKey] = "14"
-	err = s.SetCustomSettings(mappalopalous)
-	assert.ErrorIs(t, err, base.ErrInvalidCustomSettings)
+	// Cases run serially: each changes one key of the shared settings map and restores it
+	for _, key := range []string{rsiPeriodKey, rsiLowKey, rsiHighKey} {
+		t.Run(key+" as a string", func(t *testing.T) {
+			mappalopalous[key] = "14"
+			err := s.SetCustomSettings(mappalopalous)
+			assert.ErrorIs(t, err, base.ErrInvalidCustomSettings)
+			mappalopalous[key] = float14
+		})
+	}
 
-	mappalopalous[rsiPeriodKey] = float14
-	mappalopalous[rsiLowKey] = "14"
-	err = s.SetCustomSettings(mappalopalous)
-	assert.ErrorIs(t, err, base.ErrInvalidCustomSettings)
-
-	mappalopalous[rsiLowKey] = float14
-	mappalopalous[rsiHighKey] = "14"
-	err = s.SetCustomSettings(mappalopalous)
-	assert.ErrorIs(t, err, base.ErrInvalidCustomSettings)
-
-	mappalopalous[rsiHighKey] = float14
 	mappalopalous["lol"] = float14
 	err = s.SetCustomSettings(mappalopalous)
 	assert.ErrorIs(t, err, base.ErrInvalidCustomSettings)

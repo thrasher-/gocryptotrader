@@ -164,16 +164,21 @@ func TestDateJSONZeroValue(t *testing.T) {
 	assert.Equal(t, "null", string(encoded), "Date should encode its zero value as null")
 }
 
-func TestDateJSONRejectsNonString(t *testing.T) {
-	var date Date
-	err := json.Unmarshal([]byte(`123`), &date)
-	assert.Error(t, err, "Date should reject non-string JSON values")
-}
-
-func TestDateJSONRejectsDateTime(t *testing.T) {
-	var date Date
-	err := json.Unmarshal([]byte(`"2026-08-14T03:55:54Z"`), &date)
-	assert.Error(t, err, "Date should reject values containing a time or timezone")
+func TestDateJSONRejectsInvalidValues(t *testing.T) {
+	// Serial like every other test in this package
+	for _, tc := range []struct {
+		name string
+		raw  string
+	}{
+		{"non-string", `123`},
+		{"date-time", `"2026-08-14T03:55:54Z"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var date Date
+			err := json.Unmarshal([]byte(tc.raw), &date)
+			assert.Error(t, err, "Date should reject values other than a calendar date string")
+		})
+	}
 }
 
 func TestFreeFormResponseFieldsPreserveJSON(t *testing.T) {

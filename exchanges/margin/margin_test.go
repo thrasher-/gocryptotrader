@@ -34,7 +34,6 @@ func TestUnmarshalJSON(t *testing.T) {
 		"spotIsolated": {`{"margin":"spot_isolated"}`, SpotIsolated, nil},
 		"invalid":      {`{"margin":"hello moto"}`, Unknown, ErrInvalidMarginType},
 		"unset":        {`{"margin":""}`, Unset, nil},
-		"":             {`{"margin":""}`, Unset, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -94,14 +93,25 @@ func TestUpper(t *testing.T) {
 
 func TestIsValidString(t *testing.T) {
 	t.Parallel()
-	assert.False(t, IsValidString("lol"))
-	assert.True(t, IsValidString("spot_isolated"))
-	assert.True(t, IsValidString("cash"))
-	assert.True(t, IsValidString("isolated"))
-	assert.True(t, IsValidString("cross"))
-	assert.True(t, IsValidString("multi"))
-	assert.True(t, IsValidString(""))
-	assert.False(t, IsValidString("unknown"))
+	for _, tc := range []struct {
+		name  string
+		input string
+		valid bool
+	}{
+		{"invalid value", "lol", false},
+		{"spot_isolated", "spot_isolated", true},
+		{"cash", "cash", true},
+		{"isolated", "isolated", true},
+		{"cross", "cross", true},
+		{"multi", "multi", true},
+		{"empty value", "", true},
+		{"unknown", "unknown", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.valid, IsValidString(tc.input), "IsValidString should return the expected validity")
+		})
+	}
 }
 
 func TestStringToMarginType(t *testing.T) {

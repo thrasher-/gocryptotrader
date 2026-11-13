@@ -243,16 +243,38 @@ func TestRunRejectsInvalidSamples(t *testing.T) {
 	}
 }
 
-func TestRunRejectsWrongSampleCount(t *testing.T) {
+func TestRunRejectsMismatchedSampleCount(t *testing.T) {
 	t.Parallel()
-	o := testOptions(t)
-	o.samples = 5
-	require.NoError(t, Baseline{}.Save(o.baselinePath), "seeding an empty baseline must not error")
-	var out bytes.Buffer
-	err := run(strings.NewReader(sampleOutput), &out, o)
-	assert.ErrorIs(t, err, errSampleCount, "a run with the wrong number of samples should not be compared against the baseline")
-	assert.Contains(t, out.String(), "currency.BenchmarkNewCode reported B/op=3 allocs/op=3, expected 5",
-		"the offending benchmark should be named with its counts")
+	for _, tc := range []struct {
+		name           string
+		samples        int
+		expectedReport string
+		reason         string
+	}{
+		{
+			name:           "wrong sample count",
+			samples:        5,
+			expectedReport: "currency.BenchmarkNewCode reported B/op=3 allocs/op=3, expected 5",
+			reason:         "a run with the wrong number of samples should not be compared against the baseline",
+		},
+		{
+			name:           "sample count of one",
+			samples:        1,
+			expectedReport: "currency.BenchmarkNewCode reported B/op=3 allocs/op=3, expected 1",
+			reason:         "-samples 1 is odd, so its count should be checked like any other",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			o := testOptions(t)
+			o.samples = tc.samples
+			require.NoError(t, Baseline{}.Save(o.baselinePath), "seeding an empty baseline must not error")
+			var out bytes.Buffer
+			err := run(strings.NewReader(sampleOutput), &out, o)
+			assert.ErrorIs(t, err, errSampleCount, tc.reason)
+			assert.Contains(t, out.String(), tc.expectedReport, "the offending benchmark should be named with its counts")
+		})
+	}
 }
 
 func TestRunRejectsOneShortBenchmark(t *testing.T) {
@@ -298,18 +320,6 @@ func TestRunRejectsOneShortBenchmark(t *testing.T) {
 		require.NoErrorf(t, err, "reloading the baseline must not error after a short benchmark %s", tc.name)
 		assert.Equalf(t, tc.base, after, "a refused update should leave the baseline untouched after a short benchmark %s", tc.name)
 	}
-}
-
-func TestRunChecksSampleCountOfOne(t *testing.T) {
-	t.Parallel()
-	o := testOptions(t)
-	o.samples = 1
-	require.NoError(t, Baseline{}.Save(o.baselinePath), "seeding an empty baseline must not error")
-	var out bytes.Buffer
-	err := run(strings.NewReader(sampleOutput), &out, o)
-	assert.ErrorIs(t, err, errSampleCount, "-samples 1 is odd, so its count should be checked like any other")
-	assert.Contains(t, out.String(), "currency.BenchmarkNewCode reported B/op=3 allocs/op=3, expected 1",
-		"the benchmark reporting more samples should be named with its counts")
 }
 
 func TestRunRejectsArguments(t *testing.T) {

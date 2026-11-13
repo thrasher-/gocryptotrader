@@ -413,25 +413,25 @@ func TestRateLimit_Linear(t *testing.T) {
 func TestNewRateLimit(t *testing.T) {
 	t.Parallel()
 
-	r := NewRateLimit(time.Second, 10)
-	require.NotNil(t, r, "limiter must not be nil")
-	assert.Equal(t, rate.Limit(10), r.Limit(), "limit should be 10 per second")
-
-	r = NewRateLimit(time.Second, 0)
-	require.NotNil(t, r, "limiter must not be nil")
-	assert.Equal(t, rate.Inf, r.Limit(), "limit should be infinite on zero actions")
-
-	r = NewRateLimit(time.Second, -1)
-	require.NotNil(t, r, "limiter must not be nil")
-	assert.Equal(t, rate.Inf, r.Limit(), "limit should be infinite on negative actions")
-
-	r = NewRateLimit(0, 10)
-	require.NotNil(t, r, "limiter must not be nil")
-	assert.Equal(t, rate.Inf, r.Limit(), "limit should be infinite on zero interval")
-
-	r = NewRateLimit(-time.Second, 10)
-	require.NotNil(t, r, "limiter must not be nil")
-	assert.Equal(t, rate.Inf, r.Limit(), "limit should be infinite on negative interval")
+	for _, tc := range []struct {
+		name     string
+		interval time.Duration
+		actions  int
+		want     rate.Limit
+	}{
+		{"10 per second", time.Second, 10, 10},
+		{"zero actions", time.Second, 0, rate.Inf},
+		{"negative actions", time.Second, -1, rate.Inf},
+		{"zero interval", 0, 10, rate.Inf},
+		{"negative interval", -time.Second, 10, rate.Inf},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := NewRateLimit(tc.interval, tc.actions)
+			require.NotNil(t, r, "limiter must not be nil")
+			assert.Equal(t, tc.want, r.Limit(), "limit should match the expected rate")
+		})
+	}
 }
 
 func TestRateLimiterWithWeightLimit(t *testing.T) {

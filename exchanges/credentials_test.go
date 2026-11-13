@@ -65,14 +65,7 @@ func TestGetCredentials(t *testing.T) {
 	creds, err = b.GetCredentials(ctx)
 	require.NoError(t, err)
 
-	if creds.Key != "superkey" &&
-		creds.Secret != "supersecret" &&
-		creds.SubAccount != "supersub" &&
-		creds.ClientID != "superclient" &&
-		creds.PEMKey != "superpem" &&
-		creds.OneTimePassword != "superOneTimePasssssss" {
-		t.Fatal("unexpected values")
-	}
+	require.Equal(t, fullCred, creds, "GetCredentials must return every credential field from the context")
 
 	lonelyCred := &accounts.Credentials{
 		Key:             "superkey",

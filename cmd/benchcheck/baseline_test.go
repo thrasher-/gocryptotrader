@@ -472,13 +472,20 @@ func TestPackageOf(t *testing.T) {
 		"the longest matching package should win over one that only prefixes it")
 	assert.Equal(t, "exchanges/orderbook", packageOf("exchanges/orderbook.BenchmarkSort/case.1", known),
 		"a sub-benchmark name containing dots should resolve to its package")
-	assert.Empty(t, packageOf("currency.BenchmarkNewCode", known), "an unknown package should not resolve")
-	assert.Empty(t, packageOf("exchanges/orderbookmanager.BenchmarkProcess", known),
-		"a package whose path only begins with a known one should not resolve to it")
-	assert.Empty(t, packageOf("cmd/exchanges/orderbook.BenchmarkProcess", known),
-		"a package whose path only ends with a known one should not resolve to it")
-	assert.Empty(t, packageOf("exchanges/orderbook", known), "a key naming only a package should not resolve")
-	assert.Empty(t, packageOf("nodot", known), "a key without a package prefix should yield no package")
+	for _, tc := range []struct {
+		name, key string
+	}{
+		{"unknown package", "currency.BenchmarkNewCode"},
+		{"path only beginning with a known package", "exchanges/orderbookmanager.BenchmarkProcess"},
+		{"path only ending with a known package", "cmd/exchanges/orderbook.BenchmarkProcess"},
+		{"key naming only a package", "exchanges/orderbook"},
+		{"key without a package prefix", "nodot"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Empty(t, packageOf(tc.key, known), "packageOf should not resolve a package")
+		})
+	}
 }
 
 func TestSeenPackages(t *testing.T) {

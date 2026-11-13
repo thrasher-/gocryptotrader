@@ -210,7 +210,7 @@ func TestMain(m *testing.M) {
 	os.Exit(issues)
 }
 
-func TestCheckRequest(t *testing.T) {
+func TestCheckRequest(t *testing.T) { //nolint:tparallel // the parent reuses check and r after its subtests
 	t.Parallel()
 
 	r, err := New("TestRequest",
@@ -221,19 +221,19 @@ func TestCheckRequest(t *testing.T) {
 	ctx := t.Context()
 
 	var check *Item
-	_, err = check.validateRequest(ctx, &Requester{})
-	if err == nil {
-		t.Fatal(unexpected)
-	}
-
-	_, err = check.validateRequest(ctx, nil)
-	if err == nil {
-		t.Fatal(unexpected)
-	}
-
-	_, err = check.validateRequest(ctx, r)
-	if err == nil {
-		t.Fatal(unexpected)
+	// The parent reassigns check and calls validateRequest again after these cases
+	for _, tc := range []struct {
+		name      string
+		requester *Requester
+	}{
+		{"empty requester", &Requester{}},
+		{"nil requester", nil},
+		{"valid requester", r},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := check.validateRequest(ctx, tc.requester)
+			require.Error(t, err, "validateRequest must error for a nil item")
+		})
 	}
 
 	check = &Item{}

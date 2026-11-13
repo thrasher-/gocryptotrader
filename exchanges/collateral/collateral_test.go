@@ -75,13 +75,24 @@ func TestUpperCollateralType(t *testing.T) {
 
 func TestIsValidCollateralTypeString(t *testing.T) {
 	t.Parallel()
-	require.False(t, IsValidCollateralModeString("lol"), "IsValidCollateralModeString must return false for an invalid value")
-	require.True(t, IsValidCollateralModeString("single"), "IsValidCollateralModeString must return true for single")
-	require.True(t, IsValidCollateralModeString("multi"), "IsValidCollateralModeString must return true for multi")
-	require.True(t, IsValidCollateralModeString("portfolio"), "IsValidCollateralModeString must return true for portfolio")
-	require.True(t, IsValidCollateralModeString("unset"), "IsValidCollateralModeString must return true for unset")
-	require.False(t, IsValidCollateralModeString(""), "IsValidCollateralModeString must return false for an empty value")
-	require.False(t, IsValidCollateralModeString("unknown"), "IsValidCollateralModeString must return false for unknown")
+	for _, tc := range []struct {
+		name  string
+		mode  string
+		valid bool
+	}{
+		{"invalid value", "lol", false},
+		{"single", "single", true},
+		{"multi", "multi", true},
+		{"portfolio", "portfolio", true},
+		{"unset", "unset", true},
+		{"empty value", "", false},
+		{"unknown", "unknown", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.valid, IsValidCollateralModeString(tc.mode), "IsValidCollateralModeString must return the expected validity")
+		})
+	}
 }
 
 func TestStringToCollateralType(t *testing.T) {

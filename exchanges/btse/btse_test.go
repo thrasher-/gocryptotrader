@@ -550,7 +550,7 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 	}
 }
 
-func TestGetFee(t *testing.T) {
+func TestGetFee(t *testing.T) { //nolint:tparallel // subtests build on one fee builder in order
 	t.Parallel()
 
 	feeBuilder := &exchange.FeeBuilder{
@@ -561,36 +561,26 @@ func TestGetFee(t *testing.T) {
 		PurchasePrice: 1000,
 	}
 
-	_, err := e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for maker")
-
-	feeBuilder.IsMaker = false
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for taker")
-
-	feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for withdrawal")
-
-	feeBuilder.Pair.Base = currency.USDT
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for USDT")
-
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for International deposits")
-
-	feeBuilder.Amount = 1000000
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for a squillion")
-
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for International withdrawals")
-
-	feeBuilder.Amount = 1000
-	_, err = e.GetFee(t.Context(), feeBuilder)
-	assert.NoError(t, err, "fee builuder should not error for a fraction of a squillion")
+	// Cases run in order on the shared fee builder
+	for _, tc := range []struct {
+		name   string
+		modify func(*exchange.FeeBuilder)
+	}{
+		{name: "maker", modify: func(*exchange.FeeBuilder) {}},
+		{name: "taker", modify: func(f *exchange.FeeBuilder) { f.IsMaker = false }},
+		{name: "withdrawal", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyWithdrawalFee }},
+		{name: "USDT", modify: func(f *exchange.FeeBuilder) { f.Pair.Base = currency.USDT }},
+		{name: "International deposits", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.InternationalBankDepositFee }},
+		{name: "a squillion", modify: func(f *exchange.FeeBuilder) { f.Amount = 1000000 }},
+		{name: "International withdrawals", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.InternationalBankWithdrawalFee }},
+		{name: "a fraction of a squillion", modify: func(f *exchange.FeeBuilder) { f.Amount = 1000 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.modify(feeBuilder)
+			_, err := e.GetFee(t.Context(), feeBuilder)
+			assert.NoError(t, err, "GetFee should not error")
+		})
+	}
 }
 
 func TestSubmitOrder(t *testing.T) {
@@ -821,10 +811,21 @@ func TestGetHistoricTrades(t *testing.T) {
 
 func TestOrderbookFilter(t *testing.T) {
 	t.Parallel()
-	assert.True(t, e.orderbookFilter(0, 1), "orderbookFilter should return correctly")
-	assert.True(t, e.orderbookFilter(1, 0), "orderbookFilter should return correctly")
-	assert.True(t, e.orderbookFilter(0, 0), "orderbookFilter should return correctly")
-	assert.False(t, e.orderbookFilter(1, 1), "orderbookFilter should return correctly")
+	for _, tc := range []struct {
+		name          string
+		price, amount float64
+		filtered      bool
+	}{
+		{name: "zero price", price: 0, amount: 1, filtered: true},
+		{name: "zero amount", price: 1, amount: 0, filtered: true},
+		{name: "zero price and amount", price: 0, amount: 0, filtered: true},
+		{name: "price and amount set", price: 1, amount: 1, filtered: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.filtered, e.orderbookFilter(tc.price, tc.amount), "orderbookFilter should report whether the level is filtered")
+		})
+	}
 }
 
 func TestWsLogin(t *testing.T) {
@@ -899,7 +900,7 @@ func TestIsPerpetualFutureCurrency(t *testing.T) {
 	assert.False(t, isPerp, "IsPerpetualFutureCurrency should return false for a spot pair")
 }
 
-func TestGetOpenInterest(t *testing.T) {
+func TestGetOpenInterest(t *testing.T) { //nolint:tparallel // subtests run before the unsupported asset check
 	t.Parallel()
 	r := e.Requester
 	e := new(Exchange)
@@ -910,33 +911,25 @@ func TestGetOpenInterest(t *testing.T) {
 	cp2 := currency.NewPair(currency.ETH, currency.PFC)
 	sharedtestvalues.SetupCurrencyPairsForExchangeAsset(t, e, asset.Futures, futuresPair, cp1, cp2)
 
-	resp, err := e.GetOpenInterest(t.Context(), key.PairAsset{
-		Base:  cp1.Base.Item,
-		Quote: cp1.Quote.Item,
-		Asset: asset.Futures,
-	})
-	assert.NoError(t, err)
-	assert.NotEmpty(t, resp)
-
-	resp, err = e.GetOpenInterest(t.Context(),
-		key.PairAsset{
-			Base:  cp1.Base.Item,
-			Quote: cp1.Quote.Item,
-			Asset: asset.Futures,
-		},
-		key.PairAsset{
-			Base:  cp2.Base.Item,
-			Quote: cp2.Quote.Item,
-			Asset: asset.Futures,
+	cp1Key := key.PairAsset{Base: cp1.Base.Item, Quote: cp1.Quote.Item, Asset: asset.Futures}
+	cp2Key := key.PairAsset{Base: cp2.Base.Item, Quote: cp2.Quote.Item, Asset: asset.Futures}
+	// Serial so the cases run ahead of the unsupported asset check below
+	for _, tc := range []struct {
+		name string
+		keys []key.PairAsset
+	}{
+		{name: "one pair", keys: []key.PairAsset{cp1Key}},
+		{name: "two pairs", keys: []key.PairAsset{cp1Key, cp2Key}},
+		{name: "all enabled pairs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := e.GetOpenInterest(t.Context(), tc.keys...)
+			assert.NoError(t, err, "GetOpenInterest should not error")
+			assert.NotEmpty(t, resp, "GetOpenInterest should return open interest")
 		})
-	assert.NoError(t, err)
-	assert.NotEmpty(t, resp)
+	}
 
-	resp, err = e.GetOpenInterest(t.Context())
-	assert.NoError(t, err)
-	assert.NotEmpty(t, resp)
-
-	_, err = e.GetOpenInterest(t.Context(), key.PairAsset{
+	_, err := e.GetOpenInterest(t.Context(), key.PairAsset{
 		Base:  currency.BTC.Item,
 		Quote: currency.USDT.Item,
 		Asset: asset.Spot,

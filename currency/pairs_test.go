@@ -204,10 +204,7 @@ func TestGetPairsByFilter(t *testing.T) {
 	}
 
 	filtered := pairs.GetPairsByFilter(LTC)
-	if !filtered.Contains(NewPair(LTC, USDT), true) &&
-		!filtered.Contains(NewPair(LTC, USD), true) {
-		t.Error("TestRemovePairsByFilter unexpected result")
-	}
+	assert.Equal(t, Pairs{NewPair(LTC, USD), NewPair(LTC, USDT)}, filtered, "GetPairsByFilter should return only the pairs containing LTC")
 }
 
 func TestRemove(t *testing.T) {

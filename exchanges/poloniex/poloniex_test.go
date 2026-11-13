@@ -261,7 +261,7 @@ func TestGetOrderHistory(t *testing.T) {
 	assert.Equal(t, currency.USDT, result[0].CostAsset, "CostAsset should be the quote currency")
 }
 
-func TestSubmitOrder(t *testing.T) {
+func TestSubmitOrder(t *testing.T) { //nolint:tparallel // subtests go ahead of the multi margin order
 	t.Parallel()
 	_, err := e.SubmitOrder(t.Context(), nil)
 	require.ErrorIs(t, err, order.ErrSubmissionIsNil)
@@ -329,94 +329,89 @@ func TestSubmitOrder(t *testing.T) {
 	if !mockTests {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
+	// Serial so these orders go ahead of the multi margin order below
+	for _, tc := range []struct {
+		name   string
+		submit *order.Submit
+	}{
+		{name: "spot market buy", submit: &order.Submit{
+			Exchange:    e.Name,
+			Pair:        spotTradablePair,
+			Side:        order.Buy,
+			Type:        order.Market,
+			Price:       10,
+			QuoteAmount: 10000000,
+			AssetType:   asset.Spot,
+		}},
+		{name: "spot stop limit buy", submit: &order.Submit{
+			Exchange:     e.Name,
+			Pair:         spotTradablePair,
+			Side:         order.Buy,
+			Type:         order.StopLimit,
+			TriggerPrice: 11,
+			Price:        10,
+			Amount:       10000000,
+			ClientID:     "hi",
+			AssetType:    asset.Spot,
+		}},
+		{name: "spot trailing stop buy", submit: &order.Submit{
+			Exchange:      e.Name,
+			Pair:          spotTradablePair,
+			Side:          order.Buy,
+			Type:          order.TrailingStop,
+			TrackingMode:  order.Percentage,
+			TrackingValue: 5,
+			TriggerPrice:  11,
+			Price:         10,
+			Amount:        10000000,
+			ClientOrderID: "999999910",
+			AssetType:     asset.Spot,
+		}},
+		{name: "spot trailing stop limit buy", submit: &order.Submit{
+			Exchange:           e.Name,
+			Pair:               spotTradablePair,
+			Side:               order.Buy,
+			Type:               order.TrailingStopLimit,
+			TrackingMode:       order.Percentage,
+			TrackingValue:      5,
+			LimitTrackingMode:  order.Percentage,
+			LimitTrackingValue: 1,
+			TriggerPrice:       11,
+			Price:              10,
+			Amount:             10000000,
+			ClientOrderID:      "999999910",
+			AssetType:          asset.Spot,
+			StopDirection:      order.StopUp,
+		}},
+		{name: "futures market buy", submit: &order.Submit{
+			Exchange:     e.Name,
+			Pair:         spotTradablePair,
+			Side:         order.Buy,
+			Type:         order.Market,
+			TriggerPrice: 11,
+			Price:        10,
+			Amount:       10000000,
+			ClientID:     "hi",
+			AssetType:    asset.Futures,
+		}},
+		{name: "futures market sell", submit: &order.Submit{
+			Exchange:  e.Name,
+			Pair:      futuresTradablePair,
+			Side:      order.Sell,
+			Type:      order.Market,
+			Price:     10,
+			Amount:    10000000,
+			AssetType: asset.Futures,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := e.SubmitOrder(generateContext(t), tc.submit)
+			require.NoError(t, err, "SubmitOrder must not error")
+			assert.NotNil(t, result, "SubmitOrder should return a response")
+		})
+	}
+
 	result, err := e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:    e.Name,
-		Pair:        spotTradablePair,
-		Side:        order.Buy,
-		Type:        order.Market,
-		Price:       10,
-		QuoteAmount: 10000000,
-		AssetType:   asset.Spot,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:     e.Name,
-		Pair:         spotTradablePair,
-		Side:         order.Buy,
-		Type:         order.StopLimit,
-		TriggerPrice: 11,
-		Price:        10,
-		Amount:       10000000,
-		ClientID:     "hi",
-		AssetType:    asset.Spot,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:      e.Name,
-		Pair:          spotTradablePair,
-		Side:          order.Buy,
-		Type:          order.TrailingStop,
-		TrackingMode:  order.Percentage,
-		TrackingValue: 5,
-		TriggerPrice:  11,
-		Price:         10,
-		Amount:        10000000,
-		ClientOrderID: "999999910",
-		AssetType:     asset.Spot,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:           e.Name,
-		Pair:               spotTradablePair,
-		Side:               order.Buy,
-		Type:               order.TrailingStopLimit,
-		TrackingMode:       order.Percentage,
-		TrackingValue:      5,
-		LimitTrackingMode:  order.Percentage,
-		LimitTrackingValue: 1,
-		TriggerPrice:       11,
-		Price:              10,
-		Amount:             10000000,
-		ClientOrderID:      "999999910",
-		AssetType:          asset.Spot,
-		StopDirection:      order.StopUp,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:     e.Name,
-		Pair:         spotTradablePair,
-		Side:         order.Buy,
-		Type:         order.Market,
-		TriggerPrice: 11,
-		Price:        10,
-		Amount:       10000000,
-		ClientID:     "hi",
-		AssetType:    asset.Futures,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
-		Exchange:  e.Name,
-		Pair:      futuresTradablePair,
-		Side:      order.Sell,
-		Type:      order.Market,
-		Price:     10,
-		Amount:    10000000,
-		AssetType: asset.Futures,
-	})
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-
-	result, err = e.SubmitOrder(generateContext(t), &order.Submit{
 		Exchange:   e.Name,
 		Pair:       futuresTradablePair,
 		Side:       order.Buy,
@@ -922,100 +917,59 @@ func TestCancelBatchOrders(t *testing.T) {
 	_, err = e.CancelBatchOrders(t.Context(), []order.Cancel{{AssetType: asset.Futures, OrderID: "1233"}, {AssetType: asset.Futures}})
 	require.ErrorIs(t, err, currency.ErrCurrencyPairEmpty)
 
-	_, err = e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			Pair:      futuresTradablePair,
-			AssetType: asset.Futures,
-			OrderID:   "1233",
-		},
-		{
-			Pair:      futuresTradablePair,
-			AssetType: asset.Spot,
-			OrderID:   "123444",
-		},
-	})
-	require.ErrorIs(t, err, errAllMustBeEqual)
-
-	_, err = e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			Pair:      futuresTradablePair,
-			AssetType: asset.Futures,
-			OrderID:   "1233",
-		},
-		{
-			Pair:      spotTradablePair,
-			AssetType: asset.Futures,
-			OrderID:   "123444",
-		},
-	})
-	require.ErrorIs(t, err, errAllMustBeEqual)
-
-	_, err = e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			Pair:      spotTradablePair,
-			AssetType: asset.Spot,
-			OrderID:   "1233",
-			Type:      order.StopLimit,
-		},
-		{
-			Pair:      spotTradablePair,
-			AssetType: asset.Spot,
-			OrderID:   "123444",
-			Type:      order.Limit,
-		},
-	})
-	require.ErrorIs(t, err, errAllMustBeEqual)
+	// Serial so these validation cases run before the credential check below
+	for _, tc := range []struct {
+		name   string
+		orders []order.Cancel
+	}{
+		{name: "mixed asset types", orders: []order.Cancel{
+			{Pair: futuresTradablePair, AssetType: asset.Futures, OrderID: "1233"},
+			{Pair: futuresTradablePair, AssetType: asset.Spot, OrderID: "123444"},
+		}},
+		{name: "mixed futures pairs", orders: []order.Cancel{
+			{Pair: futuresTradablePair, AssetType: asset.Futures, OrderID: "1233"},
+			{Pair: spotTradablePair, AssetType: asset.Futures, OrderID: "123444"},
+		}},
+		{name: "mixed smart and standard spot orders", orders: []order.Cancel{
+			{Pair: spotTradablePair, AssetType: asset.Spot, OrderID: "1233", Type: order.StopLimit},
+			{Pair: spotTradablePair, AssetType: asset.Spot, OrderID: "123444", Type: order.Limit},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := e.CancelBatchOrders(generateContext(t), tc.orders)
+			require.ErrorIs(t, err, errAllMustBeEqual, "CancelBatchOrders must reject the batch")
+		})
+	}
 
 	if !mockTests {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e, canManipulateRealOrders)
 	}
 
-	resp, err := e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			Pair:      futuresTradablePair,
-			AssetType: asset.Futures,
-			OrderID:   "1233",
-		},
-		{
-			Pair:      futuresTradablePair,
-			AssetType: asset.Futures,
-			OrderID:   "123444",
-		},
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	resp, err = e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			OrderID:   "1234",
-			AssetType: asset.Spot,
-			Pair:      spotTradablePair,
-		},
-		{
-			OrderID:   "134",
-			AssetType: asset.Spot,
-			Pair:      currency.NewBTCUSD(),
-		},
-		{
-			ClientOrderID: "234",
-			AssetType:     asset.Spot,
-		},
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	resp, err = e.CancelBatchOrders(generateContext(t), []order.Cancel{
-		{
-			OrderID:   "134",
-			AssetType: asset.Spot,
-			Type:      order.StopLimit,
-		},
-		{
-			OrderID:   "234",
-			AssetType: asset.Spot,
-			Type:      order.TrailingStop,
-		},
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
+	for _, tc := range []struct {
+		name   string
+		orders []order.Cancel
+	}{
+		{name: "futures orders", orders: []order.Cancel{
+			{Pair: futuresTradablePair, AssetType: asset.Futures, OrderID: "1233"},
+			{Pair: futuresTradablePair, AssetType: asset.Futures, OrderID: "123444"},
+		}},
+		{name: "spot orders", orders: []order.Cancel{
+			{OrderID: "1234", AssetType: asset.Spot, Pair: spotTradablePair},
+			{OrderID: "134", AssetType: asset.Spot, Pair: currency.NewBTCUSD()},
+			{ClientOrderID: "234", AssetType: asset.Spot},
+		}},
+		{name: "spot smart orders", orders: []order.Cancel{
+			{OrderID: "134", AssetType: asset.Spot, Type: order.StopLimit},
+			{OrderID: "234", AssetType: asset.Spot, Type: order.TrailingStop},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := e.CancelBatchOrders(generateContext(t), tc.orders)
+			assert.NoError(t, err, "CancelBatchOrders should not error")
+			assert.NotNil(t, resp, "CancelBatchOrders should return a response")
+		})
+	}
 }
 
 func TestGetServerTime(t *testing.T) {
@@ -1333,17 +1287,24 @@ func TestGetAccountActivities(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 		startTime, endTime = time.Now().Add(-time.Hour), time.Now()
 	}
-	_, err = e.GetAccountActivities(generateContext(t), startTime, endTime, 0, 0, 0, "", currency.EMPTYCODE)
-	require.NoError(t, err)
-
-	_, err = e.GetAccountActivities(generateContext(t), time.Time{}, time.Time{}, 200, 0, 0, "", currency.EMPTYCODE)
-	require.NoError(t, err)
-
-	_, err = e.GetAccountActivities(generateContext(t), time.Time{}, time.Time{}, 0, 10, 100, "PRE", currency.EMPTYCODE)
-	require.NoError(t, err)
-
-	_, err = e.GetAccountActivities(generateContext(t), time.Time{}, time.Time{}, 0, 0, 0, "NEXT", currency.BTC)
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name                      string
+		startTime, endTime        time.Time
+		activityType, limit, from uint64
+		direction                 string
+		ccy                       currency.Code
+	}{
+		{name: "time range", startTime: startTime, endTime: endTime},
+		{name: "activity type", activityType: 200},
+		{name: "from and limit with PRE direction", limit: 10, from: 100, direction: "PRE"},
+		{name: "currency with NEXT direction", direction: "NEXT", ccy: currency.BTC},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetAccountActivities(generateContext(t), tc.startTime, tc.endTime, tc.activityType, tc.limit, tc.from, tc.direction, tc.ccy)
+			require.NoError(t, err, "GetAccountActivities must not error")
+		})
+	}
 }
 
 func TestAccountsTransfer(t *testing.T) {
@@ -1391,14 +1352,23 @@ func TestGetAccountsTransferRecords(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 		startTime, endTime = time.Now().Add(-time.Hour), time.Now()
 	}
-	_, err = e.GetAccountsTransferRecords(generateContext(t), startTime, endTime, "", currency.BTC, 0, 0)
-	require.NoError(t, err)
-
-	_, err = e.GetAccountsTransferRecords(generateContext(t), time.Time{}, time.Time{}, "NEXT", currency.BTC, 1, 100)
-	require.NoError(t, err)
-
-	_, err = e.GetAccountsTransferRecords(generateContext(t), startTime, endTime, "", currency.EMPTYCODE, 0, 0)
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name               string
+		startTime, endTime time.Time
+		direction          string
+		ccy                currency.Code
+		from, limit        uint64
+	}{
+		{name: "time range", startTime: startTime, endTime: endTime, ccy: currency.BTC},
+		{name: "from and limit with NEXT direction", direction: "NEXT", ccy: currency.BTC, from: 1, limit: 100},
+		{name: "time range without currency", startTime: startTime, endTime: endTime},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetAccountsTransferRecords(generateContext(t), tc.startTime, tc.endTime, tc.direction, tc.ccy, tc.from, tc.limit)
+			require.NoError(t, err, "GetAccountsTransferRecords must not error")
+		})
+	}
 }
 
 func TestGetAccountTransferRecord(t *testing.T) {
@@ -1433,17 +1403,23 @@ func TestGetInterestHistory(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 		startTime, endTime = time.Now().Add(-time.Hour), time.Now()
 	}
-	_, err = e.GetInterestHistory(generateContext(t), startTime, endTime, "", 0, 0)
-	require.NoError(t, err)
-
-	_, err = e.GetInterestHistory(generateContext(t), time.Time{}, time.Time{}, "NEXT", 0, 0)
-	require.NoError(t, err)
-
-	_, err = e.GetInterestHistory(generateContext(t), time.Time{}, time.Time{}, "NEXT", 1, 100)
-	require.NoError(t, err)
-
-	_, err = e.GetInterestHistory(generateContext(t), time.Time{}, time.Time{}, "", 0, 0)
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name               string
+		startTime, endTime time.Time
+		direction          string
+		from, limit        uint64
+	}{
+		{name: "time range", startTime: startTime, endTime: endTime},
+		{name: "NEXT direction", direction: "NEXT"},
+		{name: "from and limit with NEXT direction", direction: "NEXT", from: 1, limit: 100},
+		{name: "no parameters"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetInterestHistory(generateContext(t), tc.startTime, tc.endTime, tc.direction, tc.from, tc.limit)
+			require.NoError(t, err, "GetInterestHistory must not error")
+		})
+	}
 }
 
 func TestGetSubAccount(t *testing.T) {
@@ -1540,23 +1516,27 @@ func TestGetSubAccountTransferRecords(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 		startTime, endTime = time.Now().Add(-time.Hour), time.Now()
 	}
-	_, err = e.GetSubAccountTransferRecords(generateContext(t), &SubAccountTransferRecordRequest{
-		Currency:        currency.BTC,
-		FromAccountType: "SPOT",
-		ToAccountType:   "FUTURES",
-		ToAccountID:     "32b323201-e832-2270-78t4-e25ak408946",
-		FromAccountID:   "32b323201-e832-2270-78t4-e25ak408941",
-	})
-	require.NoError(t, err)
-
-	_, err = e.GetSubAccountTransferRecords(generateContext(t), &SubAccountTransferRecordRequest{Currency: currency.BTC, StartTime: startTime, EndTime: endTime})
-	require.NoError(t, err)
-
-	_, err = e.GetSubAccountTransferRecords(generateContext(t), &SubAccountTransferRecordRequest{Currency: currency.BTC, StartTime: startTime, From: 1, Limit: 100})
-	require.NoError(t, err)
-
-	_, err = e.GetSubAccountTransferRecords(generateContext(t), &SubAccountTransferRecordRequest{Currency: currency.BTC, Direction: "NEXT"})
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name string
+		req  *SubAccountTransferRecordRequest
+	}{
+		{name: "account types and IDs", req: &SubAccountTransferRecordRequest{
+			Currency:        currency.BTC,
+			FromAccountType: "SPOT",
+			ToAccountType:   "FUTURES",
+			ToAccountID:     "32b323201-e832-2270-78t4-e25ak408946",
+			FromAccountID:   "32b323201-e832-2270-78t4-e25ak408941",
+		}},
+		{name: "time range", req: &SubAccountTransferRecordRequest{Currency: currency.BTC, StartTime: startTime, EndTime: endTime}},
+		{name: "start time with from and limit", req: &SubAccountTransferRecordRequest{Currency: currency.BTC, StartTime: startTime, From: 1, Limit: 100}},
+		{name: "NEXT direction", req: &SubAccountTransferRecordRequest{Currency: currency.BTC, Direction: "NEXT"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetSubAccountTransferRecords(generateContext(t), tc.req)
+			require.NoError(t, err, "GetSubAccountTransferRecords must not error")
+		})
+	}
 }
 
 func TestGetSubAccountTransferRecord(t *testing.T) {
@@ -2165,17 +2145,23 @@ func TestGetTradeHistory(t *testing.T) {
 		sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
 		startTime, endTime = time.Now().Add(-time.Hour), time.Now()
 	}
-	_, err = e.GetTradeHistory(generateContext(t), currency.Pairs{spotTradablePair}, "", 0, 0, startTime, endTime)
-	require.NoError(t, err)
-
-	_, err = e.GetTradeHistory(generateContext(t), currency.Pairs{spotTradablePair}, "", 1, 100, startTime, endTime)
-	require.NoError(t, err)
-
-	_, err = e.GetTradeHistory(generateContext(t), currency.Pairs{spotTradablePair}, "NEXT", 10, 100, startTime, endTime)
-	require.NoError(t, err)
-
-	_, err = e.GetTradeHistory(generateContext(t), currency.Pairs{spotTradablePair}, "", 0, 0, time.Time{}, time.Time{})
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name               string
+		direction          string
+		from, limit        uint64
+		startTime, endTime time.Time
+	}{
+		{name: "time range", startTime: startTime, endTime: endTime},
+		{name: "from and limit with time range", from: 1, limit: 100, startTime: startTime, endTime: endTime},
+		{name: "from and limit with NEXT direction and time range", direction: "NEXT", from: 10, limit: 100, startTime: startTime, endTime: endTime},
+		{name: "no time range"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetTradeHistory(generateContext(t), currency.Pairs{spotTradablePair}, tc.direction, tc.from, tc.limit, tc.startTime, tc.endTime)
+			require.NoError(t, err, "GetTradeHistory must not error")
+		})
+	}
 }
 
 func TestGetTradeOrderID(t *testing.T) {

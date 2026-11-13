@@ -295,32 +295,28 @@ func TestDeleteByID(t *testing.T) {
 	}
 	a.load(asksSnapshot)
 
-	// Delete at head
-	err := a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 1}}, false)
-	if err != nil {
-		t.Fatal(err)
+	// Steps build on the previous step's levels, so they run in order and stop at the first failure
+	for _, tc := range []struct {
+		name      string
+		id        int64
+		liquidity float64
+		value     float64
+		length    int
+	}{
+		{"delete at head", 1, 5, 35, 5},
+		{"delete at tail", 11, 4, 24, 4},
+		{"delete in middle", 5, 3, 19, 3},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, a.deleteByID(Levels{{Price: 1, Amount: 1, ID: tc.id}}, false), "deleteByID must not error")
+			Check(t, a, tc.liquidity, tc.value, tc.length)
+		}) {
+			t.FailNow()
+		}
 	}
-
-	Check(t, a, 5, 35, 5)
-
-	// Delete at tail
-	err = a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 11}}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, a, 4, 24, 4)
-
-	// Delete in middle
-	err = a.deleteByID(Levels{{Price: 1, Amount: 1, ID: 5}}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, a, 3, 19, 3)
 
 	// Intentional error
-	err = a.deleteByID(Levels{{Price: 11, Amount: 1, ID: 1337}}, false)
+	err := a.deleteByID(Levels{{Price: 11, Amount: 1, ID: 1337}}, false)
 	require.ErrorIs(t, err, errIDCannotBeMatched)
 
 	// Error bypass
@@ -606,80 +602,62 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	// Reset
 	b.load(bidsSnapshot)
 
-	// Update all instances with matching ID in order
-	err = b.updateInsertByID(Levels{
-		{Price: 1, Amount: 2, ID: 1},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: 5, Amount: 2, ID: 5},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
+	// Steps build on the previous step's levels, so they run in order and stop at the first failure
+	for _, tc := range []struct {
+		name      string
+		update    Levels
+		liquidity float64
+		value     float64
+		length    int
+	}{
+		{"update all instances with matching ID in order", Levels{
+			{Price: 1, Amount: 2, ID: 1},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: 5, Amount: 2, ID: 5},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 11, Amount: 2, ID: 11},
+		}, 12, 72, 6},
+		{"update all instances with matching ID in backwards", Levels{
+			{Price: 11, Amount: 2, ID: 11},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 5, Amount: 2, ID: 5},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: 1, Amount: 2, ID: 1},
+		}, 12, 72, 6},
+		{"update all instances with matching ID all over the ship", Levels{
+			{Price: 11, Amount: 2, ID: 11},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 1, Amount: 2, ID: 1},
+			{Price: 5, Amount: 2, ID: 5},
+		}, 12, 72, 6},
+		{"update all instances move one before ID in middle", Levels{
+			{Price: 1, Amount: 2, ID: 1},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: 2, Amount: 2, ID: 5},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 11, Amount: 2, ID: 11},
+		}, 12, 66, 6},
+		{"update all instances move one before ID at head", Levels{
+			{Price: 1, Amount: 2, ID: 1},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: .5, Amount: 2, ID: 5},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 11, Amount: 2, ID: 11},
+		}, 12, 63, 6},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, b.updateInsertByID(tc.update), "updateInsertByID must not error")
+			Check(t, b, tc.liquidity, tc.value, tc.length)
+		}) {
+			t.FailNow()
+		}
 	}
-
-	Check(t, b, 12, 72, 6)
-
-	// Update all instances with matching ID in backwards
-	err = b.updateInsertByID(Levels{
-		{Price: 11, Amount: 2, ID: 11},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 5, Amount: 2, ID: 5},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: 1, Amount: 2, ID: 1},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 12, 72, 6)
-
-	// Update all instances with matching ID all over the ship
-	err = b.updateInsertByID(Levels{
-		{Price: 11, Amount: 2, ID: 11},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 1, Amount: 2, ID: 1},
-		{Price: 5, Amount: 2, ID: 5},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 12, 72, 6)
-
-	// Update all instances move one before ID in middle
-	err = b.updateInsertByID(Levels{
-		{Price: 1, Amount: 2, ID: 1},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: 2, Amount: 2, ID: 5},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 12, 66, 6)
-
-	// Update all instances move one before ID at head
-	err = b.updateInsertByID(Levels{
-		{Price: 1, Amount: 2, ID: 1},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: .5, Amount: 2, ID: 5},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 12, 63, 6)
 
 	// Reset
 	b.load(bidsSnapshot)
@@ -736,82 +714,39 @@ func TestUpdateInsertByIDBids(t *testing.T) {
 	// Reset
 	b.load(bidsSnapshot)
 
-	// Update all instances pop at tail
-	err = b.updateInsertByID(Levels{
-		{Price: 0.5, Amount: 2, ID: 0},
-		{Price: 1, Amount: 2, ID: 1},
-		{Price: 3, Amount: 2, ID: 3},
-		{Price: 12, Amount: 2, ID: 5},
-		{Price: 7, Amount: 2, ID: 7},
-		{Price: 9, Amount: 2, ID: 9},
-		{Price: 11, Amount: 2, ID: 11},
-	})
-	if err != nil {
-		t.Fatal(err)
+	// Steps build on the previous step's levels, so they run in order and stop at the first failure
+	for _, tc := range []struct {
+		name      string
+		update    Levels
+		liquidity float64
+		value     float64
+		length    int
+	}{
+		{"update all instances pop at tail", Levels{
+			{Price: 0.5, Amount: 2, ID: 0},
+			{Price: 1, Amount: 2, ID: 1},
+			{Price: 3, Amount: 2, ID: 3},
+			{Price: 12, Amount: 2, ID: 5},
+			{Price: 7, Amount: 2, ID: 7},
+			{Price: 9, Amount: 2, ID: 9},
+			{Price: 11, Amount: 2, ID: 11},
+		}, 14, 87, 7},
+		{"bookmark head and move to mid", Levels{{Price: 9.5, Amount: 2, ID: 5}}, 14, 82, 7},
+		{"bookmark head and move to tail", Levels{{Price: 0.25, Amount: 2, ID: 11}}, 14, 60.5, 7},
+		{"move tail location to head", Levels{{Price: 10, Amount: 2, ID: 11}}, 14, 80, 7},
+		{"move tail location to mid", Levels{{Price: 7.5, Amount: 2, ID: 0}}, 14, 94, 7},
+		{"insert at head dont match", Levels{{Price: 30, Amount: 2, ID: 1234}}, 16, 154, 8},
+		{"insert between last and 2nd last", Levels{{Price: 1.5, Amount: 2, ID: 12345}}, 18, 157, 9},
+		{"readjust at end", Levels{{Price: 1, Amount: 3, ID: 1}}, 19, 158, 9},
+		{"readjust further and decrease price past tail", Levels{{Price: .9, Amount: 3, ID: 1}}, 19, 157.7, 9},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, b.updateInsertByID(tc.update), "updateInsertByID must not error")
+			Check(t, b, tc.liquidity, tc.value, tc.length)
+		}) {
+			t.FailNow()
+		}
 	}
-
-	Check(t, b, 14, 87, 7)
-
-	// bookmark head and move to mid
-	err = b.updateInsertByID(Levels{{Price: 9.5, Amount: 2, ID: 5}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 14, 82, 7)
-
-	// bookmark head and move to tail
-	err = b.updateInsertByID(Levels{{Price: 0.25, Amount: 2, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 14, 60.5, 7)
-
-	// move tail location to head
-	err = b.updateInsertByID(Levels{{Price: 10, Amount: 2, ID: 11}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 14, 80, 7)
-
-	// move tail location to mid
-	err = b.updateInsertByID(Levels{{Price: 7.5, Amount: 2, ID: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 14, 94, 7)
-
-	// insert at head dont match
-	err = b.updateInsertByID(Levels{{Price: 30, Amount: 2, ID: 1234}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	Check(t, b, 16, 154, 8)
-
-	// insert between last and 2nd last
-	err = b.updateInsertByID(Levels{{Price: 1.5, Amount: 2, ID: 12345}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	Check(t, b, 18, 157, 9)
-
-	// readjust at end
-	err = b.updateInsertByID(Levels{{Price: 1, Amount: 3, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	Check(t, b, 19, 158, 9)
-
-	// readjust further and decrease price past tail
-	err = b.updateInsertByID(Levels{{Price: .9, Amount: 3, ID: 1}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	Check(t, b, 19, 157.7, 9)
 
 	// purge
 	b.load(nil)

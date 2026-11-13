@@ -461,65 +461,36 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 
 func TestGetFee(t *testing.T) {
 	t.Parallel()
-	feeBuilder := setFeeBuilder()
-
-	if sharedtestvalues.AreAPICredentialsSet(e) {
-		// CryptocurrencyTradeFee Basic
-		if _, err := e.GetFee(feeBuilder); err != nil {
-			t.Error(err)
-		}
-
-		// CryptocurrencyTradeFee High quantity
-		feeBuilder = setFeeBuilder()
-		feeBuilder.Amount = 1000
-		feeBuilder.PurchasePrice = 1000
-		if _, err := e.GetFee(feeBuilder); err != nil {
-			t.Error(err)
-		}
-
-		// CryptocurrencyTradeFee IsMaker
-		feeBuilder = setFeeBuilder()
-		feeBuilder.IsMaker = true
-		if _, err := e.GetFee(feeBuilder); err != nil {
-			t.Error(err)
-		}
-
-		// CryptocurrencyTradeFee Negative purchase price
-		feeBuilder = setFeeBuilder()
-		feeBuilder.PurchasePrice = -1000
-		if _, err := e.GetFee(feeBuilder); err != nil {
-			t.Error(err)
-		}
-
-		// CryptocurrencyWithdrawalFee Basic
-		feeBuilder = setFeeBuilder()
-		feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-		if _, err := e.GetFee(feeBuilder); err != nil {
-			t.Error(err)
-		}
-	}
-
-	// CryptocurrencyDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyDepositFee
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	feeBuilder.FiatCurrency = currency.JPY
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.JPY
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
+	for _, tc := range []struct {
+		name                string
+		requiresCredentials bool
+		modify              func(*exchange.FeeBuilder)
+	}{
+		{name: "CryptocurrencyTradeFee Basic", requiresCredentials: true, modify: func(*exchange.FeeBuilder) {}},
+		{name: "CryptocurrencyTradeFee High quantity", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.Amount, f.PurchasePrice = 1000, 1000 }},
+		{name: "CryptocurrencyTradeFee IsMaker", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.IsMaker = true }},
+		{name: "CryptocurrencyTradeFee Negative purchase price", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.PurchasePrice = -1000 }},
+		{name: "CryptocurrencyWithdrawalFee Basic", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyWithdrawalFee }},
+		{name: "CryptocurrencyDepositFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyDepositFee }},
+		{name: "InternationalBankDepositFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankDepositFee
+			f.FiatCurrency = currency.JPY
+		}},
+		{name: "InternationalBankWithdrawalFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.JPY
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.requiresCredentials {
+				sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+			}
+			feeBuilder := setFeeBuilder()
+			tc.modify(feeBuilder)
+			_, err := e.GetFee(feeBuilder)
+			assert.NoError(t, err, "GetFee should not error")
+		})
 	}
 }
 

@@ -193,27 +193,26 @@ func TestIncreaseAvailablePair(t *testing.T) {
 
 func TestCanPlaceOrderPair(t *testing.T) {
 	t.Parallel()
-	p := SpotPair{
-		base:  &Item{},
-		quote: &Item{},
-	}
-	if p.CanPlaceOrder(gctorder.DoNothing) {
-		t.Error("expected false")
-	}
-	if p.CanPlaceOrder(gctorder.Buy) {
-		t.Error("expected false")
-	}
-	if p.CanPlaceOrder(gctorder.Sell) {
-		t.Error("expected false")
-	}
-
-	p.quote.available = decimal.NewFromInt(32)
-	if !p.CanPlaceOrder(gctorder.Buy) {
-		t.Error("expected true")
-	}
-	p.base.available = decimal.NewFromInt(32)
-	if !p.CanPlaceOrder(gctorder.Sell) {
-		t.Error("expected true")
+	for _, tc := range []struct {
+		name                          string
+		side                          gctorder.Side
+		baseAvailable, quoteAvailable decimal.Decimal
+		expected                      bool
+	}{
+		{name: "do nothing without funds", side: gctorder.DoNothing},
+		{name: "buy without funds", side: gctorder.Buy},
+		{name: "sell without funds", side: gctorder.Sell},
+		{name: "buy with quote funds", side: gctorder.Buy, quoteAvailable: decimal.NewFromInt(32), expected: true},
+		{name: "sell with base funds", side: gctorder.Sell, baseAvailable: decimal.NewFromInt(32), quoteAvailable: decimal.NewFromInt(32), expected: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := SpotPair{
+				base:  &Item{available: tc.baseAvailable},
+				quote: &Item{available: tc.quoteAvailable},
+			}
+			assert.Equal(t, tc.expected, p.CanPlaceOrder(tc.side))
+		})
 	}
 }
 
@@ -280,7 +279,7 @@ func TestCollateralReleaser(t *testing.T) {
 	p := &SpotPair{
 		base: &Item{exchange: "hello"},
 	}
-	_, err := p.GetCollateralReader()
+	_, err := p.CollateralReleaser()
 	assert.ErrorIs(t, err, ErrNotCollateral)
 }
 

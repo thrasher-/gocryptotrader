@@ -90,20 +90,20 @@ func TestCreateKlineRequest(t *testing.T) {
 	if !r.End.Equal(end.Add(OneHour.Duration() - (time.Second * 30))) {
 		t.Fatalf("received: '%v', but expected '%v'", r.End, end.Add(OneHour.Duration()-(time.Second*30)))
 	}
-}
 
-func TestCreateKlineRequest_OneMonthAlignment(t *testing.T) {
-	t.Parallel()
+	t.Run("one month alignment", func(t *testing.T) {
+		t.Parallel()
 
-	pair := currency.NewBTCUSDT()
-	start := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
-	end := time.Date(2024, 2, 15, 12, 0, 0, 0, time.UTC)
+		pair := currency.NewBTCUSDT()
+		start := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+		end := time.Date(2024, 2, 15, 12, 0, 0, 0, time.UTC)
 
-	r, err := CreateKlineRequest("name", pair, pair, asset.Spot, OneMonth, OneMonth, start, end, 1)
-	require.NoError(t, err)
+		r, err := CreateKlineRequest("name", pair, pair, asset.Spot, OneMonth, OneMonth, start, end, 1)
+		require.NoError(t, err)
 
-	assert.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), r.Start)
-	assert.Equal(t, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC), r.End)
+		assert.Equal(t, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), r.Start)
+		assert.Equal(t, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC), r.End)
+	})
 }
 
 func TestGetRanges(t *testing.T) {

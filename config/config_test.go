@@ -345,13 +345,7 @@ func TestPurgeExchangeCredentials(t *testing.T) {
 		t.Error(err)
 	}
 
-	if exchCfg.API.Credentials.Key != DefaultAPIKey &&
-		exchCfg.API.Credentials.ClientID != DefaultAPIClientID &&
-		exchCfg.API.Credentials.Secret != DefaultAPISecret &&
-		exchCfg.API.Credentials.OTPSecret != "" &&
-		exchCfg.API.Credentials.PEMKey != "" {
-		t.Error("unexpected values")
-	}
+	assert.Equal(t, APICredentialsConfig{Key: DefaultAPIKey, Secret: DefaultAPISecret, ClientID: DefaultAPIClientID}, exchCfg.API.Credentials, "PurgeExchangeAPICredentials should reset every credential the validator requires and clear the others")
 
 	exchCfg, err = c.GetExchangeConfig("test123")
 	if err != nil {
@@ -419,7 +413,7 @@ func TestUpdateCryptocurrencyProviderConfig(t *testing.T) {
 	}
 }
 
-func TestCheckCommunicationsConfig(t *testing.T) {
+func TestCheckCommunicationsConfig(t *testing.T) { //nolint:tparallel // subtests change one config in order
 	t.Parallel()
 	cfg := &Config{
 		Communications: base.CommunicationsConfig{},
@@ -481,27 +475,23 @@ func TestCheckCommunicationsConfig(t *testing.T) {
 	}
 
 	cfg.Communications.SlackConfig.Enabled = false
-	cfg.Communications.SMSGlobalConfig.Enabled = true
-	cfg.Communications.SMSGlobalConfig.Password = ""
-	cfg.CheckCommunicationsConfig()
-	if cfg.Communications.SlackConfig.Enabled {
-		t.Error("CheckCommunicationsConfig SMSGlobal is enabled when it shouldn't be.")
-	}
-
-	cfg.Communications.SMSGlobalConfig.Enabled = false
-	cfg.Communications.SMTPConfig.Enabled = true
-	cfg.Communications.SMTPConfig.AccountPassword = ""
-	cfg.CheckCommunicationsConfig()
-	if cfg.Communications.SlackConfig.Enabled {
-		t.Error("CheckCommunicationsConfig SMTPConfig is enabled when it shouldn't be.")
-	}
-
-	cfg.Communications.SMTPConfig.Enabled = false
-	cfg.Communications.TelegramConfig.Enabled = true
-	cfg.Communications.TelegramConfig.VerificationToken = ""
-	cfg.CheckCommunicationsConfig()
-	if cfg.Communications.TelegramConfig.Enabled {
-		t.Error("CheckCommunicationsConfig TelegramConfig is enabled when it shouldn't be.")
+	// Cases run in order on the shared config, each disabling its service again for the next
+	for _, tc := range []struct {
+		name       string
+		enabled    *bool
+		credential *string
+	}{
+		{name: "SMSGlobal without password", enabled: &cfg.Communications.SMSGlobalConfig.Enabled, credential: &cfg.Communications.SMSGlobalConfig.Password},
+		{name: "SMTP without account password", enabled: &cfg.Communications.SMTPConfig.Enabled, credential: &cfg.Communications.SMTPConfig.AccountPassword},
+		{name: "Telegram without verification token", enabled: &cfg.Communications.TelegramConfig.Enabled, credential: &cfg.Communications.TelegramConfig.VerificationToken},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			*tc.enabled = true
+			*tc.credential = ""
+			cfg.CheckCommunicationsConfig()
+			assert.False(t, *tc.enabled, "CheckCommunicationsConfig should disable the service")
+			*tc.enabled = false
+		})
 	}
 }
 
@@ -749,7 +739,7 @@ func TestCheckPairConfigFormats(t *testing.T) {
 	assert.ErrorContains(t, c.CheckPairConfigFormats(testFakeExchangeName), "does not contain delimiter", "Invalid pair delimiter should throw an error")
 }
 
-func TestCheckPairConsistency(t *testing.T) {
+func TestCheckPairConsistency(t *testing.T) { //nolint:tparallel // subtests change one pairs manager in order
 	t.Parallel()
 
 	var c Config
@@ -809,18 +799,24 @@ func TestCheckPairConsistency(t *testing.T) {
 
 	assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error with consistent pairs")
 
-	pm.Pairs[asset.Spot].AssetEnabled = true
-	pm.Pairs[asset.Spot].Enabled = currency.Pairs{}
-	assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error with spot asset enabled but no pairs")
-
-	pm.Pairs[asset.Spot].AssetEnabled = true
-	pm.Pairs[asset.Spot].Enabled = currency.Pairs{currency.NewPair(currency.DASH, currency.USD)}
-	assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error with spot asset enabled and enabled pairs")
+	// Cases run in order on the shared pairs manager, which each call updates
+	for _, tc := range []struct {
+		name         string
+		assetEnabled bool
+		enabledPairs currency.Pairs
+	}{
+		{name: "spot enabled without pairs", assetEnabled: true, enabledPairs: currency.Pairs{}},
+		{name: "spot enabled with pairs", assetEnabled: true, enabledPairs: currency.Pairs{currency.NewPair(currency.DASH, currency.USD)}},
+		{name: "spot disabled without pairs", assetEnabled: false, enabledPairs: currency.Pairs{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pm.Pairs[asset.Spot].AssetEnabled = tc.assetEnabled
+			pm.Pairs[asset.Spot].Enabled = tc.enabledPairs
+			assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error")
+		})
+	}
 
 	pm.Pairs[asset.Spot].AssetEnabled = false
-	pm.Pairs[asset.Spot].Enabled = currency.Pairs{}
-	assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error with spot asset disabled and no enabled pairs")
-
 	pm.Pairs[asset.Spot].Enabled = currency.Pairs{currency.NewPair(currency.DASH, currency.USD), p1, p2}
 	assert.NoError(t, c.CheckPairConsistency(testFakeExchangeName), "CheckPairConsistency should not error with spot asset disabled but enabled pairs")
 }
@@ -930,9 +926,7 @@ func TestGetPairFormat(t *testing.T) {
 		t.Error(err)
 	}
 
-	if !p.Uppercase && p.Delimiter != "_" {
-		t.Error("unexpected results")
-	}
+	assert.Equal(t, currency.PairFormat{Uppercase: true, Delimiter: "_"}, p, "GetPairFormat should return the global config format")
 
 	// Test nil pair store
 	c.Exchanges[0].CurrencyPairs.UseGlobalFormat = false
@@ -954,9 +948,7 @@ func TestGetPairFormat(t *testing.T) {
 		t.Error(err)
 	}
 
-	if p.Delimiter != "~" && !p.Uppercase {
-		t.Error("unexpected results")
-	}
+	assert.Equal(t, currency.PairFormat{Uppercase: true, Delimiter: "~"}, p, "GetPairFormat should return the spot pair store's config format")
 }
 
 func TestGetAvailablePairs(t *testing.T) {
@@ -1941,15 +1933,19 @@ func TestSortAvailablePairs(t *testing.T) {
 func TestCloseWriteCloser(t *testing.T) {
 	t.Parallel()
 
-	assert.NotPanics(t, func() {
-		closeWriteCloser(nil)
-	}, "closeWriteCloser should not panic with nil writers")
-	assert.NotPanics(t, func() {
-		closeWriteCloser(noopWriteCloser{})
-	}, "closeWriteCloser should not panic with closers returning nil")
-	assert.NotPanics(t, func() {
-		closeWriteCloser(closeErrorWriteCloser{})
-	}, "closeWriteCloser should not panic with closers returning errors")
+	for _, tc := range []struct {
+		name   string
+		writer io.WriteCloser
+	}{
+		{name: "nil writer", writer: nil},
+		{name: "close returns nil", writer: noopWriteCloser{}},
+		{name: "close returns error", writer: closeErrorWriteCloser{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.NotPanics(t, func() { closeWriteCloser(tc.writer) }, "closeWriteCloser should not panic")
+		})
+	}
 }
 
 func TestCheckConnectionMonitorConfig(t *testing.T) {

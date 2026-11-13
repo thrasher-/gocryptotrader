@@ -349,35 +349,24 @@ func TestWithdraw(t *testing.T) {
 func TestGetFee(t *testing.T) {
 	t.Parallel()
 	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-	feeBuilder := &exchange.FeeBuilder{
-		Amount:        1,
-		FeeType:       exchange.CryptocurrencyTradeFee,
-		Pair:          currency.NewPair(currency.BTC, currency.LTC),
-		PurchasePrice: 1,
-	}
-	_, er := e.GetFeeByType(t.Context(), feeBuilder)
-	if er != nil {
-		t.Fatal("Binanceus GetFeeByType() error", er)
-	}
-	withdrawalFeeBuilder := &exchange.FeeBuilder{
-		Amount:        1,
-		FeeType:       exchange.CryptocurrencyWithdrawalFee,
-		Pair:          currency.NewPair(currency.BTC, currency.LTC),
-		PurchasePrice: 1,
-	}
-	_, er = e.GetFeeByType(t.Context(), withdrawalFeeBuilder)
-	if er != nil {
-		t.Fatal("Binanceus GetFeeByType() error", er)
-	}
-	offlineFeeTradeBuilder := &exchange.FeeBuilder{
-		Amount:        1,
-		FeeType:       exchange.OfflineTradeFee,
-		Pair:          currency.NewPair(currency.BTC, currency.LTC),
-		PurchasePrice: 1,
-	}
-	_, er = e.GetFeeByType(t.Context(), offlineFeeTradeBuilder)
-	if er != nil {
-		t.Fatal("Binanceus GetFeeByType() error", er)
+	for _, tc := range []struct {
+		name    string
+		feeType exchange.FeeType
+	}{
+		{name: "CryptocurrencyTradeFee", feeType: exchange.CryptocurrencyTradeFee},
+		{name: "CryptocurrencyWithdrawalFee", feeType: exchange.CryptocurrencyWithdrawalFee},
+		{name: "OfflineTradeFee", feeType: exchange.OfflineTradeFee},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := e.GetFeeByType(t.Context(), &exchange.FeeBuilder{
+				Amount:        1,
+				FeeType:       tc.feeType,
+				Pair:          currency.NewPair(currency.BTC, currency.LTC),
+				PurchasePrice: 1,
+			})
+			require.NoError(t, err, "GetFeeByType must not error")
+		})
 	}
 }
 
@@ -1468,9 +1457,15 @@ func TestWebsocketTickerUpdate(t *testing.T) {
 	}
 }
 
-func TestWebsocketKlineUpdate(t *testing.T) {
+func TestWebsocketKlineAndTradeUpdates(t *testing.T) {
 	t.Parallel()
-	pressXToJSON := []byte(`
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "KlineUpdate",
+			payload: `
 	{
 		"stream":"btcusdt@kline_1m",
 		"data":{
@@ -1497,15 +1492,11 @@ func TestWebsocketKlineUpdate(t *testing.T) {
 				"B": "123456"   
 	  			}
 			}
-		}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error("Binanceus wsHandleData() btcusdt@kline_1m stream data conversion ", err)
-	}
-}
-
-func TestWebsocketStreamTradeUpdate(t *testing.T) {
-	t.Parallel()
-	pressXToJSON := []byte(`{"stream":"btcusdt@trade","data":{
+		}`,
+		},
+		{
+			name: "StreamTradeUpdate",
+			payload: `{"stream":"btcusdt@trade","data":{
 	  "e": "trade",     
 	  "E": 123456789,   
 	  "s": "BNBBTC",    
@@ -1517,9 +1508,14 @@ func TestWebsocketStreamTradeUpdate(t *testing.T) {
 	  "T": 123456785,
 	  "m": true,        
 	  "M": true         
-	}}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error("Binanceus wsHandleData() error", err)
+	}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
 	}
 }
 

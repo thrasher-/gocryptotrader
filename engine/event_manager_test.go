@@ -335,12 +335,23 @@ func TestCheckEventConditionNilManager(t *testing.T) {
 
 func TestIsValidCondition(t *testing.T) {
 	t.Parallel()
-	assert.True(t, isValidCondition(ConditionGreaterThan), "isValidCondition should support greater than")
-	assert.True(t, isValidCondition(ConditionGreaterThanOrEqual), "isValidCondition should support greater than or equal")
-	assert.True(t, isValidCondition(ConditionLessThan), "isValidCondition should support less than")
-	assert.True(t, isValidCondition(ConditionLessThanOrEqual), "isValidCondition should support less than or equal")
-	assert.True(t, isValidCondition(ConditionIsEqual), "isValidCondition should support equality")
-	assert.False(t, isValidCondition("!="), "isValidCondition should reject unsupported conditions")
+	for _, tc := range []struct {
+		name      string
+		condition string
+		supported bool
+	}{
+		{name: "greater than", condition: ConditionGreaterThan, supported: true},
+		{name: "greater than or equal", condition: ConditionGreaterThanOrEqual, supported: true},
+		{name: "less than", condition: ConditionLessThan, supported: true},
+		{name: "less than or equal", condition: ConditionLessThanOrEqual, supported: true},
+		{name: "equality", condition: ConditionIsEqual, supported: true},
+		{name: "unsupported not equal", condition: "!=", supported: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.supported, isValidCondition(tc.condition), "isValidCondition should report whether the condition is supported")
+		})
+	}
 }
 
 func TestShouldProcessEvent(t *testing.T) {

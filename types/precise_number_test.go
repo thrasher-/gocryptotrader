@@ -31,7 +31,7 @@ func TestHighPrecisionValueSanity(t *testing.T) {
 // TestPreciseNumberUnmarshalJSON verifies that both quoted and bare numeric
 // JSON values are accepted, that the original string is preserved, and that
 // invalid input is rejected on every branch of the validator.
-func TestPreciseNumberUnmarshalJSON(t *testing.T) {
+func TestPreciseNumberUnmarshalJSON(t *testing.T) { //nolint:tparallel // subtests decode into one PreciseNumber in order
 	t.Parallel()
 	var p PreciseNumber
 
@@ -39,14 +39,19 @@ func TestPreciseNumberUnmarshalJSON(t *testing.T) {
 	assert.Equal(t, 1e-8, p.Float64(), "Float64 should return the parsed value")
 	assert.Equal(t, "0.00000001", p.String(), "String should return the original digits")
 
-	require.NoError(t, p.UnmarshalJSON([]byte(`""`)), "UnmarshalJSON must not error")
-	assert.True(t, p.IsZero(), "empty quoted string should parse to the zero value")
-
-	require.NoError(t, p.UnmarshalJSON([]byte(`null`)), "UnmarshalJSON must not error")
-	assert.True(t, p.IsZero(), "null should parse to the zero value")
-
-	require.NoError(t, p.UnmarshalJSON([]byte(``)), "UnmarshalJSON must not error")
-	assert.True(t, p.IsZero(), "empty payload should parse to the zero value")
+	// Cases decode in order into the shared PreciseNumber, which the parent decodes into afterwards
+	for _, tc := range []struct{ name, in string }{
+		{name: "empty quoted string", in: `""`},
+		{name: "null", in: `null`},
+		{name: "empty payload", in: ``},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, p.UnmarshalJSON([]byte(tc.in)), "UnmarshalJSON must not error")
+			assert.True(t, p.IsZero(), "input should parse to the zero value")
+		}) {
+			t.FailNow()
+		}
+	}
 
 	require.NoError(t, p.UnmarshalJSON([]byte(`1337.37`)), "UnmarshalJSON must not error")
 	assert.Equal(t, 1337.37, p.Float64(), "Float64 should return the parsed bare number")
@@ -199,14 +204,17 @@ func TestNewPreciseNumberFromString(t *testing.T) {
 	assert.Equal(t, "1.5", p.String(), "String should preserve the input")
 	assert.Equal(t, 1.5, p.Float64(), "Float64 should return the parsed value")
 
-	_, err = NewPreciseNumberFromString("")
-	assert.ErrorIs(t, err, errInvalidPreciseNumberValue, "empty input should be rejected")
-
-	_, err = NewPreciseNumberFromString("garbage")
-	assert.ErrorIs(t, err, errInvalidPreciseNumberValue, "non-numeric input should be rejected")
-
-	_, err = NewPreciseNumberFromString("1" + strings.Repeat("0", 400))
-	assert.ErrorIs(t, err, errInvalidPreciseNumberValue, "a magnitude that overflows float64 should be rejected")
+	for _, tc := range []struct{ name, in string }{
+		{name: "empty input", in: ""},
+		{name: "non-numeric input", in: "garbage"},
+		{name: "magnitude overflowing float64", in: "1" + strings.Repeat("0", 400)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NewPreciseNumberFromString(tc.in)
+			assert.ErrorIs(t, err, errInvalidPreciseNumberValue, "NewPreciseNumberFromString should reject the input")
+		})
+	}
 }
 
 // TestPreciseNumberIsZero pins the contract that IsZero is true only for the

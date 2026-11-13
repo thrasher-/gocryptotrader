@@ -228,7 +228,7 @@ func TestSetJobStatus(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNilSubsystem)
 }
 
-func TestGetByNickname(t *testing.T) {
+func TestGetByNickname(t *testing.T) { //nolint:tparallel // subtests query one manager in order
 	t.Parallel()
 	m, _ := createDHM(t)
 	dhj := &DataHistoryJob{
@@ -243,14 +243,20 @@ func TestGetByNickname(t *testing.T) {
 	err := m.UpsertJob(dhj, false)
 	assert.NoError(t, err)
 
-	_, err = m.GetByNickname(dhj.Nickname, false)
-	assert.NoError(t, err)
-
-	_, err = m.GetByNickname(dhj.Nickname, true)
-	assert.NoError(t, err)
-
-	_, err = m.GetByNickname(dhj.Nickname, false)
-	assert.NoError(t, err)
+	// Cases run in order on the shared manager, which the parent queries again afterwards
+	for _, tc := range []struct {
+		name        string
+		fullDetails bool
+	}{
+		{name: "summary", fullDetails: false},
+		{name: "full details", fullDetails: true},
+		{name: "summary after full details", fullDetails: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := m.GetByNickname(dhj.Nickname, tc.fullDetails)
+			assert.NoError(t, err, "GetByNickname should not error")
+		})
+	}
 
 	m.started.Store(false)
 	_, err = m.GetByNickname("test123", false)

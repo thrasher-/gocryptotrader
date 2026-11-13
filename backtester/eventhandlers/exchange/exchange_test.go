@@ -480,29 +480,29 @@ func TestExecuteOrderBuySellSizeLimit(t *testing.T) {
 
 func TestApplySlippageToPrice(t *testing.T) {
 	t.Parallel()
-	resp, err := applySlippageToPrice(gctorder.Buy, decimal.NewFromInt(1), decimal.MustFromFloat(0.9))
-	assert.NoError(t, err)
-
-	if !resp.Equal(decimal.MustFromFloat(1.1)) {
-		t.Errorf("received: %v, expected: %v", resp, decimal.MustFromFloat(1.1))
+	for _, tc := range []struct {
+		name          string
+		side          gctorder.Side
+		slippageRate  decimal.Decimal
+		expectedPrice decimal.Decimal
+		expectedErr   error
+	}{
+		{name: "buy", side: gctorder.Buy, slippageRate: decimal.MustFromFloat(0.9), expectedPrice: decimal.MustFromFloat(1.1)},
+		{name: "sell", side: gctorder.Sell, slippageRate: decimal.MustFromFloat(0.9), expectedPrice: decimal.MustFromFloat(0.9)},
+		{name: "sell with zero slippage rate", side: gctorder.Sell, slippageRate: decimal.Zero, expectedPrice: decimal.MustFromFloat(1)},
+		{name: "unknown side", side: gctorder.UnknownSide, slippageRate: decimal.MustFromFloat(0.9), expectedErr: gctorder.ErrSideIsInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := applySlippageToPrice(tc.side, decimal.NewFromInt(1), tc.slippageRate)
+			if tc.expectedErr != nil {
+				assert.ErrorIs(t, err, tc.expectedErr)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Truef(t, resp.Equal(tc.expectedPrice), "applySlippageToPrice should return %s, received %s", tc.expectedPrice, resp)
+		})
 	}
-
-	resp, err = applySlippageToPrice(gctorder.Sell, decimal.NewFromInt(1), decimal.MustFromFloat(0.9))
-	assert.NoError(t, err)
-
-	if !resp.Equal(decimal.MustFromFloat(0.9)) {
-		t.Errorf("received: %v, expected: %v", resp, decimal.MustFromFloat(0.9))
-	}
-
-	resp, err = applySlippageToPrice(gctorder.Sell, decimal.NewFromInt(1), decimal.Zero)
-	assert.NoError(t, err)
-
-	if !resp.Equal(decimal.MustFromFloat(1)) {
-		t.Errorf("received: %v, expected: %v", resp, decimal.MustFromFloat(1))
-	}
-
-	_, err = applySlippageToPrice(gctorder.UnknownSide, decimal.NewFromInt(1), decimal.MustFromFloat(0.9))
-	assert.ErrorIs(t, err, gctorder.ErrSideIsInvalid)
 }
 
 func TestReduceAmountToFitPortfolioLimit(t *testing.T) {

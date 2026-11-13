@@ -169,69 +169,41 @@ func TestGetSingularTicker(t *testing.T) {
 }
 
 func TestGetFee(t *testing.T) {
-	feeBuilder := setFeeBuilder()
-	if sharedtestvalues.AreAPICredentialsSet(e) {
-		// CryptocurrencyTradeFee Basic
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-
-		// CryptocurrencyTradeFee High quantity
-		feeBuilder = setFeeBuilder()
-		feeBuilder.Amount = 1000
-		feeBuilder.PurchasePrice = 1000
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-		// CryptocurrencyTradeFee IsMaker
-		feeBuilder = setFeeBuilder()
-		feeBuilder.IsMaker = true
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-		// CryptocurrencyTradeFee Negative purchase price
-		feeBuilder = setFeeBuilder()
-		feeBuilder.PurchasePrice = -1000
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-		// CryptocurrencyWithdrawalFee Basic
-		feeBuilder = setFeeBuilder()
-		feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-		// CryptocurrencyWithdrawalFee Invalid currency
-		feeBuilder = setFeeBuilder()
-		feeBuilder.Pair.Base = currency.NewCode("hello")
-		feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-		if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-			t.Error(err)
-		}
-	}
-
-	// CryptocurrencyDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyDepositFee
-	feeBuilder.Pair.Base = currency.BTC
-	feeBuilder.Pair.Quote = currency.LTC
-	if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.USD
-	if _, err := e.GetFee(t.Context(), feeBuilder); err != nil {
-		t.Error(err)
+	// Subtests stay serial like the parent test
+	for _, tc := range []struct {
+		name                string
+		requiresCredentials bool
+		modify              func(*exchange.FeeBuilder)
+	}{
+		{name: "CryptocurrencyTradeFee Basic", requiresCredentials: true, modify: func(*exchange.FeeBuilder) {}},
+		{name: "CryptocurrencyTradeFee High quantity", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.Amount, f.PurchasePrice = 1000, 1000 }},
+		{name: "CryptocurrencyTradeFee IsMaker", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.IsMaker = true }},
+		{name: "CryptocurrencyTradeFee Negative purchase price", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.PurchasePrice = -1000 }},
+		{name: "CryptocurrencyWithdrawalFee Basic", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyWithdrawalFee }},
+		{name: "CryptocurrencyWithdrawalFee Invalid currency", requiresCredentials: true, modify: func(f *exchange.FeeBuilder) {
+			f.Pair.Base = currency.NewCode("hello")
+			f.FeeType = exchange.CryptocurrencyWithdrawalFee
+		}},
+		{name: "CryptocurrencyDepositFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.CryptocurrencyDepositFee
+			f.Pair.Base = currency.BTC
+			f.Pair.Quote = currency.LTC
+		}},
+		{name: "InternationalBankDepositFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.InternationalBankDepositFee }},
+		{name: "InternationalBankWithdrawalFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.USD
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.requiresCredentials {
+				sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
+			}
+			feeBuilder := setFeeBuilder()
+			tc.modify(feeBuilder)
+			_, err := e.GetFee(t.Context(), feeBuilder)
+			assert.NoError(t, err, "GetFee should not error")
+		})
 	}
 }
 

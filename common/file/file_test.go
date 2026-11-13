@@ -22,9 +22,9 @@ func TestWrite(t *testing.T) {
 	}
 
 	type testTable struct {
+		name        string
 		InFile      string
 		ErrExpected bool
-		Cleanup     bool
 	}
 
 	var tests []testTable
@@ -33,21 +33,25 @@ func TestWrite(t *testing.T) {
 	switch runtime.GOOS {
 	case "windows":
 		tests = []testTable{
-			{InFile: "*", ErrExpected: true},
-			{InFile: testFile, ErrExpected: false},
+			{name: "invalid path", InFile: "*", ErrExpected: true},
+			{name: "valid path", InFile: testFile},
 		}
 	default:
 		tests = []testTable{
-			{InFile: "", ErrExpected: true},
-			{InFile: testFile, ErrExpected: false},
+			{name: "empty path", InFile: "", ErrExpected: true},
+			{name: "valid path", InFile: testFile},
 		}
 	}
 
-	for x := range tests {
-		err := tester(tests[x].InFile)
-		if err != nil && !tests[x].ErrExpected {
-			t.Errorf("Test %d failed, unexpected err %s\n", x, err)
-		}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tester(tc.InFile)
+			if tc.ErrExpected {
+				assert.Error(t, err, "Write should error")
+				return
+			}
+			assert.NoError(t, err, "Write should not error")
+		})
 	}
 }
 
@@ -141,6 +145,7 @@ func TestWriteAsCSV(t *testing.T) {
 	}
 
 	type testTable struct {
+		name        string
 		InFile      string
 		Payload     [][]string
 		ErrExpected bool
@@ -166,28 +171,33 @@ func TestWriteAsCSV(t *testing.T) {
 	defer os.Remove(testFile.Name())
 
 	tests := []testTable{
-		{InFile: testFile.Name(), Payload: nil, ErrExpected: true},
-		{InFile: testFile.Name(), Payload: records, ErrExpected: false},
-		{InFile: testFile.Name(), Payload: missAligned, ErrExpected: true},
+		{name: "nil payload", InFile: testFile.Name(), Payload: nil, ErrExpected: true},
+		{name: "aligned records", InFile: testFile.Name(), Payload: records},
+		{name: "misaligned records", InFile: testFile.Name(), Payload: missAligned, ErrExpected: true},
 	}
 	switch runtime.GOOS {
 	case "windows":
 		tests = append(tests,
-			testTable{InFile: "*", Payload: [][]string{}, ErrExpected: true},
-			testTable{InFile: "*", Payload: nil, ErrExpected: true},
+			testTable{name: "invalid path with empty payload", InFile: "*", Payload: [][]string{}, ErrExpected: true},
+			testTable{name: "invalid path with nil payload", InFile: "*", Payload: nil, ErrExpected: true},
 		)
 	default:
 		tests = append(tests,
-			testTable{InFile: "", Payload: [][]string{}, ErrExpected: true},
-			testTable{InFile: "", Payload: nil, ErrExpected: true},
+			testTable{name: "empty path with empty payload", InFile: "", Payload: [][]string{}, ErrExpected: true},
+			testTable{name: "empty path with nil payload", InFile: "", Payload: nil, ErrExpected: true},
 		)
 	}
 
-	for x := range tests {
-		err := tester(tests[x].InFile, tests[x].Payload)
-		if err != nil && !tests[x].ErrExpected {
-			t.Errorf("Test %d failed, unexpected err %s\n", x, err)
-		}
+	// Cases run in order: they share one CSV file path
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tester(tc.InFile, tc.Payload)
+			if tc.ErrExpected {
+				assert.Error(t, err, "WriteAsCSV should error")
+				return
+			}
+			assert.NoError(t, err, "WriteAsCSV should not error")
+		})
 	}
 }
 

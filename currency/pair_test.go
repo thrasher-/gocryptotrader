@@ -1,7 +1,6 @@
 package currency
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -472,9 +471,8 @@ func TestNewPairFromFormattedPairs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if p.String() != "ethusdt" && p.Base.String() != "eth" {
-		t.Error("TestNewPairFromFormattedPairs: Expected currency was not found")
-	}
+	assert.Equal(t, "ethusdt", p.String(), "NewPairFromFormattedPairs should fall back to parsing the string")
+	assert.Equal(t, "eth", p.Base.String(), "NewPairFromFormattedPairs should fall back to parsing the base")
 }
 
 func TestContainsCurrency(t *testing.T) {
@@ -593,77 +591,38 @@ func TestMatchPairsWithNoDelimiter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p3, err := NewPairFromStrings("EQUAD", "BTC")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p4, err := NewPairFromStrings("HTDF", "USDT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p5, err := NewPairFromStrings("BETHER", "ETH")
-	if err != nil {
-		t.Fatal(err)
-	}
-	pairs := Pairs{
-		p1,
-		p2,
-		p3,
-		p4,
-		p5,
+	pairs := Pairs{p1, p2}
+	// Cases append in order to the pairs list that the match cases need
+	for _, tc := range []struct{ base, quote string }{
+		{base: "EQUAD", quote: "BTC"},
+		{base: "HTDF", quote: "USDT"},
+		{base: "BETHER", quote: "ETH"},
+	} {
+		if !t.Run("new pair "+tc.base+"-"+tc.quote, func(t *testing.T) {
+			pair, err := NewPairFromStrings(tc.base, tc.quote)
+			require.NoError(t, err, "NewPairFromStrings must not error")
+			pairs = append(pairs, pair)
+		}) {
+			t.FailNow()
+		}
 	}
 
-	p, err := MatchPairsWithNoDelimiter("BTCUSDT", pairs, PairFormat{
-		Uppercase: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Quote.String() != "USDT" && p.Base.String() != "BTC" {
-		t.Error("unexpected response")
-	}
-
-	p, err = MatchPairsWithNoDelimiter("EQUADBTC", pairs, PairFormat{
-		Uppercase: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Base.String() != "EQUAD" && p.Quote.String() != "BTC" {
-		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
-	}
-
-	p, err = MatchPairsWithNoDelimiter("EQUADBTC", pairs, PairFormat{
-		Uppercase: true,
-		Delimiter: "/",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Base.String() != "EQUAD" && p.Quote.String() != "BTC" {
-		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
-	}
-
-	p, err = MatchPairsWithNoDelimiter("HTDFUSDT", pairs, PairFormat{
-		Uppercase: true,
-		Delimiter: "/",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Base.String() != "HTDF" && p.Quote.String() != "USDT" {
-		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
-	}
-
-	p, err = MatchPairsWithNoDelimiter("BETHERETH", pairs, PairFormat{
-		Uppercase: true,
-		Delimiter: "/",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Base.String() != "BETHER" && p.Quote.String() != "ETH" {
-		t.Errorf("unexpected response base: %v quote: %v", p.Base.String(), p.Quote.String())
+	// Serial like the parent test
+	for _, tc := range []struct {
+		name, symbol, delimiter, expectedBase, expectedQuote string
+	}{
+		{name: "BTCUSDT without delimiter", symbol: "BTCUSDT", expectedBase: "BTC", expectedQuote: "USDT"},
+		{name: "EQUADBTC without delimiter", symbol: "EQUADBTC", expectedBase: "EQUAD", expectedQuote: "BTC"},
+		{name: "EQUADBTC with slash delimiter", symbol: "EQUADBTC", delimiter: "/", expectedBase: "EQUAD", expectedQuote: "BTC"},
+		{name: "HTDFUSDT with slash delimiter", symbol: "HTDFUSDT", delimiter: "/", expectedBase: "HTDF", expectedQuote: "USDT"},
+		{name: "BETHERETH with slash delimiter", symbol: "BETHERETH", delimiter: "/", expectedBase: "BETHER", expectedQuote: "ETH"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := MatchPairsWithNoDelimiter(tc.symbol, pairs, PairFormat{Uppercase: true, Delimiter: tc.delimiter})
+			require.NoError(t, err, "MatchPairsWithNoDelimiter must not error")
+			assert.Equal(t, tc.expectedBase, p.Base.String(), "MatchPairsWithNoDelimiter should return the expected base")
+			assert.Equal(t, tc.expectedQuote, p.Quote.String(), "MatchPairsWithNoDelimiter should return the expected quote")
+		})
 	}
 }
 
@@ -762,6 +721,7 @@ func TestGetOrderParameters(t *testing.T) {
 
 	p := NewBTCUSDT()
 	testCases := []struct {
+		name           string
 		Pair           Pair
 		currency       Code
 		market         bool
@@ -769,23 +729,23 @@ func TestGetOrderParameters(t *testing.T) {
 		expectedParams *OrderParameters
 		expectedError  error
 	}{
-		{expectedError: ErrCurrencyPairEmpty},
-		{Pair: p, expectedError: ErrCurrencyCodeEmpty},
-		{Pair: p, currency: XRP, selling: true, market: true, expectedError: ErrCurrencyNotAssociatedWithPair},
+		{name: "empty pair", expectedError: ErrCurrencyPairEmpty},
+		{name: "empty currency", Pair: p, expectedError: ErrCurrencyCodeEmpty},
+		{name: "currency not in pair", Pair: p, currency: XRP, selling: true, market: true, expectedError: ErrCurrencyNotAssociatedWithPair},
 
-		{Pair: p, currency: BTC, selling: true, market: true, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: false, Pair: p}},
-		{Pair: p, currency: BTC, selling: false, market: true, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: true, Pair: p}},
-		{Pair: p, currency: BTC, selling: true, market: false, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: true, Pair: p}},
-		{Pair: p, currency: BTC, selling: false, market: false, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: false, Pair: p}},
+		{name: "market sell BTC", Pair: p, currency: BTC, selling: true, market: true, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: false, Pair: p}},
+		{name: "market buy BTC", Pair: p, currency: BTC, selling: false, market: true, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: true, Pair: p}},
+		{name: "limit sell BTC", Pair: p, currency: BTC, selling: true, market: false, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: true, Pair: p}},
+		{name: "limit buy BTC", Pair: p, currency: BTC, selling: false, market: false, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: false, Pair: p}},
 
-		{Pair: p, currency: USDT, selling: true, market: true, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: true, Pair: p}},
-		{Pair: p, currency: USDT, selling: false, market: true, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: false, Pair: p}},
-		{Pair: p, currency: USDT, selling: true, market: false, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: false, Pair: p}},
-		{Pair: p, currency: USDT, selling: false, market: false, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: true, Pair: p}},
+		{name: "market sell USDT", Pair: p, currency: USDT, selling: true, market: true, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: true, Pair: p}},
+		{name: "market buy USDT", Pair: p, currency: USDT, selling: false, market: true, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: false, Pair: p}},
+		{name: "limit sell USDT", Pair: p, currency: USDT, selling: true, market: false, expectedParams: &OrderParameters{SellingCurrency: USDT, PurchasingCurrency: BTC, IsBuySide: true, IsAskLiquidity: false, Pair: p}},
+		{name: "limit buy USDT", Pair: p, currency: USDT, selling: false, market: false, expectedParams: &OrderParameters{SellingCurrency: BTC, PurchasingCurrency: USDT, IsBuySide: false, IsAskLiquidity: true, Pair: p}},
 	}
 
-	for i, tc := range testCases {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var resp *OrderParameters
 			var err error
@@ -835,24 +795,23 @@ func TestIsAssociated(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
+		name           string
 		Pair           Pair
 		associate      Pair
 		expectedResult bool
 	}{
-		{Pair: NewBTCUSDT(), associate: NewBTCUSDT(), expectedResult: true},
-		{Pair: NewPair(USDT, BTC), associate: NewBTCUSDT(), expectedResult: true},
-		{Pair: NewBTCUSDT(), associate: NewPair(USDT, BTC), expectedResult: true},
-		{Pair: NewBTCUSDT(), associate: NewPair(XRP, USDT), expectedResult: true},
-		{Pair: NewPair(BTC, LTC), associate: NewPair(XRP, USDT), expectedResult: false},
-		{Pair: NewPair(MA, LTC), associate: NewPair(LTC, USDT), expectedResult: true},
+		{name: "same pair", Pair: NewBTCUSDT(), associate: NewBTCUSDT(), expectedResult: true},
+		{name: "reversed pair", Pair: NewPair(USDT, BTC), associate: NewBTCUSDT(), expectedResult: true},
+		{name: "reversed associate", Pair: NewBTCUSDT(), associate: NewPair(USDT, BTC), expectedResult: true},
+		{name: "shared quote", Pair: NewBTCUSDT(), associate: NewPair(XRP, USDT), expectedResult: true},
+		{name: "no shared currency", Pair: NewPair(BTC, LTC), associate: NewPair(XRP, USDT), expectedResult: false},
+		{name: "quote is the associate's base", Pair: NewPair(MA, LTC), associate: NewPair(LTC, USDT), expectedResult: true},
 	}
 
-	for x := range testCases {
-		t.Run(strconv.Itoa(x), func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if testCases[x].Pair.IsAssociated(testCases[x].associate) != testCases[x].expectedResult {
-				t.Fatalf("Test %d failed. Expected %v, received %v", x, testCases[x].expectedResult, testCases[x].Pair.IsAssociated(testCases[x].associate))
-			}
+			assert.Equal(t, tc.expectedResult, tc.Pair.IsAssociated(tc.associate), "IsAssociated should return the expected result")
 		})
 	}
 }

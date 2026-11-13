@@ -27,6 +27,7 @@ func TestSubmitValidate(t *testing.T) {
 	t.Parallel()
 	testPair := currency.NewPair(currency.BTC, currency.LTC)
 	tester := []struct {
+		Name                            string
 		ExpectedErr                     error
 		Submit                          *Submit
 		ValidOpts                       validate.Checker
@@ -35,38 +36,45 @@ func TestSubmitValidate(t *testing.T) {
 		RequiresID                      bool
 	}{
 		{
+			Name:        "nil submission",
 			ExpectedErr: ErrSubmissionIsNil,
 			Submit:      nil,
-		}, // nil struct
+		},
 		{
+			Name:        "empty exchange",
 			ExpectedErr: common.ErrExchangeNameNotSet,
 			Submit:      &Submit{},
-		}, // empty exchange
+		},
 		{
+			Name:        "empty pair",
 			ExpectedErr: ErrPairIsEmpty,
 			Submit:      &Submit{Exchange: "test"},
-		}, // empty pair
+		},
 		{
+			Name:        "unset asset",
 			ExpectedErr: ErrAssetNotSet,
 			Submit:      &Submit{Exchange: "test", Pair: testPair},
-		}, // valid pair but invalid asset
+		},
 		{
+			Name:        "unsupported asset",
 			ExpectedErr: asset.ErrNotSupported,
 			Submit: &Submit{
 				Exchange:  "test",
 				Pair:      testPair,
 				AssetType: asset.All,
 			},
-		}, // valid pair but invalid asset
+		},
 		{
+			Name:        "invalid side",
 			ExpectedErr: ErrSideIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
 				Pair:      testPair,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair but invalid order side
+		},
 		{
+			Name:        "invalid time in force",
 			ExpectedErr: ErrInvalidTimeInForce,
 			Submit: &Submit{
 				Exchange:    "test",
@@ -78,6 +86,7 @@ func TestSubmitValidate(t *testing.T) {
 			},
 		},
 		{
+			Name:        "missing type for buy",
 			ExpectedErr: ErrTypeIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -85,8 +94,9 @@ func TestSubmitValidate(t *testing.T) {
 				Side:      Buy,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair and order side but invalid order type
+		},
 		{
+			Name:        "missing type for sell",
 			ExpectedErr: ErrTypeIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -94,8 +104,9 @@ func TestSubmitValidate(t *testing.T) {
 				Side:      Sell,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair and order side but invalid order type
+		},
 		{
+			Name:        "missing type for bid",
 			ExpectedErr: ErrTypeIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -103,8 +114,9 @@ func TestSubmitValidate(t *testing.T) {
 				Side:      Bid,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair and order side but invalid order type
+		},
 		{
+			Name:        "missing type for ask",
 			ExpectedErr: ErrTypeIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -112,8 +124,9 @@ func TestSubmitValidate(t *testing.T) {
 				Side:      Ask,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair and order side but invalid order type
+		},
 		{
+			Name:        "missing amount",
 			ExpectedErr: ErrAmountIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -122,8 +135,9 @@ func TestSubmitValidate(t *testing.T) {
 				Type:      Market,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair, order side, type but invalid amount
+		},
 		{
+			Name:        "negative amount",
 			ExpectedErr: ErrAmountIsInvalid,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -133,8 +147,9 @@ func TestSubmitValidate(t *testing.T) {
 				AssetType: asset.Spot,
 				Amount:    -1,
 			},
-		}, // valid pair, order side, type but invalid amount
+		},
 		{
+			Name:        "negative quote amount",
 			ExpectedErr: ErrAmountIsInvalid,
 			Submit: &Submit{
 				Exchange:    "test",
@@ -144,8 +159,9 @@ func TestSubmitValidate(t *testing.T) {
 				AssetType:   asset.Spot,
 				QuoteAmount: -1,
 			},
-		}, // valid pair, order side, type but invalid amount
+		},
 		{
+			Name:        "limit order without price",
 			ExpectedErr: ErrPriceMustBeSetIfLimitOrder,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -155,8 +171,9 @@ func TestSubmitValidate(t *testing.T) {
 				Amount:    1,
 				AssetType: asset.Spot,
 			},
-		}, // valid pair, order side, type, amount but invalid price
+		},
 		{
+			Name:        "custom validation error",
 			ExpectedErr: errValidationCheckFailed,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -168,8 +185,9 @@ func TestSubmitValidate(t *testing.T) {
 				AssetType: asset.Spot,
 			},
 			ValidOpts: validate.Check(func() error { return errValidationCheckFailed }),
-		}, // custom validation error check
+		},
 		{
+			Name:        "valid limit order",
 			ExpectedErr: nil,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -181,8 +199,9 @@ func TestSubmitValidate(t *testing.T) {
 				AssetType: asset.Spot,
 			},
 			ValidOpts: validate.Check(func() error { return nil }),
-		}, // valid order!
+		},
 		{
+			Name:        "market buy without required quote amount",
 			ExpectedErr: ErrAmountMustBeSet,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -196,6 +215,7 @@ func TestSubmitValidate(t *testing.T) {
 			ValidOpts:                       validate.Check(func() error { return nil }),
 		},
 		{
+			Name:        "market sell without required base amount",
 			ExpectedErr: ErrAmountMustBeSet,
 			Submit: &Submit{
 				Exchange:    "test",
@@ -209,6 +229,7 @@ func TestSubmitValidate(t *testing.T) {
 			ValidOpts:                  validate.Check(func() error { return nil }),
 		},
 		{
+			Name:        "missing required client order ID",
 			ExpectedErr: ErrClientOrderIDMustBeSet,
 			Submit: &Submit{
 				Exchange:  "test",
@@ -222,6 +243,7 @@ func TestSubmitValidate(t *testing.T) {
 			ValidOpts:  validate.Check(func() error { return nil }),
 		},
 		{
+			Name:        "valid market order with client order ID",
 			ExpectedErr: nil,
 			Submit: &Submit{
 				Exchange:      "test",
@@ -237,8 +259,8 @@ func TestSubmitValidate(t *testing.T) {
 		},
 	}
 
-	for x, tc := range tester {
-		t.Run(strconv.Itoa(x), func(t *testing.T) {
+	for _, tc := range tester {
+		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 			requirements := protocol.TradingRequirements{
 				SpotMarketBuyQuotation: tc.HasToPurchaseWithQuoteAmountSet,
@@ -1545,7 +1567,7 @@ func TestDetail_CopyToPointer(t *testing.T) {
 	}
 }
 
-func TestDetail_CopyPointerOrderSlice(t *testing.T) {
+func TestCopyPointerOrderSlice(t *testing.T) {
 	t.Parallel()
 	d := []*Detail{
 		{

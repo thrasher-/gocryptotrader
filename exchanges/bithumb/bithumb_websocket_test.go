@@ -23,7 +23,7 @@ var (
 	wsOrderbookResp = []byte(`{"type":"orderbookdepth","content":{"list":[{"symbol":"XLM_KRW","orderType":"ask","price":"401.2","quantity":"0","total":"0"},{"symbol":"XLM_KRW","orderType":"ask","price":"401.6","quantity":"21277.735","total":"1"},{"symbol":"XLM_KRW","orderType":"ask","price":"403.3","quantity":"4000","total":"1"},{"symbol":"XLM_KRW","orderType":"bid","price":"399.5","quantity":"0","total":"0"},{"symbol":"XLM_KRW","orderType":"bid","price":"398.2","quantity":"0","total":"0"},{"symbol":"XLM_KRW","orderType":"bid","price":"399.8","quantity":"31416.8779","total":"1"},{"symbol":"XLM_KRW","orderType":"bid","price":"398.5","quantity":"34328.387","total":"1"}],"datetime":"1628835823604483"}}`)
 )
 
-func TestWsHandleData(t *testing.T) {
+func TestWsHandleData(t *testing.T) { //nolint:tparallel // the parent reads the subtests' DataHandler output
 	t.Parallel()
 
 	pairs := currency.Pairs{currency.NewBTCUSDT()}
@@ -59,14 +59,22 @@ func TestWsHandleData(t *testing.T) {
 	err = dummy.wsHandleData(t.Context(), []byte(`{"status":"1336","resmsg":"Failed"}`))
 	require.ErrorIs(t, err, websocket.ErrSubscriptionFailure, "wsHandleData must return a subscription failure for a failed status")
 
-	err = dummy.wsHandleData(t.Context(), wsTransResp)
-	require.NoError(t, err, "wsHandleData must not error for a transaction")
-
-	err = dummy.wsHandleData(t.Context(), wsOrderbookResp)
-	require.NoError(t, err, "wsHandleData must not error for an orderbook")
-
-	err = dummy.wsHandleData(t.Context(), wsTickerResp)
-	require.NoError(t, err, "wsHandleData must not error for a ticker")
+	// Cases run in order and stop on failure, as the parent then reads the ticker from the DataHandler
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "transaction", payload: wsTransResp},
+		{name: "orderbook", payload: wsOrderbookResp},
+		{name: "ticker", payload: wsTickerResp},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			err := dummy.wsHandleData(t.Context(), tc.payload)
+			require.NoError(t, err, "wsHandleData must not error")
+		}) {
+			t.FailNow()
+		}
+	}
 	tick, ok := (<-dummy.Websocket.DataHandler.C).Data.(*ticker.Price)
 	require.True(t, ok, "ticker must send a price to the DataHandler")
 	assert.Equal(t, 34010.0, tick.Last, "Last should be the latest close rather than the previous day's")

@@ -2643,7 +2643,7 @@ func TestGetTechnicalAnalysis(t *testing.T) {
 	}
 }
 
-func TestGetMarginRatesHistory(t *testing.T) {
+func TestGetMarginRatesHistory(t *testing.T) { //nolint:tparallel // subtests change one request in order
 	t.Parallel()
 	em := NewExchangeManager()
 	exch, err := em.NewExchangeByName(testExchange)
@@ -2726,16 +2726,19 @@ func TestGetMarginRatesHistory(t *testing.T) {
 	}
 
 	request.CalculateOffline = true
-	_, err = s.GetMarginRatesHistory(t.Context(), request)
-	assert.ErrorIs(t, err, common.ErrCannotCalculateOffline)
-
-	request.TakerFeeRate = "-1337"
-	_, err = s.GetMarginRatesHistory(t.Context(), request)
-	assert.ErrorIs(t, err, common.ErrCannotCalculateOffline)
-
-	request.TakerFeeRate = "1337"
-	_, err = s.GetMarginRatesHistory(t.Context(), request)
-	assert.ErrorIs(t, err, common.ErrCannotCalculateOffline)
+	ctx := t.Context()
+	// Cases run in order on the shared request and context, which the parent reuses afterwards
+	for _, tc := range []struct{ name, takerFeeRate string }{
+		{name: "missing taker fee rate", takerFeeRate: ""},
+		{name: "negative taker fee rate", takerFeeRate: "-1337"},
+		{name: "valid taker fee rate without rates", takerFeeRate: "1337"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request.TakerFeeRate = tc.takerFeeRate
+			_, err := s.GetMarginRatesHistory(ctx, request)
+			assert.ErrorIs(t, err, common.ErrCannotCalculateOffline, "GetMarginRatesHistory should not calculate offline")
+		})
+	}
 
 	request.Rates = []*gctrpc.MarginRate{
 		{

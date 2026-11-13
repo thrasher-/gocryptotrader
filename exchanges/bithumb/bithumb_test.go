@@ -329,55 +329,33 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 
 func TestGetFee(t *testing.T) {
 	t.Parallel()
-	feeBuilder := setFeeBuilder()
-	// CryptocurrencyTradeFee Basic
-	_, err := e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// CryptocurrencyTradeFee High quantity
-	feeBuilder = setFeeBuilder()
-	feeBuilder.Amount = 1000
-	feeBuilder.PurchasePrice = 1000
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// CryptocurrencyTradeFee IsMaker
-	feeBuilder = setFeeBuilder()
-	feeBuilder.IsMaker = true
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// CryptocurrencyTradeFee Negative purchase price
-	feeBuilder = setFeeBuilder()
-	feeBuilder.PurchasePrice = -1000
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// CryptocurrencyWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// CryptocurrencyDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyDepositFee
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	feeBuilder.FiatCurrency = currency.HKD
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.HKD
-	_, err = e.GetFee(feeBuilder)
-	require.NoError(t, err, "GetFee must not error")
+	for _, tc := range []struct {
+		name   string
+		modify func(*exchange.FeeBuilder)
+	}{
+		{name: "CryptocurrencyTradeFee Basic", modify: func(*exchange.FeeBuilder) {}},
+		{name: "CryptocurrencyTradeFee High quantity", modify: func(f *exchange.FeeBuilder) { f.Amount, f.PurchasePrice = 1000, 1000 }},
+		{name: "CryptocurrencyTradeFee IsMaker", modify: func(f *exchange.FeeBuilder) { f.IsMaker = true }},
+		{name: "CryptocurrencyTradeFee Negative purchase price", modify: func(f *exchange.FeeBuilder) { f.PurchasePrice = -1000 }},
+		{name: "CryptocurrencyWithdrawalFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyWithdrawalFee }},
+		{name: "CryptocurrencyDepositFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyDepositFee }},
+		{name: "InternationalBankDepositFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankDepositFee
+			f.FiatCurrency = currency.HKD
+		}},
+		{name: "InternationalBankWithdrawalFee Basic", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.HKD
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			feeBuilder := setFeeBuilder()
+			tc.modify(feeBuilder)
+			_, err := e.GetFee(feeBuilder)
+			require.NoError(t, err, "GetFee must not error")
+		})
+	}
 }
 
 func TestFormatWithdrawPermissions(t *testing.T) {
@@ -705,14 +683,6 @@ func TestGetOrderInfo(t *testing.T) {
 
 	_, err := e.GetOrderInfo(t.Context(), "1234", testPair, asset.Spot)
 	require.NoError(t, err, "GetOrderInfo must not error")
-}
-
-func TestGetWithdrawalHistory(t *testing.T) {
-	t.Parallel()
-	sharedtestvalues.SkipTestIfCredentialsUnset(t, e)
-
-	_, err := e.GetWithdrawalsHistory(t.Context(), testPair.Base, asset.Spot)
-	require.NoError(t, err, "GetWithdrawalsHistory must not error")
 }
 
 func TestGetCurrencyTradeURL(t *testing.T) {

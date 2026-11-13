@@ -482,14 +482,12 @@ func TestFindNominalAmount(t *testing.T) {
 		{Amount: 5, Price: 4},
 	}
 	nomAmt, remainingAmt := b.FindNominalAmount(15)
-	if nomAmt != 30 && remainingAmt != 0 {
-		t.Errorf("invalid return")
-	}
+	assert.Equal(t, 30.0, nomAmt, "FindNominalAmount should total the quote spent across the levels")
+	assert.Zero(t, remainingAmt, "FindNominalAmount should fill the whole amount from the levels")
 	b = Levels{}
 	nomAmt, remainingAmt = b.FindNominalAmount(15)
-	if nomAmt != 0 && remainingAmt != 30 {
-		t.Errorf("invalid return")
-	}
+	assert.Zero(t, nomAmt, "FindNominalAmount should spend nothing from empty levels")
+	assert.Equal(t, 15.0, remainingAmt, "FindNominalAmount should leave the whole amount remaining with empty levels")
 }
 
 func TestLevelsCalculateExecution(t *testing.T) {

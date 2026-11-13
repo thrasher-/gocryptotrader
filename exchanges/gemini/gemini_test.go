@@ -44,14 +44,11 @@ func TestFetchTradablePairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !pairs.Contains(currency.NewPair(currency.STORJ, currency.USD), false) {
-		t.Error("expected pair STORJ-USD")
-	}
-	if !pairs.Contains(currency.NewBTCUSD(), false) {
-		t.Error("expected pair BTC-USD")
-	}
-	if !pairs.Contains(currency.NewPair(currency.AAVE, currency.USD), false) {
-		t.Error("expected pair AAVE-BTC")
+	for _, p := range []currency.Pair{currency.NewPair(currency.STORJ, currency.USD), currency.NewBTCUSD(), currency.NewPair(currency.AAVE, currency.USD)} {
+		t.Run(p.String(), func(t *testing.T) {
+			t.Parallel()
+			assert.True(t, pairs.Contains(p, false), "FetchTradablePairs should return the pair")
+		})
 	}
 }
 
@@ -582,7 +579,14 @@ func TestWsMissingRole(t *testing.T) {
 }
 
 func TestWsOrderEventSubscriptionResponse(t *testing.T) {
-	pressXToJSON := []byte(`[ {
+	// Serial like the parent test, as each case sends an order to the shared DataHandler
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "exchange limit with client order ID",
+			payload: `[ {
   "type" : "accepted",
   "order_id" : "372456298",
   "event_id" : "372456299",
@@ -599,13 +603,11 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
   "avg_execution_price" : "0", 
   "original_amount" : "14.0296",
   "price" : "1059.54"
-} ]`)
-	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`[{
+} ]`,
+		},
+		{
+			name: "exchange limit",
+			payload: `[{
     "type": "accepted",
     "order_id": "109535951",
     "event_id": "109535952",
@@ -621,13 +623,11 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
     "original_amount": "1",
     "price": "3592.00",
     "socket_sequence": 13
-}]`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`[{
+}]`,
+		},
+		{
+			name: "market buy",
+			payload: `[{
     "type": "accepted",
     "order_id": "109964529",
     "event_id": "109964530",
@@ -642,13 +642,11 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
     "is_hidden": false,
     "total_spend": "200.00",
     "socket_sequence": 29
-}]`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`[{
+}]`,
+		},
+		{
+			name: "market sell",
+			payload: `[{
     "type": "accepted",
     "order_id": "109964616",
     "event_id": "109964617",
@@ -663,13 +661,11 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
     "is_hidden": false,
     "original_amount": "25",
     "socket_sequence": 26
-}]`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`[ {
+}]`,
+		},
+		{
+			name: "block trade",
+			payload: `[ {
   "type" : "accepted",
   "order_id" : "6321",
   "event_id" : "6322",
@@ -685,15 +681,25 @@ func TestWsOrderEventSubscriptionResponse(t *testing.T) {
   "avg_execution_price" : "0",
   "original_amount" : "500",
   "socket_sequence" : 32307
-} ]`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
+} ]`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
 	}
 }
 
-func TestWsSubAck(t *testing.T) {
-	pressXToJSON := []byte(`{
+func TestWebsocketHandleData(t *testing.T) {
+	// Serial: the cases feed the shared exchange's DataHandler, trade buffer and orderbook
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "SubAck",
+			payload: `{
   "type": "subscription_ack",
   "accountId": 5365,
   "subscriptionId": "ws-order-events-5365-b8bk32clqeb13g9tk8p0",
@@ -707,49 +713,21 @@ func TestWsSubAck(t *testing.T) {
     "fill",
     "closed"
   ]
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWsHeartbeat(t *testing.T) {
-	pressXToJSON := []byte(`{
+}`,
+		},
+		{
+			name: "Heartbeat",
+			payload: `{
   "type": "heartbeat",
   "timestampms": 1547742998508,
   "sequence": 31,
   "trace_id": "b8biknoqppr32kc7gfgg",
   "socket_sequence": 37
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWsUnsubscribe(t *testing.T) {
-	pressXToJSON := []byte(`{
-    "type": "unsubscribe",
-    "subscriptions": [{
-        "name": "l2",
-        "symbols": [
-            "BTCUSD",
-            "ETHBTC"
-        ]},
-        {"name": "candles_1m",
-        "symbols": [
-            "BTCUSD",
-            "ETHBTC"
-        ]}
-    ]
-}`)
-	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWsTradeData(t *testing.T) {
-	pressXToJSON := []byte(`{
+}`,
+		},
+		{
+			name: "TradeData",
+			payload: `{
   "type": "update",
   "eventId": 5375547515,
   "timestamp": 1547760288,
@@ -764,14 +742,11 @@ func TestWsTradeData(t *testing.T) {
       "makerSide": "ask"
     }
   ]
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWsAuctionData(t *testing.T) {
-	pressXToJSON := []byte(`{
+}`,
+		},
+		{
+			name: "AuctionData",
+			payload: `{
     "eventId": 371469414,
     "socket_sequence":4009, 
     "timestamp":1486501200,
@@ -796,14 +771,11 @@ func TestWsAuctionData(t *testing.T) {
         }
     ],
     "type": "update"
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWsBlockTrade(t *testing.T) {
-	pressXToJSON := []byte(`{
+}`,
+		},
+		{
+			name: "BlockTrade",
+			payload: `{
    "type":"update",
    "eventId":1111597035,
    "socket_sequence":8,
@@ -817,14 +789,11 @@ func TestWsBlockTrade(t *testing.T) {
          "amount":"1000"
       }
    ]
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestWSTrade(t *testing.T) {
-	pressXToJSON := []byte(`{
+}`,
+		},
+		{
+			name: "Trade",
+			payload: `{
 		"type": "trade",
 		"symbol": "BTCUSD",
 		"event_id": 3575573053,
@@ -832,8 +801,85 @@ func TestWSTrade(t *testing.T) {
 		"price": "9004.21000000",
 		"quantity": "0.09110000",
 		"side": "buy"
-	}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
+	}`,
+		},
+		{
+			name: "Level2Update",
+			payload: `{
+		"type": "l2_updates",
+		"symbol": "BTCUSD",
+		"changes": [
+			[
+				"buy",
+				"9122.04",
+				"0.00121425"
+			],
+			[
+				"sell",
+				"9122.07",
+				"0.98942292"
+			]
+		],
+		"trades": [{
+			"type": "trade",
+			"symbol": "BTCUSD",
+			"event_id": 169841458,
+			"timestamp": 1560976400428,
+			"price": "9122.04",
+			"quantity": "0.0073173",
+			"side": "sell"
+		}],
+		"auction_events": [{
+				"type": "auction_result",
+				"symbol": "BTCUSD",
+				"time_ms": 1560974400000,
+				"result": "success",
+				"highest_bid_price": "9150.80",
+				"lowest_ask_price": "9150.81",
+				"collar_price": "9146.93",
+				"auction_price": "9145.00",
+				"auction_quantity": "470.10390845"
+			},
+			{
+				"type": "auction_indicative",
+				"symbol": "BTCUSD",
+				"time_ms": 1560974385000,
+				"result": "success",
+				"highest_bid_price": "9150.80",
+				"lowest_ask_price": "9150.81",
+				"collar_price": "9146.84",
+				"auction_price": "9134.04",
+				"auction_quantity": "389.3094317"
+			}
+		]
+	}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
+	}
+}
+
+func TestWsUnsubscribe(t *testing.T) {
+	pressXToJSON := []byte(`{
+    "type": "unsubscribe",
+    "subscriptions": [{
+        "name": "l2",
+        "symbols": [
+            "BTCUSD",
+            "ETHBTC"
+        ]},
+        {"name": "candles_1m",
+        "symbols": [
+            "BTCUSD",
+            "ETHBTC"
+        ]}
+    ]
+}`)
+	err := e.wsHandleData(t.Context(), pressXToJSON)
+	if err != nil {
 		t.Error(err)
 	}
 }
@@ -923,7 +969,14 @@ func TestCandleTypeToInterval(t *testing.T) {
 }
 
 func TestWsAuctions(t *testing.T) {
-	pressXToJSON := []byte(`{
+	// Serial like the parent test, as each case sends to the shared DataHandler
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "auction open",
+			payload: `{
     "eventId": 372481811,
     "socket_sequence":23,
     "timestamp": 1486591200,
@@ -938,12 +991,11 @@ func TestWsAuctions(t *testing.T) {
         }
     ],
     "type": "update"
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`{
+}`,
+		},
+		{
+			name: "auction indicative",
+			payload: `{
     "type": "update",
     "eventId": 2248762586,
     "timestamp": 1510865640,
@@ -962,12 +1014,11 @@ func TestWsAuctions(t *testing.T) {
             "indicative_quantity": "45.43325086"
         }
     ]
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`{
+}`,
+		},
+		{
+			name: "auction result",
+			payload: `{
     "type": "update",
     "eventId": 2248795680,
     "timestamp": 1510866000,
@@ -993,14 +1044,18 @@ func TestWsAuctions(t *testing.T) {
             "auction_quantity": "55.95"
         }
     ]
-}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
+}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
 	}
 }
 
 func TestWsMarketData(t *testing.T) {
-	pressXToJSON := []byte(`{
+	initial := `{
   "type": "update",
   "eventId": 5375461993,
   "socket_sequence": 0,
@@ -1022,41 +1077,17 @@ func TestWsMarketData(t *testing.T) {
       "side": "ask"
     }
   ]
-}    `)
-	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`{
-  "type": "update",
-  "eventId": 5375461993,
-  "socket_sequence": 0,
-  "events": [
-    {
-      "type": "change",
-      "reason": "initial",
-      "price": "3641.61",
-      "delta": "0.83372051",
-      "remaining": "0.83372051",
-      "side": "bid"
-    },
-    {
-      "type": "change",
-      "reason": "initial",
-      "price": "3641.62",
-      "delta": "4.072",
-      "remaining": "4.072",
-      "side": "ask"
-    }
-  ]
-}    `)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`{
+}    `
+	// Cases run in order as successive market data updates
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{name: "initial", payload: initial},
+		{name: "repeated initial", payload: initial},
+		{
+			name: "cancel",
+			payload: `{
   "type": "update",
   "eventId": 5375503736,
   "timestamp": 1547759964,
@@ -1072,10 +1103,13 @@ func TestWsMarketData(t *testing.T) {
       "reason": "cancel"
     }
   ]
-}  `)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err != nil {
-		t.Error(err)
+}  `,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
 	}
 }
 
@@ -1120,60 +1154,6 @@ func TestWsError(t *testing.T) {
 		} else if !tt[x].ErrorExpected && err != nil {
 			t.Errorf("unexpected error: %s", err)
 		}
-	}
-}
-
-func TestWsLevel2Update(t *testing.T) {
-	pressXToJSON := []byte(`{
-		"type": "l2_updates",
-		"symbol": "BTCUSD",
-		"changes": [
-			[
-				"buy",
-				"9122.04",
-				"0.00121425"
-			],
-			[
-				"sell",
-				"9122.07",
-				"0.98942292"
-			]
-		],
-		"trades": [{
-			"type": "trade",
-			"symbol": "BTCUSD",
-			"event_id": 169841458,
-			"timestamp": 1560976400428,
-			"price": "9122.04",
-			"quantity": "0.0073173",
-			"side": "sell"
-		}],
-		"auction_events": [{
-				"type": "auction_result",
-				"symbol": "BTCUSD",
-				"time_ms": 1560974400000,
-				"result": "success",
-				"highest_bid_price": "9150.80",
-				"lowest_ask_price": "9150.81",
-				"collar_price": "9146.93",
-				"auction_price": "9145.00",
-				"auction_quantity": "470.10390845"
-			},
-			{
-				"type": "auction_indicative",
-				"symbol": "BTCUSD",
-				"time_ms": 1560974385000,
-				"result": "success",
-				"highest_bid_price": "9150.80",
-				"lowest_ask_price": "9150.81",
-				"collar_price": "9146.84",
-				"auction_price": "9134.04",
-				"auction_quantity": "389.3094317"
-			}
-		]
-	}`)
-	if err := e.wsHandleData(t.Context(), pressXToJSON); err != nil {
-		t.Error(err)
 	}
 }
 

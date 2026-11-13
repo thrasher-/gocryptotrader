@@ -1,57 +1,31 @@
 package utils
 
 import (
-	"fmt"
 	"runtime"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAdjustGoMaxProcs(t *testing.T) {
-	// Test default settings
 	curr := runtime.GOMAXPROCS(-1)
 	numCPUs := runtime.NumCPU()
 
-	// This func both checks for an error of AdjustGoMaxProcs, plus
-	// ensures that the value it sets is the one that is expected
-	checker := func(setting, expected int) error {
-		if err := AdjustGoMaxProcs(setting); err != nil {
-			return err
-		}
-		if i := runtime.GOMAXPROCS(expected); i != expected {
-			return fmt.Errorf("expected %d, got %d", expected, i)
-		}
-		return nil
-	}
-
-	tester := []struct {
-		Setting  int
-		Expected int
+	// Cases run in order: each changes the process-wide GOMAXPROCS
+	for _, tc := range []struct {
+		name     string
+		setting  int
+		expected int
 	}{
-		{
-			// Test setting to current runtime val
-			Setting:  curr,
-			Expected: curr,
-		},
-		{
-			// Test setting to num of logical CPUs
-			Setting:  numCPUs,
-			Expected: numCPUs,
-		},
-		{
-			// Test crazy value and make sure it defaults to numCPUs
-			Setting:  1000,
-			Expected: numCPUs,
-		},
-		{
-			// Test another crazy value and make sure it defaults to numCPUs
-			Setting:  -1,
-			Expected: numCPUs,
-		},
-	}
-
-	for x := range tester {
-		if err := checker(tester[x].Setting, tester[x].Expected); err != nil {
-			t.Errorf("%d failed. %s", x, err)
-		}
+		{name: "current setting", setting: curr, expected: curr},
+		{name: "logical CPU count", setting: numCPUs, expected: numCPUs},
+		{name: "excessive setting uses the CPU count", setting: 1000, expected: numCPUs},
+		{name: "negative setting uses the CPU count", setting: -1, expected: numCPUs},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, AdjustGoMaxProcs(tc.setting), "AdjustGoMaxProcs must not error")
+			assert.Equal(t, tc.expected, runtime.GOMAXPROCS(-1), "GOMAXPROCS should be set to the expected value")
+		})
 	}
 }

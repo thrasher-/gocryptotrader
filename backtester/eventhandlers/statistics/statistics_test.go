@@ -451,7 +451,7 @@ func TestGetBestMarketPerformer(t *testing.T) {
 	}
 }
 
-func TestPrintAllEventsChronologically(t *testing.T) {
+func TestPrintAllEventsChronologically(t *testing.T) { //nolint:tparallel // subtests add events to one Statistic in order
 	t.Parallel()
 	s := Statistic{}
 	s.PrintAllEventsChronologically()
@@ -462,57 +462,63 @@ func TestPrintAllEventsChronologically(t *testing.T) {
 	err := s.SetEventForOffset(nil)
 	assert.ErrorIs(t, err, common.ErrNilEvent)
 
-	err = s.SetEventForOffset(&kline.Kline{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-		},
-		Open:   eleet,
-		Close:  eleet,
-		Low:    eleet,
-		High:   eleet,
-		Volume: eleet,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&fill.Fill{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-		},
-		Direction:           gctorder.Buy,
-		Amount:              eleet,
-		ClosePrice:          eleet,
-		VolumeAdjustedPrice: eleet,
-		PurchasePrice:       eleet,
-		ExchangeFee:         eleet,
-		Slippage:            eleet,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&signal.Signal{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-		},
-		ClosePrice: eleet,
-		Direction:  gctorder.Buy,
-	})
-	assert.NoError(t, err)
+	// Cases run in order: they add events to the same Statistic, which is printed afterwards
+	for _, tc := range []struct {
+		name  string
+		event common.Event
+	}{
+		{"kline event", &kline.Kline{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+			},
+			Open:   eleet,
+			Close:  eleet,
+			Low:    eleet,
+			High:   eleet,
+			Volume: eleet,
+		}},
+		{"fill event", &fill.Fill{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+			},
+			Direction:           gctorder.Buy,
+			Amount:              eleet,
+			ClosePrice:          eleet,
+			VolumeAdjustedPrice: eleet,
+			PurchasePrice:       eleet,
+			ExchangeFee:         eleet,
+			Slippage:            eleet,
+		}},
+		{"signal event", &signal.Signal{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+			},
+			ClosePrice: eleet,
+			Direction:  gctorder.Buy,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.SetEventForOffset(tc.event)
+			assert.NoError(t, err)
+		})
+	}
 
 	s.PrintAllEventsChronologically()
 }
 
-func TestCalculateTheResults(t *testing.T) {
+func TestCalculateTheResults(t *testing.T) { //nolint:tparallel // subtests add events to one Statistic in order
 	t.Parallel()
 	s := Statistic{}
 	err := s.CalculateAllResults()
@@ -526,128 +532,6 @@ func TestCalculateTheResults(t *testing.T) {
 	p2 := currency.NewPair(currency.XRP, currency.DOGE)
 	err = s.SetEventForOffset(nil)
 	assert.ErrorIs(t, err, common.ErrNilEvent)
-
-	err = s.SetEventForOffset(&kline.Kline{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-			Offset:       1,
-		},
-		Open:   eleet,
-		Close:  eleet,
-		Low:    eleet,
-		High:   eleet,
-		Volume: eleet,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&signal.Signal{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-			Offset:       1,
-		},
-		OpenPrice:  eleet,
-		HighPrice:  eleet,
-		LowPrice:   eleet,
-		ClosePrice: eleet,
-		Volume:     eleet,
-		Direction:  gctorder.Buy,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&kline.Kline{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p2,
-			AssetType:    a,
-			Offset:       2,
-		},
-		Open:   eleeb,
-		Close:  eleeb,
-		Low:    eleeb,
-		High:   eleeb,
-		Volume: eleeb,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&signal.Signal{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p2,
-			AssetType:    a,
-			Offset:       2,
-		},
-		OpenPrice:  eleet,
-		HighPrice:  eleet,
-		LowPrice:   eleet,
-		ClosePrice: eleet,
-		Volume:     eleet,
-		Direction:  gctorder.Buy,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&kline.Kline{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt2,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-			Offset:       3,
-		},
-		Open:   eleeb,
-		Close:  eleeb,
-		Low:    eleeb,
-		High:   eleeb,
-		Volume: eleeb,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&signal.Signal{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt2,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p,
-			AssetType:    a,
-			Offset:       3,
-		},
-		OpenPrice:  eleeb,
-		HighPrice:  eleeb,
-		LowPrice:   eleeb,
-		ClosePrice: eleeb,
-		Volume:     eleeb,
-		Direction:  gctorder.Buy,
-	})
-	assert.NoError(t, err)
-
-	err = s.SetEventForOffset(&kline.Kline{
-		Base: &event.Base{
-			Exchange:     exch,
-			Time:         tt2,
-			Interval:     gctkline.OneDay,
-			CurrencyPair: p2,
-			AssetType:    a,
-			Offset:       4,
-		},
-		Open:   eleeb,
-		Close:  eleeb,
-		Low:    eleeb,
-		High:   eleeb,
-		Volume: eleeb,
-	})
-	assert.NoError(t, err)
 
 	signal4 := &signal.Signal{
 		Base: &event.Base{
@@ -665,8 +549,126 @@ func TestCalculateTheResults(t *testing.T) {
 		Volume:     eleeb,
 		Direction:  gctorder.Buy,
 	}
-	err = s.SetEventForOffset(signal4)
-	assert.NoError(t, err)
+	// Cases run in order: they add events to the same Statistic, whose results are calculated afterwards
+	for _, tc := range []struct {
+		name  string
+		event common.Event
+	}{
+		{"kline at offset 1", &kline.Kline{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+				Offset:       1,
+			},
+			Open:   eleet,
+			Close:  eleet,
+			Low:    eleet,
+			High:   eleet,
+			Volume: eleet,
+		}},
+		{"signal at offset 1", &signal.Signal{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+				Offset:       1,
+			},
+			OpenPrice:  eleet,
+			HighPrice:  eleet,
+			LowPrice:   eleet,
+			ClosePrice: eleet,
+			Volume:     eleet,
+			Direction:  gctorder.Buy,
+		}},
+		{"kline at offset 2", &kline.Kline{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p2,
+				AssetType:    a,
+				Offset:       2,
+			},
+			Open:   eleeb,
+			Close:  eleeb,
+			Low:    eleeb,
+			High:   eleeb,
+			Volume: eleeb,
+		}},
+		{"signal at offset 2", &signal.Signal{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p2,
+				AssetType:    a,
+				Offset:       2,
+			},
+			OpenPrice:  eleet,
+			HighPrice:  eleet,
+			LowPrice:   eleet,
+			ClosePrice: eleet,
+			Volume:     eleet,
+			Direction:  gctorder.Buy,
+		}},
+		{"kline at offset 3", &kline.Kline{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt2,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+				Offset:       3,
+			},
+			Open:   eleeb,
+			Close:  eleeb,
+			Low:    eleeb,
+			High:   eleeb,
+			Volume: eleeb,
+		}},
+		{"signal at offset 3", &signal.Signal{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt2,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p,
+				AssetType:    a,
+				Offset:       3,
+			},
+			OpenPrice:  eleeb,
+			HighPrice:  eleeb,
+			LowPrice:   eleeb,
+			ClosePrice: eleeb,
+			Volume:     eleeb,
+			Direction:  gctorder.Buy,
+		}},
+		{"kline at offset 4", &kline.Kline{
+			Base: &event.Base{
+				Exchange:     exch,
+				Time:         tt2,
+				Interval:     gctkline.OneDay,
+				CurrencyPair: p2,
+				AssetType:    a,
+				Offset:       4,
+			},
+			Open:   eleeb,
+			Close:  eleeb,
+			Low:    eleeb,
+			High:   eleeb,
+			Volume: eleeb,
+		}},
+		{"signal at offset 4", signal4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := s.SetEventForOffset(tc.event)
+			assert.NoError(t, err)
+		})
+	}
 
 	mapKey1 := key.NewExchangeAssetPair(exch, a, p)
 	mapKey2 := key.NewExchangeAssetPair(exch, a, p2)
@@ -810,9 +812,8 @@ func TestCalculateBiggestEventDrawdown(t *testing.T) {
 	resp, err := CalculateBiggestEventDrawdown(events)
 	assert.NoError(t, err)
 
-	if resp.Highest.Value != decimal.NewFromInt(1337) && !resp.Lowest.Value.Equal(decimal.NewFromInt(1238)) {
-		t.Error("unexpected max drawdown")
-	}
+	assert.Truef(t, resp.Highest.Value.Equal(decimal.NewFromInt(1337)), "CalculateBiggestEventDrawdown should return a highest value of 1337, received %s", resp.Highest.Value)
+	assert.Truef(t, resp.Lowest.Value.Equal(decimal.NewFromInt(1238)), "CalculateBiggestEventDrawdown should return a lowest value of 1238, received %s", resp.Lowest.Value)
 
 	// bogus scenario
 	bogusEvent := []data.Event{

@@ -295,7 +295,7 @@ func TestWaitForInitialSync(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestSyncManagerWebsocketUpdate(t *testing.T) {
+func TestSyncManagerWebsocketUpdate(t *testing.T) { //nolint:tparallel // subtests build on one sync manager in order
 	t.Parallel()
 	var m *SyncManager
 	err := m.WebsocketUpdate("", currency.EMPTYPAIR, 1, 47, nil)
@@ -311,21 +311,25 @@ func TestSyncManagerWebsocketUpdate(t *testing.T) {
 	require.NoError(t, err)
 
 	m.initSyncStarted.Store(true)
-	// orderbook not enabled
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemOrderbook, nil)
-	require.NoError(t, err)
+	// Cases run in order on the shared manager, each enabling its sync item for the cases after it
+	for _, tc := range []struct {
+		name        string
+		syncItem    syncItemType
+		syncEnabled *bool
+	}{
+		{name: "orderbook not enabled", syncItem: SyncItemOrderbook, syncEnabled: &m.config.SynchronizeOrderbook},
+		{name: "ticker not enabled", syncItem: SyncItemTicker, syncEnabled: &m.config.SynchronizeTicker},
+		{name: "trades not enabled", syncItem: SyncItemTrade, syncEnabled: &m.config.SynchronizeTrades},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			err := m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, tc.syncItem, nil)
+			require.NoError(t, err, "WebsocketUpdate must not error")
+			*tc.syncEnabled = true
+		}) {
+			t.FailNow()
+		}
+	}
 
-	m.config.SynchronizeOrderbook = true
-	// ticker not enabled
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemTicker, nil)
-	require.NoError(t, err)
-
-	m.config.SynchronizeTicker = true
-	// trades not enabled
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemTrade, nil)
-	require.NoError(t, err)
-
-	m.config.SynchronizeTrades = true
 	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, 1336, nil)
 	require.ErrorIs(t, err, errUnknownSyncItem)
 
@@ -334,15 +338,20 @@ func TestSyncManagerWebsocketUpdate(t *testing.T) {
 
 	m.add(key.NewExchangeAssetPair("", asset.Spot, currency.EMPTYPAIR), syncBase{})
 	m.initSyncWG.Add(3)
-	// orderbook match
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemOrderbook, errors.New("test"))
-	require.NoError(t, err)
-
-	// ticker match
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemTicker, errors.New("test"))
-	require.NoError(t, err)
-
-	// trades match
-	err = m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, SyncItemTrade, errors.New("test"))
-	require.NoError(t, err)
+	// Cases run in order on the shared manager and its initial sync wait group
+	for _, tc := range []struct {
+		name     string
+		syncItem syncItemType
+	}{
+		{name: "orderbook match", syncItem: SyncItemOrderbook},
+		{name: "ticker match", syncItem: SyncItemTicker},
+		{name: "trades match", syncItem: SyncItemTrade},
+	} {
+		if !t.Run(tc.name, func(t *testing.T) {
+			err := m.WebsocketUpdate("", currency.EMPTYPAIR, asset.Spot, tc.syncItem, errors.New("test"))
+			require.NoError(t, err, "WebsocketUpdate must not error")
+		}) {
+			t.FailNow()
+		}
+	}
 }

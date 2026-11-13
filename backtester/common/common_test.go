@@ -214,21 +214,27 @@ func TestPurgeColours(t *testing.T) {
 
 func TestGenerateFileName(t *testing.T) {
 	t.Parallel()
-	_, err := GenerateFileName("", "")
-	assert.ErrorIs(t, err, errCannotGenerateFileName)
-
-	_, err = GenerateFileName("hello", "")
-	assert.ErrorIs(t, err, errCannotGenerateFileName)
-
-	_, err = GenerateFileName("", "moto")
-	assert.ErrorIs(t, err, errCannotGenerateFileName)
-
-	_, err = GenerateFileName("hello", "moto")
-	assert.NoError(t, err)
-
-	name, err := GenerateFileName("......HELL0.  +  _", "moto.")
-	require.NoError(t, err, "GenerateFileName must not error")
-	assert.Equal(t, "hell0_.moto", name)
+	for _, tc := range []struct {
+		name, fileName, extension, expected string
+		expectedErr                         error
+	}{
+		{name: "empty file name and extension", expectedErr: errCannotGenerateFileName},
+		{name: "empty extension", fileName: "hello", expectedErr: errCannotGenerateFileName},
+		{name: "empty file name", extension: "moto", expectedErr: errCannotGenerateFileName},
+		{name: "clean file name and extension", fileName: "hello", extension: "moto", expected: "hello.moto"},
+		{name: "file name and extension needing sanitisation", fileName: "......HELL0.  +  _", extension: "moto.", expected: "hell0_.moto"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			generated, err := GenerateFileName(tc.fileName, tc.extension)
+			if tc.expectedErr != nil {
+				assert.ErrorIs(t, err, tc.expectedErr)
+				return
+			}
+			require.NoError(t, err, "GenerateFileName must not error")
+			assert.Equal(t, tc.expected, generated)
+		})
+	}
 }
 
 func TestRegisterBacktesterSubLoggers(t *testing.T) {

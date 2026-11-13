@@ -619,34 +619,40 @@ func TestWsOrderbookUpdate(t *testing.T) {
 }
 
 func TestWsHeartbeats(t *testing.T) {
-	pressXToJSON := []byte(`{
+	// Subtests stay serial like the parent test
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "invalid channel names",
+			payload: `{
   "messageType": "error",
   "code": 3,
   "message": "invalid channel names"
-}`)
-	err := e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
-	}
-
-	pressXToJSON = []byte(`{ 
+}`,
+		},
+		{
+			name: "invalid marketIds",
+			payload: `{ 
 "messageType": "error",
 "code": 3,
 "message": "invalid marketIds"
-}`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
-	}
-
-	pressXToJSON = []byte(`{ 
+}`,
+		},
+		{
+			name: "authentication failed",
+			payload: `{ 
 "messageType": "error",
 "code": 1,
 "message": "authentication failed. invalid key"
-}`)
-	err = e.wsHandleData(t.Context(), pressXToJSON)
-	if err == nil {
-		t.Error("expected error")
+}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(t.Context(), []byte(tc.payload))
+			assert.Error(t, err, "wsHandleData should return an error")
+		})
 	}
 }
 
@@ -655,7 +661,14 @@ func TestWsOrders(t *testing.T) {
 		Key:    "testkey",
 		Secret: base64.StdEncoding.EncodeToString([]byte("testsecret")),
 	})
-	pressXToJSON := []byte(`{ 
+	// Cases run in order as successive changes to the same orders
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "Placed",
+			payload: `{ 
 	"orderId": 79003,
     "marketId": "BTC-AUD",
     "side": "Bid",
@@ -666,13 +679,11 @@ func TestWsOrders(t *testing.T) {
     "trades": [],
     "timestamp": "2019-04-08T20:41:19.339Z",
     "messageType": "orderChange"
-  }`)
-	err := e.wsHandleData(ctx, pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(` { 
+  }`,
+		},
+		{
+			name: "Fully Matched",
+			payload: ` { 
 	"orderId": 79033,
     "marketId": "BTC-AUD",
     "side": "Bid",
@@ -689,13 +700,11 @@ func TestWsOrders(t *testing.T) {
              }],
     "timestamp": "2019-04-08T20:50:39.658Z",
     "messageType": "orderChange"
-  }`)
-	err = e.wsHandleData(ctx, pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(` { 
+  }`,
+		},
+		{
+			name: "Cancelled",
+			payload: ` { 
 	"orderId": 79003,
     "marketId": "BTC-AUD",
     "side": "Bid",
@@ -706,13 +715,11 @@ func TestWsOrders(t *testing.T) {
     "trades": [],
     "timestamp": "2019-04-08T20:41:41.857Z",
     "messageType": "orderChange"
-  }`)
-	err = e.wsHandleData(ctx, pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(`  { 
+  }`,
+		},
+		{
+			name: "Partially Matched",
+			payload: `  { 
 	"orderId": 79003,
     "marketId": "BTC-AUD",
     "side": "Bid",
@@ -729,13 +736,11 @@ func TestWsOrders(t *testing.T) {
              }],
 	"timestamp": "2019-04-08T20:41:41.857Z",
     "messageType": "orderChange"
-  }`)
-	err = e.wsHandleData(ctx, pressXToJSON)
-	if err != nil {
-		t.Error(err)
-	}
-
-	pressXToJSON = []byte(` { 
+  }`,
+		},
+		{
+			name: "Triggered",
+			payload: ` { 
 	"orderId": 7903,
     "marketId": "BTC-AUD",
     "side": "Bid",
@@ -746,10 +751,13 @@ func TestWsOrders(t *testing.T) {
     "trades": [],
     "timestamp": "2019-04-08T20:41:41.857Z",
     "messageType": "orderChange"
-  }`)
-	err = e.wsHandleData(ctx, pressXToJSON)
-	if err != nil {
-		t.Error(err)
+  }`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := e.wsHandleData(ctx, []byte(tc.payload))
+			assert.NoError(t, err, "wsHandleData should not error")
+		})
 	}
 }
 
@@ -816,27 +824,24 @@ func TestOrderbookChecksum(t *testing.T) {
 
 func TestTrim(t *testing.T) {
 	testCases := []struct {
+		Name     string
 		Value    float64
 		Expected string
 	}{
-		{Value: 0.1234, Expected: "1234"},
-		{Value: 0.00001234, Expected: "1234"},
-		{Value: 32.00001234, Expected: "3200001234"},
-		{Value: 0, Expected: ""},
-		{Value: 0.0, Expected: ""},
-		{Value: 1.0, Expected: "1"},
-		{Value: 0.3965, Expected: "3965"},
-		{Value: 16000.0, Expected: "16000"},
-		{Value: 0.0019, Expected: "19"},
-		{Value: 1.01, Expected: "101"},
+		{Name: "0.1234", Value: 0.1234, Expected: "1234"},
+		{Name: "0.00001234", Value: 0.00001234, Expected: "1234"},
+		{Name: "32.00001234", Value: 32.00001234, Expected: "3200001234"},
+		{Name: "0", Value: 0, Expected: ""},
+		{Name: "1.0", Value: 1.0, Expected: "1"},
+		{Name: "0.3965", Value: 0.3965, Expected: "3965"},
+		{Name: "16000.0", Value: 16000.0, Expected: "16000"},
+		{Name: "0.0019", Value: 0.0019, Expected: "19"},
+		{Name: "1.01", Value: 1.01, Expected: "101"},
 	}
 
 	for _, tt := range testCases {
-		t.Run("", func(t *testing.T) {
-			received := trim(tt.Value)
-			if received != tt.Expected {
-				t.Fatalf("received: %v but expected: %v", received, tt.Expected)
-			}
+		t.Run(tt.Name, func(t *testing.T) {
+			assert.Equal(t, tt.Expected, trim(tt.Value), "trim should return the value's digits without the decimal point")
 		})
 	}
 }

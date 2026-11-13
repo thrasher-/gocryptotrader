@@ -97,38 +97,32 @@ func TestCollateralGetCollateralReader(t *testing.T) {
 	assert.Equal(t, cr, c)
 }
 
-func TestCollateralUpdateContracts(t *testing.T) {
+func TestCollateralUpdateContracts(t *testing.T) { //nolint:tparallel // subtests update one pair's contracts in order
 	t.Parallel()
-	b := gctorder.Buy
 	c := &CollateralPair{
 		collateral: &Item{
 			asset:        asset.Futures,
 			isCollateral: true,
 		},
-		contract:         &Item{asset: asset.Futures},
-		currentDirection: &b,
+		contract: &Item{asset: asset.Futures},
 	}
 	leet := decimal.NewFromInt(1337)
-	err := c.UpdateContracts(gctorder.Buy, leet)
-	assert.NoError(t, err, "UpdateContracts should not error")
-
-	if !c.contract.available.Equal(leet) {
-		t.Errorf("received '%v' expected '%v'", c.contract.available, leet)
-	}
-	b = gctorder.Sell
-	err = c.UpdateContracts(gctorder.Buy, leet)
-	assert.NoError(t, err, "UpdateContracts should not error")
-
-	if !c.contract.available.Equal(decimal.Zero) {
-		t.Errorf("received '%v' expected '%v'", c.contract.available, decimal.Zero)
-	}
-
-	c.currentDirection = nil
-	err = c.UpdateContracts(gctorder.Buy, leet)
-	assert.NoError(t, err, "UpdateContracts should not error")
-
-	if !c.contract.available.Equal(leet) {
-		t.Errorf("received '%v' expected '%v'", c.contract.available, leet)
+	// Cases run in order: each starts from the contracts the previous case left
+	for _, tc := range []struct {
+		name              string
+		currentDirection  *gctorder.Side
+		expectedAvailable decimal.Decimal
+	}{
+		{"matching direction adds contracts", new(gctorder.Buy), leet},
+		{"opposite direction reduces contracts", new(gctorder.Sell), decimal.Zero},
+		{"no direction adds contracts", nil, leet},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c.currentDirection = tc.currentDirection
+			err := c.UpdateContracts(gctorder.Buy, leet)
+			assert.NoError(t, err, "UpdateContracts should not error")
+			assert.Truef(t, c.contract.available.Equal(tc.expectedAvailable), "available contracts should be %s, received %s", tc.expectedAvailable, c.contract.available)
+		})
 	}
 }
 

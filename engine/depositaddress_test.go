@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/currency"
 	"github.com/thrasher-corp/gocryptotrader/exchanges/deposit"
 )
@@ -136,17 +137,26 @@ func TestGetDepositAddressByExchangeAndCurrency(t *testing.T) {
 	_, err = m.GetDepositAddressByExchangeAndCurrency(bitStamp, "NON-EXISTENT-CHAIN", currency.USDT)
 	assert.ErrorIs(t, err, errDepositAddressChainNotFound)
 
-	if r, _ := m.GetDepositAddressByExchangeAndCurrency(bitStamp, "ErC20", currency.USDT); r.Address != "0x1b" && r.Chain != "ERC20" {
-		t.Error("unexpected values")
+	for _, tc := range []struct {
+		name            string
+		chain           string
+		code            currency.Code
+		expectedAddress string
+		expectedChain   string
+	}{
+		{name: "mixed-case ERC20 chain", chain: "ErC20", code: currency.USDT, expectedAddress: "0x1b", expectedChain: "ERC20"},
+		{name: "mixed-case SOL chain", chain: "sOl", code: currency.USDT, expectedAddress: "ABsdZ", expectedChain: "SOL"},
+		{name: "no chain defaults to currency chain", code: currency.USDT, expectedAddress: "1asdad", expectedChain: "USDT"},
+		{name: "no chain defaults to first address", code: currency.BTC, expectedAddress: address},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r, err := m.GetDepositAddressByExchangeAndCurrency(bitStamp, tc.chain, tc.code)
+			require.NoError(t, err, "GetDepositAddressByExchangeAndCurrency must not error")
+			assert.Equal(t, tc.expectedAddress, r.Address, "GetDepositAddressByExchangeAndCurrency should return the expected address")
+			assert.Equal(t, tc.expectedChain, r.Chain, "GetDepositAddressByExchangeAndCurrency should return the expected chain")
+		})
 	}
-	if r, _ := m.GetDepositAddressByExchangeAndCurrency(bitStamp, "sOl", currency.USDT); r.Address != "ABsdZ" && r.Chain != "SOL" {
-		t.Error("unexpected values")
-	}
-	if r, _ := m.GetDepositAddressByExchangeAndCurrency(bitStamp, "", currency.USDT); r.Address != "1asdad" && r.Chain != "USDT" {
-		t.Error("unexpected values")
-	}
-	_, err = m.GetDepositAddressByExchangeAndCurrency(bitStamp, "", currency.BTC)
-	assert.NoError(t, err)
 }
 
 func TestGetDepositAddressesByExchange(t *testing.T) {

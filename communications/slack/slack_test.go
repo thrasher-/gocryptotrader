@@ -300,19 +300,17 @@ func TestWebsocketSend(t *testing.T) {
 func TestHandleMessage(t *testing.T) {
 	t.Parallel()
 	var s Slack
-	msg := &Message{}
-	err := s.HandleMessage(msg)
-	if err == nil {
-		t.Error("slack HandleMessage(), Sent message through nil websocket")
-	}
-	msg.Text = cmdStatus
-	err = s.HandleMessage(msg)
-	if err == nil {
-		t.Error("slack HandleMessage(), Sent message through nil websocket")
-	}
-	msg.Text = cmdHelp
-	err = s.HandleMessage(msg)
-	if err == nil {
-		t.Error("slack HandleMessage(), Sent message through nil websocket")
+	for _, tc := range []struct {
+		name, text string
+	}{
+		{"empty message", ""},
+		{"status command", cmdStatus},
+		{"help command", cmdHelp},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := s.HandleMessage(&Message{Text: tc.text})
+			assert.Error(t, err, "HandleMessage should error with a nil websocket")
+		})
 	}
 }

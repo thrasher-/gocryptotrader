@@ -52,15 +52,28 @@ func TestAmountStepOrderIncrement(t *testing.T) {
 	}
 }
 
-func TestAmountStepBaseIncrement(t *testing.T) {
+func TestAmountStepBaseIncrementExactProduct(t *testing.T) {
 	t.Parallel()
-	step := AmountStep{
-		Increment:          decimal.MustFromString("0.25"),
-		ContractMultiplier: decimal.MustFromString("0.1"),
+	for _, tc := range []struct {
+		name       string
+		increment  string
+		multiplier string
+		expected   string
+	}{
+		{name: "positive inputs", increment: "0.25", multiplier: "0.1", expected: "0.025"},
+		{name: "high scale", increment: "0.0000000002", multiplier: "0.0000000005", expected: "0.0000000000000000001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			step := AmountStep{
+				Increment:          decimal.MustFromString(tc.increment),
+				ContractMultiplier: decimal.MustFromString(tc.multiplier),
+			}
+			result, err := step.BaseIncrement()
+			require.NoError(t, err, "BaseIncrement must accept an exact product")
+			assert.Equal(t, tc.expected, result.String(), "BaseIncrement should combine the amount step and multiplier exactly")
+		})
 	}
-	result, err := step.BaseIncrement()
-	require.NoError(t, err, "BaseIncrement must accept positive inputs")
-	assert.Equal(t, "0.025", result.String(), "BaseIncrement should combine the amount step and multiplier")
 }
 
 func TestAmountStepBaseIncrementInexactProduct(t *testing.T) {
@@ -99,17 +112,6 @@ func TestAmountStepBaseIncrementInexactProduct(t *testing.T) {
 			assert.ErrorIs(t, err, ErrBaseIncrementNotRepresentable, "CommonBaseIncrement should reject an inexact second increment")
 		})
 	}
-}
-
-func TestAmountStepBaseIncrementHighScaleExactProduct(t *testing.T) {
-	t.Parallel()
-	step := AmountStep{
-		Increment:          decimal.MustFromString("0.0000000002"),
-		ContractMultiplier: decimal.MustFromString("0.0000000005"),
-	}
-	result, err := step.BaseIncrement()
-	require.NoError(t, err, "BaseIncrement must accept an exact product despite the combined input scale")
-	assert.Equal(t, "0.0000000000000000001", result.String(), "BaseIncrement should retain the exact high-scale product")
 }
 
 func TestAmountStepRoundBaseAmount(t *testing.T) {

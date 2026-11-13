@@ -317,7 +317,7 @@ func TestGenerateReport(t *testing.T) {
 	}
 }
 
-func TestEnhanceCandles(t *testing.T) {
+func TestEnhanceCandles(t *testing.T) { //nolint:tparallel // subtests replace the snapshot on one report in order
 	t.Parallel()
 	tt := time.Now()
 	var d Data
@@ -387,56 +387,32 @@ func TestEnhanceCandles(t *testing.T) {
 	err = d.enhanceCandles()
 	assert.NoError(t, err)
 
-	d.Statistics.ExchangeAssetPairStatistics[key.NewExchangeAssetPair(testExchange, asset.Spot, currency.NewBTCUSDT())].FinalOrders = compliance.Snapshot{
-		Orders: []compliance.SnapshotOrder{
-			{
-				ClosePrice:          decimal.NewFromInt(1335),
-				VolumeAdjustedPrice: decimal.NewFromInt(1337),
-				SlippageRate:        decimal.NewFromInt(1),
-				CostBasis:           decimal.NewFromInt(1337),
-				Order:               nil,
-			},
-		},
-		Timestamp: tt,
-	}
-	err = d.enhanceCandles()
-	assert.NoError(t, err)
-
-	d.Statistics.ExchangeAssetPairStatistics[key.NewExchangeAssetPair(testExchange, asset.Spot, currency.NewBTCUSDT())].FinalOrders = compliance.Snapshot{
-		Orders: []compliance.SnapshotOrder{
-			{
-				ClosePrice:          decimal.NewFromInt(1335),
-				VolumeAdjustedPrice: decimal.NewFromInt(1337),
-				SlippageRate:        decimal.NewFromInt(1),
-				CostBasis:           decimal.NewFromInt(1337),
-				Order: &gctorder.Detail{
-					Date: tt,
-					Side: gctorder.Buy,
+	// Cases run in order: they share the report data, whose enhanced candles are checked afterwards
+	for _, tc := range []struct {
+		name  string
+		order *gctorder.Detail
+	}{
+		{"snapshot order without details", nil},
+		{"snapshot buy order", &gctorder.Detail{Date: tt, Side: gctorder.Buy}},
+		{"snapshot sell order", &gctorder.Detail{Date: tt, Side: gctorder.Sell}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d.Statistics.ExchangeAssetPairStatistics[key.NewExchangeAssetPair(testExchange, asset.Spot, currency.NewBTCUSDT())].FinalOrders = compliance.Snapshot{
+				Orders: []compliance.SnapshotOrder{
+					{
+						ClosePrice:          decimal.NewFromInt(1335),
+						VolumeAdjustedPrice: decimal.NewFromInt(1337),
+						SlippageRate:        decimal.NewFromInt(1),
+						CostBasis:           decimal.NewFromInt(1337),
+						Order:               tc.order,
+					},
 				},
-			},
-		},
-		Timestamp: tt,
+				Timestamp: tt,
+			}
+			err := d.enhanceCandles()
+			assert.NoError(t, err)
+		})
 	}
-	err = d.enhanceCandles()
-	assert.NoError(t, err)
-
-	d.Statistics.ExchangeAssetPairStatistics[key.NewExchangeAssetPair(testExchange, asset.Spot, currency.NewBTCUSDT())].FinalOrders = compliance.Snapshot{
-		Orders: []compliance.SnapshotOrder{
-			{
-				ClosePrice:          decimal.NewFromInt(1335),
-				VolumeAdjustedPrice: decimal.NewFromInt(1337),
-				SlippageRate:        decimal.NewFromInt(1),
-				CostBasis:           decimal.NewFromInt(1337),
-				Order: &gctorder.Detail{
-					Date: tt,
-					Side: gctorder.Sell,
-				},
-			},
-		},
-		Timestamp: tt,
-	}
-	err = d.enhanceCandles()
-	assert.NoError(t, err)
 
 	if len(d.EnhancedCandles) == 0 {
 		t.Error("expected enhanced candles")

@@ -61,20 +61,23 @@ func TestUpgradeConfig(t *testing.T) {
 	}
 }
 
-func TestUpgradeConfigInvalidExchange(t *testing.T) {
+func TestUpgradeConfigErrors(t *testing.T) {
 	t.Parallel()
-	input := []byte(`{"exchanges":[42]}`)
-	out, err := new(v12.Version).UpgradeConfig(t.Context(), input)
-	require.Error(t, err, "UpgradeConfig must reject an invalid exchange entry")
-	assert.Equal(t, input, out, "UpgradeConfig should return the original config on error")
-}
-
-func TestUpgradeConfigMalformedExchanges(t *testing.T) {
-	t.Parallel()
-	input := []byte(`{"exchanges":`)
-	out, err := new(v12.Version).UpgradeConfig(t.Context(), input)
-	require.Error(t, err, "UpgradeConfig must reject malformed exchanges JSON")
-	assert.Equal(t, input, out, "UpgradeConfig should return the original config on error")
+	for _, tc := range []struct {
+		name  string
+		input string
+	}{
+		{name: "invalid exchange", input: `{"exchanges":[42]}`},
+		{name: "malformed exchanges", input: `{"exchanges":`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			input := []byte(tc.input)
+			out, err := new(v12.Version).UpgradeConfig(t.Context(), input)
+			require.Error(t, err, "UpgradeConfig must reject invalid exchanges")
+			assert.Equal(t, input, out, "UpgradeConfig should return the original config on error")
+		})
+	}
 }
 
 func TestDowngradeConfig(t *testing.T) {

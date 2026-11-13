@@ -67,16 +67,7 @@ func TestParseCredentialsMetadata(t *testing.T) {
 		t.Fatal("should have processed")
 	}
 
-	afterCreds := store.Get()
-
-	if afterCreds.Key != "superkey" &&
-		afterCreds.Secret != "supersecret" &&
-		afterCreds.SubAccount != "supersub" &&
-		afterCreds.ClientID != "superclient" &&
-		afterCreds.PEMKey != "superpem" &&
-		afterCreds.OneTimePassword != "superOneTimePasssssss" {
-		t.Fatal("unexpected values")
-	}
+	require.Equal(t, beforeCreds, *store.Get(), "ParseCredentialsMetadata must restore every credential field")
 
 	// subaccount override
 	subaccount := Credentials{

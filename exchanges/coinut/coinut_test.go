@@ -217,102 +217,48 @@ func TestGetFeeByTypeOfflineTradeFee(t *testing.T) {
 
 func TestGetFee(t *testing.T) {
 	t.Parallel()
-	feeBuilder := setFeeBuilder()
-	// CryptocurrencyTradeFee Basic
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// CryptocurrencyTradeFee High quantity
-	feeBuilder = setFeeBuilder()
-	feeBuilder.Amount = 1000
-	feeBuilder.PurchasePrice = 1000
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// CryptocurrencyTradeFee IsMaker
-	feeBuilder = setFeeBuilder()
-	feeBuilder.IsMaker = true
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// CryptocurrencyTradeFee Negative purchase price
-	feeBuilder = setFeeBuilder()
-	feeBuilder.PurchasePrice = -1000
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// CryptocurrencyWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyWithdrawalFee
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// CryptocurrencyDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.CryptocurrencyDepositFee
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	feeBuilder.FiatCurrency = currency.EUR
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	feeBuilder.FiatCurrency = currency.USD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankDepositFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankDepositFee
-	feeBuilder.FiatCurrency = currency.SGD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.USD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.CAD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.SGD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
-	}
-
-	// InternationalBankWithdrawalFee Basic
-	feeBuilder = setFeeBuilder()
-	feeBuilder.FeeType = exchange.InternationalBankWithdrawalFee
-	feeBuilder.FiatCurrency = currency.CAD
-	if _, err := e.GetFee(feeBuilder); err != nil {
-		t.Error(err)
+	for _, tc := range []struct {
+		name   string
+		modify func(*exchange.FeeBuilder)
+	}{
+		{name: "CryptocurrencyTradeFee Basic", modify: func(*exchange.FeeBuilder) {}},
+		{name: "CryptocurrencyTradeFee High quantity", modify: func(f *exchange.FeeBuilder) { f.Amount, f.PurchasePrice = 1000, 1000 }},
+		{name: "CryptocurrencyTradeFee IsMaker", modify: func(f *exchange.FeeBuilder) { f.IsMaker = true }},
+		{name: "CryptocurrencyTradeFee Negative purchase price", modify: func(f *exchange.FeeBuilder) { f.PurchasePrice = -1000 }},
+		{name: "CryptocurrencyWithdrawalFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyWithdrawalFee }},
+		{name: "CryptocurrencyDepositFee Basic", modify: func(f *exchange.FeeBuilder) { f.FeeType = exchange.CryptocurrencyDepositFee }},
+		{name: "InternationalBankDepositFee EUR", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankDepositFee
+			f.FiatCurrency = currency.EUR
+		}},
+		{name: "InternationalBankDepositFee USD", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankDepositFee
+			f.FiatCurrency = currency.USD
+		}},
+		{name: "InternationalBankDepositFee SGD", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankDepositFee
+			f.FiatCurrency = currency.SGD
+		}},
+		{name: "InternationalBankWithdrawalFee USD", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.USD
+		}},
+		{name: "InternationalBankWithdrawalFee CAD", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.CAD
+		}},
+		{name: "InternationalBankWithdrawalFee SGD", modify: func(f *exchange.FeeBuilder) {
+			f.FeeType = exchange.InternationalBankWithdrawalFee
+			f.FiatCurrency = currency.SGD
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			feeBuilder := setFeeBuilder()
+			tc.modify(feeBuilder)
+			_, err := e.GetFee(feeBuilder)
+			assert.NoError(t, err, "GetFee should not error")
+		})
 	}
 }
 

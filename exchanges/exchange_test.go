@@ -897,7 +897,7 @@ func TestUpdatePairsRemovesDuplicateEnabledPairs(t *testing.T) {
 	assert.Equal(t, available, enabled, "UpdatePairs should keep one enabled pair per unformatted symbol")
 }
 
-func TestUpdatePairs(t *testing.T) {
+func TestUpdatePairs(t *testing.T) { //nolint:tparallel // subtests update UAC in turn
 	t.Parallel()
 	cfg := &config.Config{
 		Exchanges: []config.Exchange{
@@ -935,20 +935,19 @@ func TestUpdatePairs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true)
-	if err != nil {
-		t.Errorf("TestUpdatePairs error: %s", err)
-	}
-
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, false)
-	if err != nil {
-		t.Errorf("TestUpdatePairs error: %s", err)
-	}
-
-	// Test updating the same new products, diff should be 0
-	err = UAC.UpdatePairs(exchangeProducts, asset.Spot, true)
-	if err != nil {
-		t.Errorf("TestUpdatePairs error: %s", err)
+	// Each case updates the pairs the previous case left on UAC, which the parent keeps using
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+	}{
+		{"enabled pairs", true},
+		{"available pairs", false},
+		{"unchanged enabled pairs", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := UAC.UpdatePairs(exchangeProducts, asset.Spot, tc.enabled)
+			assert.NoError(t, err, "UpdatePairs should not error")
+		})
 	}
 
 	// Test force updating to only one product
@@ -2024,13 +2023,6 @@ func TestGetFuturesPositions(t *testing.T) {
 }
 
 func TestGetHistoricalFundingRates(t *testing.T) {
-	t.Parallel()
-	var b Base
-	_, err := b.GetHistoricalFundingRates(t.Context(), nil)
-	assert.ErrorIs(t, err, common.ErrNotYetImplemented)
-}
-
-func TestGetFundingRates(t *testing.T) {
 	t.Parallel()
 	var b Base
 	_, err := b.GetHistoricalFundingRates(t.Context(), nil)

@@ -237,7 +237,7 @@ func TestSetupMultiPositionTracker(t *testing.T) {
 	}
 }
 
-func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
+func TestMultiPositionTrackerTrackNewOrder(t *testing.T) { //nolint:tparallel // subtests build on one tracker in order
 	t.Parallel()
 	exch := testExchange
 	item := asset.Futures
@@ -266,49 +266,30 @@ func TestMultiPositionTrackerTrackNewOrder(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, common.ErrExchangeNameNotSet)
 
-	err = resp.TrackNewOrder(&order.Detail{
-		Date:      tt,
-		Exchange:  exch,
-		AssetType: item,
-		Pair:      pair,
-		Side:      order.Short,
-		OrderID:   "1",
-		Amount:    1,
-	})
-	assert.NoError(t, err)
-
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
-	}
-
-	err = resp.TrackNewOrder(&order.Detail{
-		Date:      tt,
-		Exchange:  exch,
-		AssetType: item,
-		Pair:      pair,
-		Side:      order.Short,
-		OrderID:   "2",
-		Amount:    1,
-	})
-	assert.NoError(t, err)
-
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
-	}
-
-	err = resp.TrackNewOrder(&order.Detail{
-		Date:      tt,
-		Exchange:  exch,
-		AssetType: item,
-		Pair:      pair,
-		Side:      order.Long,
-		OrderID:   "3",
-		Amount:    2,
-	})
-	assert.NoError(t, err)
-
-	if len(resp.positions) != 1 {
-		t.Errorf("expected '1' received %v", len(resp.positions))
+	// Each order builds on the position the previous order left, which the parent keeps using
+	for _, tc := range []struct {
+		name    string
+		side    order.Side
+		orderID string
+		amount  float64
+	}{
+		{"open short", order.Short, "1", 1},
+		{"add to short", order.Short, "2", 1},
+		{"close with long", order.Long, "3", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := resp.TrackNewOrder(&order.Detail{
+				Date:      tt,
+				Exchange:  exch,
+				AssetType: item,
+				Pair:      pair,
+				Side:      tc.side,
+				OrderID:   tc.orderID,
+				Amount:    tc.amount,
+			})
+			assert.NoError(t, err, "TrackNewOrder should not error")
+			assert.Equal(t, 1, len(resp.positions), "positions should have one entry")
+		})
 	}
 	if resp.positions[0].status != order.Closed {
 		t.Errorf("expected 'closed' received %v", resp.positions[0].status)
@@ -1215,29 +1196,28 @@ func TestPTTrackFundingDetails(t *testing.T) {
 
 func TestAreFundingRatePrerequisitesMet(t *testing.T) {
 	t.Parallel()
-	err := CheckFundingRatePrerequisites(false, false, false)
-	assert.NoError(t, err)
-
-	err = CheckFundingRatePrerequisites(true, false, false)
-	assert.NoError(t, err)
-
-	err = CheckFundingRatePrerequisites(true, true, false)
-	assert.NoError(t, err)
-
-	err = CheckFundingRatePrerequisites(true, true, true)
-	assert.NoError(t, err)
-
-	err = CheckFundingRatePrerequisites(true, false, true)
-	assert.NoError(t, err)
-
-	err = CheckFundingRatePrerequisites(false, false, true)
-	assert.ErrorIs(t, err, ErrGetFundingDataRequired)
-
-	err = CheckFundingRatePrerequisites(false, true, true)
-	assert.ErrorIs(t, err, ErrGetFundingDataRequired)
-
-	err = CheckFundingRatePrerequisites(false, true, false)
-	assert.ErrorIs(t, err, ErrGetFundingDataRequired)
+	for _, tc := range []struct {
+		name             string
+		getFundingData   bool
+		includePredicted bool
+		includePayments  bool
+		err              error
+	}{
+		{"nothing requested", false, false, false, nil},
+		{"funding data", true, false, false, nil},
+		{"funding data with predicted", true, true, false, nil},
+		{"funding data with predicted and payments", true, true, true, nil},
+		{"funding data with payments", true, false, true, nil},
+		{"payments without funding data", false, false, true, ErrGetFundingDataRequired},
+		{"predicted and payments without funding data", false, true, true, ErrGetFundingDataRequired},
+		{"predicted without funding data", false, true, false, ErrGetFundingDataRequired},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := CheckFundingRatePrerequisites(tc.getFundingData, tc.includePredicted, tc.includePayments)
+			assert.ErrorIs(t, err, tc.err, "CheckFundingRatePrerequisites should return the expected error")
+		})
+	}
 }
 
 func TestLastUpdated(t *testing.T) {

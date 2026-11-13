@@ -924,26 +924,21 @@ func TestDecimalArithmeticAverage(t *testing.T) {
 
 func TestDecimalPow(t *testing.T) {
 	t.Parallel()
-	pow := DecimalPow(decimal.NewFromInt(2), decimal.NewFromInt(2))
-	if !pow.Equal(decimal.NewFromInt(4)) {
-		t.Errorf("received '%v' expected '%v'", pow, 4)
-	}
-
-	// zero
-	pow = DecimalPow(decimal.Zero, decimal.NewFromInt(1))
-	if !pow.Equal(decimal.Zero) {
-		t.Errorf("received '%v' expected '%v'", pow, 0)
-	}
-
-	// inf
-	pow = DecimalPow(decimal.Zero, decimal.NewFromInt(-3))
-	if !pow.Equal(decimal.Zero) {
-		t.Errorf("received '%v' expected '%v'", pow, 0)
-	}
-
-	// nan
-	pow = DecimalPow(decimal.NewFromInt(-1), decimal.MustFromFloat(0.1111))
-	if !pow.Equal(decimal.Zero) {
-		t.Errorf("received '%v' expected '%v'", pow, 0)
+	for _, tc := range []struct {
+		name     string
+		base     decimal.Decimal
+		exponent decimal.Decimal
+		expected decimal.Decimal
+	}{
+		{name: "positive result", base: decimal.NewFromInt(2), exponent: decimal.NewFromInt(2), expected: decimal.NewFromInt(4)},
+		{name: "zero result", base: decimal.Zero, exponent: decimal.NewFromInt(1), expected: decimal.Zero},
+		{name: "infinite result returns zero", base: decimal.Zero, exponent: decimal.NewFromInt(-3), expected: decimal.Zero},
+		{name: "NaN result returns zero", base: decimal.NewFromInt(-1), exponent: decimal.MustFromFloat(0.1111), expected: decimal.Zero},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			pow := DecimalPow(tc.base, tc.exponent)
+			assert.Truef(t, pow.Equal(tc.expected), "DecimalPow should return %s, got %s", tc.expected, pow)
+		})
 	}
 }

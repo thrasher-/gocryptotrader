@@ -23,27 +23,26 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/exchanges/kline"
 )
 
-func TestSetupLiveDataHandler(t *testing.T) {
+func TestSetupLiveDataHandler(t *testing.T) { //nolint:tparallel // subtests build on one BackTest in order
 	t.Parallel()
 	bt := &BackTest{}
-	var err error
-	err = bt.SetupLiveDataHandler(-1, -1, false, false)
-	assert.ErrorIs(t, err, gctcommon.ErrNilPointer)
-
-	bt.exchangeManager = engine.NewExchangeManager()
-	err = bt.SetupLiveDataHandler(-1, -1, false, false)
-	assert.ErrorIs(t, err, gctcommon.ErrNilPointer)
-
-	bt.DataHolder = &data.HandlerHolder{}
-	err = bt.SetupLiveDataHandler(-1, -1, false, false)
-	assert.ErrorIs(t, err, gctcommon.ErrNilPointer)
-
-	bt.Reports = &report.Data{}
-	err = bt.SetupLiveDataHandler(-1, -1, false, false)
-	assert.ErrorIs(t, err, gctcommon.ErrNilPointer)
-
-	bt.Funding = &funding.FundManager{}
-	err = bt.SetupLiveDataHandler(-1, -1, false, false)
+	// Cases run in order: each field is set once its case has found it nil
+	for _, tc := range []struct {
+		field string
+		set   func()
+	}{
+		{"exchangeManager", func() { bt.exchangeManager = engine.NewExchangeManager() }},
+		{"DataHolder", func() { bt.DataHolder = &data.HandlerHolder{} }},
+		{"Reports", func() { bt.Reports = &report.Data{} }},
+		{"Funding", func() { bt.Funding = &funding.FundManager{} }},
+	} {
+		t.Run("nil "+tc.field, func(t *testing.T) {
+			err := bt.SetupLiveDataHandler(-1, -1, false, false)
+			assert.ErrorIs(t, err, gctcommon.ErrNilPointer)
+		})
+		tc.set()
+	}
+	err := bt.SetupLiveDataHandler(-1, -1, false, false)
 	assert.NoError(t, err)
 
 	dc, ok := bt.LiveDataHandler.(*dataChecker)
