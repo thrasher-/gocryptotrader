@@ -541,16 +541,9 @@ func (e *Exchange) NewOrder(ctx context.Context, o *NewOrderRequest) (*OrderResp
 ### Implementing wrapper functions
 
 Wrapper functions are the interface in which the GoCryptoTrader engine communicates with an exchange for receiving data and sending requests. See the [exchange/interfaces.go Go interface file](../exchange/interfaces.go) for a full list of API methods.
-The exchanges may not support all the functionality in the wrapper, so fill out the ones that are supported as shown in the examples below:
+The exchanges may not support all the functionality in the wrapper, so fill out the ones that are supported as shown in the examples below.
 
-Unsupported Example:
-
-```go
-// WithdrawFiatFunds returns a withdrawal ID when a withdrawal is submitted
-func (e *Exchange) WithdrawFiatFunds(ctx context.Context, withdrawRequest *withdraw.Request) (*withdraw.ExchangeResponse, error) {
-    return nil, common.ErrFunctionNotSupported
-}
-```
+`exchange.Base` supplies the functions an exchange may not offer, such as `ModifyOrder`, `WithdrawFiatFunds` and `GetHistoricTrades`, so leave out the ones your exchange does not support instead of writing stubs. Each returns `common.ErrFunctionNotSupported`, or `common.ErrNotYetImplemented` when the exchange's capabilities claim the function, so set the capabilities to what the exchange offers. See [unsupported.go](../exchange/unsupported.go) for the full list.
 
 Supported Examples:
 
@@ -607,6 +600,15 @@ func (e *Exchange) FetchTradablePairs(ctx context.Context, a asset.Item) (curren
 ```
 
 Wrapper functions on most exchanges are written in similar ways so other exchanges can be used as a reference.
+
+Where a wrapper function's logic is the same on every exchange, call the shared helper in [wrapper_helpers.go](../exchange/wrapper_helpers.go) instead of copying it:
+
+```go
+// ValidateAPICredentials validates current credentials used for wrapper functionality
+func (e *Exchange) ValidateAPICredentials(ctx context.Context, a asset.Item) error {
+    return exchange.ValidateAPICredentials(ctx, e, a)
+}
+```
 
 Many helper functions defined in [exchange.go](../exchange/exchange.go) can be useful when implementing wrapper functions. See examples below:
 
