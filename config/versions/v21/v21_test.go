@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thrasher-corp/gocryptotrader/config/versions"
 	v21 "github.com/thrasher-corp/gocryptotrader/config/versions/v21"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/configversion"
 )
 
 // The v20 and v21 default subscriptions as the config saves them
@@ -358,21 +358,6 @@ func TestRegisteredMigration(t *testing.T) {
 	current := strings.Join(currentDefaults, ",")
 	validator := `{"requiresKey":true,"requiresSecret":true,"requiresClientID":true}`
 	// Other exchanges with the same settings are not migrated
-	input := []byte(`{"version":20,"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}},{"name":"Kraken","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}}]}`)
-	unchanged, err := versions.Manager.Deploy(t.Context(), input, 20)
-	require.NoError(t, err, "Deploy must leave an existing v20 configuration valid")
-	assert.Equal(t, input, unchanged, "Deploy should retain v20 Bitstamp settings until the v21 upgrade")
-
-	out, err := versions.Manager.Deploy(t.Context(), input, 21)
-	require.NoError(t, err, "Deploy must apply the registered v21 upgrade")
-	expected := `{"version":21,"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":{"requiresKey":true,"requiresSecret":true}},"features":{"subscriptions":[` + current + `]}},{"name":"Kraken","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}}]}`
-	assert.JSONEq(t, expected, string(out), "Deploy should only migrate Bitstamp and advance to v21")
-
-	downgraded, err := versions.Manager.Deploy(t.Context(), out, 20)
-	require.NoError(t, err, "Deploy must downgrade from v21")
-	assert.JSONEq(t, string(input), string(downgraded), "Downgrade should restore the v20 Bitstamp settings")
-
-	reupgraded, err := versions.Manager.Deploy(t.Context(), downgraded, 21)
-	require.NoError(t, err, "Deploy must reapply v21")
-	assert.JSONEq(t, expected, string(reupgraded), "Reapplying v21 should reproduce the upgraded configuration")
+	input := `{"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}},{"name":"Kraken","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}}]}`
+	configversion.Migrate(t, new(v21.Version), input, `{"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":{"requiresKey":true,"requiresSecret":true}},"features":{"subscriptions":[`+current+`]}},{"name":"Kraken","api":{"credentialsValidator":`+validator+`},"features":{"subscriptions":[`+previous+`]}}]}`, input)
 }

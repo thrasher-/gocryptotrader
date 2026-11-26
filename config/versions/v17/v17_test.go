@@ -6,8 +6,8 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thrasher-corp/gocryptotrader/config/versions"
 	v17 "github.com/thrasher-corp/gocryptotrader/config/versions/v17"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/configversion"
 )
 
 func TestUpgradeExchange(t *testing.T) {
@@ -113,21 +113,8 @@ func TestDowngradeExchangeErrors(t *testing.T) {
 
 func TestRegisteredMigration(t *testing.T) {
 	t.Parallel()
-	input := []byte(`{"version":16,"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true,"websocketBufferEnabled":true,"websocketBufferLimit":0}},{"name":"Gemini","orderbook":{"websocketBufferEnabled":false,"websocketBufferLimit":5}}]}`)
-	unchanged, err := versions.Manager.Deploy(t.Context(), input, 16)
-	require.NoError(t, err, "Deploy must leave an existing v16 configuration valid")
-	assert.Equal(t, input, unchanged, "Deploy should retain v16 buffer settings until the v17 upgrade")
-
-	out, err := versions.Manager.Deploy(t.Context(), input, 17)
-	require.NoError(t, err, "Deploy must apply the registered v17 upgrade")
-	expected := `{"version":17,"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true}},{"name":"Gemini","orderbook":{}}]}`
-	assert.JSONEq(t, expected, string(out), "Deploy should remove buffer settings from every exchange and advance to v17")
-
-	downgraded, err := versions.Manager.Deploy(t.Context(), out, 16)
-	require.NoError(t, err, "Deploy must downgrade from v17")
-	assert.JSONEq(t, `{"version":16,"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true,"websocketBufferLimit":5,"websocketBufferEnabled":false}},{"name":"Gemini","orderbook":{"websocketBufferLimit":5,"websocketBufferEnabled":false}}]}`, string(downgraded), "Downgrade should restore the v16 buffer defaults without changing other configuration")
-
-	reupgraded, err := versions.Manager.Deploy(t.Context(), downgraded, 17)
-	require.NoError(t, err, "Deploy must reapply v17")
-	assert.JSONEq(t, expected, string(reupgraded), "Reapplying v17 should preserve the upgraded configuration")
+	configversion.Migrate(t, new(v17.Version),
+		`{"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true,"websocketBufferEnabled":true,"websocketBufferLimit":0}},{"name":"Gemini","orderbook":{"websocketBufferEnabled":false,"websocketBufferLimit":5}}]}`,
+		`{"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true}},{"name":"Gemini","orderbook":{}}]}`,
+		`{"exchanges":[{"name":"Kraken","orderbook":{"verificationBypass":true,"websocketBufferLimit":5,"websocketBufferEnabled":false}},{"name":"Gemini","orderbook":{"websocketBufferLimit":5,"websocketBufferEnabled":false}}]}`)
 }

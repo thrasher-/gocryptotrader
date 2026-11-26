@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/buger/jsonparser"
@@ -12,31 +13,18 @@ import (
 	"github.com/thrasher-corp/gocryptotrader/common"
 	v0 "github.com/thrasher-corp/gocryptotrader/config/versions/v0"
 	v1 "github.com/thrasher-corp/gocryptotrader/config/versions/v1"
-	v13 "github.com/thrasher-corp/gocryptotrader/config/versions/v13"
-	v14 "github.com/thrasher-corp/gocryptotrader/config/versions/v14"
-	v15 "github.com/thrasher-corp/gocryptotrader/config/versions/v15"
-	v16 "github.com/thrasher-corp/gocryptotrader/config/versions/v16"
-	v17 "github.com/thrasher-corp/gocryptotrader/config/versions/v17"
-	v18 "github.com/thrasher-corp/gocryptotrader/config/versions/v18"
-	v19 "github.com/thrasher-corp/gocryptotrader/config/versions/v19"
 	v2 "github.com/thrasher-corp/gocryptotrader/config/versions/v2"
-	v20 "github.com/thrasher-corp/gocryptotrader/config/versions/v20"
-	v21 "github.com/thrasher-corp/gocryptotrader/config/versions/v21"
 )
 
 func TestNewManager(t *testing.T) {
 	t.Parallel()
 	m := newManager()
-	require.Len(t, m.versions, 22, "newManager must register every config version through v21")
-	assert.IsType(t, &v13.Version{}, m.Version(13), "newManager should register v13 at index 13")
-	assert.IsType(t, &v14.Version{}, m.Version(14), "newManager should register v14 at index 14")
-	assert.IsType(t, &v15.Version{}, m.Version(15), "newManager should register v15 at index 15")
-	assert.IsType(t, &v16.Version{}, m.Version(16), "newManager should register v16 at index 16")
-	assert.IsType(t, &v17.Version{}, m.Version(17), "newManager should register v17 at index 17")
-	assert.IsType(t, &v18.Version{}, m.Version(18), "newManager should register v18 at index 18")
-	assert.IsType(t, &v19.Version{}, m.Version(19), "newManager should register v19 at index 19")
-	assert.IsType(t, &v20.Version{}, m.Version(20), "newManager should register v20 at index 20")
-	assert.IsType(t, &v21.Version{}, m.Version(21), "newManager should register v21 at index 21")
+	require.NotEmpty(t, m.versions, "newManager must register config versions")
+	for i, v := range m.versions {
+		if v != nil { // Gaps are reported by TestVersionContinuity
+			assert.Equalf(t, "*v"+strconv.Itoa(i)+".Version", fmt.Sprintf("%T", v), "newManager should register v%d at index %d", i, i)
+		}
+	}
 }
 
 func TestDeploy(t *testing.T) {
@@ -158,28 +146,28 @@ func TestRegisterVersion(t *testing.T) {
 func TestLatest(t *testing.T) {
 	t.Parallel()
 	m := manager{}
-	_, err := m.latest()
-	require.ErrorIs(t, err, errNoVersions)
+	_, err := m.Latest()
+	require.ErrorIs(t, err, errNoVersions, "Latest must error without registered versions")
 
 	m.registerVersion(0, &v0.Version{})
 	m.registerVersion(1, &v1.Version{})
-	v, err := m.latest()
-	require.NoError(t, err)
-	assert.Equal(t, uint16(1), v)
+	v, err := m.Latest()
+	require.NoError(t, err, "Latest must not error")
+	assert.Equal(t, uint16(1), v, "Latest should return the highest registered version")
 
 	m.registerVersion(2, &v2.Version{})
-	v, err = m.latest()
-	require.NoError(t, err)
-	assert.Equal(t, uint16(2), v)
+	v, err = m.Latest()
+	require.NoError(t, err, "Latest must not error")
+	assert.Equal(t, uint16(2), v, "Latest should return a newly registered version")
 }
 
 func TestVersion(t *testing.T) {
 	t.Parallel()
 	m := manager{}
 	m.registerVersion(0, &v0.Version{})
-	l, err := m.latest()
-	require.NoError(t, err, "latest must not error")
-	assert.Nil(t, m.Version(l-1))
-	assert.NotNil(t, m.Version(l))
-	assert.Nil(t, m.Version(math.MaxUint16))
+	l, err := m.Latest()
+	require.NoError(t, err, "Latest must not error")
+	assert.Nil(t, m.Version(l-1), "Version should return nil for an unregistered version")
+	assert.NotNil(t, m.Version(l), "Version should return a registered version")
+	assert.Nil(t, m.Version(math.MaxUint16), "Version should return nil beyond the registered versions")
 }

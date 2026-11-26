@@ -6,8 +6,8 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thrasher-corp/gocryptotrader/config/versions"
 	v18 "github.com/thrasher-corp/gocryptotrader/config/versions/v18"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/configversion"
 )
 
 func TestExchanges(t *testing.T) {
@@ -99,13 +99,6 @@ func TestDowngradeExchange(t *testing.T) {
 
 func TestRegisteredMigration(t *testing.T) {
 	t.Parallel()
-	input := []byte(`{"version":17,"exchanges":[{"name":"Okx","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}},{"name":"Other","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}}]}`)
-	got, err := versions.Manager.Deploy(t.Context(), input, 18)
-	require.NoError(t, err, "registered upgrade must succeed")
-	assert.JSONEq(t, `{"version":18,"exchanges":[{"name":"Okx","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com/ws/v5/public"}}},{"name":"Other","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}}]}`, string(got), "only OKX defaults should migrate")
-	down, err := versions.Manager.Deploy(t.Context(), got, 17)
-	require.NoError(t, err, "registered downgrade must succeed")
-	again, err := versions.Manager.Deploy(t.Context(), down, 18)
-	require.NoError(t, err, "repeated upgrade must succeed")
-	assert.JSONEq(t, string(got), string(again), "migration round trip should preserve usable endpoints")
+	after := `{"exchanges":[{"name":"Okx","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com/ws/v5/public"}}},{"name":"Other","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}}]}`
+	configversion.Migrate(t, new(v18.Version), `{"exchanges":[{"name":"Okx","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}},{"name":"Other","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public"}}}]}`, after, after)
 }

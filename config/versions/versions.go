@@ -75,7 +75,7 @@ func (m *manager) Deploy(ctx context.Context, j []byte, version uint16) ([]byte,
 		return j, err
 	}
 
-	latest, err := m.latest()
+	latest, err := m.Latest()
 	if err != nil {
 		return j, err
 	}
@@ -235,8 +235,8 @@ func (m *manager) Version(version uint16) any {
 	return nil
 }
 
-// latest returns the highest version number
-func (m *manager) latest() (uint16, error) {
+// Latest returns the highest registered config version
+func (m *manager) Latest() (uint16, error) {
 	m.m.RLock()
 	defer m.m.RUnlock()
 	if len(m.versions) == 0 {

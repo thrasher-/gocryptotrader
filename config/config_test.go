@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	stdlog "log"
-	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/common"
@@ -1553,6 +1553,57 @@ func TestReadConfigFromFile(t *testing.T) {
 	}
 }
 
+// latestConfigVersion returns the version the loader upgrades every config to
+func latestConfigVersion(t *testing.T) int {
+	t.Helper()
+	latest, err := versions.Manager.Latest()
+	require.NoError(t, err, "Latest must not error")
+	return int(latest)
+}
+
+// configFixture returns the current config fixture decoded and as saved JSON
+func configFixture(t *testing.T) (expected *Config, data []byte) {
+	t.Helper()
+	data, err := os.ReadFile(TestFile)
+	require.NoError(t, err, "ReadFile must load the config fixture")
+	expected = new(Config)
+	require.NoError(t, json.Unmarshal(data, expected), "Unmarshal must decode the config fixture")
+	return expected, data
+}
+
+// setJSON returns data with the JSON value set at path, appending when an array index is past the end
+func setJSON(t *testing.T, data []byte, value string, path ...string) []byte {
+	t.Helper()
+	data, err := jsonparser.Set(data, []byte(value), path...)
+	require.NoErrorf(t, err, "jsonparser.Set must set %v", path)
+	return data
+}
+
+// readSavedConfig loads data as a saved config file, which the loader must upgrade to the latest version
+func readSavedConfig(t *testing.T, data []byte) *Config {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, data, 0o600), "WriteFile must save the config")
+	var c Config
+	require.NoError(t, c.ReadConfigFromFile(path, true), "ReadConfigFromFile must load the saved config")
+	assert.Equal(t, latestConfigVersion(t), c.Version, "ReadConfigFromFile should upgrade the config to the latest version")
+	return &c
+}
+
+func TestConfigFixturesUseLatestVersion(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{TestFile, filepath.Join("..", "config_example.json")} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
+			data, err := os.ReadFile(path)
+			require.NoError(t, err, "ReadFile must load the config")
+			version, err := jsonparser.GetInt(data, "version")
+			require.NoError(t, err, "GetInt must read the config version")
+			assert.EqualValues(t, latestConfigVersion(t), version, "config should be saved at the latest config version")
+		})
+	}
+}
+
 func TestReadVersion0ConfigFromFile(t *testing.T) {
 	origWriter := stdlog.Writer()
 	stdlog.SetOutput(io.Discard)
@@ -1562,44 +1613,17 @@ func TestReadVersion0ConfigFromFile(t *testing.T) {
 
 	legacy := &Config{}
 	require.NoError(t, legacy.ReadConfigFromFile(TestFileV0, true), "ReadConfigFromFile must not error for version 0 fixture")
-
-	latestCfg, err := versions.Manager.Deploy(t.Context(), []byte(`{}`), versions.UseLatestVersion)
-	require.NoError(t, err, "Deploy must not error when resolving latest config version")
-
-	var latest struct {
-		Version int `json:"version"`
-	}
-	require.NoError(t, json.Unmarshal(latestCfg, &latest), "json.Unmarshal must not error when reading latest config version")
-	assert.Equal(t, latest.Version, legacy.Version, "ReadConfigFromFile should upgrade version 0 fixture to the latest registered version")
-	_, err = legacy.GetExchangeConfig("Bitmex")
+	assert.Equal(t, latestConfigVersion(t), legacy.Version, "ReadConfigFromFile should upgrade version 0 fixture to the latest registered version")
+	_, err := legacy.GetExchangeConfig("Bitmex")
 	assert.ErrorIs(t, err, ErrExchangeNotFound, "GetExchangeConfig should return ErrExchangeNotFound for retired BitMEX")
 }
 
 func TestReadVersion14ConfigFromFile(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile(TestFile)
-	require.NoError(t, err, "ReadFile must load the config fixture")
-	var expected Config
-	require.NoError(t, json.Unmarshal(data, &expected), "Unmarshal must decode the current config fixture")
-	require.Equal(t, 21, expected.Version, "Config.Version must use version 21")
-
-	var saved map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(data, &saved), "Unmarshal must preserve saved config fields")
-	exchanges := make([]json.RawMessage, 0, len(expected.Exchanges)+1)
-	require.NoError(t, json.Unmarshal(saved["exchanges"], &exchanges), "Unmarshal must preserve saved exchanges")
-	exchanges = append(exchanges, json.RawMessage(`{"name":"Bitmex","enabled":true,"api":{"credentials":{"key":"retired-key","secret":"retired-secret"}}}`))
-	saved["exchanges"], err = json.Marshal(exchanges)
-	require.NoError(t, err, "Marshal must encode the saved exchanges")
-	saved["version"] = json.RawMessage(`14`)
-	data, err = json.Marshal(saved)
-	require.NoError(t, err, "Marshal must encode the version 14 config")
-	path := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, os.WriteFile(path, data, 0o600), "WriteFile must save the version 14 config")
-
-	var migrated Config
-	require.NoError(t, migrated.ReadConfigFromFile(path, true), "ReadConfigFromFile must upgrade the version 14 config")
-	assert.Equal(t, expected.Version, migrated.Version, "ReadConfigFromFile should advance the config to version 21")
+	expected, data := configFixture(t)
+	data = setJSON(t, data, `{"name":"Bitmex","enabled":true,"api":{"credentials":{"key":"retired-key","secret":"retired-secret"}}}`, "exchanges", "["+strconv.Itoa(len(expected.Exchanges))+"]")
+	migrated := readSavedConfig(t, setJSON(t, data, `14`, "version"))
 	assert.Equal(t, expected.Exchanges, migrated.Exchanges, "ReadConfigFromFile should remove BitMEX credentials while preserving all other exchanges")
 	assert.Equal(t, expected.Currency, migrated.Currency, "ReadConfigFromFile should preserve currency settings")
 }
@@ -1607,41 +1631,18 @@ func TestReadVersion14ConfigFromFile(t *testing.T) {
 func TestReadVersion16OrderbookBufferConfigFromFile(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile(TestFile)
-	require.NoError(t, err, "ReadFile must load the current config fixture")
-	var expected Config
-	require.NoError(t, json.Unmarshal(data, &expected), "Unmarshal must decode the current config fixture")
-	require.Equal(t, 21, expected.Version, "Config.Version must use version 21")
-
-	var saved map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(data, &saved), "Unmarshal must preserve saved config fields")
-	var exchanges []map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(saved["exchanges"], &exchanges), "Unmarshal must preserve saved exchanges")
-	require.GreaterOrEqual(t, len(exchanges), 2, "Config fixture must contain two exchanges")
-	for i, settings := range []string{
-		`{"verificationBypass":true,"websocketBufferEnabled":true,"websocketBufferLimit":0}`,
-		`{"verificationBypass":true,"websocketBufferEnabled":false,"websocketBufferLimit":5}`,
+	expected, data := configFixture(t)
+	require.GreaterOrEqual(t, len(expected.Exchanges), 2, "Config fixture must contain two exchanges")
+	for i, settings := range []map[string]string{
+		{"verificationBypass": "true", "websocketBufferEnabled": "true", "websocketBufferLimit": "0"},
+		{"verificationBypass": "true", "websocketBufferEnabled": "false", "websocketBufferLimit": "5"},
 	} {
-		var orderbookSettings map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(exchanges[i]["orderbook"], &orderbookSettings), "Unmarshal must preserve orderbook settings")
-		var legacySettings map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal([]byte(settings), &legacySettings), "Unmarshal must decode legacy buffer settings")
-		maps.Copy(orderbookSettings, legacySettings)
+		for key, value := range settings {
+			data = setJSON(t, data, value, "exchanges", "["+strconv.Itoa(i)+"]", "orderbook", key)
+		}
 		expected.Exchanges[i].Orderbook.VerificationBypass = true
-		exchanges[i]["orderbook"], err = json.Marshal(orderbookSettings)
-		require.NoError(t, err, "Marshal must encode legacy orderbook settings")
 	}
-	saved["exchanges"], err = json.Marshal(exchanges)
-	require.NoError(t, err, "Marshal must encode saved exchanges")
-	saved["version"] = json.RawMessage(`16`)
-	data, err = json.Marshal(saved)
-	require.NoError(t, err, "Marshal must encode the version 16 config")
-	path := filepath.Join(t.TempDir(), "config.json")
-	require.NoError(t, os.WriteFile(path, data, 0o600), "WriteFile must save the version 16 config")
-
-	var migrated Config
-	require.NoError(t, migrated.ReadConfigFromFile(path, true), "ReadConfigFromFile must upgrade the version 16 config")
-	assert.Equal(t, expected.Version, migrated.Version, "ReadConfigFromFile should advance the config to version 21")
+	migrated := readSavedConfig(t, setJSON(t, data, `16`, "version"))
 	assert.Equal(t, expected.Exchanges, migrated.Exchanges, "ReadConfigFromFile should preserve exchanges apart from obsolete buffer settings")
 
 	var output bytes.Buffer
@@ -1655,11 +1656,9 @@ func TestReadVersion16OrderbookBufferConfigFromFile(t *testing.T) {
 func TestReadVersion19LbankEndpointFromFile(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile(TestFile)
-	require.NoError(t, err, "ReadFile must load the config fixture")
-	var expected Config
-	require.NoError(t, json.Unmarshal(data, &expected), "Unmarshal must decode the current config fixture")
-
+	expected, data := configFixture(t)
+	lbank := slices.IndexFunc(expected.Exchanges, func(e Exchange) bool { return e.Name == "Lbank" })
+	require.NotEqual(t, -1, lbank, "Config fixture must contain LBank")
 	for _, tc := range []struct {
 		name     string
 		endpoint string
@@ -1670,34 +1669,10 @@ func TestReadVersion19LbankEndpointFromFile(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var saved map[string]json.RawMessage
-			require.NoError(t, json.Unmarshal(data, &saved), "Unmarshal must preserve saved config fields")
-			var exchanges []map[string]json.RawMessage
-			require.NoError(t, json.Unmarshal(saved["exchanges"], &exchanges), "Unmarshal must preserve saved exchanges")
-			var lbank int
-			for i := range exchanges {
-				if string(exchanges[i]["name"]) == `"Lbank"` {
-					lbank = i
-				}
-			}
-			var api map[string]json.RawMessage
-			require.NoError(t, json.Unmarshal(exchanges[lbank]["api"], &api), "Unmarshal must decode LBank's API settings")
 			endpoints, err := json.Marshal(map[string]string{"RestSpotURL": tc.endpoint})
 			require.NoError(t, err, "Marshal must encode LBank's endpoints")
-			api["urlEndpoints"] = endpoints
-			exchanges[lbank]["api"], err = json.Marshal(api)
-			require.NoError(t, err, "Marshal must encode LBank's API settings")
-			saved["exchanges"], err = json.Marshal(exchanges)
-			require.NoError(t, err, "Marshal must encode the saved exchanges")
-			saved["version"] = json.RawMessage(`19`)
-			v19, err := json.Marshal(saved)
-			require.NoError(t, err, "Marshal must encode the version 19 config")
-			path := filepath.Join(t.TempDir(), "config.json")
-			require.NoError(t, os.WriteFile(path, v19, 0o600), "WriteFile must save the version 19 config")
-
-			var migrated Config
-			require.NoError(t, migrated.ReadConfigFromFile(path, true), "ReadConfigFromFile must upgrade the version 19 config")
-			assert.Equal(t, 21, migrated.Version, "ReadConfigFromFile should advance the config to version 21")
+			saved := setJSON(t, data, string(endpoints), "exchanges", "["+strconv.Itoa(lbank)+"]", "api", "urlEndpoints")
+			migrated := readSavedConfig(t, setJSON(t, saved, `19`, "version"))
 			exch, err := migrated.GetExchangeConfig("Lbank")
 			require.NoError(t, err, "GetExchangeConfig must find LBank")
 			assert.Equal(t, tc.exp, exch.API.Endpoints, "ReadConfigFromFile should drop only the previous default REST host")
@@ -1713,13 +1688,7 @@ func TestReadVersion19LbankEndpointFromFile(t *testing.T) {
 func TestReadVersion15ConfigRetainsSafeGCTScriptSubLogger(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "config.json")
-	data := []byte(`{"name":"test","version":15,"encryptConfig":-1,"logging":{"subloggers":[{"name":"GCTSCRIPT","output":"console"}]}}`)
-	require.NoError(t, os.WriteFile(path, data, 0o600), "WriteFile must save the version 15 config")
-
-	var migrated Config
-	require.NoError(t, migrated.ReadConfigFromFile(path, true), "ReadConfigFromFile must upgrade the version 15 config")
-	assert.Equal(t, 21, migrated.Version, "ReadConfigFromFile should advance the config to version 21")
+	migrated := readSavedConfig(t, []byte(`{"name":"test","version":15,"encryptConfig":-1,"logging":{"subloggers":[{"name":"GCTSCRIPT","output":"console"}]}}`))
 	require.Len(t, migrated.Logging.SubLoggers, 1, "ReadConfigFromFile must preserve the obsolete GCTScript sublogger")
 	assert.Equal(t, "GCTSCRIPT", migrated.Logging.SubLoggers[0].Name, "ReadConfigFromFile should preserve the obsolete sublogger name")
 	require.NoError(t, log.SetupSubLoggers(migrated.Logging.SubLoggers), "SetupSubLoggers must safely ignore the obsolete GCTScript sublogger")
@@ -1741,7 +1710,7 @@ func TestReadConfigFromReader(t *testing.T) {
 			input := `{"version":18,"exchanges":[{"name":"` + name + `","currencyPairs":{"pairs":{}},"features":{"subscriptions":[{"enabled":true,"channel":"myAccount","authenticated":true},{"enabled":true,"channel":"myOrders","asset":"Futures"},{"enabled":true,"channel":"fundingRate","asset":"USDTMarginedFutures"}]}}]}`
 			cfg := new(Config)
 			require.NoError(t, cfg.readConfig(strings.NewReader(input)), "real config loader must migrate derivative subscriptions")
-			assert.Equal(t, 21, cfg.Version, "HTX configuration should advance from upstream version 18 to version 21")
+			assert.Equal(t, latestConfigVersion(t), cfg.Version, "HTX configuration should advance from upstream version 18 to the latest version")
 			require.Len(t, cfg.Exchanges, 1, "loader must retain the exchange")
 			loaded := &cfg.Exchanges[0]
 			assert.Equal(t, "HTX", loaded.Name, "loader should canonicalise the exchange name")
@@ -1774,7 +1743,7 @@ func TestReadConfigFromReader(t *testing.T) {
 				t.Parallel()
 				var cfg Config
 				require.NoError(t, cfg.readConfig(strings.NewReader(`{"version":17,"exchanges":[{"name":"`+name+`","api":{"urlEndpoints":{"WebsocketSpotURL":"wss://ws.okx.com:8443/ws/v5/public","WebsocketPrivateURL":"wss://ws.okx.com:8443/ws/v5/private","WebsocketSpotSupplementaryURL":"wss://ws.okx.com:8443/ws/v5/business"}}}]}`)), "saved configuration must load and migrate")
-				assert.Equal(t, 21, cfg.Version, "saved configuration should advance to version 21")
+				assert.Equal(t, latestConfigVersion(t), cfg.Version, "saved configuration should advance to the latest version")
 				require.Len(t, cfg.Exchanges, 1, "OKX entry must survive loading")
 				assert.Equal(t, "wss://ws.okx.com/ws/v5/public", cfg.Exchanges[0].API.Endpoints["WebsocketSpotURL"], "public endpoint should migrate")
 				assert.Equal(t, "wss://ws.okx.com/ws/v5/private", cfg.Exchanges[0].API.Endpoints["WebsocketPrivateURL"], "private endpoint should migrate")

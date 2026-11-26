@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thrasher-corp/gocryptotrader/config/versions"
 	v16 "github.com/thrasher-corp/gocryptotrader/config/versions/v16"
+	"github.com/thrasher-corp/gocryptotrader/internal/testing/configversion"
 )
 
 func TestUpgradeConfig(t *testing.T) {
@@ -55,15 +56,10 @@ func TestDowngradeConfig(t *testing.T) {
 
 func TestRegisteredMigration(t *testing.T) {
 	t.Parallel()
-
-	input := []byte(`{"version":15,"gctscript":{"enabled":true},"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]}}`)
-	out, err := versions.Manager.Deploy(t.Context(), input, 16)
-	require.NoError(t, err, "Deploy must apply the registered v16 upgrade")
-	assert.JSONEq(t, `{"version":16,"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]}}`, string(out), "Deploy should remove the root GCTScript configuration and set version 16")
-
-	out, err = versions.Manager.Deploy(t.Context(), out, 15)
-	require.NoError(t, err, "Deploy must apply the registered v16 downgrade")
-	assert.JSONEq(t, `{"version":15,"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]},"gctscript":{"enabled":false,"timeout":30000000000,"max_virtual_machines":10,"allow_imports":false,"auto_load":null,"verbose":false}}`, string(out), "Deploy should restore compatible GCTScript defaults and set version 15")
+	configversion.Migrate(t, new(v16.Version),
+		`{"gctscript":{"enabled":true},"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]}}`,
+		`{"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]}}`,
+		`{"logging":{"subloggers":[{"name":"GCTSCRIPT"},{"name":"DATABASE"}]},"gctscript":{"enabled":false,"timeout":30000000000,"max_virtual_machines":10,"allow_imports":false,"auto_load":null,"verbose":false}}`)
 }
 
 func TestRegisteredMultiHopUpgrade(t *testing.T) {

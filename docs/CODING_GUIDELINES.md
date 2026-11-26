@@ -175,7 +175,7 @@ order, dispatch explicitly sized batches at the call site.
 
 ## Configuration Migrations
 
-Migration code lives in [config/versions](../config/versions), with each version in its own `vN` package. Start with the package instructions and the `ExchangeVersion` and `ConfigVersion` interfaces in [config/versions/versions.go](../config/versions/versions.go). Register new versions in [config/versions/register.go](../config/versions/register.go). For an exchange-specific example, see [config/versions/v14/v14.go](../config/versions/v14/v14.go) and its tests in [config/versions/v14/v14_test.go](../config/versions/v14/v14_test.go).
+Migration code lives in [config/versions](../config/versions), with each version in its own `vN` package. Start with the package instructions and the `ExchangeVersion` and `ConfigVersion` interfaces in [config/versions/versions.go](../config/versions/versions.go). Register new versions in [config/versions/register.go](../config/versions/register.go). For an exchange-specific example, see [config/versions/v21/v21.go](../config/versions/v21/v21.go) and its tests in [config/versions/v21/v21_test.go](../config/versions/v21/v21_test.go).
 
 - Add a new version for subsequent configuration changes rather than rewriting historical migrations to match new types. Keep migration-specific types local to the version package instead of depending on evolving types in the config package.
 - When merging branches that independently claim the same migration version, preserve the version already on the base branch and move the other migration to the next unused version. Update its registration, package and tests, current-version fixtures and defaults; test upgrade from the base branch's latest version and downgrade back to it. Do not combine unrelated migrations under the existing version merely to resolve the conflict.
@@ -194,6 +194,13 @@ Migration code lives in [config/versions](../config/versions), with each version
 - Test both sides of each guard: a configuration that must remain unchanged and a minimally different configuration that must migrate. Exercise upgrade and downgrade when the guard is shared, and verify unrelated entries remain unchanged.
 - Validate migrated configurations through the real downstream loading, expansion and validation paths. Assert that the result remains usable, preserves the intended coverage and introduces no conflicting or exclusive entries.
 - Account for version advancement when a migration makes no changes. Do not assume a skipped transformation will be retried after the user changes their configuration.
+
+### Migration Tests
+
+- A new version adds its `vN` package, registers it in [config/versions/register.go](../config/versions/register.go) and sets the `version` of `config_example.json` and `testdata/configtest.json`. `TestNewManager` and `TestVersionsRegistered` check every registered version and `TestConfigFixturesUseLatestVersion` checks both files, so do not add per-version assertions to shared tests.
+- Do not hard-code the latest version outside a version's own package. Compare against `versions.Manager.Latest()`, or `latestConfigVersion` in the config package tests, so adding a version leaves existing tests unchanged.
+- Test a version's registered upgrade, downgrade and repeated upgrade with `configversion.Migrate` from [internal/testing/configversion](../internal/testing/configversion). It sets each document's version from the registry, so renumbering a migration leaves its test bodies unchanged.
+- Load saved configurations in config package tests with `readSavedConfig`. A representative configuration from the previous version needs only the fields the migration reads, and keeping it that small stops later schema changes from invalidating it. Start from `configFixture`, edited with `setJSON`, when a test must also show that the rest of a full configuration is preserved.
 
 ## Testing Guidelines
 
