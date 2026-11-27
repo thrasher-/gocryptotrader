@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	v21 "github.com/thrasher-corp/gocryptotrader/config/versions/v21"
+	migration "github.com/thrasher-corp/gocryptotrader/config/versions/v21"
 	"github.com/thrasher-corp/gocryptotrader/internal/testing/configversion"
 )
 
@@ -57,7 +57,7 @@ func replaced(entries []string, oldnew ...string) []string {
 
 func TestExchanges(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, []string{"Bitstamp"}, new(v21.Version).Exchanges(), "Exchanges should only list Bitstamp")
+	assert.Equal(t, []string{"Bitstamp"}, new(migration.Version).Exchanges(), "Exchanges should only list Bitstamp")
 }
 
 func TestUpgradeExchange(t *testing.T) {
@@ -78,7 +78,7 @@ func TestUpgradeExchange(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				version := new(v21.Version)
+				version := new(migration.Version)
 				got, err := version.UpgradeExchange(t.Context(), []byte(subscriptions(entries...)))
 				require.NoError(t, err, "UpgradeExchange must not error")
 				assert.JSONEq(t, subscriptions(currentDefaults...), string(got), "UpgradeExchange should replace the previous defaults with the current defaults")
@@ -120,7 +120,7 @@ func TestUpgradeExchange(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 				input := subscriptions(entries...)
-				got, err := new(v21.Version).UpgradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).UpgradeExchange(t.Context(), []byte(input))
 				require.NoError(t, err, "UpgradeExchange must accept customised subscriptions")
 				assert.Equal(t, input, string(got), "UpgradeExchange should preserve customised subscriptions byte-for-byte")
 			})
@@ -131,7 +131,7 @@ func TestUpgradeExchange(t *testing.T) {
 		for _, input := range withoutSubscriptions {
 			// Serial and in order, as each input goes through the same migration
 			t.Run(input, func(t *testing.T) {
-				got, err := new(v21.Version).UpgradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).UpgradeExchange(t.Context(), []byte(input))
 				require.NoErrorf(t, err, "UpgradeExchange must not error for %s", input)
 				assert.Equalf(t, input, string(got), "UpgradeExchange should leave %s unchanged", input)
 			})
@@ -163,7 +163,7 @@ func TestUpgradeExchange(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				version := new(v21.Version)
+				version := new(migration.Version)
 				got, err := version.UpgradeExchange(t.Context(), []byte(tc.input))
 				require.NoError(t, err, "UpgradeExchange must not error")
 				assert.JSONEq(t, tc.exp, string(got), "UpgradeExchange should remove the client ID requirement and keep the other settings")
@@ -182,7 +182,7 @@ func TestUpgradeExchange(t *testing.T) {
 		} {
 			// Serial and in order, as each input goes through the same migration
 			t.Run(input, func(t *testing.T) {
-				got, err := new(v21.Version).UpgradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).UpgradeExchange(t.Context(), []byte(input))
 				require.NoErrorf(t, err, "UpgradeExchange must not error for %s", input)
 				assert.Equalf(t, input, string(got), "UpgradeExchange should leave %s unchanged", input)
 			})
@@ -193,7 +193,7 @@ func TestUpgradeExchange(t *testing.T) {
 		for name, tc := range malformedSubscriptions {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				got, err := new(v21.Version).UpgradeExchange(t.Context(), []byte(tc.input))
+				got, err := new(migration.Version).UpgradeExchange(t.Context(), []byte(tc.input))
 				require.ErrorContains(t, err, tc.errContains, "migration must report the failing operation")
 				assert.Equal(t, tc.input, string(got), "failed migration should preserve the input")
 			})
@@ -204,7 +204,7 @@ func TestUpgradeExchange(t *testing.T) {
 		for _, input := range []string{`{"api":{"credentialsValidator":}}`, `{"api":{"credentialsValidator":{"requiresClientID":}}}`} {
 			// Serial and in order, as each input goes through the same migration
 			t.Run(input, func(t *testing.T) {
-				_, err := new(v21.Version).UpgradeExchange(t.Context(), []byte(input))
+				_, err := new(migration.Version).UpgradeExchange(t.Context(), []byte(input))
 				assert.ErrorContainsf(t, err, "Bitstamp credentials validator", "UpgradeExchange should report a malformed validator in %s", input)
 			})
 		}
@@ -223,7 +223,7 @@ func TestDowngradeExchange(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				version := new(v21.Version)
+				version := new(migration.Version)
 				got, err := version.DowngradeExchange(t.Context(), []byte(subscriptions(entries...)))
 				require.NoError(t, err, "DowngradeExchange must not error")
 				assert.JSONEq(t, subscriptions(previousDefaults...), string(got), "DowngradeExchange should replace the current defaults with the previous defaults")
@@ -246,7 +246,7 @@ func TestDowngradeExchange(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 				input := subscriptions(entries...)
-				got, err := new(v21.Version).DowngradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).DowngradeExchange(t.Context(), []byte(input))
 				require.NoError(t, err, "DowngradeExchange must accept customised subscriptions")
 				assert.Equal(t, input, string(got), "DowngradeExchange should preserve customised subscriptions byte-for-byte")
 			})
@@ -266,7 +266,7 @@ func TestDowngradeExchange(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				got, err := new(v21.Version).DowngradeExchange(t.Context(), []byte(subscriptions(tc.entries...)))
+				got, err := new(migration.Version).DowngradeExchange(t.Context(), []byte(subscriptions(tc.entries...)))
 				require.NoError(t, err, "DowngradeExchange must not error")
 				assert.JSONEq(t, subscriptions(tc.exp...), string(got), "DowngradeExchange should disable the channels the previous version cannot subscribe to")
 			})
@@ -277,7 +277,7 @@ func TestDowngradeExchange(t *testing.T) {
 		for _, input := range withoutSubscriptions {
 			// Serial and in order, as each input goes through the same migration
 			t.Run(input, func(t *testing.T) {
-				got, err := new(v21.Version).DowngradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).DowngradeExchange(t.Context(), []byte(input))
 				require.NoErrorf(t, err, "DowngradeExchange must not error for %s", input)
 				assert.Equalf(t, input, string(got), "DowngradeExchange should leave %s unchanged", input)
 			})
@@ -305,7 +305,7 @@ func TestDowngradeExchange(t *testing.T) {
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				version := new(v21.Version)
+				version := new(migration.Version)
 				got, err := version.DowngradeExchange(t.Context(), []byte(tc.input))
 				require.NoError(t, err, "DowngradeExchange must not error")
 				assert.JSONEq(t, tc.exp, string(got), "DowngradeExchange should restore the client ID requirement of a saved validator")
@@ -324,7 +324,7 @@ func TestDowngradeExchange(t *testing.T) {
 				if name == "enabled string" {
 					input = subscriptions(with(currentDefaults, 0, strings.Replace(currentOrderbook, `"enabled":true`, `"enabled":"true"`, 1))...)
 				}
-				got, err := new(v21.Version).DowngradeExchange(t.Context(), []byte(input))
+				got, err := new(migration.Version).DowngradeExchange(t.Context(), []byte(input))
 				require.ErrorContains(t, err, tc.errContains, "migration must report the failing operation")
 				assert.Equal(t, input, string(got), "failed migration should preserve the input")
 			})
@@ -332,7 +332,7 @@ func TestDowngradeExchange(t *testing.T) {
 	})
 	t.Run("malformed validator", func(t *testing.T) {
 		t.Parallel()
-		_, err := new(v21.Version).DowngradeExchange(t.Context(), []byte(`{"api":{"credentialsValidator":}}`))
+		_, err := new(migration.Version).DowngradeExchange(t.Context(), []byte(`{"api":{"credentialsValidator":}}`))
 		assert.ErrorContains(t, err, "Bitstamp credentials validator", "DowngradeExchange should report a malformed validator")
 	})
 }
@@ -359,5 +359,5 @@ func TestRegisteredMigration(t *testing.T) {
 	validator := `{"requiresKey":true,"requiresSecret":true,"requiresClientID":true}`
 	// Other exchanges with the same settings are not migrated
 	input := `{"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}},{"name":"Kraken","api":{"credentialsValidator":` + validator + `},"features":{"subscriptions":[` + previous + `]}}]}`
-	configversion.Migrate(t, new(v21.Version), input, `{"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":{"requiresKey":true,"requiresSecret":true}},"features":{"subscriptions":[`+current+`]}},{"name":"Kraken","api":{"credentialsValidator":`+validator+`},"features":{"subscriptions":[`+previous+`]}}]}`, input)
+	configversion.Migrate(t, new(migration.Version), input, `{"exchanges":[{"name":"Bitstamp","api":{"credentialsValidator":{"requiresKey":true,"requiresSecret":true}},"features":{"subscriptions":[`+current+`]}},{"name":"Kraken","api":{"credentialsValidator":`+validator+`},"features":{"subscriptions":[`+previous+`]}}]}`, input)
 }
