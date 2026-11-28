@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1637,6 +1638,54 @@ func connectionGenerators(ex *Exchange) []connectionGenerator {
 		{name: "spot private", generate: ex.generatePrivateSubscriptions},
 		{name: "futures public", generate: ex.generateFuturesPublicSubscriptions},
 		{name: "futures private", generate: ex.generateFuturesPrivateSubscriptions},
+	}
+}
+
+// dialSpy counts dials and refuses each, so a connection dialled in error never reaches a venue
+type dialSpy struct {
+	websocket.Connection
+	dials atomic.Int32
+}
+
+func (d *dialSpy) Dial(context.Context, *gws.Dialer, http.Header, url.Values) error {
+	d.dials.Add(1)
+	return errors.New("dialled")
+}
+
+func TestWebsocketFuturesConnect(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name             string
+		websocketEnabled bool
+		exchangeEnabled  bool
+	}{
+		{name: "websocket disabled", exchangeEnabled: true},
+		{name: "exchange disabled", websocketEnabled: true},
+		{name: "websocket and exchange disabled"},
+	} {
+		for held, when := range map[bool]string{false: " without the contract details held", true: " with the contract details held"} {
+			t.Run(tc.name+when, func(t *testing.T) {
+				t.Parallel()
+				// Contract details not yet held come from the venue, so a read before the check is counted
+				handler, requests := countRequests(futuresHandler(t))
+				ex := newPrivateTestExchange(t, handler)
+				if held {
+					var contracts []*FuturesContractResponse
+					require.NoError(t, json.Unmarshal([]byte(futuresContractsReply), &contracts), "the contracts must decode")
+					ex.storeFuturesContracts(contracts)
+				}
+				if !tc.websocketEnabled {
+					require.NoError(t, ex.Websocket.Disable(), "Disable must not error")
+				}
+				ex.SetEnabled(tc.exchangeEnabled)
+				require.Equal(t, tc.websocketEnabled, ex.Websocket.IsEnabled(), "the websocket must be enabled as the case sets")
+				conn := new(dialSpy)
+				err := ex.WebsocketFuturesConnect(t.Context(), conn)
+				assert.ErrorIs(t, err, websocket.ErrWebsocketNotEnabled, "WebsocketFuturesConnect should refuse to dial")
+				assert.Zero(t, conn.dials.Load(), "the connection should not be dialled")
+				assert.Zero(t, requests.Load(), "the venue should not be asked for anything")
+			})
+		}
 	}
 }
 

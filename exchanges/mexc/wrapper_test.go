@@ -325,14 +325,21 @@ func TestGetLatestFundingRates(t *testing.T) {
 		rate := func(symbol, fundingRate string) string {
 			return `{"symbol":"` + symbol + `","fundingRate":` + fundingRate + `,"collectCycle":8,"nextSettleTime":1792857600000}`
 		}
+		ethUSDT := currency.NewPairWithDelimiter("ETH", "USDT", currency.UnderscoreDelimiter)
 		for _, tc := range []struct {
-			name    string
-			enabled currency.Pairs
-			pair    currency.Pair
-			path    string
-			data    string
-			exp     currency.Pair
-			rate    float64
+			name string
+			// available, where set, replaces the contracts offered
+			available currency.Pairs
+			enabled   currency.Pairs
+			pair      currency.Pair
+			path      string
+			data      string
+			exp       currency.Pair
+			rate      float64
+			// missing is the contract without a rate, which the error names alone
+			missing string
+			// refused has the venue refuse the rates read in its reply
+			refused bool
 		}{
 			{
 				name: "no pair named reads every contract's rate", enabled: currency.Pairs{futuresTradablePair},
@@ -349,13 +356,77 @@ func TestGetLatestFundingRates(t *testing.T) {
 				path: "contract/funding_rate/BTC_USD", data: rate("BTC_USD", "0.0002"),
 				exp: futuresInversePair, rate: 0.0002,
 			},
+			{
+				name:      "no pair named and the first enabled contract's rate missing",
+				available: currency.Pairs{futuresTradablePair, ethUSDT}, enabled: currency.Pairs{futuresTradablePair, ethUSDT},
+				path: "contract/funding_rate", data: "[" + rate("ETH_USDT", "0.0007") + "]", missing: "BTC_USDT",
+			},
+			{
+				name:      "no pair named and the second enabled contract's rate missing",
+				available: currency.Pairs{futuresTradablePair, ethUSDT}, enabled: currency.Pairs{futuresTradablePair, ethUSDT},
+				path: "contract/funding_rate", data: "[" + rate("BTC_USDT", "0.0001") + "]", missing: "ETH_USDT",
+			},
+			{
+				name: "no pair named and no rate listed", enabled: currency.Pairs{futuresTradablePair},
+				path: "contract/funding_rate", data: "[]", missing: "BTC_USDT",
+			},
+			{
+				name: "no pair named with a null rate listed first", enabled: currency.Pairs{futuresTradablePair},
+				path: "contract/funding_rate", data: "[null," + rate("BTC_USDT", "0.0001") + "]",
+				exp: futuresTradablePair, rate: 0.0001,
+			},
+			{
+				name: "pair named without a rate", enabled: currency.Pairs{futuresTradablePair}, pair: futuresTradablePair,
+				path: "contract/funding_rate/BTC_USDT", data: "null", missing: "BTC_USDT",
+			},
+			{
+				name: "pair named with no rate listed", enabled: currency.Pairs{futuresTradablePair}, pair: futuresTradablePair,
+				path: "contract/funding_rate/BTC_USDT", data: "[]", missing: "BTC_USDT",
+			},
+			{
+				name: "pair named with a null rate", enabled: currency.Pairs{futuresTradablePair}, pair: futuresTradablePair,
+				path: "contract/funding_rate/BTC_USDT", data: "[null]", missing: "BTC_USDT",
+			},
+			{
+				name: "pair named answered with another contract's rate", enabled: currency.Pairs{futuresTradablePair}, pair: futuresTradablePair,
+				path: "contract/funding_rate/BTC_USDT", data: rate("ETH_USDT", "0.0007"), missing: "BTC_USDT",
+			},
+			{name: "no pair named and the rates read refused", enabled: currency.Pairs{futuresTradablePair}, path: "contract/funding_rate", refused: true},
+			{name: "pair named and its rate read refused", enabled: currency.Pairs{futuresTradablePair}, pair: futuresTradablePair, path: "contract/funding_rate/BTC_USDT", refused: true},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				handler, requests := countRequests(futuresHandler(t, futuresRoute{method: http.MethodGet, path: tc.path, data: tc.data}))
+				if tc.refused {
+					handler, requests = countRequests(func(w http.ResponseWriter, r *http.Request) {
+						assert.Equal(t, http.MethodGet, r.Method, "the rates should be read with a GET")
+						assert.Equal(t, "/api/v1/"+tc.path, r.URL.Path, "the rates should be read from the path expected")
+						w.Header().Set("Content-Type", "application/json")
+						_, _ = w.Write([]byte(`{"success":false,"code":510,"message":"Requests are too frequent, please try again later"}`))
+					})
+				}
 				ex := testExchangeFor(t, handler, liveUnavailable)
+				if tc.available != nil {
+					require.NoError(t, ex.CurrencyPairs.StorePairs(asset.Futures, tc.available, false), "StorePairs must not error")
+				}
 				require.NoError(t, ex.CurrencyPairs.StorePairs(asset.Futures, tc.enabled, true), "StorePairs must not error")
 				result, err := ex.GetLatestFundingRates(t.Context(), &fundingrate.LatestRateRequest{Asset: asset.Futures, Pair: tc.pair})
+				if tc.refused {
+					if assert.ErrorIs(t, err, errFuturesRequestFailed, "GetLatestFundingRates should return the venue's refusal") {
+						assert.ErrorContains(t, err, "510", "the error should carry the refusal's code")
+					}
+					assert.Nil(t, result, "no rates should be returned with an error")
+					assert.EqualValues(t, 1, requests.Load(), "the rates should be read in one request")
+					return
+				}
+				if tc.missing != "" {
+					if assert.ErrorIs(t, err, fundingrate.ErrNoFundingRatesFound, "GetLatestFundingRates should return the error expected") {
+						assert.EqualError(t, err, fundingrate.ErrNoFundingRatesFound.Error()+": "+tc.missing, "the error should name the contract without a rate alone")
+					}
+					assert.Nil(t, result, "no rates should be returned with an error")
+					assert.EqualValues(t, 1, requests.Load(), "the rates should be read in one request")
+					return
+				}
 				require.NoError(t, err, "GetLatestFundingRates must not error")
 				assert.EqualValues(t, 1, requests.Load(), "the rate should be read in one request")
 				require.Len(t, result, 1, "the rate asked for must be returned")
@@ -386,8 +457,44 @@ func TestGetHistoricalFundingRates(t *testing.T) {
 		for name, tc := range map[string]struct {
 			start, end time.Time
 			routes     []futuresRoute
-			exp        []fundingrate.Rate
+			// refusedPage, where set, is the page whose read the venue refuses in its reply
+			refusedPage int
+			exp         []fundingrate.Rate
+			err         error
 		}{
+			// The venue lists no settlement for a contract without one, such as one not listed
+			"no rate settled": {
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 0, 0.0001))},
+				err:    fundingrate.ErrNoFundingRatesFound,
+			},
+			"the only rate settled after the window": {
+				end:    settled(0).Add(-time.Hour),
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1, 0.0001))},
+				err:    fundingrate.ErrNoFundingRatesFound,
+			},
+			"the only rate settled before the window": {
+				start:  settled(0).Add(time.Hour),
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1, 0.0001))},
+				err:    fundingrate.ErrNoFundingRatesFound,
+			},
+			"no history": {
+				routes: []futuresRoute{page(1, "null")},
+				err:    fundingrate.ErrNoFundingRatesFound,
+			},
+			"the first page read refused": {
+				refusedPage: 1,
+				err:         errFuturesRequestFailed,
+			},
+			"a later page read refused": {
+				start:       settled(1500),
+				routes:      []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001))},
+				refusedPage: 2,
+				err:         errFuturesRequestFailed,
+			},
+			"one rate settled": {
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1, 0.0001))},
+				exp:    rates(0, 0, 0.0001),
+			},
 			"latest": {
 				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001))},
 				exp:    rates(999, 0, 0.0001),
@@ -427,11 +534,55 @@ func TestGetHistoricalFundingRates(t *testing.T) {
 				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001)), page(2, fundingRatePage(newest, 1000, 1, 0.0001))},
 				exp:    rates(1000, 0, 0.0001),
 			},
+			"a page without data after a full page": {
+				start:  settled(1500),
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001)), page(2, "null")},
+				exp:    rates(999, 0, 0.0001),
+			},
+			"start a nanosecond after a settlement": {
+				start:  settled(1).Add(time.Nanosecond),
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001))},
+				exp:    rates(0, 0, 0.0001),
+			},
+			"end a nanosecond before a settlement": {
+				end:    settled(0).Add(-time.Nanosecond),
+				routes: []futuresRoute{page(1, fundingRatePage(newest, 0, 1000, 0.0001)), page(2, fundingRatePage(newest, 1000, 1, 0.0001))},
+				exp:    rates(1000, 1, 0.0001),
+			},
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				ex := testExchangeFor(t, futuresHandler(t, tc.routes...), liveUnavailable)
+				handler := futuresHandler(t, tc.routes...)
+				refused := page(tc.refusedPage, "")
+				var mu sync.Mutex
+				var pagesRead []string
+				ex := testExchangeFor(t, func(w http.ResponseWriter, r *http.Request) {
+					mu.Lock()
+					pagesRead = append(pagesRead, r.URL.Query().Get("page_num"))
+					mu.Unlock()
+					if tc.refusedPage != 0 && refused.matches(t, r, nil) {
+						w.Header().Set("Content-Type", "application/json")
+						_, _ = w.Write([]byte(`{"success":false,"code":510,"message":"Requests are too frequent, please try again later"}`))
+						return
+					}
+					handler(w, r)
+				}, liveUnavailable)
 				result, err := ex.GetHistoricalFundingRates(t.Context(), &fundingrate.HistoricalRatesRequest{Asset: asset.Futures, Pair: futuresTradablePair, StartDate: tc.start, EndDate: tc.end})
+				if tc.err != nil {
+					assert.ErrorIs(t, err, tc.err, "GetHistoricalFundingRates should return the error expected")
+					assert.Nil(t, result, "no rates should be returned with an error")
+					if tc.refusedPage != 0 {
+						assert.ErrorContains(t, err, "510", "the error should carry the refusal's code")
+						expPages := make([]string, tc.refusedPage)
+						for i := range expPages {
+							expPages[i] = strconv.Itoa(i + 1)
+						}
+						mu.Lock()
+						defer mu.Unlock()
+						assert.Equal(t, expPages, pagesRead, "the pages should be read in order up to the refused one")
+					}
+					return
+				}
 				require.NoError(t, err, "GetHistoricalFundingRates must not error")
 				// Settle times are read in the local time zone
 				result.StartDate, result.EndDate, result.LatestRate.Time = result.StartDate.UTC(), result.EndDate.UTC(), result.LatestRate.Time.UTC()
@@ -448,6 +599,60 @@ func TestGetHistoricalFundingRates(t *testing.T) {
 					LatestRate:   latest,
 					FundingRates: tc.exp,
 				}, result, "every rate asked for should be returned once, as first listed, oldest first")
+			})
+		}
+	})
+
+	t.Run("the predicted rate asked for", func(t *testing.T) {
+		t.Parallel()
+		current := func(symbol string) string {
+			return `{"symbol":"` + symbol + `","fundingRate":0.0002,"collectCycle":8,"nextSettleTime":1792828800000}`
+		}
+		for _, tc := range []struct {
+			name string
+			// settlements counts the rates the history lists
+			settlements int
+			end         time.Time
+			// reply answers the current rate read, which a window without a settled rate leaves unread
+			reply   string
+			reads   int32
+			err     error
+			mention string
+		}{
+			{name: "no current rate", settlements: 1, reply: `{"success":true,"code":0,"data":null}`, reads: 1, err: fundingrate.ErrNoFundingRatesFound, mention: "BTC_USDT"},
+			{name: "no current rate listed", settlements: 1, reply: `{"success":true,"code":0,"data":[]}`, reads: 1, err: fundingrate.ErrNoFundingRatesFound, mention: "BTC_USDT"},
+			{name: "a null current rate", settlements: 1, reply: `{"success":true,"code":0,"data":[null]}`, reads: 1, err: fundingrate.ErrNoFundingRatesFound, mention: "BTC_USDT"},
+			{name: "the contract's current rate and another", settlements: 1, reply: `{"success":true,"code":0,"data":[` + current("BTC_USDT") + `,` + current("ETH_USDT") + `]}`, reads: 1, err: fundingrate.ErrNoFundingRatesFound, mention: "BTC_USDT"},
+			{name: "another contract's current rate and the contract's", settlements: 1, reply: `{"success":true,"code":0,"data":[` + current("ETH_USDT") + `,` + current("BTC_USDT") + `]}`, reads: 1, err: fundingrate.ErrNoFundingRatesFound, mention: "BTC_USDT"},
+			{name: "the current rate read refused", settlements: 1, reply: `{"success":false,"code":510,"message":"Requests are too frequent, please try again later"}`, reads: 1, err: errFuturesRequestFailed, mention: "510"},
+			{name: "no rate settled", err: fundingrate.ErrNoFundingRatesFound},
+			{name: "the only rate settled after the window", settlements: 1, end: time.UnixMilli(1792800000000).Add(-time.Hour), err: fundingrate.ErrNoFundingRatesFound},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				history := futuresHandler(t, futuresRoute{
+					method: http.MethodGet,
+					path:   "contract/funding_rate/history",
+					query:  "page_num=1&page_size=1000&symbol=BTC_USDT",
+					data:   fundingRatePage(time.UnixMilli(1792800000000), 0, tc.settlements, 0.0001),
+				})
+				var reads atomic.Int32
+				ex := testExchangeFor(t, func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != "/api/v1/contract/funding_rate/BTC_USDT" {
+						history(w, r)
+						return
+					}
+					reads.Add(1)
+					assert.Equal(t, http.MethodGet, r.Method, "the current rate should be read with a GET")
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(tc.reply))
+				}, liveUnavailable)
+				result, err := ex.GetHistoricalFundingRates(t.Context(), &fundingrate.HistoricalRatesRequest{Asset: asset.Futures, Pair: futuresTradablePair, EndDate: tc.end, IncludePredictedRate: true})
+				if assert.ErrorIs(t, err, tc.err, "GetHistoricalFundingRates should return the error expected") && tc.mention != "" {
+					assert.ErrorContains(t, err, tc.mention, "the error should carry the contract or the refusal")
+				}
+				assert.Nil(t, result, "no rates should be returned with an error")
+				assert.Equal(t, tc.reads, reads.Load(), "the current rate should be read once a rate has settled within the window, and only then")
 			})
 		}
 	})
@@ -2891,6 +3096,23 @@ func historicCandlesFailures() []historicCandlesFailure {
 			err:  errMalformedCandles,
 		},
 		{
+			name: "futures candles reply without data",
+			handler: func(t *testing.T) http.HandlerFunc {
+				t.Helper()
+				candles := futuresHandler(t, futuresRoute{method: http.MethodGet, path: "contract/kline/BTC_USDT", data: "null"})
+				var reads atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					if reads.Add(1) > 1 {
+						t.Errorf("the candles should be read once, not again for %s", r.URL)
+					}
+					candles(w, r)
+				}
+			},
+			pair: futuresTradablePair,
+			a:    asset.Futures,
+			err:  common.ErrNoResponse,
+		},
+		{
 			name: "asset not handled",
 			handler: func(t *testing.T) http.HandlerFunc {
 				t.Helper()
@@ -2979,6 +3201,42 @@ func TestGetHistoricCandlesExtendedFuturesPages(t *testing.T) {
 	require.NoError(t, err, "GetHistoricCandlesExtended must request a later page after a short one")
 	require.Len(t, result.Candles, len(exp.Candles), "GetHistoricCandlesExtended must return as many candles as the window has hours")
 	assert.Equal(t, exp.Candles[2:], result.Candles[2:], "GetHistoricCandlesExtended should return a short page's candles and a later page's")
+
+	nullFirstPage, nullLastPage := firstPage, lastPage
+	nullFirstPage.data, nullLastPage.data = "null", "null"
+	for _, tc := range []struct {
+		name   string
+		routes []futuresRoute
+		// reads lists the venue's reads in order, the catalogue's included, up to the page without data
+		reads []futuresRoute
+	}{
+		{name: "an earlier page without data", routes: []futuresRoute{futuresContractsRoute, nullFirstPage, lastPage}, reads: []futuresRoute{nullFirstPage}},
+		{name: "a later page without data", routes: []futuresRoute{futuresContractsRoute, firstPage, nullLastPage}, reads: []futuresRoute{firstPage, futuresContractsRoute, nullLastPage}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			handler := futuresHandler(t, tc.routes...)
+			var mu sync.Mutex
+			var reads []string
+			ex := testExchangeFor(t, func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				reads = append(reads, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
+				mu.Unlock()
+				handler(w, r)
+			}, liveUnavailable)
+			ex.Features.Enabled.Kline.GlobalResultLimit = 4
+			candles, err := ex.GetHistoricCandlesExtended(t.Context(), futuresTradablePair, asset.Futures, kline.OneHour, start, end)
+			assert.ErrorIs(t, err, common.ErrNoResponse, "GetHistoricCandlesExtended should report a page without data rather than return the other page's candles")
+			assert.Nil(t, candles, "no candles should be returned with an error")
+			expReads := make([]string, len(tc.reads))
+			for i, route := range tc.reads {
+				expReads[i] = route.method + " /api/v1/" + route.path + "?" + route.query
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			assert.Equal(t, expReads, reads, "the pages should be read in order up to the one without data")
+		})
+	}
 }
 
 func TestGetHistoricCandlesExtendedSpotPages(t *testing.T) {

@@ -1270,7 +1270,6 @@ func TestFetchTradablePairs(t *testing.T) {
 	}
 }
 
-//nolint:tparallel // the futures cases share ex in order, so each also checks that a call keeps nothing from the last
 func TestUpdateTicker(t *testing.T) {
 	t.Parallel()
 	_, err := e.UpdateTicker(t.Context(), spotTradablePair, asset.Options)
@@ -1341,6 +1340,118 @@ func TestUpdateTicker(t *testing.T) {
 			assert.Positivef(t, result.IndexPrice, "the %s ticker should carry its index price", p)
 		})
 	}
+
+	btcUSDC := currency.NewPairWithDelimiter("BTC", "USDC", currency.UnderscoreDelimiter)
+	ethUSDT := currency.NewPairWithDelimiter("ETH", "USDT", currency.UnderscoreDelimiter)
+	listed := func(data string) string { return `{"success":true,"code":0,"data":` + data + `}` }
+	btcUSDTTicker := `{"contractId":10,"symbol":"BTC_USDT","lastPrice":59859.1,"holdVol":639956119,"volume24":528827621,"timestamp":1795806950938}`
+	ethUSDTTicker := `{"contractId":11,"symbol":"ETH_USDT","lastPrice":1670.51,"holdVol":42638052,"volume24":59406474,"timestamp":1795806950938}`
+	btcUSDCTicker := `{"contractId":1104,"symbol":"BTC_USDC","lastPrice":59798.5,"bid1":59798.5,"ask1":59798.5,"holdVol":30817658,"volume24":11420803,"timestamp":1795806951058}`
+	refusal := `{"success":false,"code":510,"message":"Endpoint rate limit exceeded. Resource: /api/v1/contract/ticker; scope: IP"}`
+	catalogue := strings.TrimSuffix(futuresContractsReply, "]") +
+		`,{"symbol":"BTC_USDC","baseCoin":"BTC","quoteCoin":"USDC","settleCoin":"USDC","contractSize":0.0001,"state":0,"apiAllowed":true}]`
+	// A ticker stored before each case shows a failed update that writes over it or returns it
+	for _, tc := range []struct {
+		name   string
+		pair   currency.Pair
+		symbol string
+		// status is the HTTP status answering the ticker read, zero standing for http.StatusOK
+		status int
+		reply  string
+		// catalogueRefused has the venue refuse the contract catalogue in its reply
+		catalogueRefused bool
+		// reads counts the contract catalogue reads
+		reads   int32
+		err     error
+		mention string
+	}{
+		{name: "the ticker read refused in the venue's reply", pair: futuresTradablePair, symbol: "BTC_USDT", reply: refusal, err: errFuturesRequestFailed, mention: "510"},
+		{name: "the ticker read refused by status", pair: futuresTradablePair, symbol: "BTC_USDT", status: http.StatusTeapot, reply: "refused", err: request.ErrBadStatus, mention: "418"},
+		{name: "a reply without a ticker", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed("null"), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply listing no ticker", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed("[]"), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply listing a null ticker", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed("[null]"), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply listing the contract's ticker and another", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed("[" + btcUSDTTicker + "," + ethUSDTTicker + "]"), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply listing another contract's ticker and the contract's", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed("[" + ethUSDTTicker + "," + btcUSDTTicker + "]"), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply for another contract", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed(ethUSDTTicker), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply for the contract with its currencies swapped", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed(strings.Replace(btcUSDTTicker, `"symbol":"BTC_USDT"`, `"symbol":"USDT_BTC"`, 1)), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply for another contract of the same base currency", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed(strings.Replace(btcUSDCTicker, `"bid1":59798.5,"ask1":59798.5,`, "", 1)), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "a reply for a contract whose symbol starts with the one asked for", pair: futuresInversePair, symbol: "BTC_USD", reply: listed(btcUSDTTicker), err: ticker.ErrTickerNotFound, mention: "BTC_USD"},
+		{name: "a reply without a symbol", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed(strings.Replace(btcUSDTTicker, `"symbol":"BTC_USDT"`, `"symbol":""`, 1)), err: ticker.ErrTickerNotFound, mention: "BTC_USDT"},
+		{name: "the contract catalogue read refused", pair: futuresTradablePair, symbol: "BTC_USDT", reply: listed(btcUSDTTicker), catalogueRefused: true, reads: 1, err: errFuturesRequestFailed, mention: "510"},
+		{name: "a contract the catalogue leaves out", pair: ethUSDT, symbol: "ETH_USDT", reply: listed(ethUSDTTicker), reads: 1, err: errContractNotFound, mention: "ETH_USDT"},
+		{name: "a quote with an equal bid and ask", pair: btcUSDC, symbol: "BTC_USDC", reply: listed(btcUSDCTicker), reads: 1, err: ticker.ErrBidEqualsAsk, mention: "BTC_USDC"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			details := futuresHandler(t, futuresRoute{method: http.MethodGet, path: "contract/detail/country", data: catalogue})
+			var tickerReads atomic.Int32
+			venue, reads := countCatalogueReads(t, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/api/v1/contract/ticker":
+					tickerReads.Add(1)
+					assert.Equal(t, http.MethodGet, r.Method, "the ticker should be read with a GET")
+					assert.Equal(t, "symbol="+tc.symbol, r.URL.RawQuery, "the ticker should be read for the contract asked for")
+					if tc.status != 0 {
+						http.Error(w, tc.reply, tc.status)
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(tc.reply))
+				case tc.catalogueRefused && r.URL.Path == "/api/v1/contract/detail/country":
+					assert.Equal(t, http.MethodGet, r.Method, "the contract catalogue should be read with a GET")
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"success":false,"code":510,"message":"Requests are too frequent, please try again later"}`))
+				default:
+					details(w, r)
+				}
+			})
+			ex := newPrivateTestExchange(t, venue)
+			ex.Name = t.Name()
+			require.NoError(t, ticker.ProcessTicker(&ticker.Price{Pair: tc.pair, ExchangeName: ex.Name, AssetType: asset.Futures, Last: 42, LastUpdated: time.UnixMilli(1795806950000)}), "ProcessTicker must not error")
+			stored, err := ticker.GetTicker(ex.Name, tc.pair, asset.Futures)
+			require.NoError(t, err, "GetTicker must not error for the ticker stored")
+			result, err := ex.UpdateTicker(t.Context(), tc.pair, asset.Futures)
+			if assert.ErrorIs(t, err, tc.err, "UpdateTicker should return the error expected") {
+				assert.ErrorContains(t, err, tc.mention, "the error should carry the refusal or the contract")
+			}
+			assert.Nil(t, result, "no ticker should be returned with an error")
+			assert.EqualValues(t, 1, tickerReads.Load(), "the ticker should be read once")
+			assert.Equal(t, tc.reads, reads.Load(), "the contract catalogue should be read only once the ticker is the contract's")
+			kept, err := ticker.GetTicker(ex.Name, tc.pair, asset.Futures)
+			if assert.NoError(t, err, "GetTicker should not error for the ticker stored") {
+				assert.Equal(t, stored, kept, "the ticker stored should be left as it was")
+			}
+		})
+	}
+
+	t.Run("a contract asked for outside the venue's format", func(t *testing.T) {
+		t.Parallel()
+		pair := currency.NewPairWithDelimiter("btc", "usdt", currency.DashDelimiter)
+		ex := newPrivateTestExchange(t, futuresHandler(t,
+			futuresRoute{method: http.MethodGet, path: "contract/ticker", query: "symbol=BTC_USDT", data: btcUSDTTicker},
+			futuresRoute{method: http.MethodGet, path: "contract/detail/country", data: catalogue},
+		))
+		ex.Name = t.Name()
+		result, err := ex.UpdateTicker(t.Context(), pair, asset.Futures)
+		require.NoError(t, err, "UpdateTicker must not error for a pair outside the venue's format")
+		require.NotNil(t, result, "UpdateTicker must return the ticker")
+		assert.Equal(t, 59859.1, result.Last, "the contract's ticker should be returned")
+		assert.Equal(t, pair.String(), result.Pair.String(), "the ticker should carry the pair asked for")
+		stored, err := ticker.GetTicker(ex.Name, pair, asset.Futures)
+		if assert.NoError(t, err, "GetTicker should not error for the pair asked for") {
+			assert.Equal(t, result, stored, "the ticker returned should be the one stored")
+		}
+	})
+
+	t.Run("an empty futures pair", func(t *testing.T) {
+		t.Parallel()
+		handler, requests := countRequests(futuresHandler(t))
+		ex := newPrivateTestExchange(t, handler)
+		result, err := ex.UpdateTicker(t.Context(), currency.EMPTYPAIR, asset.Futures)
+		assert.ErrorIs(t, err, currency.ErrCurrencyPairEmpty, "UpdateTicker should refuse an empty pair")
+		assert.Nil(t, result, "no ticker should be returned with an error")
+		assert.Zero(t, requests.Load(), "the venue should not be asked for a ticker")
+	})
 }
 
 func TestUpdateTickers(t *testing.T) {
@@ -1642,8 +1753,9 @@ func TestGetHistoricCandles(t *testing.T) {
 					tc.setup(t, ex)
 				}
 				start, end := futuresWindow()
-				_, err := ex.GetHistoricCandles(t.Context(), tc.pair, tc.a, kline.OneHour, start, end)
+				result, err := ex.GetHistoricCandles(t.Context(), tc.pair, tc.a, kline.OneHour, start, end)
 				assert.ErrorIs(t, err, tc.err, "GetHistoricCandles should return why no candles were returned")
+				assert.Nil(t, result, "no candles should be returned with an error")
 			})
 		}
 	})
@@ -1786,8 +1898,9 @@ func TestGetHistoricCandlesExtended(t *testing.T) {
 					tc.setup(t, ex)
 				}
 				start, end := futuresWindow()
-				_, err := ex.GetHistoricCandlesExtended(t.Context(), tc.pair, tc.a, kline.OneHour, start, end)
+				result, err := ex.GetHistoricCandlesExtended(t.Context(), tc.pair, tc.a, kline.OneHour, start, end)
 				assert.ErrorIs(t, err, tc.err, "GetHistoricCandlesExtended should return why no candles were returned")
+				assert.Nil(t, result, "no candles should be returned with an error")
 			})
 		}
 	})
